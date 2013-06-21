@@ -43,7 +43,8 @@ module ice_model_mod
   use ice_type_mod,     only: ice_data_type, ice_model_init, ice_model_end, hlim,&
                               mom_rough_ice, heat_rough_ice, atmos_winds, kmelt, &
                               slab_ice, spec_ice, ice_bulk_salin, id_cn, id_hi,  &
-                              id_hs, id_t1, id_t2, id_ts, id_sh, id_lh, id_sw,   &
+                              id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts,  &
+                              id_sh, id_lh, id_sw,                               &
                               id_swdn, id_lw, id_lwdn, id_snofl, id_rain,        &
                               id_runoff_hflx, id_calving_hflx,                   &
                               id_runoff, id_calving, id_evap, id_saltf, id_tmelt,&
@@ -65,9 +66,7 @@ module ice_model_mod
                               id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif,       &
                               cm2_bugs, ice_stock_pe, do_icebergs, ice_model_restart, &
                               add_diurnal_sw, id_mib, ice_data_type_chksum,      &
-                              id_ustar, id_vstar, channel_viscosity, smag_ocn,   &
-                              ssh_gravity, chan_cfl_limit, id_vocean, id_uocean, &
-                              id_vchan, id_uchan
+                              id_ustar, id_vstar, channel_viscosity
   use ice_type_mod,     only: do_sun_angle_for_alb,              &
 			      id_alb_vis_dir, id_alb_vis_dif,    &
 	                      id_alb_nir_dir, id_alb_nir_dif
@@ -81,8 +80,8 @@ module ice_model_mod
   !
   ! the following two modules are the work horses of the sea ice model
   !
-  use ice_thm_mod,      only: ice_optics, ice_thm_param, ice3lay_temp, ice3lay_resize
-  use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, MU_TS, TFI, e_to_melt
+  use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
+  use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, MU_TS, TFI, CI, e_to_melt
   use ice_dyn_mod,      only: ice_dynamics, ice_dyn_param, strain_angle, ice_strength, sigI, sigII
   use ice_bergs,        only: icebergs_run, icebergs_incr_mass
 
@@ -525,8 +524,8 @@ contains
                       heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) * Ice%h_ice(i,j,2)*DI*LI
                    else
                       heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) *        &
-                                e_to_melt(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k)/2,         &
-                                Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2, Ice%t_ice2(i,j,k))
+                                e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),         &
+                                Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k))
                    end if
                 end if
              end do
@@ -535,6 +534,29 @@ contains
        first_time = .false.;
     end if
     sst = Ice%t_surf(:,:,1)
+!
+! temporary check to find escomp problem
+!
+ do j = jsc, jec
+    do i = isc, iec     
+      if (Ice%mask(i,j)) then
+        if ((Ice%part_size(i,j,1) > 0.0).and.(isnan(Ice%t_surf(i,j,1))&
+                                          .or.Ice%t_surf(i,j,1)<Tfreeze-5.0&
+                                          .or.Ice%t_surf(i,j,1)>Tfreeze+40.0)) &
+           print '(a,f10.2,2i5,g)','BAD SST',Ice%t_surf(i,j,1),i,j,&
+                                               Ice%part_size(i,j,1)
+        do k = 2, km
+         if ((Ice%part_size(i,j,k) > 0.0).and.(isnan(Ice%t_surf(i,j,k))&
+                                          .or.Ice%t_surf(i,j,k)<Tfreeze-50.0&
+                                          .or.Ice%t_surf(i,j,k)>Tfreeze+0.1)) &
+           print '(a,f10.2,3i5,g,2f10.2)','BAD ICE',Ice%t_surf(i,j,k),i,j,k,&
+                                               Ice%part_size(i,j,k),&
+                                               Ice%h_ice(i,j,k),Ice%h_snow(i,j,k)
+        enddo
+      endif
+    enddo
+ enddo
+! end temporary check
 
     if (present(s_surf_ice_bot)) then
        do j = jsc, jec
@@ -832,9 +854,12 @@ contains
        do j = jsc, jec
           do i=isc, iec
              if (Ice%ice_mask(i,j,k)) then
-                if (Ice%h_snow(i,j,k)>0.0 .or. slab_ice) then
+                if (slab_ice) then
                    flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + hlf*flux_q(i,j,k)
                    latent             = hlv+hlf
+                else if (Ice%h_snow(i,j,k)>0.0) then
+                   flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + (hlf-CI*Ice%t_snow(i,j,k))*flux_q(i,j,k)
+                   latent             = hlv+(hlf-CI*Ice%t_snow(i,j,k))
                 else
                    flux_lh_new(i,j,k) = flux_lh_new(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/Ice%t_ice1(i,j,k))
                    latent             = hlv+hlf*(1-TFI/Ice%t_ice1(i,j,k))
@@ -844,8 +869,9 @@ contains
                       - (1-Ice%pen(i,j,k))* (flux_sw_vis_dir(i,j,k)+flux_sw_vis_dif(i,j,k)+  &
                         flux_sw_nir_dir(i,j,k)+flux_sw_nir_dif(i,j,k))                       &
                       - hfd*(Ice%t_surf(i,j,k)-Tfreeze)
-                call ice3lay_temp(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k),    &
-                                  Ice%t_ice2(i,j,k), ts_new, hf, hfd, Ice%pen(i,j,k)*        &
+                call ice5lay_temp(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),    &
+                                  Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k),   &
+                                  Ice%t_ice4(i,j,k), ts_new, hf, hfd, Ice%pen(i,j,k)*        &
                                   (1-Ice%trn(i,j,k))*(flux_sw_vis_dir(i,j,k)+                &
                                   flux_sw_vis_dif(i,j,k)+flux_sw_nir_dir(i,j,k)+             &
                                   flux_sw_nir_dif(i,j,k)), -MU_TS*Ice%s_surf(i,j),           &
@@ -969,7 +995,7 @@ contains
              Ice % runoff_hflx(i,j)  = runoff_hflx(i,j)
           enddo
        enddo
-       if (id_runoff_hflx>0) &
+       if (id_runoff>0) &
             sent = send_data( id_runoff_hflx, Ice%runoff_hflx, Ice%Time, mask=Ice%mask )
     else
        do j = jsc, jec
@@ -1124,8 +1150,9 @@ contains
                 ! reshape the ice based on fluxes
 
                 h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
-                call ice3lay_resize(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k),               &
+                call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),&
                                     Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k),              &
+                                    Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k),              &
                                     Ice%fprec_top(i,j,k) *dt_slow, 0.0,                &
                                     Ice%flux_q_top(i,j,k)*dt_slow,                     &
                                     Ice%tmelt (i,j,k), Ice%bmelt(i,j,k),               &
@@ -1153,7 +1180,10 @@ contains
              !
              ! absorb frazil in thinest ice partition available
              !
-             if (Ice%frazil(i,j)>0.and.Ice%part_size(i,j,1)+Ice%part_size(i,j,k)>0) then
+             if (Ice%frazil(i,j)>0.and.Ice%part_size(i,j,1)+Ice%part_size(i,j,k)>0.01) then
+                  !                                                      was ...>0.0
+                  ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
+                  !
                 Ice%h_snow   (i,j,k) = Ice%h_snow   (i,j,k) * Ice%part_size(i,j,k)
                 Ice%h_ice    (i,j,k) = Ice%h_ice    (i,j,k) * Ice%part_size(i,j,k)
                 Ice%t_surf   (i,j,k) = (Ice%t_surf(i,j,k)    *Ice%part_size(i,j,k) &
@@ -1164,8 +1194,9 @@ contains
                 Ice%h_ice    (i,j,k) = Ice%h_ice    (i,j,k) / Ice%part_size(i,j,k)
                 Ice%t_surf   (i,j,k) = Ice%t_surf   (i,j,k) / Ice%part_size(i,j,k)
 
-                call ice3lay_resize(Ice%h_snow(i,j,k), Ice%h_ice (i,j,k),                &
-                                    Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), 0.0,           &
+                call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice (i,j,k), &
+                                    Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k),                &
+                                    Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k), 0.0,           &
                                     Ice%frazil(i,j)/Ice%part_size(i,j,k), 0.0, 0.0, 0.0, &
                                     -MU_TS*Ice%s_surf(i,j),                              &
                                     heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
@@ -1205,9 +1236,9 @@ contains
              else
                 do k=2,km
                    if ((Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0)) then
-                      e2m(k) = e_to_melt(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k)/2, &
-                               Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2,           &
-                               Ice%t_ice2(i,j,k)) * Ice%part_size(i,j,k)
+                      e2m(k) = e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), &
+                               Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k), &
+                               Ice%t_ice4(i,j,k)) * Ice%part_size(i,j,k)
                    else
                       e2m(k) = 0.0
                    end if
@@ -1259,10 +1290,11 @@ contains
                          tot_heat = tot_heat - e2m(k)
                       else
                          h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
-                         call ice3lay_resize(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k),   &
-                                             Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k),  &
-                                             0.0, 0.0, 0.0, 0.0, heating,           &
-                                             -MU_TS*Ice%s_surf(i,j),                &
+                         call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k),  &
+                                             Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k),   &
+                                             Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k),  &
+                                             Ice%t_ice4(i,j,k),  0.0, 0.0, 0.0, 0.0,&
+                                             heating, -MU_TS*Ice%s_surf(i,j),       &
                                              heat_to_ocn, h2o_to_ocn, h2o_from_ocn, &
                                              snow_to_ice(i,j,k), bablt              )
                          tot_heat = tot_heat - heating*Ice%part_size(i,j,k)
@@ -1287,8 +1319,9 @@ contains
                 Ice%h_ice    (i,j,k) = Ice%h_ice    (i,j,k) / Ice%part_size(i,j,k)
                 Ice%t_surf   (i,j,k) = Ice%t_surf   (i,j,k) / Ice%part_size(i,j,k)
 
-                call ice3lay_resize(Ice%h_snow(i,j,k), Ice%h_ice (i,j,k),          &
-                                    Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), 0.0,     &
+                call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice (i,j,k), &
+                                    Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k),          &
+                                    Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k), 0.0,     &
                                     -tot_heat/Ice%part_size(i,j,k), 0.0, 0.0, 0.0, &
                                     -MU_TS*Ice%s_surf(i,j),                        &
                                     heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
@@ -1305,9 +1338,9 @@ contains
              else
                 do k=2,km
                    if (Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0)                &
-                        e2m(k) = e2m(k)-e_to_melt(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k)/2, &
-                                 Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2,                  &
-                                 Ice%t_ice2(i,j,k)) * Ice%part_size(i,j,k)
+                        e2m(k) = e2m(k)-e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k),  &
+                                 Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k), &
+                                 Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k)) * Ice%part_size(i,j,k)
                 end do
              end if
              !     if (abs(sum(e2m) - heat_res_ice - heat_limit_ice)>DI*LI*1e-3) &
@@ -1437,9 +1470,15 @@ contains
     !                     mask=Ice%mask)
 
     if (id_ts>0) sent = send_data(id_ts, ice_avg(Ice%t_surf-Tfreeze,Ice%part_size(isc:iec,jsc:jec,:)), Ice%Time, mask=Ice%mask)
+    if (id_tsn>0) sent = send_data(id_tsn, ice_avg(Ice%t_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
+                 Ice%Time, mask=Ice%mask)
     if (id_t1>0) sent = send_data(id_t1, ice_avg(Ice%t_ice1(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
                  Ice%Time, mask=Ice%mask)
     if (id_t2>0) sent = send_data(id_t2, ice_avg(Ice%t_ice2(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
+                 Ice%Time, mask=Ice%mask)
+    if (id_t3>0) sent = send_data(id_t3, ice_avg(Ice%t_ice3(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
+                 Ice%Time, mask=Ice%mask)
+    if (id_t4>0) sent = send_data(id_t4, ice_avg(Ice%t_ice4(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
                  Ice%Time, mask=Ice%mask)
     if (id_xprt>0) sent = send_data(id_xprt,  h2o_change*864e2*365/dt_slow, Ice%Time, mask=Ice%mask)
     if (id_e2m>0) then
@@ -1447,9 +1486,10 @@ contains
        do k = 2, km
           do j = jsc, jec
              do i=isc, iec
-                if (Ice%h_ice(i,j,k)>0.0)                                                 &
-                     x(i,j) = x(i,j) + Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k),  &
-                              Ice%h_ice(i,j,k)/2, Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2, Ice%t_ice2(i,j,k) )
+                if (Ice%h_ice(i,j,k)>0.0)                                                &
+                     x(i,j) = x(i,j) + Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k), &
+                              Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k),    &
+                              Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k)    )
              end do
           end do
        end do
@@ -1478,7 +1518,8 @@ contains
                       heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*Ice%h_ice(i,j,2)*DI*LI
                    else
                       heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k), &
-                                Ice%h_ice(i,j,k)/2, Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2, Ice%t_ice2(i,j,k))
+                                Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k), Ice%t_ice2(i,j,k),   &
+                                                                     Ice%t_ice3(i,j,k), Ice%t_ice4(i,j,k)    )
                    end if
                 end if
              end do
@@ -1506,9 +1547,9 @@ contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! ice_redistribute - a simple ice redistribution scheme from Igor Polyakov     !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_redistribute(cn, hs, hi, t1, t2)
+  subroutine ice_redistribute(cn, hs, tsn, hi, t1, t2, t3, t4)
 !!$    real, intent(inout), dimension(2:km  )           :: cn, hs, hi, t1, t2
-    real, intent(inout), dimension(2:)           :: cn, hs, hi, t1, t2
+    real, intent(inout), dimension(2:)          :: cn, hs, tsn, hi, t1, t2, t3, t4
 
     real    :: cw                                 ! open water concentration
     integer :: k
@@ -1520,19 +1561,25 @@ contains
        if (cn(k)<0) then
           cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! pass concentration deficit up to
           hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! next thicker category
+          tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
           hi(k+1) = hi(k+1)+hi(k); hi(k) = 0
           t1(k+1) = t1(k+1)+t1(k); t1(k) = 0 ! NOTE:  here between the thm_pack and
           t2(k+1) = t2(k+1)+t2(k); t2(k) = 0 ! thm_unpack calls, all quantities are
-       endif                                ! extensive, so we add instead of
-    end do                                 ! averaging
+          t3(k+1) = t3(k+1)+t3(k); t3(k) = 0 ! extensive, so we add instead of
+          t4(k+1) = t4(k+1)+t4(k); t4(k) = 0 ! averaging
+       endif
+    end do
 
     do k=2,km-1
        if (hi(k)>hlim(k)*cn(k)) then
           cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! upper thickness limit exceeded
           hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! move ice up to next thicker category
+          tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
           hi(k+1) = hi(k+1)+hi(k); hi(k) = 0
           t1(k+1) = t1(k+1)+t1(k); t1(k) = 0
           t2(k+1) = t2(k+1)+t2(k); t2(k) = 0
+          t3(k+1) = t3(k+1)+t3(k); t3(k) = 0
+          t4(k+1) = t4(k+1)+t4(k); t4(k) = 0
        endif
     end do
 
@@ -1540,9 +1587,12 @@ contains
        if (hi(k)<hlim(k-1)*cn(k)) then
           cn(k-1) = cn(k-1)+cn(k); cn(k) = 0  ! lower thickness limit exceeded;
           hs(k-1) = hs(k-1)+hs(k); hs(k) = 0  ! move ice down to thinner category
+          tsn(k-1) = tsn(k-1)+tsn(k); tsn(k) = 0
           hi(k-1) = hi(k-1)+hi(k); hi(k) = 0
           t1(k-1) = t1(k-1)+t1(k); t1(k) = 0
           t2(k-1) = t2(k-1)+t2(k); t2(k) = 0
+          t3(k-1) = t3(k-1)+t3(k); t3(k) = 0
+          t4(k-1) = t4(k-1)+t4(k); t4(k) = 0
        endif
     end do
 
@@ -1559,7 +1609,7 @@ contains
     real, dimension(isd:ied,jsd:jed) :: uc, vc ! Local variables, C-grid transporting velocities
     real, dimension(isd:ied,jsd:jed) :: tmp1 ! Local variables, 2D ice concentration
     real, dimension(isd:ied,jsd:jed) :: ustar, vstar ! Local variables, C-grid transporting velocities
-    real, dimension(isd:ied,jsd:jed) :: ustaro, vstaro, ustarv, vstarv ! Local variables, C-grid transporting velocities
+    real, parameter :: smag_ocn=0.15, ssh_gravity=9.81 ! Variables for channel parameterization
     real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
 
     if (slab_ice) then
@@ -1577,14 +1627,19 @@ contains
        return;
     end if
 
-    call thm_pack(Ice%part_size(isc:iec,jsc:jec,2:km), Ice%h_snow(isc:iec,jsc:jec,:), Ice%h_ice(isc:iec,jsc:jec,:), &
-                  Ice%t_ice1(isc:iec,jsc:jec,:), Ice%t_ice2(isc:iec,jsc:jec,:) )
+    call thm_pack(Ice%part_size(isc:iec,jsc:jec,2:km), Ice%h_snow(isc:iec,jsc:jec,:), &
+                  Ice%t_snow(isc:iec,jsc:jec,:), Ice%h_ice(isc:iec,jsc:jec,:), &
+                  Ice%t_ice1(isc:iec,jsc:jec,:), Ice%t_ice2(isc:iec,jsc:jec,:),&
+                  Ice%t_ice3(isc:iec,jsc:jec,:), Ice%t_ice4(isc:iec,jsc:jec,:) )
 
     call mpp_update_domains(Ice%part_size, Domain) ! cannot be combined with updates below
     call mpp_update_domains(Ice%h_snow, Domain, complete=.false.)
+    call mpp_update_domains(Ice%t_snow, Domain, complete=.false.)
     call mpp_update_domains(Ice%h_ice, Domain, complete=.false.)
     call mpp_update_domains(Ice%t_ice1, Domain, complete=.false.)
-    call mpp_update_domains(Ice%t_ice2, Domain, complete=.true.)
+    call mpp_update_domains(Ice%t_ice2, Domain, complete=.false.)
+    call mpp_update_domains(Ice%t_ice3, Domain, complete=.false.)
+    call mpp_update_domains(Ice%t_ice4, Domain, complete=.true.)
 
     ! Move transporting flow to the C-grid (from the B-grid)
     ! Note: this block of code was moved here from within s/r ice_advect
@@ -1605,8 +1660,6 @@ contains
     ! masking of velocities to zero in a single-cell wide channel.
       tmp1=1.-max(1.-sum(Ice%part_size(:,:,2:km),dim=3),0.0)
       ustar(:,:)=0.; vstar(:,:)=0.
-      ustaro(:,:)=0.; vstaro(:,:)=0.
-      ustarv(:,:)=0.; vstarv(:,:)=0.
       do j = jsc, jec
         do i = isc, iec
           if (Ice%u_ice(i,j).ne.0..and.Ice%vmask(i,j)==0.) stop 'Ooops' ! Debug new vmask
@@ -1624,13 +1677,11 @@ contains
                uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (uc(i,j)>0.) then
-                 uc(i,j)=min( uc(i,j), chan_cfl_limit*dxt(i,j)/dt_adv)
+                 uc(i,j)=min( uc(i,j), 0.25*dxt(i,j)/dt_adv)
                else
-                 uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*dxt(i+1,j)/dt_adv)
+                 uc(i,j)=max( uc(i,j),-0.25*dxt(i+1,j)/dt_adv)
                endif
                if (id_ustar>0) ustar(i,j)=uc(i,j)
-               if (id_uocean>0) ustaro(i,j)=u_ocn
-               if (id_uchan>0) ustarv(i,j)=u_visc
           endif
           if (vc(i,j)==0. & ! this is a redundant test due to following line
              .and. Ice%vmask(i,j)+Ice%vmask(i-1,j)==0. &  ! =0 => no vels
@@ -1645,13 +1696,11 @@ contains
                vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (vc(i,j)>0.) then
-                 vc(i,j)=min( vc(i,j), chan_cfl_limit*dyt(i,j)/dt_adv)
+                 vc(i,j)=min( vc(i,j), 0.25*dyt(i,j)/dt_adv)
                else
-                 vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*dyt(i,j+1)/dt_adv)
+                 vc(i,j)=max( vc(i,j),-0.25*dyt(i,j+1)/dt_adv)
                endif
                if (id_vstar>0) vstar(i,j)=vc(i,j)
-               if (id_vocean>0) vstaro(i,j)=u_ocn
-               if (id_vchan>0) vstarv(i,j)=u_visc
           endif
         enddo
       enddo
@@ -1665,8 +1714,11 @@ contains
        uf = uf + DS*uf0; vf = vf + DS*vf0
        call ice_advect(uc, vc, Ice%h_ice    (:,:,k), uf0, vf0)
        uf = uf + DI*uf0; vf = vf + DI*vf0
+       call ice_advect(uc, vc, Ice%t_snow   (:,:,k))
        call ice_advect(uc, vc, Ice%t_ice1   (:,:,k))
        call ice_advect(uc, vc, Ice%t_ice2   (:,:,k))
+       call ice_advect(uc, vc, Ice%t_ice3   (:,:,k))
+       call ice_advect(uc, vc, Ice%t_ice4   (:,:,k))
     end do
     sent = send_data(id_ix_trans,  uf, Ice%Time)
     sent = send_data(id_iy_trans,  vf, Ice%Time)
@@ -1674,9 +1726,10 @@ contains
     do j=jsc, jec
        do i=isc, iec
           if (sum(Ice%h_ice(i,j,:))>0)                                  &
-               call ice_redistribute(Ice%part_size(i,j,2:km),              &
-               Ice%h_snow(i,j,:), Ice%h_ice (i,j,:), &
-               Ice%t_ice1(i,j,:), Ice%t_ice2(i,j,:))
+               call ice_redistribute(Ice%part_size(i,j,2:km),           &
+               Ice%h_snow(i,j,:), Ice%t_snow(i,j,:), Ice%h_ice (i,j,:), &
+               Ice%t_ice1(i,j,:), Ice%t_ice2(i,j,:), &
+               Ice%t_ice3(i,j,:), Ice%t_ice4(i,j,:))
           do k=2,km
              if (Ice%part_size(i,j,k)<1e-10) then
                 Ice%h_ice (i,j,k) = 0           ! thm_unpack will zero other quantities
@@ -1686,8 +1739,10 @@ contains
        end do
     end do
 
-    call thm_unpack(Ice%part_size(isc:iec,jsc:jec,2:km), Ice%h_snow(isc:iec,jsc:jec,:), Ice%h_ice(isc:iec,jsc:jec,:), &
-                    Ice%t_ice1(isc:iec,jsc:jec,:), Ice%t_ice2(isc:iec,jsc:jec,:) )
+    call thm_unpack(Ice%part_size(isc:iec,jsc:jec,2:km), Ice%h_snow(isc:iec,jsc:jec,:), &
+                           Ice%t_snow(isc:iec,jsc:jec,:), Ice%h_ice(isc:iec,jsc:jec,:), &
+                          Ice%t_ice1(isc:iec,jsc:jec,:), Ice%t_ice2(isc:iec,jsc:jec,:), &
+                           Ice%t_ice3(isc:iec,jsc:jec,:), Ice%t_ice4(isc:iec,jsc:jec,:) )
 
     call mpp_update_domains(Ice%part_size, Domain) ! cannot be combined with the two updates below
     call mpp_update_domains(Ice%h_snow, Domain, complete=.false.)
@@ -1695,10 +1750,6 @@ contains
 
     if (id_ustar >0) sent = send_data(id_ustar , ustar(isc:iec,jsc:jec) , Ice%Time)
     if (id_vstar >0) sent = send_data(id_vstar , vstar(isc:iec,jsc:jec) , Ice%Time)
-    if (id_vocean>0) sent = send_data(id_vocean, vstaro(isc:iec,jsc:jec) , Ice%Time)
-    if (id_uocean>0) sent = send_data(id_uocean, ustaro(isc:iec,jsc:jec) , Ice%Time)
-    if (id_vchan>0)  sent = send_data(id_vchan,  vstarv(isc:iec,jsc:jec) , Ice%Time)
-    if (id_uchan>0)  sent = send_data(id_uchan,  ustarv(isc:iec,jsc:jec) , Ice%Time)
 
     return
 

@@ -37,11 +37,10 @@ public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, slp2ocean,&
           cm2_bugs, conservation_check, do_icebergs, ice_model_restart,       &
-          add_diurnal_sw, channel_viscosity, smag_ocn, ssh_gravity,           &
-          chan_cfl_limit, ice_data_type_chksum
+          add_diurnal_sw, channel_viscosity, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
-public  :: id_cn, id_hi, id_hs, id_t1, id_t2, id_ts
+public  :: id_cn, id_hi, id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts
 public  :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain, id_runoff,    &
            id_calving, id_runoff_hflx, id_calving_hflx,                        &
            id_evap, id_saltf, id_tmelt, id_bmelt, id_bheat, id_e2m,            &
@@ -51,8 +50,7 @@ public  :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain, id_runoff,    &
            id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi,&
            id_qfres, id_qflim, id_ix_trans, id_iy_trans,                       &
            id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif,      &
-           id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar, id_vocean,&
-           id_uocean, id_vchan, id_uchan
+           id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar
 
 public  :: id_alb_vis_dir, id_alb_vis_dif,id_alb_nir_dir, id_alb_nir_dif
 
@@ -61,7 +59,7 @@ public  :: iceClocka,iceClockb,iceClockc
 
   !---- id for diagnositics -------------------
   integer :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
-  integer :: id_cn, id_hi, id_hs, id_t1, id_t2, id_ts
+  integer :: id_cn, id_hi, id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts
   integer :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain
   integer :: id_runoff, id_calving, id_runoff_hflx, id_calving_hflx
   integer :: id_evap, id_saltf, id_tmelt, id_bmelt, id_bheat, id_e2m
@@ -72,7 +70,6 @@ public  :: iceClocka,iceClockb,iceClockc
   integer :: id_qfres, id_qflim, id_ix_trans, id_iy_trans
   integer :: id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif
   integer :: id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar
-  integer :: id_vocean, id_uocean, id_vchan, id_uchan
   integer :: id_alb_vis_dir, id_alb_vis_dif, id_alb_nir_dir, id_alb_nir_dif 
 
   !--- namelist interface --------------
@@ -116,9 +113,6 @@ public  :: iceClocka,iceClockb,iceClockc
   logical :: do_icebergs        = .false.! call iceberg code to modify calving field
   logical :: add_diurnal_sw     = .false.! apply an additional diurnal cycle to shortwave radiation
   real    :: channel_viscosity  = 0.     ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
-  real    :: smag_ocn           = 0.15   ! Smagorinksy coefficient for viscosity (dimensionless)
-  real    :: ssh_gravity        = 9.81   ! Gravity parameter used in channel viscosity parameterization (m/s^2)
-  real    :: chan_cfl_limit     = 0.25   ! CFL limit for channel viscosity parameterization (dimensionless)
   logical :: do_sun_angle_for_alb = .false.! find the sun angle for ocean albed in the frame of the ice model
   integer :: layout(2)          = (/0, 0/)
   integer :: io_layout(2)       = (/0, 0/)
@@ -131,7 +125,7 @@ public  :: iceClocka,iceClockb,iceClockc
                            ice_restore_timescale, slp2ocean, conservation_check, &
                            t_range_melt, cm2_bugs, ks, h_lo_lim, verbose,        &
                            do_icebergs, add_diurnal_sw, io_layout, channel_viscosity,&
-                           smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb
+                           do_sun_angle_for_alb
 
   logical :: do_init = .false.
   real    :: hlim(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
@@ -208,9 +202,12 @@ public  :: iceClocka,iceClockb,iceClockc
      real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
+     real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
      real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
      real,    pointer, dimension(:,:,:) :: t_ice1              =>NULL()
      real,    pointer, dimension(:,:,:) :: t_ice2              =>NULL()
+     real,    pointer, dimension(:,:,:) :: t_ice3              =>NULL()
+     real,    pointer, dimension(:,:,:) :: t_ice4              =>NULL()
      real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: sig11               =>NULL()
@@ -285,8 +282,11 @@ public  :: iceClocka,iceClockb,iceClockc
                    if (slab_ice) then
                       value = value - cell_area(i,j) * Ice%part_size(i,j,k)*Ice%h_ice(i,j,2)*DI*LI
                    else
-                      value = value - cell_area(i,j) * Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k), &
-                                Ice%h_ice(i,j,k)/2, Ice%t_ice1(i,j,k), Ice%h_ice(i,j,k)/2, Ice%t_ice2(i,j,k))
+                      value = value - cell_area(i,j) * Ice%part_size(i,j,k)           &
+                                     *e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), &
+                                                Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k),  &
+                                                Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k), &
+                                                Ice%t_ice4(i,j,k)                     )
                    end if
                 end if
              end do
@@ -422,8 +422,10 @@ public  :: iceClocka,iceClockb,iceClockc
                Ice % sig12  (isd:ied, jsd:jed)                               )
     allocate ( Ice % tmelt  (isc:iec, jsc:jec, 2:km), Ice % bmelt  (isc:iec, jsc:jec, 2:km) , &
                Ice % pen    (isc:iec, jsc:jec, 2:km), Ice % trn    (isc:iec, jsc:jec, 2:km) , &
-               Ice % h_snow (isd:ied, jsd:jed, 2:km), Ice % h_ice  (isd:ied, jsd:jed, 2:km) , &
-               Ice % t_ice1 (isd:ied, jsd:jed, 2:km), Ice % t_ice2 (isd:ied, jsd:jed, 2:km)   )
+               Ice % h_snow (isd:ied, jsd:jed, 2:km), Ice % t_snow (isd:ied, jsd:jed, 2:km) , &
+               Ice % h_ice  (isd:ied, jsd:jed, 2:km),                                         &
+               Ice % t_ice1 (isd:ied, jsd:jed, 2:km), Ice % t_ice2 (isd:ied, jsd:jed, 2:km) , &
+               Ice % t_ice3 (isd:ied, jsd:jed, 2:km), Ice % t_ice4 (isd:ied, jsd:jed, 2:km)   )
     allocate ( Ice % qflx_lim_ice  (isc:iec, jsc:jec) , Ice % qflx_res_ice  (isc:iec, jsc:jec)   )
     allocate ( Ice % area          (isc:iec, jsc:jec) )
     allocate ( Ice % mi            (isc:iec, jsc:jec) )
@@ -447,9 +449,12 @@ public  :: iceClocka,iceClockb,iceClockc
     Ice % sig12           =0.
     Ice % sig22           =0.
     Ice % h_snow          =0.
+    Ice % t_snow          =0.
     Ice % h_ice           =0.
     Ice % t_ice1          =0.
     Ice % t_ice2          =0.
+    Ice % t_ice3          =0.
+    Ice % t_ice4          =0.
     Ice % area            = cell_area * 4*PI*RADIUS*RADIUS
     Ice % mi              =0.
 
@@ -498,9 +503,12 @@ public  :: iceClocka,iceClockb,iceClockc
     id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      Ice%t_surf,           domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      Ice%h_snow(:,:,2:km), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      Ice%t_snow(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       Ice%h_ice(:,:,2:km),  domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice1(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice2(:,:,2:km), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice3(:,:,2:km), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice4(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'sig11',       Ice%sig11,            domain=domain)
@@ -561,9 +569,12 @@ public  :: iceClocka,iceClockb,iceClockc
        !--- update to data domain
        call mpp_update_domains(Ice%part_size, Domain)
        call mpp_update_domains(Ice%h_snow(:,:,2:km), Domain )
+       call mpp_update_domains(Ice%t_snow(:,:,2:km), Domain )
        call mpp_update_domains(Ice%h_ice (:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice1(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice2(:,:,2:km), Domain )
+       call mpp_update_domains(Ice%t_ice3(:,:,2:km), Domain )
+       call mpp_update_domains(Ice%t_ice4(:,:,2:km), Domain )
        call mpp_update_domains(Ice%u_ice, Domain )
        call mpp_update_domains(Ice%v_ice, Domain )
        call mpp_update_domains(Ice%sig11, Domain )
@@ -583,9 +594,12 @@ public  :: iceClocka,iceClockb,iceClockc
        Ice % rough_moist       = heat_rough_ice
        Ice % t_surf            = Tfreeze-5.0
        Ice % h_snow            = 0.0
+       Ice % t_snow            = -5.0
        Ice % h_ice             = 0.0
        Ice % t_ice1            = -5.0
        Ice % t_ice2            = -5.0
+       Ice % t_ice3            = -5.0
+       Ice % t_ice4            = -5.0
        Ice % u_ice             = 0.0
        Ice % v_ice             = 0.0
        Ice % sig11             = 0.0
@@ -699,7 +713,8 @@ public  :: iceClocka,iceClockb,iceClockc
     deallocate( Ice % frazil )
     deallocate(Ice % bheat, Ice % u_ice, Ice % v_ice, Ice % sig11, Ice % sig22 )
     deallocate(Ice % sig12, Ice % tmelt, Ice % bmelt, Ice % pen, Ice % trn )
-    deallocate(Ice % h_snow, Ice % h_ice, Ice % t_ice1, Ice % t_ice2  )
+    deallocate(Ice % h_snow, Ice % t_snow, Ice % h_ice )
+    deallocate(Ice % t_ice1, Ice % t_ice2, Ice % t_ice3, Ice % t_ice4  )
     deallocate(Ice % qflx_lim_ice, Ice % qflx_res_ice )
     deallocate(Ice % flux_sw_vis_dir, Ice % flux_sw_vis_dif )
     deallocate(Ice % flux_sw_nir_dir, Ice % flux_sw_nir_dif )
@@ -784,12 +799,18 @@ public  :: iceClocka,iceClockb,iceClockc
                  'ice concentration', '0-1', missing_value=missing)
     id_hs       = register_diag_field('ice_model', 'HS', axt, Ice%Time,                  &
                  'snow thickness', 'm-snow', missing_value=missing)
+    id_tsn      = register_diag_field('ice_model', 'TSN', axt, Ice%Time,                 &
+                 'snow layer temperature', 'C',  missing_value=missing)
     id_hi       = register_diag_field('ice_model', 'HI', axt, Ice%Time,                  &
                  'ice thickness', 'm-ice', missing_value=missing)
     id_t1       = register_diag_field('ice_model', 'T1', axt, Ice%Time,                  &
-                 'upper ice layer temperature', 'C',  missing_value=missing)
+                 'top ice layer temperature', 'C',  missing_value=missing)
     id_t2       = register_diag_field('ice_model', 'T2', axt, Ice%Time,                  &
-                 'lower ice layer temperature', 'C',  missing_value=missing)
+                 'second ice layer temperature', 'C',  missing_value=missing)
+    id_t3       = register_diag_field('ice_model', 'T3', axt, Ice%Time,                  &
+                 'third ice layer temperature', 'C',  missing_value=missing)
+    id_t4       = register_diag_field('ice_model', 'T4', axt, Ice%Time,                  &
+                 'bottom ice layer temperature', 'C',  missing_value=missing)
     id_ts       = register_diag_field('ice_model', 'TS', axt, Ice%Time,                  &
                  'surface temperature', 'C', missing_value=missing)
     id_sh       = register_diag_field('ice_model','SH' ,axt, Ice%Time,                   &
@@ -900,19 +921,10 @@ public  :: iceClocka,iceClockb,iceClockc
                  'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
     id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,axt, Ice%Time,         &
                  'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-    id_ustar    = register_diag_field('ice_model', 'U_STAR', axvt, Ice%Time,              &
-                 'channel transport velocity - x component', 'm/s', missing_value=missing)
-    id_vstar    = register_diag_field('ice_model', 'V_STAR', axtv, Ice%Time,              &
-                 'channel transport velocity - y component', 'm/s', missing_value=missing)
-    id_uocean   = register_diag_field('ice_model', 'U_CHAN_OCN', axvt, Ice%Time,          &
-                 'ocean component of channel transport - x', 'm/s', missing_value=missing)
-    id_vocean   = register_diag_field('ice_model', 'V_CHAN_OCN', axtv, Ice%Time,          &
-                 'ocean component of channel transport - y', 'm/s', missing_value=missing)
-    id_uchan    = register_diag_field('ice_model', 'U_CHAN_VISC', axvt, Ice%Time,         &
-                 'viscous component of channel transport - x', 'm/s', missing_value=missing)
-    id_vchan    = register_diag_field('ice_model', 'V_CHAN_VISC', axtv, Ice%Time,         &
-                 'viscous component of channel transport - y', 'm/s', missing_value=missing)
-
+    id_ustar    = register_diag_field('ice_model', 'U_STAR', axv, Ice%Time,              &
+                 'transport velocity - x component', 'm/s')
+    id_vstar    = register_diag_field('ice_model', 'V_STAR', axv, Ice%Time,              &
+                 'transport velocity - y component', 'm/s')
     !
     ! diagnostics for quantities produced outside the ice model
     !
@@ -1005,9 +1017,12 @@ subroutine ice_data_type_chksum(id, timestep, data_type)
     write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(data_type%tmelt              )
     write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(data_type%bmelt              )
     write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(data_type%h_snow             )
+    write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(data_type%t_snow             )
     write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(data_type%h_ice              )
     write(outunit,100) 'ice_data_type%t_ice1             ',mpp_chksum(data_type%t_ice1             )
     write(outunit,100) 'ice_data_type%t_ice2             ',mpp_chksum(data_type%t_ice2             )
+    write(outunit,100) 'ice_data_type%t_ice3             ',mpp_chksum(data_type%t_ice3             )
+    write(outunit,100) 'ice_data_type%t_ice4             ',mpp_chksum(data_type%t_ice4             )
     write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(data_type%u_ice              )
     write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(data_type%v_ice              )
     write(outunit,100) 'ice_data_type%sig11              ',mpp_chksum(data_type%sig11              )
