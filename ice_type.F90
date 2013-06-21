@@ -5,13 +5,14 @@
 module ice_type_mod
 
   use mpp_mod,          only: mpp_pe, mpp_root_pe, mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
-                              CLOCK_LOOP, CLOCK_ROUTINE
-  use mpp_domains_mod,  only: domain2D, mpp_update_domains
-  use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, &
+                              CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
+  use mpp_domains_mod,  only: domain2D, mpp_update_domains, CORNER, BGRID_NE
+  use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, write_version_number,&
                               read_data, close_file, field_exist, &
-                              stderr, stdlog, error_mesg, FATAL, WARNING, clock_flag_default
+                              stderr, stdlog, error_mesg, FATAL, WARNING, NOTE, clock_flag_default
   use fms_io_mod,       only: save_restart, restore_state, query_initialized, &
-                              register_restart_field, restart_file_type, set_domain, nullify_domain
+                              register_restart_field, restart_file_type, set_domain, nullify_domain, &
+                              parse_mask_table
   use diag_manager_mod, only: diag_axis_init, register_diag_field, &
                               register_static_field, send_data
   use time_manager_mod, only: time_type, get_time
@@ -23,6 +24,7 @@ module ice_type_mod
   use ice_grid_mod,     only: geo_lonv_ib, geo_latv_ib
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid, dtn, dte, wetv
+  use ice_grid_mod,     only: reproduce_siena_201303
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
   use ice_dyn_mod,      only: ice_dyn_param
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -39,7 +41,8 @@ public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
           cm2_bugs, conservation_check, do_icebergs, ice_model_restart,       &
-          add_diurnal_sw, channel_viscosity, ice_data_type_chksum
+          add_diurnal_sw, channel_viscosity, smag_ocn, ssh_gravity,           &
+          chan_cfl_limit, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
 public  :: id_cn, id_hi, id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts,id_hio
@@ -52,7 +55,8 @@ public  :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain, id_runoff,    &
            id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi,&
            id_qfres, id_qflim, id_ix_trans, id_iy_trans,                       &
            id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif,      &
-           id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar
+           id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar, id_vocean,&
+           id_uocean, id_vchan, id_uchan
 
 public  :: id_alb_vis_dir, id_alb_vis_dif,id_alb_nir_dir, id_alb_nir_dif, id_coszen
 public  :: id_abs_int,id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,id_sw_pen,id_sw_trn
@@ -73,9 +77,13 @@ public  :: earth_area
   integer :: id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi
   integer :: id_qfres, id_qflim, id_ix_trans, id_iy_trans
   integer :: id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif
-  integer :: id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar
+  integer :: id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar
+  integer :: id_vstar,id_vocean,id_uocean,id_vchan, id_uchan
   integer :: id_alb_vis_dir, id_alb_vis_dif, id_alb_nir_dir, id_alb_nir_dif, id_coszen 
   integer :: id_abs_int,id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,id_sw_pen,id_sw_trn
+
+  character(len=128) :: version = '$Id: ice_type.F90,v 1.1.2.1.6.1.2.2.2.1 2013/06/18 22:24:14 nnz Exp $'
+  character(len=128) :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
 
   !--- namelist interface --------------
   real    :: mom_rough_ice  = 1.0e-4     ! momentum same, cd10=(von_k/ln(10/z0))^2
@@ -118,11 +126,33 @@ public  :: earth_area
   logical :: do_icebergs        = .false.! call iceberg code to modify calving field
   logical :: add_diurnal_sw     = .false.! apply an additional diurnal cycle to shortwave radiation
   real    :: channel_viscosity  = 0.     ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
+  real    :: smag_ocn           = 0.15   ! Smagorinksy coefficient for viscosity (dimensionless)
+  real    :: ssh_gravity        = 9.81   ! Gravity parameter used in channel viscosity parameterization (m/s^2)
+  real    :: chan_cfl_limit     = 0.25   ! CFL limit for channel viscosity parameterization (dimensionless)
   logical :: do_sun_angle_for_alb = .false.! find the sun angle for ocean albed in the frame of the ice model
   integer :: layout(2)          = (/0, 0/)
   integer :: io_layout(2)       = (/0, 0/)
   real    :: R_ice=0., R_snw=0., R_pnd=0.
   logical :: do_deltaEdd = .true.
+  ! mask_table contains information for masking domain ( n_mask, layout and mask_list).
+  !   A text file to specify n_mask, layout and mask_list to reduce number of processor
+  !   usage by masking out some domain regions which contain all land points. 
+  !   The default file name of mask_table is "INPUT/ice_mask_table". Please note that 
+  !   the file name must begin with "INPUT/". The first 
+  !   line of mask_table will be number of region to be masked out. The second line 
+  !   of the mask_table will be the layout of the model. User need to set ice_model_nml
+  !   variable layout to be the same as the second line of the mask table.
+  !   The following n_mask line will be the position of the processor to be masked out.
+  !   The mask_table could be created by tools check_mask. 
+  !   For example the mask_table will be as following if n_mask=2, layout=4,6 and 
+  !   the processor (1,2) and (3,6) will be masked out. 
+  !     2
+  !     4,6
+  !     1,2
+  !     3,6
+
+  character(len=128) :: mask_table = "INPUT/ice_mask_table"
+
 
   namelist /ice_model_nml/ mom_rough_ice, heat_rough_ice, p0, c0, cdw, wd_turn,  &
                            kmelt, alb_sno, alb_ice, pen_ice, opt_dep_ice,        &
@@ -132,7 +162,8 @@ public  :: earth_area
                            ice_restore_timescale, slp2ocean, conservation_check, &
                            t_range_melt, cm2_bugs, ks, h_lo_lim, verbose,        &
                            do_icebergs, add_diurnal_sw, io_layout, channel_viscosity,&
-                           do_sun_angle_for_alb,do_deltaEdd,R_ice,R_snw,R_pnd
+                           smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
+                           mask_table, reproduce_siena_201303, do_deltaEdd,R_ice,R_snw,R_pnd
 
   logical :: do_init = .false.
   real    :: hlim(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
@@ -174,6 +205,8 @@ public  :: earth_area
      real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
      real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
      real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
+     real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
+     real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
      real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
      real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
      real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
@@ -339,21 +372,30 @@ public  :: earth_area
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
-    integer           :: sc, dy, i, j, lay_out(2)
+    integer           :: sc, dy, i, j
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
     character(len=64) :: restart_file
-    integer           :: stdlogunit
+    integer           :: stdlogunit, stdoutunit
 
     stdlogunit=stdlog()
+    stdoutunit = stdout()
     !
     ! read namelist and write to logfile
     !
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=ice_model_nml, iostat=io)
+#else
     unit = open_namelist_file()
     read  (unit, ice_model_nml,iostat=io)
+    call close_file (unit)
+#endif
+    ierr = check_nml_error(io,'ice_model_nml')
+    write (stdoutunit,'(/)')
+    write (stdoutunit, ice_model_nml)
     write (stdlogunit, ice_model_nml)
-    ierr = check_nml_error(io, 'ice_model_nml')
-    call close_file(unit)
+
+    call write_version_number( version, tagname )
 
     if (spec_ice) then
        slab_ice = .true.
@@ -366,9 +408,17 @@ public  :: earth_area
 
     call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
 
+    if(file_exist(mask_table)) then
+       write(stdoutunit, *) '==> NOTE from ice_model_init:  reading maskmap information from '//trim(mask_table)
+       if(layout(1) == 0 .OR. layout(2) == 0 ) call error_mesg('ice_model_init', &
+          'ice_model_nml layout should be set when file '//trim(mask_table)//' exists', FATAL)
+
+       allocate(Ice%maskmap(layout(1), layout(2)))
+       call parse_mask_table(mask_table, Ice%maskmap, "Ice model")
+    endif
+
     if( ASSOCIATED(Ice%maskmap) ) then
-       lay_out(1) = size(Ice%maskmap,1); lay_out(2) = size(Ice%maskmap,2)
-       call set_ice_grid(Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, num_part, lay_out, io_layout, Ice%maskmap  )
+       call set_ice_grid(Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, num_part, layout, io_layout, Ice%maskmap  )
     else
        call set_ice_grid(Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, num_part, layout, io_layout )
     end if
@@ -412,6 +462,9 @@ public  :: earth_area
          Ice % flux_lh_top        (isc:iec, jsc:jec, km) ,       &
          Ice % lprec_top          (isc:iec, jsc:jec, km) ,       &
          Ice % fprec_top          (isc:iec, jsc:jec, km)   )
+
+    allocate ( Ice % flux_u_top_bgrid   (isc:iec, jsc:jec, km) , &
+         Ice % flux_v_top_bgrid         (isc:iec, jsc:jec, km)   )
 
     allocate ( Ice % flux_u    (isc:iec, jsc:jec ) ,       &
          Ice % flux_v          (isc:iec, jsc:jec ) ,       &
@@ -460,6 +513,8 @@ public  :: earth_area
     Ice % swdn            =0.
     Ice % flux_u_top      =0. 
     Ice % flux_v_top      =0.
+    Ice % flux_u_top_bgrid=0. 
+    Ice % flux_v_top_bgrid=0.
     Ice % sea_lev         =0.
     Ice % part_size       =0.
     Ice % u_ocn           =0.
@@ -502,7 +557,11 @@ public  :: earth_area
           end if
        enddo
     enddo
-    call mpp_update_domains(Ice%vmask, domain=domain )
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(Ice%vmask, domain=domain )
+    else
+       call mpp_update_domains(Ice%vmask, domain=domain, position=CORNER )
+    endif
 
     Ice % Time           = Time
     Ice % Time_Init      = Time_Init
@@ -607,8 +666,12 @@ public  :: earth_area
        call mpp_update_domains(Ice%t_ice2(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice3(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice4(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%u_ice, Domain )
-       call mpp_update_domains(Ice%v_ice, Domain )
+       if(reproduce_siena_201303) then
+          call mpp_update_domains(Ice%u_ice, Domain )
+          call mpp_update_domains(Ice%v_ice, Domain )
+       else
+          call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
+       endif
        call mpp_update_domains(Ice%sig11, Domain )
        call mpp_update_domains(Ice%sig22, Domain )
        call mpp_update_domains(Ice%sig12, Domain )
@@ -721,6 +784,7 @@ public  :: earth_area
     deallocate(Ice % part_size, Ice % part_size_uv, Ice % u_surf, Ice % v_surf )
     deallocate(Ice % u_ocn, Ice % v_ocn ,  Ice % rough_mom, Ice % rough_heat )
     deallocate(Ice % rough_moist, Ice % albedo, Ice % flux_u_top, Ice % flux_v_top )
+    deallocate(Ice % flux_u_top_bgrid, Ice % flux_v_top_bgrid )
     deallocate(Ice % flux_t_top, Ice % flux_q_top, Ice % flux_lw_top )
     deallocate(Ice % flux_lh_top, Ice % lprec_top, Ice % fprec_top, Ice % flux_u )
     deallocate(Ice % flux_v, Ice % flux_t, Ice % flux_q, Ice % flux_lw )
@@ -996,10 +1060,19 @@ public  :: earth_area
                  'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
     id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,axt, Ice%Time,         &
                  'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-    id_ustar    = register_diag_field('ice_model', 'U_STAR', axv, Ice%Time,              &
-                 'transport velocity - x component', 'm/s')
-    id_vstar    = register_diag_field('ice_model', 'V_STAR', axv, Ice%Time,              &
-                 'transport velocity - y component', 'm/s')
+    id_ustar    = register_diag_field('ice_model', 'U_STAR', axvt, Ice%Time,              &
+                 'channel transport velocity - x component', 'm/s', missing_value=missing)
+    id_vstar    = register_diag_field('ice_model', 'V_STAR', axtv, Ice%Time,              &
+                 'channel transport velocity - y component', 'm/s', missing_value=missing)
+    id_uocean   = register_diag_field('ice_model', 'U_CHAN_OCN', axvt, Ice%Time,          &
+                 'ocean component of channel transport - x', 'm/s', missing_value=missing)
+    id_vocean   = register_diag_field('ice_model', 'V_CHAN_OCN', axtv, Ice%Time,          &
+                 'ocean component of channel transport - y', 'm/s', missing_value=missing)
+    id_uchan    = register_diag_field('ice_model', 'U_CHAN_VISC', axvt, Ice%Time,         &
+                 'viscous component of channel transport - x', 'm/s', missing_value=missing)
+    id_vchan    = register_diag_field('ice_model', 'V_CHAN_VISC', axtv, Ice%Time,         &
+                 'viscous component of channel transport - y', 'm/s', missing_value=missing)
+
     !
     ! diagnostics for quantities produced outside the ice model
     !

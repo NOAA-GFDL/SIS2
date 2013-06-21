@@ -5,13 +5,14 @@ module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi
   use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe, mpp_error, NOTE, mpp_chksum
-  use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV
+  use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
   use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
   use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
   use mpp_domains_mod, only: mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
-  use mpp_domains_mod, only: mpp_deallocate_domain
+  use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
+  use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
   use fms_mod,         only: error_mesg, FATAL, field_exist, field_size, read_data
   use fms_mod,         only: get_global_att_value, stderr
   use mosaic_mod,      only: get_mosaic_ntiles, get_mosaic_ncontacts
@@ -32,6 +33,7 @@ module ice_grid_mod
   public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
   public :: dxdy, dydx, ice_grid_end
   public :: tripolar_grid, x_cyclic, dt_adv
+  public :: reproduce_siena_201303
 
   type(domain2D), save :: Domain
 
@@ -67,6 +69,8 @@ module ice_grid_mod
   integer            :: adv_sub_steps                ! advection steps / timestep
   real               :: dt_adv = 0.0                 ! advection timestep (sec)
   integer            :: comm_pe                      ! pe to be communicated with
+
+  logical            :: reproduce_siena_201303 = .TRUE.
 
 contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -306,6 +310,9 @@ contains
     integer, parameter                  :: VERSION_1 = 1
     integer, parameter                  :: VERSION_2 = 2
     integer                             :: ni,nj,siz(4)
+    integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
+    integer                             :: npes, p
+    logical                             :: symmetrize, ndivx_is_even, im_is_even
 
     grid_file = 'INPUT/grid_spec.nc'
     ocean_topog = 'INPUT/topog.nc'
@@ -419,6 +426,16 @@ contains
     if( layout(1)==0 .and. layout(2)/=0 ) layout(1) = mpp_npes()/layout(2)
     domainname = 'ice model'
     if(tripolar_grid) then    
+       !z1l: Tripolar grid requires symmetry in i-direction domain decomposition
+       ndivx_is_even = (mod(layout(1),2) == 0)
+       im_is_even    = (mod(im,2) == 0)
+       symmetrize = ( ndivx_is_even .AND. im_is_even ) .OR. &
+               (  (.NOT.ndivx_is_even) .AND.  (.NOT.im_is_even) ) .OR. &
+               (  (.NOT.ndivx_is_even) .AND. im_is_even .AND. layout(1) .LT. im/2 )
+
+       if( .not. symmetrize) then
+          call mpp_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
+       endif
        call mpp_define_domains( (/1,im,1,jm/), layout, Domain, maskmap=maskmap,   &
                                 xflags=CYCLIC_GLOBAL_DOMAIN, xhalo=1,             &
                                 yflags=FOLD_NORTH_EDGE, yhalo=1, name=domainname )
@@ -613,8 +630,12 @@ contains
        end do
     end do
 
-    call mpp_update_domains(dte, Domain)
-    call mpp_update_domains(dtn, Domain)
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(dte, Domain)
+       call mpp_update_domains(dtn, Domain)
+    else
+       call mpp_update_domains(dte, dtn, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
+    endif
     call mpp_update_domains(cos_rot, Domain)
     call mpp_update_domains(sin_rot, Domain)
 
@@ -641,8 +662,12 @@ contains
     dxv(isc:iec,jsc:jec) = t_on_uv(dxt)
     dyv(isc:iec,jsc:jec) = t_on_uv(dyt)
 
-    call mpp_update_domains(dxv, Domain )
-    call mpp_update_domains(dyv, Domain )
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(dxv, Domain )
+       call mpp_update_domains(dyv, Domain )
+    else
+       call mpp_update_domains(dxv, dyv, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
+    endif
 
     !--- dxdy and dydx to be used by ice_dyn_mod.
     dydx = dTdx(dyt)
@@ -664,9 +689,32 @@ contains
 
     deallocate (geo_lonv, geo_latv)
 
-!    comm_pe = mpp_npes() - mpp_pe() + 2*mpp_root_pe() - 1
-!   consider arbitray layout
-    comm_pe = mpp_pe() + layout(1) - 2*mod(mpp_pe()-mpp_root_pe(),layout(1)) - 1
+    !--- z1l: loop through the pelist to find the symmetry processor.
+    !--- This is needed to address the possibility that some of the all-land processor 
+    !--- regions are masked out. This is only needed for tripolar grid.
+    if(tripolar_grid) then
+       npes = mpp_npes()
+       allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
+       call mpp_get_pelist(Domain, pelist)
+       call mpp_get_compute_domains(Domain, xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
+
+       comm_pe = NULL_PE
+ 
+       do p = 1, npes
+          if( jslist(p) == jsc .AND. islist(p) + iec == im+1 ) then
+             if( jelist(p) .NE. jec ) then
+                call mpp_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
+             endif
+             if( ielist(p) + isc .NE. im+1) then
+                call mpp_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
+             endif
+             comm_pe = pelist(p)
+             exit 
+          endif
+       enddo
+       deallocate(pelist, islist, ielist, jslist, jelist)
+    endif
+!    comm_pe = mpp_pe() + layout(1) - 2*mod(mpp_pe()-mpp_root_pe(),layout(1)) - 1
 
     return
   end subroutine set_ice_grid
@@ -823,8 +871,12 @@ contains
        enddo
     enddo
 
-    call mpp_update_domains(ue, Domain)
-    call mpp_update_domains(vn, Domain)
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(ue, Domain)
+       call mpp_update_domains(vn, Domain)
+    else
+       call mpp_update_domains(ue, vn, Domain, gridtype=CGRID_NE)
+    endif
 
     do l=1,adv_sub_steps
        do j = jsd, jec
@@ -875,7 +927,9 @@ contains
     integer :: i, l
     real, dimension(iec-isc+1) :: send_buffer, recv_buffer
 
-    call mpp_recv(recv_buffer(1), glen=(iec-isc+1), from_pe=comm_pe, block=.false.)
+    if(comm_pe == NULL_PE) return
+
+    call mpp_recv(recv_buffer(1), glen=(iec-isc+1), from_pe=comm_pe, block=.false., tag=COMM_TAG_1)
 
     l = 0
     do i = iec-1, isd, -1
@@ -883,7 +937,7 @@ contains
        send_buffer(l) = uv(i,jec)
     enddo
 
-    call mpp_send(send_buffer(1), plen=(iec-isc+1), to_pe=comm_pe)
+    call mpp_send(send_buffer(1), plen=(iec-isc+1), to_pe=comm_pe, tag=COMM_TAG_1)
     call mpp_sync_self(check=EVENT_RECV)
 
     ! cut_check only at the north pole.
@@ -896,6 +950,9 @@ contains
           uv(i,jec) = (uv(i,jec) - recv_buffer(l))/2
        enddo
     endif
+
+    call mpp_sync_self()
+
 
     !    call mpp_global_field ( Domain, uv, global_uv )
 

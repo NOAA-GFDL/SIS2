@@ -30,7 +30,7 @@
 module ice_model_mod
 
   use mpp_mod,          only: mpp_clock_begin, mpp_clock_end
-  use mpp_domains_mod,  only: mpp_update_domains, BGRID_NE
+  use mpp_domains_mod,  only: mpp_update_domains, BGRID_NE, CGRID_NE
   use fms_mod,          only: error_mesg
   use diag_manager_mod, only: send_data
   use time_manager_mod, only: time_type, operator(+), get_date, get_time
@@ -66,7 +66,9 @@ module ice_model_mod
                               id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif,id_coszen,       &
                               cm2_bugs, ice_stock_pe, do_icebergs, ice_model_restart, &
                               add_diurnal_sw, id_mib, ice_data_type_chksum,      &
-                              id_ustar, id_vstar, channel_viscosity
+                              id_ustar, id_vstar, channel_viscosity, smag_ocn,   &
+                              ssh_gravity, chan_cfl_limit, id_vocean, id_uocean, &
+                              id_vchan, id_uchan
   use ice_type_mod,     only: do_sun_angle_for_alb,              &
 			      id_alb_vis_dir, id_alb_vis_dif,    &
 	                      id_alb_nir_dir, id_alb_nir_dif
@@ -79,6 +81,7 @@ module ice_model_mod
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, latitude
   use ice_spec_mod,     only: get_sea_surface
   use ice_grid_mod,     only: dte, dtn, dxv, dyv, dxt, dyt, dt_adv, wett
+  use ice_grid_mod,     only: reproduce_siena_201303
   !
   ! the following two modules are the work horses of the sea ice model
   !
@@ -374,8 +377,19 @@ contains
        call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
        do k=1,km
           call vel_t_to_uv( -Ice%flux_u_top(:,:,k),-Ice%flux_v_top(:,:,k), &
-               Ice%flux_u_top(isc:iec,jsc:jec,k), Ice%flux_v_top(isc:iec,jsc:jec,k) )
+               Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
        end do
+    else
+       if(reproduce_siena_201303) then
+          Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:) = Ice%flux_u_top(isc:iec,jsc:jec,:)
+          Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:) = Ice%flux_v_top(isc:iec,jsc:jec,:)
+       else
+          call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
+          do k=1,km
+             call vel_t_to_uv( Ice%flux_u_top(:,:,k),Ice%flux_v_top(:,:,k), &
+                  Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
+          end do
+       endif
     endif
 
     do k = 1, km
@@ -449,8 +463,8 @@ contains
     real, dimension (:,:,:), intent(in) :: part_size, part_size_uv
     integer                             :: m, n
 
-    Ice % flux_u  = all_avg( Ice % flux_u_top(isc:iec,jsc:jec,:) , part_size_uv )
-    Ice % flux_v  = all_avg( Ice % flux_v_top(isc:iec,jsc:jec,:) , part_size_uv )
+    Ice % flux_u  = all_avg( Ice % flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
+    Ice % flux_v  = all_avg( Ice % flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
     Ice % flux_t  = all_avg( Ice % flux_t_top , part_size )
     Ice % flux_q  = all_avg( Ice % flux_q_top , part_size )
     Ice % flux_sw_nir_dir = all_avg( Ice % flux_sw_nir_dir_top, part_size )
@@ -678,7 +692,11 @@ contains
        enddo
     enddo
 
-    call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain)
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain)
+    else
+       call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain, gridtype=BGRID_NE)
+    endif
 
     ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
     call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1))
@@ -1021,7 +1039,7 @@ contains
              Ice % runoff_hflx(i,j)  = runoff_hflx(i,j)
           enddo
        enddo
-       if (id_runoff>0) &
+       if (id_runoff_hflx>0) &
             sent = send_data( id_runoff_hflx, Ice%runoff_hflx, Ice%Time, mask=Ice%mask )
     else
        do j = jsc, jec
@@ -1100,19 +1118,31 @@ contains
     tmp2 = ice_avg(Ice%h_ice,Ice%part_size)
 
     call mpp_clock_begin(iceClocka)
-    call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
-                      Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
-                      ice_avg(Ice%flux_u_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
-                      ice_avg(Ice%flux_v_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
-                      Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
+    if(reproduce_siena_201303) then
+       call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
+                         Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
+                         ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
+                         ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
+                         Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
+    else
+       call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
+                         Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
+                         ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
+                         ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
+                         Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
+    endif
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
-    call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain)
-    if(tripolar_grid) then
-       call cut_check('u_ice', Ice%u_ice) ! these calls fix round off differences
-       call cut_check('v_ice', Ice%v_ice) ! in northernmost velocities over the fold
+    if(reproduce_siena_201303) then
        call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain)
+       if(tripolar_grid) then
+          call cut_check('u_ice', Ice%u_ice) ! these calls fix round off differences
+          call cut_check('v_ice', Ice%v_ice) ! in northernmost velocities over the fold
+          call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain)
+       endif
+    else
+       call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE)
     endif
     call mpp_clock_end(iceClockb)
 
@@ -1121,9 +1151,9 @@ contains
     ! Dynamics diagnostics
     !
     if (id_fax>0) &
-         sent = send_data(id_fax, all_avg(Ice%flux_u_top(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
+         sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
     if (id_fay>0) &
-         sent = send_data(id_fay, all_avg(Ice%flux_v_top(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
+         sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
     if (id_fix>0) sent = send_data(id_fix, fx_ice, Ice%Time)
     if (id_fiy>0) sent = send_data(id_fiy, fy_ice, Ice%Time)
     if (id_fcx>0) sent = send_data(id_fcx, fx_cor, Ice%Time)
@@ -1135,10 +1165,12 @@ contains
          sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice), Ice%Time, mask=Ice%mask)
     if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
                     Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-                    Ice%sig11,Ice%sig22,Ice%sig12), Ice%Time, mask=Ice%mask)
+                    Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
+                    Ice%Time, mask=Ice%mask)
     if (id_sigii>0) sent = send_data(id_sigii, sigII(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),        &
                     Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-                    Ice%sig11,Ice%sig22,Ice%sig12),Ice%Time, mask=Ice%mask)
+                    Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
+                    Ice%Time, mask=Ice%mask)
     if (id_stren>0) sent = send_data(id_stren, ice_strength(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:), &
                     Ice%part_size(isc:iec,jsc:jec,:)), 1-Ice%part_size(isc:iec,jsc:jec,1)), Ice%Time, mask=Ice%mask)
 
@@ -1148,8 +1180,8 @@ contains
     do k=2,km
        do j = jsc, jec
           do i = isc, iec
-             Ice%flux_u_top(i,j,k) = fx_wat(i,j)  ! stress of ice on ocean
-             Ice%flux_v_top(i,j,k) = fy_wat(i,j)  !
+             Ice%flux_u_top_bgrid(i,j,k) = fx_wat(i,j)  ! stress of ice on ocean
+             Ice%flux_v_top_bgrid(i,j,k) = fy_wat(i,j)  !
           enddo
        enddo
     end do
@@ -1653,7 +1685,7 @@ contains
     real, dimension(isd:ied,jsd:jed) :: uc, vc ! Local variables, C-grid transporting velocities
     real, dimension(isd:ied,jsd:jed) :: tmp1 ! Local variables, 2D ice concentration
     real, dimension(isd:ied,jsd:jed) :: ustar, vstar ! Local variables, C-grid transporting velocities
-    real, parameter :: smag_ocn=0.15, ssh_gravity=9.81 ! Variables for channel parameterization
+    real, dimension(isd:ied,jsd:jed) :: ustaro, vstaro, ustarv, vstarv ! Local variables, C-grid transporting velocities
     real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
 
     if (slab_ice) then
@@ -1704,6 +1736,8 @@ contains
     ! masking of velocities to zero in a single-cell wide channel.
       tmp1=1.-max(1.-sum(Ice%part_size(:,:,2:km),dim=3),0.0)
       ustar(:,:)=0.; vstar(:,:)=0.
+      ustaro(:,:)=0.; vstaro(:,:)=0.
+      ustarv(:,:)=0.; vstarv(:,:)=0.
       do j = jsc, jec
         do i = isc, iec
           if (Ice%u_ice(i,j).ne.0..and.Ice%vmask(i,j)==0.) stop 'Ooops' ! Debug new vmask
@@ -1721,11 +1755,13 @@ contains
                uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (uc(i,j)>0.) then
-                 uc(i,j)=min( uc(i,j), 0.25*dxt(i,j)/dt_adv)
+                 uc(i,j)=min( uc(i,j), chan_cfl_limit*dxt(i,j)/dt_adv)
                else
-                 uc(i,j)=max( uc(i,j),-0.25*dxt(i+1,j)/dt_adv)
+                 uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*dxt(i+1,j)/dt_adv)
                endif
                if (id_ustar>0) ustar(i,j)=uc(i,j)
+               if (id_uocean>0) ustaro(i,j)=u_ocn
+               if (id_uchan>0) ustarv(i,j)=u_visc
           endif
           if (vc(i,j)==0. & ! this is a redundant test due to following line
              .and. Ice%vmask(i,j)+Ice%vmask(i-1,j)==0. &  ! =0 => no vels
@@ -1740,16 +1776,23 @@ contains
                vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (vc(i,j)>0.) then
-                 vc(i,j)=min( vc(i,j), 0.25*dyt(i,j)/dt_adv)
+                 vc(i,j)=min( vc(i,j), chan_cfl_limit*dyt(i,j)/dt_adv)
                else
-                 vc(i,j)=max( vc(i,j),-0.25*dyt(i,j+1)/dt_adv)
+                 vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*dyt(i,j+1)/dt_adv)
                endif
                if (id_vstar>0) vstar(i,j)=vc(i,j)
+               if (id_vocean>0) vstaro(i,j)=u_ocn
+               if (id_vchan>0) vstarv(i,j)=u_visc
           endif
         enddo
       enddo
     endif
-    call mpp_update_domains(uc, vc, Domain)
+
+    if(reproduce_siena_201303) then
+       call mpp_update_domains(uc, vc, Domain)
+    else
+       call mpp_update_domains(uc, vc, Domain, gridtype=CGRID_NE)
+    endif
 
     uf = 0.0; vf = 0.0
     do k=2,km
@@ -1794,6 +1837,10 @@ contains
 
     if (id_ustar >0) sent = send_data(id_ustar , ustar(isc:iec,jsc:jec) , Ice%Time)
     if (id_vstar >0) sent = send_data(id_vstar , vstar(isc:iec,jsc:jec) , Ice%Time)
+    if (id_vocean>0) sent = send_data(id_vocean, vstaro(isc:iec,jsc:jec) , Ice%Time)
+    if (id_uocean>0) sent = send_data(id_uocean, ustaro(isc:iec,jsc:jec) , Ice%Time)
+    if (id_vchan>0)  sent = send_data(id_vchan,  vstarv(isc:iec,jsc:jec) , Ice%Time)
+    if (id_uchan>0)  sent = send_data(id_uchan,  ustarv(isc:iec,jsc:jec) , Ice%Time)
 
     return
 
