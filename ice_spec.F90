@@ -15,8 +15,8 @@ include 'netcdf.inc'
 private
 public :: get_sea_surface
 
-character(len=128), parameter :: version = '$Id: ice_spec.F90,v 1.1.2.1.6.1 2013/06/18 18:50:46 nnz Exp $'
-character(len=128), parameter :: tagname = '$Name: siena_ice_sis2_5layer_mw_nnz $'
+character(len=128), parameter :: version = '$Id: ice_spec.F90,v 1.1.2.1.6.1.2.1 2013/06/18 19:51:05 nnz Exp $'
+character(len=128), parameter :: tagname = '$Name: siena_ice_sis2_5layer_dEdd_mw_nnz $'
 
 logical :: module_is_initialized = .false.
 

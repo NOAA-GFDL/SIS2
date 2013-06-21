@@ -27,6 +27,7 @@ module ice_grid_mod
   public :: dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, cor, xb1d, yb1d
   public :: geo_lon, geo_lat, sin_rot, cos_rot, cell_area, wett, wetv
   public :: geo_lonv_ib, geo_latv_ib
+  public :: grid_x_t,grid_y_t
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
   public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
   public :: dxdy, dydx, ice_grid_end
@@ -54,8 +55,10 @@ module ice_grid_mod
   real, allocatable, dimension(:,:) ::  geo_latv_ib        ! true latitude at the grid corners
   real, allocatable, dimension(:,:) ::  geo_lonv_ib        ! true longitude at the grid corners
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
+  real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  sin_rot, cos_rot   ! sin/cos of vector rotation angle
   real, allocatable, dimension(:,:) ::  cell_area          ! grid cell area; sphere frac.
+  
   !
   ! timestep parameters
   !
@@ -302,6 +305,7 @@ contains
     integer, parameter                  :: VERSION_0 = 0
     integer, parameter                  :: VERSION_1 = 1
     integer, parameter                  :: VERSION_2 = 2
+    integer                             :: ni,nj,siz(4)
 
     grid_file = 'INPUT/grid_spec.nc'
     ocean_topog = 'INPUT/topog.nc'
@@ -321,14 +325,23 @@ contains
             'ntiles should be 1 for ocean mosaic, contact developer')
        call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
        ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
+       call field_size(ocean_hgrid, 'x', siz)
+       ni = siz(1)/2
+       nj = siz(2)/2
     else  if(field_exist(grid_file, 'x_T')) then
        ocean_hgrid = grid_file
        write(outunit,*) '==>Note from ice_grid_mod(set_ice_grid): read grid from new version grid'
        grid_version = VERSION_1
+       call field_size( ocean_hgrid, 'x_T', siz)
+       ni = siz(1)
+       nj = siz(2)
     else if(field_exist(grid_file, 'geolon_t')) then
        ocean_hgrid = grid_file
        write(outunit,*) '==>Note from ice_grid_mod(set_ice_grid): read grid from old version grid'
        grid_version = VERSION_0 
+       call field_size( ocean_hgrid, 'geolon_t', siz)  
+       ni = siz(1)
+       nj = siz(2)
     else
        call mpp_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
             'x_T, geolon_t, ocn_mosaic_file, gridfiles does not exist in file ' //trim(grid_file))
@@ -486,6 +499,11 @@ contains
     km = km_in
 
     allocate ( cell_area(isc:iec,jsc:jec) )
+    
+    allocate (grid_x_t(ni))
+    allocate (grid_y_t(nj))    
+    grid_x_t = 0.0;grid_y_t = 0.0 
+
     select case(grid_version)
     case(VERSION_0)
        call mpp_copy_domain(domain, domain2)
@@ -495,6 +513,9 @@ contains
        call read_data(grid_file, 'geolon_vert_t', geo_lonv, domain2)
        call read_data(grid_file, 'geolat_vert_t', geo_latv, domain2)  
        call read_data(grid_file, 'AREA_OCN', cell_area, Domain)    
+       !Read similar to ocean
+       call read_data(grid_file, "gridlon_t", grid_x_t, no_domain = .true.)
+       call read_data(grid_file, "gridlat_t", grid_y_t, no_domain = .true.)
     case(VERSION_1)
        allocate ( x_vert_t(isc:iec,jsc:jec,4), y_vert_t(isc:iec,jsc:jec,4) )
        call read_data(grid_file, 'x_vert_T', x_vert_t,  Domain)

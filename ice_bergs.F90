@@ -158,8 +158,8 @@ type, public :: icebergs ; private
 end type icebergs
 
 ! Global constants
-character(len=*), parameter :: version = '$Id: ice_bergs.F90,v 1.1.2.1.6.1 2013/06/18 18:50:46 nnz Exp $'
-character(len=*), parameter :: tagname = '$Name: siena_ice_sis2_5layer_mw_nnz $'
+character(len=*), parameter :: version = '$Id: ice_bergs.F90,v 1.1.2.1.6.1.2.1 2013/06/18 19:51:04 nnz Exp $'
+character(len=*), parameter :: tagname = '$Name: siena_ice_sis2_5layer_dEdd_mw_nnz $'
 integer, parameter :: nclasses=10 ! Number of ice bergs classes
 integer, parameter :: file_format_major_version=0
 integer, parameter :: file_format_minor_version=1

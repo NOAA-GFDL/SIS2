@@ -34,6 +34,11 @@
 
 module ice_thm_mod
 
+! for calling delta-Eddington shortwave from ice_optics
+use ice_shortwave_dEdd, only: shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond, &
+                              shortwave_dEdd0, dbl_kind, int_kind, nilyr, nslyr
+
+
 use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none
@@ -98,6 +103,64 @@ real               :: DT = 1800.0
 ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
 real, parameter :: liq_lim = .99
 
+! for calling delta-Eddington shortwave from ice_optics
+logical :: do_deltaEdd = .true.
+integer (kind=int_kind) :: &
+   nx_block, ny_block, & ! block dimensions
+   icells                ! number of ice-covered grid cells
+
+integer (kind=int_kind), dimension (1) :: &
+   indxi   , & ! compressed indices for ice-covered cells
+   indxj
+
+! inputs
+real (kind=dbl_kind), dimension (1,1) :: &
+   aice   , & ! concentration of ice
+   vice   , & ! volume of ice
+   vsno   , & ! volume of snow
+   Tsfc   , & ! surface temperature
+   coszen , & ! cosine of solar zenith angle
+   tarea  , & ! cell area - not used
+   swvdr  , & ! sw down, visible, direct  (W/m^2)
+   swvdf  , & ! sw down, visible, diffuse (W/m^2)
+   swidr  , & ! sw down, near IR, direct  (W/m^2)
+   swidf      ! sw down, near IR, diffuse (W/m^2)
+
+
+! outputs
+real (kind=dbl_kind), dimension (1,1) :: &
+   fs     , & ! horizontal coverage of snow
+   fp     , & ! pond fractional coverage (0 to 1)
+   hp         ! pond depth (m)
+
+real (kind=dbl_kind), dimension (1,1,1) :: &
+   rhosnw , & ! density in snow layer (kg/m3)
+   rsnw       ! grain radius in snow layer (micro-meters)
+
+real (kind=dbl_kind), dimension (1,1,18) :: &
+         trcr        ! aerosol tracers
+
+
+real (kind=dbl_kind), dimension (1,1) :: &
+   alvdr   , & ! visible, direct, albedo (fraction) 
+   alvdf   , & ! visible, diffuse, albedo (fraction) 
+   alidr   , & ! near-ir, direct, albedo (fraction) 
+   alidf   , & ! near-ir, diffuse, albedo (fraction) 
+   fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+   fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
+   fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
+
+real (kind=dbl_kind), dimension (1,1,1) :: &
+   Sswabs      ! SW absorbed in snow layer (W m-2)
+
+real (kind=dbl_kind), dimension (1,1,nilyr) :: &
+   Iswabs      ! SW absorbed in ice layer (W m-2)
+
+real (kind=dbl_kind), dimension (1,1) :: &
+   albice  , & ! bare ice albedo, for history  
+   albsno  , & ! snow albedo, for history  
+   albpnd      ! pond albedo, for history  
+
 contains
 
 !
@@ -115,6 +178,19 @@ real :: temp, salt
   else
     retval = CI*(tfi-temp)+LI*(1-tfi/temp)
   endif
+!
+!Niki: The above formulation is not valid when temp>tfi and is causing problems,e.g. hlay(k)<0
+!      The following is a trial to fix the issue by changing the enthalpy reference point.
+!
+!  if (tfi < temp) then
+!    retval = -CW*temp*DW/DI     !all ice already melted. bring saline water to 0
+!    return
+!  endif
+!  if (tfi == 0.0) then
+!    retval = CI*(tfi-temp)+LI
+!  else
+!    retval = CI*(tfi-temp)+LI*(1-tfi/temp)-CW*tfi*DW/DI  !bring ice to tfi, melt the unmelted portion then bring saline water to 0
+!  endif
   return
 end function emelt
 
@@ -129,7 +205,7 @@ real :: emelt, salt
 
   tfi = -MU_TS*salt
   A = CI
-  B = emelt-LI-CI*tfi
+  B = emelt-LI-CI*tfi !!!Niki: for modified emelt +CW*tfi*DW/DI
   C = LI*tfi
 
   if ( tfi == 0.0 ) then
@@ -166,13 +242,13 @@ result (temp_est)
 real, dimension(0:NN) :: temp_est ! snow (0) and ice (1:NN) estimated temps
 real, intent(in) :: A        ! net down heat flux from above at 0C (W/m^2)
 real, intent(in) :: B        ! d(up sfc heat flux)/d(ts) [W/(m^2 deg-C)]
-real, intent(in), dimension(NN) :: sol  ! solar absorbed by ice layers (W/m^2)
-real, intent(in) :: hsno                ! snow thickness (m)
-real, intent(in) :: tsn                 ! snow temperature
-real, intent(in) :: hice                ! ice thickness (m)
-real, intent(in), dimension(NN) :: tice ! ice temperature (deg-C)
-real, intent(in), dimension(NN) :: sice ! ice salinity (ppt)
-real, intent(in) :: tfw                 ! seawater freezing temperature (deg-C)
+real, intent(in), dimension(0:NN) :: sol  ! solar absorbed by ice layers (W/m^2)
+real, intent(in) :: hsno                  ! snow thickness (m)
+real, intent(in) :: tsn                   ! snow temperature
+real, intent(in) :: hice                  ! ice thickness (m)
+real, intent(in), dimension(NN) :: tice   ! ice temperature (deg-C)
+real, intent(in), dimension(NN) :: sice   ! ice salinity (ppt)
+real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C)
 
   real :: kk, k10, k0a, tsf, ta, salt_part, rat, tsurf
   real, dimension(0:NN) :: aa, bb, cc, ff ! tridiagonal coefficients
@@ -265,14 +341,20 @@ real :: tp   ! prior step temperature
   !
   !   (m/DT) * {CI-LI*tfi/(t*tp)} * (t-tp) = f - b*t
   !
+  !Niki: There could be a problem if tp==0 but tfi/=0 in which case the above equation is ill-defined 
+  !      but this code returns -f/b
+  !
+  !if( tp == 0.0 .and. tfi /= 0.0 ) print*, 'BAD laytemp INPUT ',tp,tfi
+  !
+
   mdt  = m/DT                   ! mass divided by timestep - kg/m2/s
-  AA = mdt*CI+b
-  BB = -(mdt*LI*tfi/tp+mdt*CI*tp+f)
-  CC = mdt*LI*tfi
 
   if ( tfi == 0.0 ) then
     retval = (mdt*CI*tp+f)/(mdt*CI+b) ! = -BB/AA
   else
+    AA = mdt*CI+b
+    BB = -(mdt*LI*tfi/tp+mdt*CI*tp+f)
+    CC = mdt*LI*tfi
     retval = -(BB+sqrt(BB*BB-4*AA*CC))/(2*AA)
   endif
   return
@@ -282,7 +364,8 @@ subroutine ice_temp(A, B, sol, tsurf, hsno, tsn, hice, tice, sice, tfw, fb, &
                                                                 tmelt, bmelt)
 real, intent(in   ) :: A        ! net down heat flux from above at 0C (W/m^2)
 real, intent(in   ) :: B        ! d(up sfc heat flux)/d(ts) [W/(m^2 deg-C)]
-real, intent(in   ), dimension(NN) :: sol ! solar absorbed by ice layers (W/m^2)
+! sol - solar absorbed by snow/ice layers (W/m^2)
+real, intent(in   ), dimension(0:NN) :: sol
 real, intent(inout) :: tsurf    ! surface temperature (deg-C)
 real, intent(in   ) :: hsno     ! snow thickness (m)
 real, intent(inout) :: tsn      ! snow temperature (deg-C)
@@ -297,29 +380,32 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   real, dimension(0:NN) :: temp_est
   real, dimension(NN) :: tfi, tice_est ! estimated new ice temperatures
   real :: mi, ms, e_extra
-  real :: kk, k10, k0a, tsf, ta, tsno_est
+  real :: kk, k10, k0a, tsf, ta, tsno_est,hie
   integer :: k
 
   mi = DI*hice/NN           ! full ice layer mass
   ms = DS*hsno              ! full snow layer mass
   tfi = -MU_TS*sice         ! freezing temperature of ice layers
-
-  kk = NN*KI/hice                        ! full ice layer conductivity
-  k10 = 1/(hice/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
+  hie = max(hice, H_LO_LIM); ! prevent thin ice inaccuracy (mw)
+  kk = NN*KI/hie                        ! full ice layer conductivity
+  k10 = 1/(hie/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
   k0a = 1/(hsno/(2*KS)+1/B)              ! coupling snow to "air"
   ta  = A/B                              ! "air" temperature
   tsf = tfi(1)                           ! surface freezing temperature
   if (hsno>0.0) tsf = 0.0
 
   ! 1st get non-conservative estimate with implicit treatment of layer coupling
-  temp_est=ice_temp_est(A, B, sol, hsno, tsn, hice, tice, sice, tfw)
-  tice_est=temp_est(1:NN)
-  tsno_est=temp_est(0)
+ temp_est=ice_temp_est(A, B, sol, hsno, tsn, hie, tice, sice, tfw)
+ tice_est=temp_est(1:NN)
+ tsno_est=temp_est(0)
 !
-! try without implicit coupling estimate
+! following two lines disable implicit coupling estimate;  in a 10 year CORE
+! test the skin temperature without implicit estimate was mostly within .05K
+! but was cooler around topography in NH (up to 1K - Baffin Island).  Thickness
+! looked very similar
 !
-!tice_est=tice
-!tsno_est=tsn
+! tice_est=tice
+! tsno_est=tsn
 
   !
   ! conservative pass going UP the ice column
@@ -332,18 +418,18 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   enddo
   tice_est(1) = laytemp(mi, tfi(1), sol(1)+kk*tice_est(2)+k10*tsno_est, &
                                                               kk+k10, tice(1))
-  tsno_est = laytemp(ms, 0.0, k10*tice_est(1)+k0a*ta, k10+k0a, tsn)
+  tsno_est = laytemp(ms, 0.0, sol(0)+k10*tice_est(1)+k0a*ta, k10+k0a, tsn)
   tsurf = (A*hsno+2*KS*tsno_est)/(B*hsno+2*KS)  ! diagnose surface skin temp.
 
   if (tsurf > tsf) then ! surface is melting, redo with surf. at melt temp.
     tsurf = tsf
-    tsno_est = laytemp(hsno*ms, 0.0, hsno*k10*tice_est(1)+2*KS*tsf, &
+    tsno_est = laytemp(hsno*ms, 0.0, hsno*sol(0)+hsno*k10*tice_est(1)+2*KS*tsf,&
                        hsno*k10+2*KS, tsn) ! note: mult. thru by hsno
     ! add in surf. melt
     if (hsno>0.0) then
       tmelt = tmelt+DT*((A-B*tsurf)-2*KS*(tsurf-tsno_est)/hsno)
     else
-      tmelt = tmelt+DT*((A-B*tsurf)-k10*(tsurf-tice_est(1))) ! tsno = tsurf
+      tmelt = tmelt+DT*((sol(0)+A-B*tsurf)-k10*(tsurf-tice_est(1))) ! tsno = tsurf
     endif
   endif
   tsn = tsno_est ! finalize snow temperature
@@ -365,9 +451,15 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   
   bmelt = bmelt+DT*(fb-2*kk*(tfw-tice(NN))) ! add in bottom melting/freezing
 
+  if (tsn > 0.0) then ! put excess snow energy into top melt
+    e_extra = CI*DS*hsno*tsn
+    tmelt = tmelt+e_extra
+    tsn = 0.0
+  endif
+
   do k=1,NN
     if (tice(k)>tfi(k)/liq_lim) then ! push excess energy to closer of top or bottom melt
-      e_extra = (emelt(tfi(k)/liq_lim,sice(k))-emelt(tice(k),sice(k)))*DI*hice/NN
+      e_extra = (emelt(tfi(k)/liq_lim,sice(k))-emelt(tice(k),sice(k)))*DI*hie/NN
       tice(k) = tfi(k)/liq_lim
       if (k<=NN/2) then
         tmelt = tmelt+e_extra
@@ -422,7 +514,7 @@ real, intent(in   ), dimension(NN) :: sice
 
   do k=1,NN
     tice(k) = emelt2temp(ntice(k)*NN/hice, sice(k))  ! retrieve temp.
-    if (tice(k)>-MU_TS*sice(k)) print *, 'ERROR: ICE TEMP=',tice(k), &
+    if (tice(k)>-MU_TS*sice(k)+1.0d-10) print *, 'ERROR: ICE TEMP=',tice(k), &
                                          '>' ,-MU_TS*sice(k)
   enddo
 
@@ -493,12 +585,10 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   ! add frazil
   if (frazil > 0.0 .and. hice == 0.0) then
     do k=1,NN
-      tice(k) = tfw
+      tice(k) = min(tfw,-MU_TS*sice(k)-0.5) !was tfw
+      hlay(k) = hlay(k)+((frazil/NN)/emelt(tice(k), sice(k)))/DI
     enddo
   endif
-  do k=1,NN
-    hlay(k) = hlay(k)+((frazil/NN)/emelt(tice(k), sice(k)))/DI
-  enddo
 
   if (tmelt < 0.0) then  ! this shouldn't happen
     bmelt = bmelt+tmelt
@@ -592,7 +682,13 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   hw = (DI*hice+DS*hsno)/DW ! water height above ice base
   if (hw>hice) then ! convert snow to ice to maintain ice top at waterline
     snow_to_ice = (hw-hice)*DI ! need this much ice mass from snow
-    hsno = hsno-snow_to_ice/DS
+    if(snow_to_ice < hsno*DS) then
+       hsno = hsno-snow_to_ice/DS
+    else
+       !Niki: How to balance this?
+       print*, 'UNBALANCED hsno conversion ',hsno,snow_to_ice/DS
+       hsno = 0.0
+    endif    
     call add_ice(hlay, tice, sice, 1, snow_to_ice, &
                  emelt2temp(LI-CI*tsn, sice(1)), sice(1))
   else
@@ -613,13 +709,14 @@ end subroutine ice_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
                          slab_ice_in, t_range_melt_in, cm2_bugs_in, ks_in, &
-                         h_lo_lim_in                                          )
+                         h_lo_lim_in,deltaEdd                              )
     real, intent(in)      :: alb_sno_in, alb_ice_in, pen_ice_in 
     real, intent(in)      :: opt_dep_ice_in, t_range_melt_in
 logical, intent(in)   :: slab_ice_in
 logical, intent(in)   :: cm2_bugs_in
     real, intent(in)   :: ks_in
     real, intent(in)   :: h_lo_lim_in
+    logical, intent(in):: deltaEdd 
 
   ALB_SNO     = alb_sno_in
   ALB_ICE     = alb_ice_in
@@ -631,95 +728,199 @@ logical, intent(in)   :: cm2_bugs_in
   CM2_BUGS    = cm2_bugs_in
   KS          = ks_in
   H_LO_LIM    = h_lo_lim_in
+  do_deltaEdd = deltaEdd
 
 end subroutine ice_thm_param
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics(alb, pen, trn, hs, hi, ts, tfw)
-real, intent(  out) :: alb ! ice surface albedo (0-1)
-real, intent(  out) :: pen ! fraction of down solar penetrating the ice
-real, intent(  out) :: trn ! ratio of down solar at bottom to top of ice
-real, intent(in   ) :: hs  ! snow thickness (m-snow)
-real, intent(in   ) :: hi  ! ice thickness (m-ice)
-real, intent(in   ) :: ts  ! surface temperature
-real, intent(in   ) :: tfw ! seawater freezing temperature
-real :: as, ai, cs
-real :: thick_ice_alb, tcrit, fh
+subroutine ice_optics(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
+     alb_nir_dif, abs_sfc, abs_snow, abs_ice1, abs_ice2, &
+     abs_ice3, abs_ice4, abs_ocn, abs_int, pen, trn, coszen_in)
+  real, intent(in   ) :: hs  ! snow thickness (m-snow)
+  real, intent(in   ) :: hi  ! ice thickness (m-ice)
+  real, intent(in   ) :: ts  ! surface temperature
+  real, intent(in   ) :: tfw ! seawater freezing temperature
+  real, intent(  out) :: alb_vis_dir ! ice surface albedo (0-1)
+  real, intent(  out) :: alb_vis_dif ! ice surface albedo (0-1)
+  real, intent(  out) :: alb_nir_dir ! ice surface albedo (0-1)
+  real, intent(  out) :: alb_nir_dif ! ice surface albedo (0-1)
+  real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
+  real, intent(  out) :: abs_snow ! frac abs sw abs in snow
+  real, intent(  out) :: abs_ice1 ! frac abs sw abs at ice layer 1
+  real, intent(  out) :: abs_ice2 ! frac abs sw abs at ice layer 2
+  real, intent(  out) :: abs_ice3 ! frac abs sw abs at ice layer 3
+  real, intent(  out) :: abs_ice4 ! frac abs sw abs at ice layer 4
+  real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
+  real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
+  real, intent(  out) :: pen      ! frac     sw passed below the surface (frac 1-pen absrobed at the surface)
+  real, intent(  out) :: trn      ! frac     sw passed below the bottom  (frac 1-trn absorbed at the interior)
+  real, intent(in),optional :: coszen_in
+  real :: alb, as, ai, cs
+  real :: thick_ice_alb, tcrit, fh
 
 
   if (SLAB_ICE) then
-    tcrit = tfw - T_RANGE
-       if (ts <= tcrit) then
-          thick_ice_alb = MAX_ICE_ALB
-       else if (ts >= tfw) then
-          thick_ice_alb = MIN_ICE_ALB
-       else
-      thick_ice_alb = MAX_ICE_ALB + (MIN_ICE_ALB-MAX_ICE_ALB)*(ts-tcrit)/T_RANGE
-       endif
-  
-       if (hi >= crit_thickness) then
-          alb = THICK_ICE_ALB
-       else
-          alb = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
-       endif
+     tcrit = tfw - T_RANGE
+     if (ts <= tcrit) then
+        thick_ice_alb = MAX_ICE_ALB
+     else if (ts >= tfw) then
+        thick_ice_alb = MIN_ICE_ALB
+     else
+        thick_ice_alb = MAX_ICE_ALB + (MIN_ICE_ALB-MAX_ICE_ALB)*(ts-tcrit)/T_RANGE
+     endif
 
-    pen = 0.0
-    trn = 0.0
+     if (hi >= crit_thickness) then
+        alb = THICK_ICE_ALB
+     else
+        alb = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
+     endif
 
-!! check for ice albdeos out of range (0 to 1)
-!      if (alb.lt.0.0 .or.alb.gt.1.0) then
-!         print *,'ice_optics: albedo out of range, alb_in=',alb_in, 'alb=',alb
-!         print *,'ts=',ts,  'tfw=',tfw, 'tcrit=',tcrit
-!         print *,'hi=',hi,  'thick_ice_alb=',thick_ice_alb
-!         print *,'ALB_OCEAN=',ALB_OCEAN
-!         print *,'MIN_ICE_ALB=',MIN_ICE_ALB, 'MAX_ICE_ALB=',MAX_ICE_ALB
-!         print *,'T_RANGE,=',T_RANGE, 'CRIT_THICKNESS=',CRIT_THICKNESS
-!         stop
-!      end if
-  
-    return
+     abs_sfc  = 0.0
+     abs_snow = 0.0
+     abs_ice1 = 0.0
+     abs_ice2 = 0.0
+     abs_ice3 = 0.0
+     abs_ice4 = 0.0
+     abs_ocn  = 0.0
+     abs_int  = 0.0
+     alb_vis_dir = alb
+     alb_vis_dif = alb
+     alb_nir_dir = alb
+     alb_nir_dif = alb
+     !   pen = 0.0
+     !   trn = 0.0
+
+     !! check for ice albdeos out of range (0 to 1)
+     !      if (alb.lt.0.0 .or.alb.gt.1.0) then
+     !         print *,'ice_optics: albedo out of range, alb_in=',alb_in, 'alb=',alb
+     !         print *,'ts=',ts,  'tfw=',tfw, 'tcrit=',tcrit
+     !         print *,'hi=',hi,  'thick_ice_alb=',thick_ice_alb
+     !         print *,'ALB_OCEAN=',ALB_OCEAN
+     !         print *,'MIN_ICE_ALB=',MIN_ICE_ALB, 'MAX_ICE_ALB=',MAX_ICE_ALB
+     !         print *,'T_RANGE,=',T_RANGE, 'CRIT_THICKNESS=',CRIT_THICKNESS
+     !         stop
+     !      end if
+
+     return
   endif
 
+  if(do_deltaEdd) then
 
-!! 2007/04/11 Fix for thin ice negative ice albedos from Mike Winton
-!!            Move ai calculation after if test
+     ! temporary for delta-Eddington shortwave call
+     nx_block = 1
+     ny_block = 1
+     icells = 1
+     indxi(1) = 1
+     indxj(1) = 1
+     aice(1,1) = 1.0
+     tarea(1,1) = 1.0 ! not used
 
-  as = ALB_SNO; ai = ALB_ICE
-  cs = hs/(hs+0.02)                        ! thin snow partially covers ice
+     ! stuff that matters
+     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
+     if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
+     Tsfc(1,1) = ts
+     vsno(1,1) = hs
+     vice(1,1) = hi
+     swvdr(1,1) = 0.25
+     swvdf(1,1) = 0.25
+     swidr(1,1) = 0.25
+     swidf(1,1) = 0.25
 
-  fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
-                                           ! reduce albedo for thin ice
-  if (CM2_BUGS) then
-    ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-    if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-                                           ! CSIM4 assuming 0.53/0.47 vis/ir
-       as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-       ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-    endif
+     call shortwave_dEdd0_set_snow(nx_block, ny_block, &
+          icells,             &
+          indxi,    indxj,    &
+          aice,     vsno,     &
+          Tsfc,     fs,       &
+          rhosnw,   rsnw) ! out: fs, rhosnw, rsnw
+
+     call shortwave_dEdd0_set_pond(nx_block, ny_block, &
+          icells,             &
+          indxi,    indxj,    &
+          aice,     Tsfc,     &
+          fs,       fp,       &
+          hp) ! out: fp, hp
+     call shortwave_dEdd0  (nx_block, ny_block,    &
+          icells,   indxi,       &
+          indxj,    coszen,      &
+          aice,     vice,        &
+          vsno,     fs,          &
+          rhosnw,   rsnw,        &
+          fp,       hp,          &
+          swvdr,    swvdf,       &
+          swidr,    swidf,       &
+          alvdf,    alvdr,       & ! out: these and below
+          alidr,    alidf,       &
+          fswsfc,   fswint,      &
+          fswthru,  Sswabs,      &
+          Iswabs,   albice,      &
+          albsno,   albpnd)
+
+     alb = 1-fswsfc(1,1)-fswint(1,1)-fswthru(1,1)
+     abs_sfc  = fswsfc(1,1)  /(1-alb)
+     abs_snow = Sswabs(1,1,1)/(1-alb)
+     abs_ice1 = Iswabs(1,1,1)/(1-alb)
+     abs_ice2 = Iswabs(1,1,2)/(1-alb)
+     abs_ice3 = Iswabs(1,1,3)/(1-alb)
+     abs_ice4 = Iswabs(1,1,4)/(1-alb)
+     abs_ocn  = fswthru(1,1) /(1-alb)
+
+     alb_vis_dir = alvdr(1,1)
+     alb_vis_dif = alvdf(1,1)
+     alb_nir_dir = alidr(1,1)
+     alb_nir_dif = alidf(1,1)
+
+     ! pen = (fswint(1,1)+fswthru(1,1))/(fswsfc(1,1)+fswint(1,1)+fswthru(1,1))
+     pen = abs_snow + abs_ice1 + abs_ice2 + abs_ice3 + abs_ice4 + abs_ocn
+     ! trn = fswthru(1,1)/(fswint(1,1)+fswthru(1,1))
+     trn = 0.0
+     if(pen > 0.0) trn = abs_ocn/pen
+     abs_int = 1.0 - trn
+
   else
-    if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-                                           ! CSIM4 assuming 0.53/0.47 vis/ir
-       as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-       ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-    endif
-    ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-  end if
 
-  alb = cs*as+(1-cs)*ai
-  pen = (1-cs)*PEN_ICE
-  trn = exp(-hi/OPT_DEP_ICE);
+     !! 2007/04/11 Fix for thin ice negative ice albedos from Mike Winton
+     !!            Move ai calculation after if test
 
-!! check for ice albdeos out of range (0 to 1)
-! if (alb.lt.0.0 .or. alb.gt.1.0) then
-!    print *,'ice_optics: albedo out of range, alb=',alb
-!    print *,'cs=',cs,  'as=',as, 'ai=',ai
-!    print *,'ts=',ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',tfw
-!    print *,'ALB_SNO=',ALB_SNO,  'ALB_ICE=',ALB_ICE, 'T_RANGE_MELT,=',T_RANGE_MELT, 'TFI=',TFI
-!    stop
-! end if
+     as = ALB_SNO; ai = ALB_ICE
+     cs = hs/(hs+0.02)                        ! thin snow partially covers ice
 
+     fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
+     ! reduce albedo for thin ice
+     if (CM2_BUGS) then
+        ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
+        if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
+           ! CSIM4 assuming 0.53/0.47 vis/ir
+           as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+           ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+        endif
+     else
+        if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
+           ! CSIM4 assuming 0.53/0.47 vis/ir
+           as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+           ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+        endif
+        ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
+     end if
+
+     alb = cs*as+(1-cs)*ai
+     pen = (1-cs)*PEN_ICE
+     trn = exp(-hi/OPT_DEP_ICE);
+     alb_vis_dir = alb
+     alb_vis_dif = alb
+     alb_nir_dir = alb
+     alb_nir_dif = alb
+
+     !! check for ice albdeos out of range (0 to 1)
+     ! if (alb.lt.0.0 .or. alb.gt.1.0) then
+     !    print *,'ice_optics: albedo out of range, alb=',alb
+     !    print *,'cs=',cs,  'as=',as, 'ai=',ai
+     !    print *,'ts=',ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',tfw
+     !    print *,'ALB_SNO=',ALB_SNO,  'ALB_ICE=',ALB_ICE, 'T_RANGE_MELT,=',T_RANGE_MELT, 'TFI=',TFI
+     !    stop
+     ! end if
+  endif
   return
 
 end subroutine ice_optics
@@ -727,8 +928,8 @@ end subroutine ice_optics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice5lay_temp - ice & snow temp. change [Winton (2000) section 2.a]           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice5lay_temp(hs, tsn, hi, t1, t2, t3, t4, ts, A, B, I, tfw, fb, dtt,&
-                                                                   tmelt, bmelt)
+subroutine ice5lay_temp(hs, tsn, hi, t1, t2, t3, t4, ts, A, B, &
+                        IS, I1, I2, I3, I4, tfw, fb, dtt, tmelt, bmelt)
 implicit none
 
 real, intent(in   ) :: hs    ! snow thickness (m)
@@ -741,7 +942,11 @@ real, intent(inout) :: t4    ! bottom ice temperature (deg-C)
 real, intent(  out) :: ts    ! surface temperature (deg-C)
 real, intent(in   ) :: A     ! net surface heat flux (+ up) at ts=0 (W/m^2)
 real, intent(in   ) :: B     ! d(sfc heat flux)/d(ts) [W/(m^2 deg-C)]
-real, intent(in   ) :: I     ! solar absorbed by ice (W/m^2)
+real, intent(in   ) :: IS    ! solar absorbed by snow layer (W/m^2)
+real, intent(in   ) :: I1    ! solar absorbed by ice layer 1 (W/m^2)
+real, intent(in   ) :: I2    ! solar absorbed by ice layer 1 (W/m^2)
+real, intent(in   ) :: I3    ! solar absorbed by ice layer 1 (W/m^2)
+real, intent(in   ) :: I4    ! solar absorbed by ice layer 1 (W/m^2)
 real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
 real, intent(in   ) :: fb    ! heat flux from ocean to ice bottom (W/m^2)
 real, intent(in   ) :: dtt   ! timestep (sec)
@@ -754,7 +959,7 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
     real :: ef ! for Beer's law partitioning of radiation among layers
 
     real, dimension(NN) :: tice, sice
-    real, dimension(NN) :: sol
+    real, dimension(0:NN) :: sol ! layer 0 for snow, 1:NN for ice
 
 ! TK Mods:
 real :: hi_effective, hie
@@ -780,10 +985,11 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
   endif
 
   ef = exp(-hi/OPT_DEP_ICE)
-  sol(1) = I*(  1      -(ef**.25))/(1-ef);
-  sol(2) = I*((ef**.25)-(ef**.5 ))/(1-ef);
-  sol(3) = I*((ef**.5 )-(ef**.75))/(1-ef);
-  sol(4) = I*((ef**.75)- ef      )/(1-ef);
+  sol(0) = IS
+  sol(1) = I1
+  sol(2) = I2
+  sol(3) = I3
+  sol(4) = I4
   tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4;
   sice(1) = SI1; sice(2) = SI2; sice(3) = SI3; sice(4) = SI4;
   call ice_temp(-A, B, sol, ts, hs, tsn, hi, tice, sice, tfw, fb, tmelt, bmelt)
@@ -797,12 +1003,12 @@ subroutine temp_check(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
   integer :: bad
 
   bad = 0
-  if (isnan(ts ).or.ts >0.0.or.ts <-100.0) bad = bad+1
-  if (isnan(tsn).or.tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (isnan(t1 ).or.t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (isnan(t2 ).or.t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (isnan(t3 ).or.t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (isnan(t4 ).or.t4 >0.0.or.t4 <-100.0) bad = bad+1
+  if (ts >0.0.or.ts <-100.0) bad = bad+1
+  if (tsn>0.0.or.tsn<-100.0) bad = bad+1
+  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
+  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
+  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
+  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
 
   if (bad>0) print *, 'BAD ICE AFTER TEMP ', 'hs/hi=',hs,hi,'ts/tsn/tice=',ts, &
                       tsn,t1,t2,t3,t4,'tmelt/bmelt=',tmelt,bmelt
@@ -813,13 +1019,13 @@ subroutine resize_check(hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
   integer :: bad
 
   bad = 0
-  if (isnan(hs ).or.hs <0.0.or.hs > 1e3  ) bad = bad+1
-  if (isnan(hi ).or.hi <0.0.or.hi > 1e3  ) bad = bad+1
-  if (isnan(tsn).or.tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (isnan(t1 ).or.t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (isnan(t2 ).or.t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (isnan(t3 ).or.t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (isnan(t4 ).or.t4 >0.0.or.t4 <-100.0) bad = bad+1
+  if (hs <0.0.or.hs > 1e3  ) bad = bad+1
+  if (hi <0.0.or.hi > 1e3  ) bad = bad+1
+  if (tsn>0.0.or.tsn<-100.0) bad = bad+1
+  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
+  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
+  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
+  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
 
   if (bad>0) print *, 'BAD ICE AFTER RESIZE ', 'hs/hi=',hs,hi,'tsn/tice=',&
                       tsn,t1,t2,t3,t4,'tmelt/bmelt=',tmelt,bmelt
@@ -830,13 +1036,13 @@ subroutine unpack_check(hs, tsn, hi, t1, t2, t3, t4, cn)
   integer :: bad
 
   bad = 0
-  if (isnan(hs ).or.hs <0.0.or.hs > 1e3  ) bad = bad+1
-  if (isnan(hi ).or.hi <0.0.or.hi > 1e3  ) bad = bad+1
-  if (isnan(tsn).or.tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (isnan(t1 ).or.t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (isnan(t2 ).or.t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (isnan(t3 ).or.t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (isnan(t4 ).or.t4 >0.0.or.t4 <-100.0) bad = bad+1
+  if (hs <0.0.or.hs > 1e3  ) bad = bad+1
+  if (hi <0.0.or.hi > 1e3  ) bad = bad+1
+  if (tsn>0.0.or.tsn<-100.0) bad = bad+1
+  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
+  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
+  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
+  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
 
   if (bad>0) print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',hs,hi,'tsn/tice=', &
                       tsn,t1,t2,t3,t4,'cn=',cn
