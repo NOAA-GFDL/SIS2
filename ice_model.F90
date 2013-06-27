@@ -64,7 +64,7 @@ module ice_model_mod
                               iceClocka, iceClockb, iceClockc, &
                               id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir,    &
                               id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif,id_coszen,       &
-                              cm2_bugs, ice_stock_pe, do_icebergs, ice_model_restart, &
+                              ice_stock_pe, do_icebergs, ice_model_restart, &
                               add_diurnal_sw, id_mib, ice_data_type_chksum,      &
                               id_ustar, id_vstar, channel_viscosity, smag_ocn,   &
                               ssh_gravity, chan_cfl_limit, id_vocean, id_uocean, &
@@ -711,11 +711,7 @@ contains
              u = Ice % u_surf(i,j,k)
              v = Ice % v_surf(i,j,k)
              Ice % u_surf(i,j,k) =  u*cos_rot(i,j)+v*sin_rot(i,j) ! rotate velocity from ocean
-             if (cm2_bugs) then
-                Ice % v_surf(i,j,k) =  -v*cos_rot(i,j)+u*sin_rot(i,j) ! coord. to lat/lon coord.
-             else
-                Ice % v_surf(i,j,k) =  v*cos_rot(i,j)-u*sin_rot(i,j) ! coord. to lat/lon coord.
-             endif
+             Ice % v_surf(i,j,k) =  v*cos_rot(i,j)-u*sin_rot(i,j) ! coord. to lat/lon coord.
           end do
        end do
     end do
@@ -906,13 +902,7 @@ contains
     call compute_ocean_roughness (Ice%mask, u_star(:,:,1), Ice%rough_mom(:,:,1), &
                                   Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
-    if(cm2_bugs) then
-       call compute_ocean_albedo (Ice%mask, coszen(:,:,1), Ice%albedo(:,:,1), latitude )
-       Ice%albedo_vis_dir(:,:,1) = Ice%albedo(:,:,1)
-       Ice%albedo_nir_dir(:,:,1) = Ice%albedo(:,:,1)
-       Ice%albedo_vis_dif(:,:,1) = Ice%albedo(:,:,1)
-       Ice%albedo_nir_dif(:,:,1) = Ice%albedo(:,:,1)
-    elseif (do_sun_angle_for_alb) then
+    if (do_sun_angle_for_alb) then
       call diurnal_solar(geo_lat*rad, geo_lon*rad, Ice%time, cosz=cosz_alb,	&
 			     fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
       call compute_ocean_albedo (Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&

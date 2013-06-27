@@ -40,7 +40,7 @@ public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
           mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice,         &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
-          cm2_bugs, conservation_check, do_icebergs, ice_model_restart,       &
+          conservation_check, do_icebergs, ice_model_restart,       &
           add_diurnal_sw, channel_viscosity, smag_ocn, ssh_gravity,           &
           chan_cfl_limit, ice_data_type_chksum
 public :: do_sun_angle_for_alb
@@ -121,7 +121,6 @@ public  :: earth_area
   real    :: ice_restore_timescale = 5.0 ! time scale for restoring ice (days)
   logical :: conservation_check = .true. ! check for heat and h2o conservation
   logical :: slp2ocean          = .false.! apply sea level pressure to ocean surface
-  logical :: cm2_bugs           = .false.! keep cm2 bugs for reproducibility        
   logical :: verbose            = .false.! control printing message, will slow model down when turn true
   logical :: do_icebergs        = .false.! call iceberg code to modify calving field
   logical :: add_diurnal_sw     = .false.! apply an additional diurnal cycle to shortwave radiation
@@ -160,7 +159,7 @@ public  :: earth_area
                            slab_ice, spec_ice, ice_bulk_salin, layout,           &
                            do_ice_restore, do_ice_limit, max_ice_limit,          &
                            ice_restore_timescale, slp2ocean, conservation_check, &
-                           t_range_melt, cm2_bugs, ks, h_lo_lim, verbose,        &
+                           t_range_melt, ks, h_lo_lim, verbose,        &
                            do_icebergs, add_diurnal_sw, io_layout, channel_viscosity,&
                            smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
                            mask_table, reproduce_siena_201303, do_deltaEdd,R_ice,R_snw,R_pnd
@@ -426,7 +425,7 @@ public  :: earth_area
 
     call ice_dyn_param(p0, c0, cdw, wd_turn, slab_ice)
     call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
-                       t_range_melt, cm2_bugs, ks, h_lo_lim,do_deltaEdd)
+                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
     allocate ( Ice % mask     (isc:iec, jsc:jec)       , &
          Ice % ice_mask       (isc:iec, jsc:jec, km)   , &

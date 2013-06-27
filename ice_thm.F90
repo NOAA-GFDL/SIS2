@@ -89,9 +89,6 @@ real, parameter :: MIN_ICE_ALB          = 0.55   ! coupled model uses 0.55
 real, parameter :: MAX_ICE_ALB          = 0.80
 real, parameter :: ALB_OCEAN            = 0.10
 
-!
-logical         :: CM2_BUGS = .false.   ! keep cm2 bugs for reproducibility
-
 integer, parameter :: NN = 4
 real               :: DT = 1800.0
 
@@ -708,12 +705,11 @@ end subroutine ice_resize
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
-                         slab_ice_in, t_range_melt_in, cm2_bugs_in, ks_in, &
+                         slab_ice_in, t_range_melt_in, ks_in, &
                          h_lo_lim_in,deltaEdd                              )
     real, intent(in)      :: alb_sno_in, alb_ice_in, pen_ice_in 
     real, intent(in)      :: opt_dep_ice_in, t_range_melt_in
 logical, intent(in)   :: slab_ice_in
-logical, intent(in)   :: cm2_bugs_in
     real, intent(in)   :: ks_in
     real, intent(in)   :: h_lo_lim_in
     logical, intent(in):: deltaEdd 
@@ -725,7 +721,6 @@ logical, intent(in)   :: cm2_bugs_in
   SLAB_ICE    = slab_ice_in
   T_RANGE_MELT = t_range_melt_in
 
-  CM2_BUGS    = cm2_bugs_in
   KS          = ks_in
   H_LO_LIM    = h_lo_lim_in
   do_deltaEdd = deltaEdd
@@ -888,21 +883,12 @@ subroutine ice_optics(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
 
      fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
      ! reduce albedo for thin ice
-     if (CM2_BUGS) then
-        ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-        if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-           ! CSIM4 assuming 0.53/0.47 vis/ir
-           as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-           ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-        endif
-     else
-        if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-           ! CSIM4 assuming 0.53/0.47 vis/ir
-           as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-           ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-        endif
-        ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-     end if
+      if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
+         ! CSIM4 assuming 0.53/0.47 vis/ir
+         as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+         ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+      endif
+      ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
 
      alb = cs*as+(1-cs)*ai
      pen = (1-cs)*PEN_ICE
