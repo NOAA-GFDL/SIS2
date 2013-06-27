@@ -560,16 +560,16 @@ contains
  do j = jsc, jec
     do i = isc, iec     
       if (Ice%mask(i,j)) then
-        if ((Ice%part_size(i,j,1) > 0.0).and.(isnan(Ice%t_surf(i,j,1))&
+        if ((Ice%part_size(i,j,1) > 0.0).and.(is_NaN(Ice%t_surf(i,j,1))&
                                           .or.Ice%t_surf(i,j,1)<Tfreeze-5.0&
                                           .or.Ice%t_surf(i,j,1)>Tfreeze+40.0)) &
-           print '(a,f10.2,2i5,g)','BAD SST',Ice%t_surf(i,j,1),i,j,&
+           print '(a,f10.2,2i5,1PG12.6)','BAD SST',Ice%t_surf(i,j,1),i,j,&
                                                Ice%part_size(i,j,1)
         do k = 2, km
-         if ((Ice%part_size(i,j,k) > 0.0).and.(isnan(Ice%t_surf(i,j,k))&
+         if ((Ice%part_size(i,j,k) > 0.0).and.(is_NaN(Ice%t_surf(i,j,k))&
                                           .or.Ice%t_surf(i,j,k)<Tfreeze-70.0&
                                           .or.Ice%t_surf(i,j,k)>Tfreeze+0.1)) &
-           print '(a,f10.2,3i5,g,2f10.2)','BAD ICE',Ice%t_surf(i,j,k),i,j,k,&
+           print '(a,f10.2,3i5,1PG12.6,2f10.2)','BAD ICE',Ice%t_surf(i,j,k),i,j,k,&
                                                Ice%part_size(i,j,k),&
                                                Ice%h_ice(i,j,k),Ice%h_snow(i,j,k)
         enddo
@@ -867,16 +867,6 @@ contains
        do j = jsc, jec
           do i=isc, iec
              if (Ice%ice_mask(i,j,k)) then
-                call ice_optics( Ice%h_snow(i,j,k), Ice%h_ice(i,j,k), &
-                     Ice%t_surf(i,j,k)-Tfreeze, -MU_TS*Ice%s_surf(i,j), &
-                     Ice%albedo_vis_dir(i,j,k), Ice%albedo_vis_dif(i,j,k), &
-                     Ice%albedo_nir_dir(i,j,k), Ice%albedo_nir_dif(i,j,k), &
-                     Ice%sw_abs_sfc(i,j,k), &
-                     Ice%sw_abs_snow(i,j,k), Ice%sw_abs_ice1(i,j,k), &
-                     Ice%sw_abs_ice2(i,j,k), Ice%sw_abs_ice3(i,j,k), &
-                     Ice%sw_abs_ice4(i,j,k), Ice%sw_abs_ocn(i,j,k) , &
-                     Ice%sw_abs_int(i,j,k),Ice%pen(i,j,k) , Ice%trn(i,j,k),coszen_in=Ice%coszen(i,j,k))
-
                 if (slab_ice) then
                    flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + hlf*flux_q(i,j,k)
                    latent             = hlv+hlf
@@ -1206,15 +1196,6 @@ contains
        do j=jsc, jec
           do i=isc, iec 
              if (cell_area(i,j) > 0 .and.Ice%h_ice(i,j,k) > 0) then
-                call ice_optics( Ice%h_snow(i,j,k), Ice%h_ice(i,j,k), &
-                     Ice%t_surf(i,j,k)-Tfreeze, -MU_TS*Ice%s_surf(i,j), &
-                     Ice%albedo_vis_dir(i,j,k), Ice%albedo_vis_dif(i,j,k), &
-                     Ice%albedo_nir_dir(i,j,k), Ice%albedo_nir_dif(i,j,k), &
-                     Ice%sw_abs_sfc(i,j,k), &
-                     Ice%sw_abs_snow(i,j,k), Ice%sw_abs_ice1(i,j,k), &
-                     Ice%sw_abs_ice2(i,j,k), Ice%sw_abs_ice3(i,j,k), &
-                     Ice%sw_abs_ice4(i,j,k), Ice%sw_abs_ocn(i,j,k) , &
-                     Ice%sw_abs_int(i,j,k),  Ice%pen(i,j,k), Ice%trn(i,j,k),coszen_in=Ice%coszen(i,j,k))
                 ! reshape the ice based on fluxes
 
                 h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
@@ -1866,6 +1847,18 @@ contains
 
     return
   end function ext
+
+! =====================================================================
+
+function is_NaN(x)
+  real, intent(in) :: x
+  logical :: is_nan
+! This subroutine returns .true. if x is a NaN, and .false. otherwise.
+
+  is_nan = (((x < 0.0) .and. (x >= 0.0)) .or. &
+            (.not.(x < 0.0) .and. .not.(x >= 0.0)))
+
+end function is_nan
 
 subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
   use fms_mod,                 only: stdout
