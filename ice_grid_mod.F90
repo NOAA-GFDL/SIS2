@@ -395,8 +395,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     integer                             :: i, j, m, ntiles, ncontacts
     integer                             :: dims(4)
     real, allocatable, dimension(:,:,:) :: x_vert_t, y_vert_t
-    real, allocatable,   dimension(:,:) :: geo_latv   
-    real, allocatable,   dimension(:,:) :: geo_lonv  
     real, allocatable,   dimension(:,:) :: depth, tmpx, tmpy, tmp_2d
     integer, dimension(2)               :: tile1, tile2
     integer, dimension(2)               :: istart1, iend1, jstart1, jend1
@@ -548,8 +546,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
   call allocate_metrics(grid)
 
-    allocate ( geo_lonv(isc:iec+1,jsc:jec+1), geo_latv(isc:iec+1,jsc:jec+1) )
-    
     allocate ( wett   (isd:ied,jsd:jed), wetv   ( isc:iec,jsc:jec),  &
                dxt    (isd:ied,jsd:jed), dxv     (isd:ied,jsd:jed),  &
                dyt    (isd:ied,jsd:jed), dyv     (isd:ied,jsd:jed),  &
@@ -618,12 +614,12 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
   call read_data(ocean_hgrid, 'x', tmpx, domain2)
   call read_data(ocean_hgrid, 'y', tmpy, domain2)     
-  do j=jsc,jec+1 ; do i=isc,iec+1
-    geo_lonv(i,j) = tmpx(2*i-1,2*j-1)
-    geo_latv(i,j) = tmpy(2*i-1,2*j-1)
+  do J=jsc-1,jec ; do I=isc-1,iec
+    grid%geoLonBu(I,J) = tmpx(2*i+1,2*j+1)
+    grid%geoLatBu(I,J) = tmpy(2*i+1,2*j+1)
   enddo ; enddo
-  call calc_mosaic_grid_area(geo_lonv(isc:iec+1, jsc:jec+1)*pi/180, &
-                             geo_latv(isc:iec+1, jsc:jec+1)*pi/180, cell_area)
+  call calc_mosaic_grid_area(grid%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
+                             grid%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, cell_area)
   cell_area = cell_area/(4*PI*RADIUS*RADIUS)
   deallocate(tmpx, tmpy)
   do j=jsc,jec ; do i=isc,iec
@@ -646,19 +642,19 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     else
        allocate ( tmpx(isc:iec+1, jm+1) )
        call mpp_set_domain_symmetry(Domain, .TRUE.)
-       call mpp_global_field(Domain, geo_lonv, tmpx, flags=YUPDATE, position=CORNER)
+       call mpp_global_field(Domain, grid%geoLonBu(isc-1:iec,jsc-1:jec), tmpx, flags=YUPDATE, position=CORNER)
        allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
        tmp_2d = 0
        tmp_2d(isc:iec+1,jsc) = sum(tmpx,2)/(jm+1);
        deallocate(tmpx)
        allocate ( tmpx(im+1, jsc:jec+1) )
 
-       call mpp_global_field(Domain, tmp_2d, tmpx, flags=XUPDATE, position=CORNER)
+       call mpp_global_field(Domain, grid%geoLatBu(isc-1:iec,jsc-1:jec), tmpx, flags=XUPDATE, position=CORNER)
        xb1d = tmpx(:,jsc)
        deallocate(tmpx, tmp_2d)
 
        allocate ( tmpy(im+1, jsc:jec+1) )
-       call mpp_global_field(Domain, geo_latv, tmpy, flags=XUPDATE, position=CORNER)
+       call mpp_global_field(Domain, grid%geoLatBu(isc-1:iec,jsc-1:jec), tmpy, flags=XUPDATE, position=CORNER)
        allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
        tmp_2d = 0
        tmp_2d(isc,jsc:jec+1) = sum(tmpy,1)/(im+1);
@@ -670,12 +666,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
        call mpp_set_domain_symmetry(Domain, .FALSE.)
     endif
 
-  ! Note here that geo_lonv & geo_latv are allocated on a SW grid, whereas the
-  ! indexing convention everywhere else in SIS2 is to use a NE grid.
-  do J=jsc-1,jec ; do I=isc-1,iec
-    grid%geoLatBu(I,J) = geo_latv(I+1,J+1)
-    grid%geoLonBu(I,J) = geo_lonv(I+1,J+1)
-  enddo ; enddo
 
   dte(:,:) = 0.0 ! ; dtw(:,:) = 0.0
   dtn(:,:) = 0.0 ! ; dts(:,:) = 0.0
@@ -756,8 +746,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     cor(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
   enddo ; enddo
   latitude(:,:) = geo_lat(isc:iec,jsc:jec)*pi/180
-
-    deallocate (geo_lonv, geo_latv)
 
     !--- z1l: loop through the pelist to find the symmetry processor.
     !--- This is needed to address the possibility that some of the all-land processor 
