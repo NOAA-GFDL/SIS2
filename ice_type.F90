@@ -19,6 +19,7 @@ module ice_type_mod
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: Tfreeze, radius, pi
   use ice_grid_mod,     only: set_ice_grid, t_to_uv, ice_grid_end
+  use ice_grid_mod,     only: sea_ice_grid_type
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
   use ice_grid_mod,     only: geo_lonv_ib, geo_latv_ib
@@ -283,7 +284,7 @@ public  :: earth_area
      type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
      type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
      type(icebergs), pointer            :: icebergs
-
+    type(sea_ice_grid_type) :: grid ! A structure containing metrics and grid info.
   end type ice_data_type
 
   integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
@@ -417,9 +418,11 @@ public  :: earth_area
     endif
 
     if( ASSOCIATED(Ice%maskmap) ) then
-       call set_ice_grid(Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, num_part, layout, io_layout, Ice%maskmap  )
+       call set_ice_grid(Ice%grid, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
+                         num_part, layout, io_layout, Ice%maskmap  )
     else
-       call set_ice_grid(Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, num_part, layout, io_layout )
+       call set_ice_grid(Ice%grid, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
+                         num_part, layout, io_layout )
     end if
     call set_domain(domain)
 
@@ -503,44 +506,44 @@ public  :: earth_area
     allocate ( Ice % area          (isc:iec, jsc:jec) )
     allocate ( Ice % mi            (isc:iec, jsc:jec) )
 
-    Ice % flux_sw_vis_dir =0.
-    Ice % flux_sw_vis_dif =0.
-    Ice % flux_sw_nir_dir =0.
-    Ice % flux_sw_nir_dif =0.
-    Ice % flux_lh         =0. 
-    Ice % lwdn            =0.
-    Ice % swdn            =0.
-    Ice % flux_u_top      =0. 
-    Ice % flux_v_top      =0.
-    Ice % flux_u_top_bgrid=0. 
-    Ice % flux_v_top_bgrid=0.
-    Ice % sea_lev         =0.
-    Ice % part_size       =0.
-    Ice % u_ocn           =0.
-    Ice % v_ocn           =0.
-    Ice % u_ice           =0.
-    Ice % v_ice           =0.
-    Ice % sig11           =0.
-    Ice % sig12           =0.
-    Ice % sig22           =0.
-    Ice % h_snow          =0.
-    Ice % t_snow          =0.
-    Ice % h_ice           =0.
-    Ice % t_ice1          =0.
-    Ice % t_ice2          =0.
-    Ice % t_ice3          =0.
-    Ice % t_ice4          =0.
-    Ice % area            = cell_area * 4*PI*RADIUS*RADIUS
-    Ice % mi              =0.
-    Ice % sw_abs_sfc = 0.
-    Ice % sw_abs_ocn = 0.
-    Ice % sw_abs_int = 0.
-    Ice % sw_abs_snow = 0.
-    Ice % sw_abs_ice1 = 0.
-    Ice % sw_abs_ice2 = 0.
-    Ice % sw_abs_ice3 = 0.
-    Ice % sw_abs_ice4 = 0.
-    Ice % coszen = cos(3.14*67.0/180.0) ! NP summer solstice.
+    Ice % flux_sw_vis_dir(:,:) =0.
+    Ice % flux_sw_vis_dif(:,:) =0.
+    Ice % flux_sw_nir_dir(:,:) =0.
+    Ice % flux_sw_nir_dif(:,:) =0.
+    Ice % flux_lh(:,:)         =0. 
+    Ice % lwdn(:,:)            =0.
+    Ice % swdn(:,:)            =0.
+    Ice % flux_u_top(:,:,:)      =0. 
+    Ice % flux_v_top(:,:,:)      =0.
+    Ice % flux_u_top_bgrid(:,:,:)=0. 
+    Ice % flux_v_top_bgrid(:,:,:)=0.
+    Ice % sea_lev(:,:)         =0.
+    Ice % part_size(:,:,:)       =0.
+    Ice % u_ocn(:,:)           =0.
+    Ice % v_ocn(:,:)           =0.
+    Ice % u_ice(:,:)           =0.
+    Ice % v_ice(:,:)           =0.
+    Ice % sig11(:,:)           =0.
+    Ice % sig12(:,:)           =0.
+    Ice % sig22(:,:)           =0.
+    Ice % h_snow(:,:,:)   =0.
+    Ice % t_snow(:,:,:)   =0.
+    Ice % h_ice(:,:,:)    =0.
+    Ice % t_ice1(:,:,:)   =0.
+    Ice % t_ice2(:,:,:)   =0.
+    Ice % t_ice3(:,:,:)   =0.
+    Ice % t_ice4(:,:,:)   =0.
+    Ice % area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
+    Ice % mi(:,:)         =0.
+    Ice % sw_abs_sfc(:,:,:) = 0.
+    Ice % sw_abs_ocn(:,:,:) = 0.
+    Ice % sw_abs_int(:,:,:) = 0.
+    Ice % sw_abs_snow(:,:,:) = 0.
+    Ice % sw_abs_ice1(:,:,:) = 0.
+    Ice % sw_abs_ice2(:,:,:) = 0.
+    Ice % sw_abs_ice3(:,:,:) = 0.
+    Ice % sw_abs_ice4(:,:,:) = 0.
+    Ice % coszen(:,:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
     do j = jsc, jec
        do i = isc, iec
@@ -645,11 +648,11 @@ public  :: earth_area
           ! for compatibility with preN restarts, we should check for total SW flux 
           if(field_exist(restart_file,'flux_sw')) then
              call read_data( restart_file, 'flux_sw',Ice%flux_sw_vis_dir , domain ) 
-             ! simplest way to brake the total flux to 4 components
-             Ice % flux_sw_vis_dir = Ice%flux_sw_vis_dir / 4
-             Ice % flux_sw_vis_dif = Ice%flux_sw_vis_dir
-             Ice % flux_sw_nir_dir = Ice%flux_sw_vis_dir
-             Ice % flux_sw_nir_dif = Ice%flux_sw_vis_dir
+             ! simplest way to break the total flux to 4 components
+             Ice % flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
+             Ice % flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
+             Ice % flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
+             Ice % flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
           else
              call error_mesg ('ice_model_init', &
                   'Restart file does not contain flux_sw total or its components!', FATAL)
@@ -675,56 +678,56 @@ public  :: earth_area
        call mpp_update_domains(Ice%sig22, Domain )
        call mpp_update_domains(Ice%sig12, Domain )
     else ! no restart => no ice
-       Ice % part_size    = 0.0
+       Ice % part_size(:,:,:)  = 0.0
        !   where (Ice%mask) Ice % part_size (:,:,1) = 1.0  - flux_exchange won't allow
-       Ice % part_size (:,:,1) = 1.0
-       Ice % albedo            = 0.0
-       Ice % albedo_vis_dir    = 0.0         
-       Ice % albedo_nir_dir    = 0.0       
-       Ice % albedo_vis_dif    = 0.0       
-       Ice % albedo_nir_dif    = 0.0       
-       Ice % rough_mom         = mom_rough_ice
-       Ice % rough_heat        = heat_rough_ice
-       Ice % rough_moist       = heat_rough_ice
-       Ice % t_surf            = Tfreeze-5.0
-       Ice % h_snow            = 0.0
-       Ice % t_snow            = -5.0
-       Ice % h_ice             = 0.0
-       Ice % t_ice1            = -5.0
-       Ice % t_ice2            = -5.0
-       Ice % t_ice3            = -5.0
-       Ice % t_ice4            = -5.0
-       Ice % u_ice             = 0.0
-       Ice % v_ice             = 0.0
-       Ice % sig11             = 0.0
-       Ice % sig22             = 0.0
-       Ice % sig12             = 0.0
-       Ice % flux_u            = 0.0 
-       Ice % flux_v            = 0.0
-       Ice % flux_t            = 0.0 
-       Ice % flux_q            = 0.0
-       Ice % flux_lw           = 0.0
-       Ice % flux_salt         = 0.0 
-       Ice % lprec             = 0.0
-       Ice % fprec             = 0.0
-       Ice % p_surf            = 0.0
-       Ice % runoff            = 0.0
-       Ice % calving           = 0.0
-       Ice % runoff_hflx       = 0.0
-       Ice % calving_hflx      = 0.0
-       Ice % frazil            = 0.0
-       Ice % flux_sw_vis_dir   = 0.0 
-       Ice % flux_sw_vis_dif   = 0.0 
-       Ice % flux_sw_nir_dir   = 0.0 
-       Ice % flux_sw_nir_dif   = 0.0 
+       Ice % part_size(:,:,1)  = 1.0
+       Ice % albedo(:,:,:) = 0.0
+       Ice % albedo_vis_dir(:,:,:) = 0.0         
+       Ice % albedo_nir_dir(:,:,:) = 0.0       
+       Ice % albedo_vis_dif(:,:,:) = 0.0       
+       Ice % albedo_nir_dif(:,:,:) = 0.0       
+       Ice % rough_mom(:,:,:)   = mom_rough_ice
+       Ice % rough_heat(:,:,:)  = heat_rough_ice
+       Ice % rough_moist(:,:,:) = heat_rough_ice
+       Ice % t_surf(:,:,:) = Tfreeze-5.0
+       Ice % h_snow(:,:,:) = 0.0
+       Ice % t_snow(:,:,:) = -5.0
+       Ice % h_ice(:,:,:) = 0.0
+       Ice % t_ice1(:,:,:) = -5.0
+       Ice % t_ice2(:,:,:) = -5.0
+       Ice % t_ice3(:,:,:) = -5.0
+       Ice % t_ice4(:,:,:) = -5.0
+       Ice % u_ice(:,:) = 0.0
+       Ice % v_ice(:,:) = 0.0
+       Ice % sig11(:,:) = 0.0
+       Ice % sig22(:,:) = 0.0
+       Ice % sig12(:,:) = 0.0
+       Ice % flux_u(:,:) = 0.0 
+       Ice % flux_v(:,:) = 0.0
+       Ice % flux_t(:,:) = 0.0 
+       Ice % flux_q(:,:) = 0.0
+       Ice % flux_lw(:,:) = 0.0
+       Ice % flux_salt(:,:) = 0.0 
+       Ice % lprec(:,:) = 0.0
+       Ice % fprec(:,:) = 0.0
+       Ice % p_surf(:,:) = 0.0
+       Ice % runoff(:,:) = 0.0
+       Ice % calving(:,:) = 0.0
+       Ice % runoff_hflx(:,:) = 0.0
+       Ice % calving_hflx(:,:) = 0.0
+       Ice % frazil(:,:) = 0.0
+       Ice % flux_sw_vis_dir(:,:) = 0.0 
+       Ice % flux_sw_vis_dif(:,:) = 0.0 
+       Ice % flux_sw_nir_dir(:,:) = 0.0 
+       Ice % flux_sw_nir_dif(:,:) = 0.0 
        do_init = .true. ! done in ice_model
     end if
 
-    Ice % tmelt       = 0.0
-    Ice % bmelt       = 0.0
+    Ice % tmelt(:,:,:)       = 0.0
+    Ice % bmelt(:,:,:)       = 0.0
 
-    Ice % qflx_lim_ice = 0.0
-    Ice % qflx_res_ice = 0.0
+    Ice % qflx_lim_ice(:,:) = 0.0
+    Ice % qflx_res_ice(:,:) = 0.0
 
     Ice%part_size_uv(:,:,1) = 1.0
     do k=2,km
@@ -751,7 +754,8 @@ public  :: earth_area
     ! Initialize icebergs
     if (do_icebergs) call icebergs_init(Ice%icebergs, &
              im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
-             dt_slow, Time, geo_lonv_ib, geo_latv_ib, wett, dtn, dte, cell_area, cos_rot, sin_rot )
+             dt_slow, Time, Ice%grid%geoLonBu(isc:iec,jsc:jec), Ice%grid%geoLatBu(isc:iec,jsc:jec), &
+             wett, dtn, dte, cell_area, cos_rot, sin_rot )
 
    if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 
@@ -776,7 +780,7 @@ public  :: earth_area
     call ice_model_restart()
 
     !--- release memory ------------------------------------------------
-    call ice_grid_end()
+    call ice_grid_end(Ice%grid)
 
     deallocate(Ice % mask, Ice % ice_mask, Ice % t_surf, Ice % s_surf, Ice % sea_lev )
     deallocate(Ice % vmask)
@@ -881,9 +885,9 @@ public  :: earth_area
              set_name='ice', Domain2=Domain, aux='geolon_t')
     id_yto = diag_axis_init ('yt_ocean',grid_y_t,'degrees_N','y','tcell latitude',&
              set_name='ice', Domain2=Domain, aux='geolat_t')
-    axto = (/ id_xto, id_yto       /)
-    axv  = (/ id_xv, id_yv       /)
-    axt  = (/ id_xt, id_yt       /)
+    axto = (/ id_xto, id_yto /)
+    axv  = (/ id_xv, id_yv  /)
+    axt  = (/ id_xt, id_yt  /)
     axt2 = (/ id_xt, id_yt, id_ct/)
     Ice%axes(:) = axt2(:)
     axtv = (/ id_xt, id_yv /); ! for north faces of t-cells

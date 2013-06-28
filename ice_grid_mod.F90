@@ -19,9 +19,9 @@ module ice_grid_mod
   use mosaic_mod,      only: calc_mosaic_grid_area, get_mosaic_contact
   use grid_mod,        only: get_grid_cell_vertices
 
-  implicit none
+  implicit none ; private
   include 'netcdf.inc'
-  private
+#include <SIS2_memory.h>
 
   public :: set_ice_grid, dt_evp, evp_sub_steps, g_sum, ice_avg, all_avg
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
@@ -36,6 +36,108 @@ module ice_grid_mod
   public :: reproduce_siena_201303
 
   type(domain2D), save :: Domain
+
+type, public :: sea_ice_grid_type
+  type(SIS2_domain_type), pointer :: Domain => NULL()
+  type(SIS2_domain_type), pointer :: Domain_aux => NULL()
+  integer :: isc, iec, jsc, jec ! The range of the computational domain indicies
+  integer :: isd, ied, jsd, jed ! and data domain indicies at tracer cell centers.
+  integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indicies.
+  integer :: IscB, IecB, JscB, JecB ! The range of the computational domain indicies
+  integer :: IsdB, IedB, JsdB, JedB ! and data domain indicies at tracer cell vertices.
+  integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indicies.
+  integer :: isd_global         ! The values of isd and jsd in the global
+  integer :: jsd_global         ! (decomposition invariant) index space.
+  integer :: ks, ke             ! The range of layer's vertical indicies.
+  logical :: symmetric          ! True if symmetric memory is used.
+  logical :: nonblocking_updates  ! If true, non-blocking halo updates are
+                                  ! allowed.  The default is .false. (for now).
+  integer :: first_direction ! An integer that indicates which direction is
+                             ! to be updated first in directionally split
+                             ! parts of the calculation.  This can be altered
+                             ! during the course of the run via calls to
+                             ! set_first_direction.
+
+  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+    mask2dT, &   ! 0 for land points and 1 for ocean points on the h-grid. Nd.
+    geoLatT, & ! The geographic latitude at q points in degrees of latitude or m.
+    geoLonT, & ! The geographic longitude at q points in degrees of longitude or m.
+    dxT, IdxT, & ! dxT is delta x at h points, in m, and IdxT is 1/dxT in m-1.
+    dyT, IdyT, & ! dyT is delta y at h points, in m, and IdyT is 1/dyT in m-1.
+    areaT, &     ! areaT is the area of an h-cell, in m2.
+    IareaT       ! IareaT = 1/areaT, in m-2.
+
+  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
+    mask2dCu, &  ! 0 for boundary points and 1 for ocean points on the u grid.  Nondim.
+    geoLatCu, &  ! The geographic latitude at u points in degrees of latitude or m.
+    geoLonCu, &  ! The geographic longitude at u points in degrees of longitude or m.
+    dxCu, IdxCu, & ! dxCu is delta x at u points, in m, and IdxCu is 1/dxCu in m-1.
+    dyCu, IdyCu, & ! dyCu is delta y at u points, in m, and IdyCu is 1/dyCu in m-1.
+    dy_Cu, &     ! The unblocked lengths of the u-faces of the h-cell in m.
+    dy_Cu_obc, & ! The unblocked lengths of the u-faces of the h-cell in m for OBC.
+    IareaCu, &   ! The masked inverse areas of u-grid cells in m2.
+    areaCu       ! The areas of the u-grid cells in m2.
+
+  real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
+    mask2dCv, &  ! 0 for boundary points and 1 for ocean points on the v grid.  Nondim.
+    geoLatCv, &  ! The geographic latitude at v points in degrees of latitude or m.
+    geoLonCv, &  !  The geographic longitude at v points in degrees of longitude or m.
+    dxCv, IdxCv, & ! dxCv is delta x at v points, in m, and IdxCv is 1/dxCv in m-1.
+    dyCv, IdyCv, & ! dyCv is delta y at v points, in m, and IdyCv is 1/dyCv in m-1.
+    dx_Cv, &     ! The unblocked lengths of the v-faces of the h-cell in m.
+    dx_Cv_obc, & ! The unblocked lengths of the v-faces of the h-cell in m for OBC.
+    IareaCv, &   ! The masked inverse areas of v-grid cells in m2.
+    areaCv       ! The areas of the v-grid cells in m2.
+
+  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
+    mask2dBu, &  ! 0 for boundary points and 1 for ocean points on the q grid.  Nondim.
+    geoLatBu, &  ! The geographic latitude at q points in degrees of latitude or m.
+    geoLonBu, &  ! The geographic longitude at q points in degrees of longitude or m.
+    dxBu, IdxBu, & ! dxBu is delta x at q points, in m, and IdxBu is 1/dxBu in m-1.
+    dyBu, IdyBu, & ! dyBu is delta y at q points, in m, and IdyBu is 1/dyBu in m-1.
+    areaBu, &    ! areaBu is the area of a q-cell, in m2
+    IareaBu      ! IareaBu = 1/areaBu in m-2.
+
+  real, pointer, dimension(:) :: &
+    gridLatT => NULL(), gridLatB => NULL() ! The latitude of T or B points for
+                        ! the purpose of labeling the output axes.
+                        ! On many grids these are the same as geoLatT & geoLatBu.
+  real, pointer, dimension(:) :: &
+    gridLonT => NULL(), gridLonB => NULL() ! The longitude of T or B points for
+                        ! the purpose of labeling the output axes.
+                        ! On many grids these are the same as geoLonT & geoLonBu.
+  character(len=40) :: &
+    x_axis_units, &     !   The units that are used in labeling the coordinate
+    y_axis_units        ! axes.
+
+  character(len=40) :: axis_units = ' '! Units for the horizontal coordinates.
+
+  real :: g_Earth !   The gravitational acceleration in m s-2.
+  real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
+    CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
+
+  ! The following are axis types defined for output.
+  integer, dimension(3) :: axesBL, axesTL, axesCuL, axesCvL
+  integer, dimension(3) :: axesBi, axesTi, axesCui, axesCvi
+  integer, dimension(2) :: axesB1, axesT1, axesCu1, axesCv1
+  integer, dimension(1) :: axeszi, axeszL
+
+end type sea_ice_grid_type
+
+type, public :: SIS2_domain_type
+  type(domain2D), pointer :: mpp_domain => NULL() ! The domain with halos on
+                                        ! this processor, centered at h points.
+  integer :: niglobal, njglobal         ! The total horizontal domain sizes.
+  integer :: nihalo, njhalo             ! The X- and Y- halo sizes in memory.
+  logical :: symmetric                  ! True if symmetric memory is used with
+                                        ! this domain.
+  logical :: nonblocking_updates        ! If true, non-blocking halo updates are
+                                        ! allowed.  The default is .false. (for now).
+  integer :: layout(2), io_layout(2)    ! Saved data for sake of constructing
+  integer :: X_FLAGS,Y_FLAGS            ! new domains of different resolution.
+  logical :: use_io_layout              ! True if an I/O layout is available.
+  logical, pointer :: maskmap(:,:)=> NULL() !option to mpp_define_domains
+end type SIS2_domain_type
 
   integer                           :: isc, iec, jsc, jec ! compute domain
   integer                           :: isd, ied, jsd, jed ! data domain
@@ -278,8 +380,9 @@ contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine set_ice_grid(ice_domain, dt_slow, dyn_sub_steps_in, &
+  subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
                           adv_sub_steps_in, km_in, layout, io_layout, maskmap )
+    type(sea_ice_grid_type), intent(inout) :: grid
     type(domain2D),        intent(inout) :: ice_domain
     real,                  intent(in)    :: dt_slow
     integer,               intent(in)    :: dyn_sub_steps_in
@@ -455,6 +558,28 @@ contains
     call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, maskmap=maskmap, name='ice_nohalo') ! domain without halo
     call mpp_define_io_domain(ice_domain, io_layout)
 
+  ! Allocate and fill in default values for elements of the sea ice grid type.
+  
+  grid%isc = isc ; grid%iec = iec ; grid%jsc = jsc ; grid%jec = jec
+  grid%isd = isd ; grid%ied = ied ; grid%jsd = jsd ; grid%jed = jed
+  grid%isg = isg ; grid%ieg = ieg ; grid%jsg = jsg ; grid%jeg = jeg
+
+  grid%symmetric = .false.          ! ###This will be made run-time selectable later.
+  grid%nonblocking_updates = .true. ! ###This will be made run-time selectable later.
+
+  grid%IscB = grid%isc ; grid%JscB = grid%jsc
+  grid%IsdB = grid%isd ; grid%JsdB = grid%jsd
+  grid%IsgB = grid%isg ; grid%JsgB = grid%jsg
+  if (grid%symmetric) then
+    grid%IscB = grid%isc-1 ; grid%JscB = grid%jsc-1
+    grid%IsdB = grid%isd-1 ; grid%JsdB = grid%jsd-1
+    grid%IsgB = grid%isg-1 ; grid%JsgB = grid%jsg-1
+  endif
+  grid%IecB = grid%iec ; grid%JecB = grid%jec
+  grid%IedB = grid%ied ; grid%JedB = grid%jed
+  grid%IegB = grid%ieg ; grid%JegB = grid%jeg
+
+  call allocate_metrics(grid)
 
     allocate ( geo_lonv(isc:iec+1,jsc:jec+1), geo_latv(isc:iec+1,jsc:jec+1) )
     
@@ -576,8 +701,11 @@ contains
        call mpp_deallocate_domain(domain2)
     end select
 
+    ! Determine the domain-averaged latitudes and longitudes on the grid for
+    ! diagnostic purposes. This is a hold-over and will be changed to match
+    ! the MOM6 convention of using the "nominal" latitudes and longitudes,
+    ! which are the actual lat & lon on spherical portions of the grid.
     allocate ( xb1d (im+1), yb1d (jm+1) )
-
     if(PRESENT(maskmap)) then    
        allocate(tmpx(im+1,jm+1), tmpy(im+1,jm+1))
        call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
@@ -611,24 +739,36 @@ contains
        call mpp_set_domain_symmetry(Domain, .FALSE.)
     endif
 
-    dte = 0.0
-    dtn = 0.0
-    cos_rot = 0.0
-    sin_rot = 0.0
+  ! Note here that geo_lonv & geo_latv are allocated on a SW grid, whereas the
+  ! indexing convention everywhere else in SIS2 is to use a NE grid.
+  do J=jsc-1,jec ; do I=isc-1,iec
+    grid%geoLatBu(I,J) = geo_latv(I+1,J+1)
+    grid%geoLonBu(I,J) = geo_lonv(I+1,J+1)
+  enddo ; enddo
 
-    do j=jsc,jec
-       do i=isc,iec
-          dts(i,j)     = edge_length(geo_lonv(i,j),  geo_latv(i,j), geo_lonv(i+1,j),geo_latv(i+1,j))
-          dtn(i,j)     = edge_length(geo_lonv(i,j+1),geo_latv(i,j+1), geo_lonv(i+1,j+1),geo_latv(i+1,j+1))
-          dtw(i,j)     = edge_length(geo_lonv(i,j),  geo_latv(i,j), geo_lonv(i,j+1),geo_latv(i,j+1))
-          dte(i,j)     = edge_length(geo_lonv(i+1,j),geo_latv(i+1,j),geo_lonv(i+1,j+1),geo_latv(i+1,j+1))
-          lon_scale    = cos((geo_latv(i,j  )+geo_latv(i+1,j  )+geo_latv(i,j+1)+geo_latv(i+1,j+1))*atan(1.0)/180)
-          angle        = atan2((geo_lonv(i,j+1)+geo_lonv(i+1,j+1)-geo_lonv(i,j)-geo_lonv(i+1,j))&
-                         *lon_scale, geo_latv(i,j+1)+geo_latv(i+1,j+1)-geo_latv(i,j)-geo_latv(i+1,j) )
-          sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
-          cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
-       end do
-    end do
+  dte(:,:) = 0.0 ! ; dtw(:,:) = 0.0
+  dtn(:,:) = 0.0 ! ; dts(:,:) = 0.0
+  cos_rot(:,:) = 0.0
+  sin_rot(:,:) = 0.0
+
+  do j=jsc,jec ; do i=isc,iec
+    dts(i,j)     = edge_length(grid%geoLonBu(I-1,J-1), grid%geoLatBu(I-1,J-1), &
+                               grid%geoLonBu(I,J-1), grid%geoLatBu(I,J-1))
+    dtn(i,j)     = edge_length(grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J), &
+                               grid%geoLonBu(I,J), grid%geoLatBu(I,J))
+    dtw(i,j)     = edge_length(grid%geoLonBu(I-1,J-1),  grid%geoLatBu(I-1,J-1), &
+                               grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J))
+    dte(i,j)     = edge_length(grid%geoLonBu(I,J-1),grid%geoLatBu(I,J-1), &
+                               grid%geoLonBu(I,J),grid%geoLatBu(I,J))
+    lon_scale    = cos((grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1  ) + &
+                        grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J)) * atan(1.0)/180)
+    angle        = atan2((grid%geoLonBu(I-1,J) + grid%geoLonBu(I,J) - &
+                          grid%geoLonBu(I-1,J-1) - grid%geoLonBu(I,J-1))*lon_scale, &
+                          grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J) - &
+                          grid%geoLatBu(I-1,J-1) - grid%geoLatBu(I,J-1) )
+    sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
+    cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
+  enddo ; enddo
 
     if(reproduce_siena_201303) then
        call mpp_update_domains(dte, Domain)
@@ -639,8 +779,8 @@ contains
     call mpp_update_domains(cos_rot, Domain)
     call mpp_update_domains(sin_rot, Domain)
 
-    dxt = 0.0
-    dyt = 0.0
+    dxt(:,:) = 0.0
+    dyt(:,:) = 0.0
 
     do j = jsc, jec
        do i = isc, iec
@@ -656,8 +796,8 @@ contains
     call mpp_update_domains(dxt, Domain )
     call mpp_update_domains(dyt, Domain )
 
-    dxv = 1.0
-    dyv = 1.0
+    dxv(:,:) = 1.0
+    dyv(:,:) = 1.0
 
     dxv(isc:iec,jsc:jec) = t_on_uv(dxt)
     dyv(isc:iec,jsc:jec) = t_on_uv(dyt)
@@ -670,22 +810,21 @@ contains
     endif
 
     !--- dxdy and dydx to be used by ice_dyn_mod.
-    dydx = dTdx(dyt)
-    dxdy = dTdy(dxt)
+    dydx(:,:) = dTdx(dyt(:,:))
+    dxdy(:,:) = dTdy(dxt(:,:))
 
-    do j=jsc,jec
-       do i = isc,iec
-          geo_lon(i,j) = lon_avg( (/ geo_lonv(i,j  ), geo_lonv(i+1,j  ), &
-                         geo_lonv(i,j+1), geo_lonv(i+1,j+1) /) )
-          geo_lonv_ib(i,j) = geo_lonv(i+1,j+1)
-          geo_latv_ib(i,j) = geo_latv(i+1,j+1)
-       end do
-    end do
+  do j=jsc,jec ; do i=isc,iec
+    !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
+    geo_lon(i,j) = lon_avg( (/ grid%geoLonBu(I-1,J-1), grid%geoLonBu(I,J-1), &
+                               grid%geoLonBu(I-1,J), grid%geoLonBu(I,J) /) )
+    geo_lat(i,j) = (grid%geoLatBu(I-1,J-1)   + grid%geoLatBu(I,J-1) + &
+                    grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J)) / 4
+  enddo ; enddo
 
-    geo_lat  = (geo_latv(isc:iec,jsc:jec) + geo_latv(isc+1:iec+1,jsc:jec) &
-               +geo_latv(isc:iec,jsc+1:jec+1)+geo_latv(isc+1:iec+1,jsc+1:jec+1))/4
-    cor      = 2*omega*sin(geo_latv(isc+1:iec+1,jsc+1:jec+1)*pi/180)
-    latitude = geo_lat(isc:iec,jsc:jec)*pi/180
+  do J=jsc,jec ; do I=isc,iec
+    cor(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
+  enddo ; enddo
+  latitude(:,:) = geo_lat(isc:iec,jsc:jec)*pi/180
 
     deallocate (geo_lonv, geo_latv)
 
@@ -719,15 +858,40 @@ contains
     return
   end subroutine set_ice_grid
 
-  !#####################################################################
-  !--- release memory
-  subroutine ice_grid_end
+!#####################################################################
+!--- release memory
+subroutine ice_grid_end(G)
+  type(sea_ice_grid_type), intent(inout) :: G
 
-     deallocate(wett, wetv, dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, latitude )
-     deallocate(cor, geo_lat, geo_lon, xb1d, yb1d, sin_rot, cos_rot, cell_area )
+  DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
+  DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
+
+  DEALLOC_(G%dyT)  ; DEALLOC_(G%dyCu)  ; DEALLOC_(G%dyCv)  ; DEALLOC_(G%dyBu)
+  DEALLOC_(G%IdyT) ; DEALLOC_(G%IdyCu) ; DEALLOC_(G%IdyCv) ; DEALLOC_(G%IdyBu)
+
+  DEALLOC_(G%areaT)  ; DEALLOC_(G%IareaT)
+  DEALLOC_(G%areaBu) ; DEALLOC_(G%IareaBu)
+  DEALLOC_(G%areaCu) ; DEALLOC_(G%IareaCu)
+  DEALLOC_(G%areaCv)  ; DEALLOC_(G%IareaCv)
+
+  DEALLOC_(G%mask2dT)  ; DEALLOC_(G%mask2dCu)
+  DEALLOC_(G%mask2dCv) ; DEALLOC_(G%mask2dBu)
+
+  DEALLOC_(G%geoLatT)  ; DEALLOC_(G%geoLatCu)
+  DEALLOC_(G%geoLatCv) ; DEALLOC_(G%geoLatBu)
+  DEALLOC_(G%geoLonT)  ; DEALLOC_(G%geoLonCu)
+  DEALLOC_(G%geoLonCv) ; DEALLOC_(G%geoLonBu)
+
+  DEALLOC_(G%dx_Cv) ; DEALLOC_(G%dy_Cu)
+  DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
+
+  DEALLOC_(G%CoriolisBu)
+
+  deallocate(wett, wetv, dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, latitude )
+  deallocate(cor, geo_lat, geo_lon, xb1d, yb1d, sin_rot, cos_rot, cell_area )
 
 
-  end subroutine ice_grid_end
+end subroutine ice_grid_end
 
   !#####################################################################
 
@@ -973,5 +1137,65 @@ contains
          !                     'cut check of mirror anti-symmetry failed', FATAL)
   end subroutine cut_check
   !#####################################################################
+
+subroutine allocate_metrics(G)
+  type(sea_ice_grid_type), intent(inout) :: G
+  integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
+
+  ! This subroutine allocates the lateral elements of the sea_ice_grid_type that
+  ! are always used and zeros them out.
+
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+
+  ALLOC_(G%dxT(isd:ied,jsd:jed))       ; G%dxT(:,:) = 0.0
+  ALLOC_(G%dxCu(IsdB:IedB,jsd:jed))    ; G%dxCu(:,:) = 0.0
+  ALLOC_(G%dxCv(isd:ied,JsdB:JedB))    ; G%dxCv(:,:) = 0.0
+  ALLOC_(G%dxBu(IsdB:IedB,JsdB:JedB))  ; G%dxBu(:,:) = 0.0
+  ALLOC_(G%IdxT(isd:ied,jsd:jed))      ; G%IdxT(:,:) = 0.0
+  ALLOC_(G%IdxCu(IsdB:IedB,jsd:jed))   ; G%IdxCu(:,:) = 0.0
+  ALLOC_(G%IdxCv(isd:ied,JsdB:JedB))   ; G%IdxCv(:,:) = 0.0
+  ALLOC_(G%IdxBu(IsdB:IedB,JsdB:JedB)) ; G%IdxBu(:,:) = 0.0
+
+  ALLOC_(G%dyT(isd:ied,jsd:jed))       ; G%dyT(:,:) = 0.0
+  ALLOC_(G%dyCu(IsdB:IedB,jsd:jed))    ; G%dyCu(:,:) = 0.0
+  ALLOC_(G%dyCv(isd:ied,JsdB:JedB))    ; G%dyCv(:,:) = 0.0
+  ALLOC_(G%dyBu(IsdB:IedB,JsdB:JedB))  ; G%dyBu(:,:) = 0.0
+  ALLOC_(G%IdyT(isd:ied,jsd:jed))      ; G%IdyT(:,:) = 0.0
+  ALLOC_(G%IdyCu(IsdB:IedB,jsd:jed))   ; G%IdyCu(:,:) = 0.0
+  ALLOC_(G%IdyCv(isd:ied,JsdB:JedB))   ; G%IdyCv(:,:) = 0.0
+  ALLOC_(G%IdyBu(IsdB:IedB,JsdB:JedB)) ; G%IdyBu(:,:) = 0.0
+
+  ALLOC_(G%areaT(isd:ied,jsd:jed))       ; G%areaT(:,:) = 0.0
+  ALLOC_(G%IareaT(isd:ied,jsd:jed))      ; G%IareaT(:,:) = 0.0
+  ALLOC_(G%areaBu(IsdB:IedB,JsdB:JedB))  ; G%areaBu(:,:) = 0.0
+  ALLOC_(G%IareaBu(IsdB:IedB,JsdB:JedB)) ; G%IareaBu(:,:) = 0.0
+
+  ALLOC_(G%mask2dT(isd:ied,jsd:jed))      ; G%mask2dT(:,:) = 0.0
+  ALLOC_(G%mask2dCu(IsdB:IedB,jsd:jed))   ; G%mask2dCu(:,:) = 0.0
+  ALLOC_(G%mask2dCv(isd:ied,JsdB:JedB))   ; G%mask2dCv(:,:) = 0.0
+  ALLOC_(G%mask2dBu(IsdB:IedB,JsdB:JedB)) ; G%mask2dBu(:,:) = 0.0
+  ALLOC_(G%geoLatT(isd:ied,jsd:jed))      ; G%geoLatT(:,:) = 0.0
+  ALLOC_(G%geoLatCu(IsdB:IedB,jsd:jed))   ; G%geoLatCu(:,:) = 0.0
+  ALLOC_(G%geoLatCv(isd:ied,JsdB:JedB))   ; G%geoLatCv(:,:) = 0.0
+  ALLOC_(G%geoLatBu(IsdB:IedB,JsdB:JedB)) ; G%geoLatBu(:,:) = 0.0
+  ALLOC_(G%geoLonT(isd:ied,jsd:jed))      ; G%geoLonT(:,:) = 0.0
+  ALLOC_(G%geoLonCu(IsdB:IedB,jsd:jed))   ; G%geoLonCu(:,:) = 0.0
+  ALLOC_(G%geoLonCv(isd:ied,JsdB:JedB))   ; G%geoLonCv(:,:) = 0.0
+  ALLOC_(G%geoLonBu(IsdB:IedB,JsdB:JedB)) ; G%geoLonBu(:,:) = 0.0
+
+  ALLOC_(G%dx_Cv(isd:ied,JsdB:JedB))     ; G%dx_Cv(:,:) = 0.0
+  ALLOC_(G%dy_Cu(IsdB:IedB,jsd:jed))     ; G%dy_Cu(:,:) = 0.0
+  ALLOC_(G%dx_Cv_obc(isd:ied,JsdB:JedB)) ; G%dx_Cv_obc(:,:) = 0.0
+  ALLOC_(G%dy_Cu_obc(IsdB:IedB,jsd:jed)) ; G%dy_Cu_obc(:,:) = 0.0  
+
+  ALLOC_(G%areaCu(IsdB:IedB,jsd:jed))  ; G%areaCu(:,:) = 0.0
+  ALLOC_(G%areaCv(isd:ied,JsdB:JedB))  ; G%areaCv(:,:) = 0.0
+  ALLOC_(G%IareaCu(IsdB:IedB,jsd:jed)) ; G%IareaCu(:,:) = 0.0
+  ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0
+
+  ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
+
+end subroutine allocate_metrics
 
 end module ice_grid_mod
