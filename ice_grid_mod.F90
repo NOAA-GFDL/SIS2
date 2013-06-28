@@ -34,7 +34,6 @@ module ice_grid_mod
   public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
   public :: dxdy, dydx, ice_grid_end
   public :: tripolar_grid, x_cyclic, dt_adv
-  public :: reproduce_siena_201303
 
   type(domain2D), save :: Domain
 
@@ -170,8 +169,6 @@ end type SIS2_domain_type
   integer            :: adv_sub_steps                ! advection steps / timestep
   real               :: dt_adv = 0.0                 ! advection timestep (sec)
   integer            :: comm_pe                      ! pe to be communicated with
-
-  logical            :: reproduce_siena_201303 = .FALSE.
 
 contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -691,12 +688,9 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(dte, Domain)
-       call mpp_update_domains(dtn, Domain)
-    else
-       call mpp_update_domains(dte, dtn, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
-    endif
+  call mpp_update_domains(dte, dtn, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
+
+  ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
     call mpp_update_domains(cos_rot, Domain)
     call mpp_update_domains(sin_rot, Domain)
 
@@ -723,12 +717,7 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     dxv(isc:iec,jsc:jec) = t_on_uv(dxt)
     dyv(isc:iec,jsc:jec) = t_on_uv(dyt)
 
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(dxv, Domain )
-       call mpp_update_domains(dyv, Domain )
-    else
-       call mpp_update_domains(dxv, dyv, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
-    endif
+  call mpp_update_domains(dxv, dyv, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
 
     !--- dxdy and dydx to be used by ice_dyn_mod.
     dydx(:,:) = dTdx(dyt(:,:))
@@ -954,12 +943,7 @@ end subroutine ice_grid_end
        enddo
     enddo
 
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(ue, Domain)
-       call mpp_update_domains(vn, Domain)
-    else
-       call mpp_update_domains(ue, vn, Domain, gridtype=CGRID_NE)
-    endif
+  call mpp_update_domains(ue, vn, Domain, gridtype=CGRID_NE)
 
     do l=1,adv_sub_steps
        do j = jsd, jec

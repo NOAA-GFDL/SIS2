@@ -24,7 +24,6 @@ module ice_type_mod
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid, dtn, dte, wetv
-  use ice_grid_mod,     only: reproduce_siena_201303
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
   use ice_dyn_mod,      only: ice_dyn_param
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -162,7 +161,7 @@ public  :: earth_area
                            t_range_melt, ks, h_lo_lim, verbose,        &
                            do_icebergs, add_diurnal_sw, io_layout, channel_viscosity,&
                            smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
-                           mask_table, reproduce_siena_201303, do_deltaEdd,R_ice,R_snw,R_pnd
+                           mask_table, do_deltaEdd,R_ice,R_snw,R_pnd
 
   logical :: do_init = .false.
   real    :: hlim(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
@@ -558,12 +557,8 @@ public  :: earth_area
           end if
        enddo
     enddo
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(Ice%vmask, domain=domain )
-    else
-       call mpp_update_domains(Ice%vmask, domain=domain, position=CORNER )
-    endif
-
+    call mpp_update_domains(Ice%vmask, domain=domain, position=CORNER )
+ 
     Ice % Time           = Time
     Ice % Time_Init      = Time_Init
     Ice % Time_step_fast = Time_step_fast
@@ -667,12 +662,8 @@ public  :: earth_area
        call mpp_update_domains(Ice%t_ice2(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice3(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_ice4(:,:,2:km), Domain )
-       if(reproduce_siena_201303) then
-          call mpp_update_domains(Ice%u_ice, Domain )
-          call mpp_update_domains(Ice%v_ice, Domain )
-       else
-          call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
-       endif
+
+      call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
        call mpp_update_domains(Ice%sig11, Domain )
        call mpp_update_domains(Ice%sig22, Domain )
        call mpp_update_domains(Ice%sig12, Domain )

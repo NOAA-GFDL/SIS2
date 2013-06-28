@@ -81,7 +81,7 @@ module ice_model_mod
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, latitude
   use ice_spec_mod,     only: get_sea_surface
   use ice_grid_mod,     only: dte, dtn, dxv, dyv, dxt, dyt, dt_adv, wett
-  use ice_grid_mod,     only: reproduce_siena_201303
+
   !
   ! the following two modules are the work horses of the sea ice model
   !
@@ -380,16 +380,11 @@ contains
                Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
        end do
     else
-       if(reproduce_siena_201303) then
-          Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:) = Ice%flux_u_top(isc:iec,jsc:jec,:)
-          Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:) = Ice%flux_v_top(isc:iec,jsc:jec,:)
-       else
-          call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
-          do k=1,km
-             call vel_t_to_uv( Ice%flux_u_top(:,:,k),Ice%flux_v_top(:,:,k), &
-                  Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
-          end do
-       endif
+      call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
+      do k=1,km
+         call vel_t_to_uv( Ice%flux_u_top(:,:,k),Ice%flux_v_top(:,:,k), &
+              Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
+      end do
     endif
 
     do k = 1, km
@@ -692,11 +687,7 @@ contains
        enddo
     enddo
 
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain)
-    else
-       call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain, gridtype=BGRID_NE)
-    endif
+    call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain, gridtype=BGRID_NE)
 
     ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
     call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1))
@@ -1098,32 +1089,15 @@ contains
     tmp2 = ice_avg(Ice%h_ice,Ice%part_size)
 
     call mpp_clock_begin(iceClocka)
-    if(reproduce_siena_201303) then
-       call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
-                         Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
-                         ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
-                         ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) ),  &
-                         Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
-    else
-       call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
-                         Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
-                         ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                         ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                         Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
-    endif
+    call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
+                     Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
+                     ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
+                     ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
+                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain)
-       if(tripolar_grid) then
-          call cut_check('u_ice', Ice%u_ice) ! these calls fix round off differences
-          call cut_check('v_ice', Ice%v_ice) ! in northernmost velocities over the fold
-          call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain)
-       endif
-    else
-       call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE)
-    endif
+    call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE)
     call mpp_clock_end(iceClockb)
 
     call mpp_clock_begin(iceClockc)
@@ -1759,11 +1733,7 @@ contains
       enddo
     endif
 
-    if(reproduce_siena_201303) then
-       call mpp_update_domains(uc, vc, Domain)
-    else
-       call mpp_update_domains(uc, vc, Domain, gridtype=CGRID_NE)
-    endif
+    call mpp_update_domains(uc, vc, Domain, gridtype=CGRID_NE)
 
     uf = 0.0; vf = 0.0
     do k=2,km
