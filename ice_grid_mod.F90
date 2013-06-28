@@ -171,7 +171,7 @@ end type SIS2_domain_type
   real               :: dt_adv = 0.0                 ! advection timestep (sec)
   integer            :: comm_pe                      ! pe to be communicated with
 
-  logical            :: reproduce_siena_201303 = .TRUE.
+  logical            :: reproduce_siena_201303 = .FALSE.
 
 contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
