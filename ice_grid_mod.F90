@@ -4,7 +4,7 @@
 module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi
-  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe, mpp_error, NOTE, mpp_chksum
+  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe, mpp_chksum
   use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
   use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
@@ -13,7 +13,9 @@ module ice_grid_mod
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
   use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
   use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
-  use fms_mod,         only: error_mesg, FATAL, field_exist, field_size, read_data
+  use MOM_error_handler, only : SIS2_error=>MOM_error, FATAL, WARNING, SIS2_mesg=>MOM_mesg
+  use MOM_file_parser, only : get_param, log_version, param_file_type
+  use fms_mod,         only: field_exist, field_size, read_data
   use fms_mod,         only: get_global_att_value, stderr
   use mosaic_mod,      only: get_mosaic_ntiles, get_mosaic_ncontacts
   use mosaic_mod,      only: calc_mosaic_grid_area, get_mosaic_contact
@@ -27,7 +29,6 @@ module ice_grid_mod
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, cor, xb1d, yb1d
   public :: geo_lon, geo_lat, sin_rot, cos_rot, cell_area, wett, wetv
-  public :: geo_lonv_ib, geo_latv_ib
   public :: grid_x_t,grid_y_t
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
   public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
@@ -156,8 +157,6 @@ end type SIS2_domain_type
   real, allocatable, dimension(:,:) ::  cor                ! coriolis on v cells
   real, allocatable, dimension(:,:) ::  geo_lat            ! true latitude (rotated grid)
   real, allocatable, dimension(:,:) ::  geo_lon            ! true longitude              
-  real, allocatable, dimension(:,:) ::  geo_latv_ib        ! true latitude at the grid corners
-  real, allocatable, dimension(:,:) ::  geo_lonv_ib        ! true longitude at the grid corners
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  sin_rot, cos_rot   ! sin/cos of vector rotation angle
@@ -377,23 +376,23 @@ contains
 
   end subroutine vel_t_to_uv
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
-                          adv_sub_steps_in, km_in, layout, io_layout, maskmap )
-    type(sea_ice_grid_type), intent(inout) :: grid
-    type(domain2D),        intent(inout) :: ice_domain
-    real,                  intent(in)    :: dt_slow
-    integer,               intent(in)    :: dyn_sub_steps_in
-    integer,               intent(in)    :: adv_sub_steps_in
-    integer,               intent(in)    :: km_in
-    integer, dimension(2), intent(inout) :: layout
-    integer, dimension(2), intent(inout) :: io_layout
-    logical, optional,     intent(in)    :: maskmap(:,:)
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! set_ice_grid - initialize sea ice grid for dynamics and transport            !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
+                        adv_sub_steps_in, km_in, layout, io_layout, maskmap )
+  type(sea_ice_grid_type), intent(inout) :: grid
+  type(domain2D),        intent(inout) :: ice_domain
+  real,                  intent(in)    :: dt_slow
+  integer,               intent(in)    :: dyn_sub_steps_in
+  integer,               intent(in)    :: adv_sub_steps_in
+  integer,               intent(in)    :: km_in
+  integer, dimension(2), intent(inout) :: layout
+  integer, dimension(2), intent(inout) :: io_layout
+  logical, optional,     intent(in)    :: maskmap(:,:)
 
     real                                :: angle, lon_scale
-    integer                             :: i, j, m, ntiles, ncontacts, outunit
+    integer                             :: i, j, m, ntiles, ncontacts
     integer                             :: dims(4)
     real, allocatable, dimension(:,:,:) :: x_vert_t, y_vert_t
     real, allocatable,   dimension(:,:) :: geo_latv   
@@ -408,120 +407,88 @@ contains
     type(domain2d)                      :: domain2
     integer                             :: isg, ieg, jsg, jeg
     integer                             :: is,  ie,  js,  je
-    integer                             :: grid_version
-    integer, parameter                  :: VERSION_0 = 0
-    integer, parameter                  :: VERSION_1 = 1
-    integer, parameter                  :: VERSION_2 = 2
     integer                             :: ni,nj,siz(4)
     integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
     integer                             :: npes, p
     logical                             :: symmetrize, ndivx_is_even, im_is_even
 
-    grid_file = 'INPUT/grid_spec.nc'
-    ocean_topog = 'INPUT/topog.nc'
-    outunit = stdout()
-    !--- first determine the grid version
-    if(field_exist(grid_file, 'ocn_mosaic_file') .or. field_exist(grid_file, 'gridfiles') ) then ! read from mosaic file
-       write(outunit,*) '==>Note from ice_grid_mod(set_ice_grid): read grid from mosaic version grid'
-       grid_version = VERSION_2
-       if( field_exist(grid_file, 'ocn_mosaic_file') ) then ! coupler mosaic
-          call read_data(grid_file, "ocn_mosaic_file", ocean_mosaic)
-          ocean_mosaic = "INPUT/"//trim(ocean_mosaic)
-       else
-          ocean_mosaic = trim(grid_file)
-       end if
-       ntiles = get_mosaic_ntiles(ocean_mosaic)
-       if(ntiles .NE. 1) call mpp_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
-            'ntiles should be 1 for ocean mosaic, contact developer')
-       call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
-       ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
-       call field_size(ocean_hgrid, 'x', siz)
-       ni = siz(1)/2
-       nj = siz(2)/2
-    else  if(field_exist(grid_file, 'x_T')) then
-       ocean_hgrid = grid_file
-       write(outunit,*) '==>Note from ice_grid_mod(set_ice_grid): read grid from new version grid'
-       grid_version = VERSION_1
-       call field_size( ocean_hgrid, 'x_T', siz)
-       ni = siz(1)
-       nj = siz(2)
-    else if(field_exist(grid_file, 'geolon_t')) then
-       ocean_hgrid = grid_file
-       write(outunit,*) '==>Note from ice_grid_mod(set_ice_grid): read grid from old version grid'
-       grid_version = VERSION_0 
-       call field_size( ocean_hgrid, 'geolon_t', siz)  
-       ni = siz(1)
-       nj = siz(2)
-    else
-       call mpp_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
-            'x_T, geolon_t, ocn_mosaic_file, gridfiles does not exist in file ' //trim(grid_file))
-    end if
+  grid_file = 'INPUT/grid_spec.nc'
+  ocean_topog = 'INPUT/topog.nc'
 
-    x_cyclic = .false.; tripolar_grid = .false.
-    if(grid_version == VERSION_2) then
+  !--- first determine the if the grid file is using the correct format
+  if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
+            field_exist(grid_file, 'gridfiles')) ) call SIS2_error(FATAL, &
+    'Error from ice_grid_mod(set_ice_grid): '//&
+    'ocn_mosaic_file or gridfiles does not exist in file ' //trim(grid_file)//&
+    '\nSIS2 only works with a mosaic format grid file.')
+
+  call SIS2_mesg("   Note from ice_grid_mod(set_ice_grid): "//&
+                 "read grid from mosaic version grid", 5)
+
+  if( field_exist(grid_file, "ocn_mosaic_file") ) then ! coupler mosaic
+    call read_data(grid_file, "ocn_mosaic_file", ocean_mosaic)
+    ocean_mosaic = "INPUT/"//trim(ocean_mosaic)
+  else
+    ocean_mosaic = trim(grid_file)
+  end if
+  ntiles = get_mosaic_ntiles(ocean_mosaic)
+  if (ntiles /= 1) call SIS2_error(FATAL, "Error from ice_grid_mod(set_ice_grid): "//&
+      "ntiles should be 1 for ocean mosaic.")
+  call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
+  ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
+  call field_size(ocean_hgrid, 'x', siz)
+  ni = siz(1)/2
+  nj = siz(2)/2
+
+  x_cyclic = .false.; tripolar_grid = .false.
+
        if(field_exist(ocean_mosaic, "contacts") ) then
           ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-          if(ncontacts < 1) call mpp_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+          if(ncontacts < 1) call SIS2_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
                'number of contacts should be larger than 0 when field contacts exist in file '//trim(ocean_mosaic) )
-          if(ncontacts > 2) call mpp_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+          if(ncontacts > 2) call SIS2_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
                'number of contacts should be no larger than 2')
           call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
                istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
                istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
           do m = 1, ncontacts
              if(istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
-                if(istart2(m) .NE. iend2(m) ) call mpp_error(FATAL,  &
+                if(istart2(m) .NE. iend2(m) ) call SIS2_error(FATAL,  &
                      "==>Error from ice_grid_mod(set_ice_grid): only cyclic condition is allowed for x-boundary")
                 x_cyclic = .true.
              else if( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
                 if( jstart1(m) == jstart2(m) ) then ! folded north
                    tripolar_grid=.true.
                 else 
-                   call mpp_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
+                   call SIS2_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
                      "only folded-north condition is allowed for y-boundary")
                 end if
              else 
-                call mpp_error(FATAL,  &
+                call SIS2_error(FATAL,  &
                      "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
              end if
           end do
        end if
        !--- get grid size
        call field_size(ocean_hgrid, 'x', dims)
-       if(mod(dims(1),2) .NE. 1) call mpp_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+       if(mod(dims(1),2) .NE. 1) call SIS2_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
             'x-size of x in file '//trim(ocean_hgrid)//' should be 2*ni+1')
-       if(mod(dims(2),2) .NE. 1) call mpp_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+       if(mod(dims(2),2) .NE. 1) call SIS2_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
             'y-size of x in file '//trim(ocean_hgrid)//' should be 2*nj+1')
        im = dims(1)/2 
        jm = dims(2)/2 
-    else
-       if( get_global_att_value(ocean_hgrid, "x_boundary_type", attvalue) ) then
-          if(attvalue == 'cyclic') x_cyclic = .true.
-       end if
-       if( get_global_att_value(ocean_hgrid, "y_boundary_type", attvalue) ) then
-          if(attvalue == 'cyclic') then
-             call mpp_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
-                  "y-cyclic boundary condition is not implemented yet.")
-          else if(attvalue == 'fold_north_edge') then
-             tripolar_grid = .true.
-          end if
-       end if
-       !--- get the grid size
-       call field_size(ocean_hgrid, 'wet', dims)
-       im = dims(1)
-       jm = dims(2)
-    end if
 
-    if(x_cyclic) then
-       call mpp_error(NOTE, "==>Note from ice_grid_mod: x_boundary_type is cyclic")
-    else
-       call mpp_error(NOTE, "==>Note from ice_grid_mod: x_boundary_type is solid_walls")
-    end if
-   if(tripolar_grid) then
-       call mpp_error(NOTE, "==>Note from ice_grid_mod: y_boundary_type is fold_north_edge")
-    else
-       call mpp_error(NOTE, "==>Note from ice_grid_mod: y_boundary_type is solid_walls")
-    end if
+
+  if (x_cyclic) then
+    call SIS2_mesg("==>Note from ice_grid_mod: x_boundary_type is cyclic")
+  else
+    call SIS2_mesg("==>Note from ice_grid_mod: x_boundary_type is solid_walls")
+  endif
+  if (tripolar_grid) then
+    call SIS2_mesg("==>Note from ice_grid_mod: y_boundary_type is fold_north_edge")
+  else
+    call SIS2_mesg("==>Note from ice_grid_mod: y_boundary_type is solid_walls")
+  endif
 
     ! default is merdional domain decomp. to load balance xgrid
     if( layout(1)==0 .and. layout(2)==0 ) layout=(/ mpp_npes(), 1 /)
@@ -537,7 +504,7 @@ contains
                (  (.NOT.ndivx_is_even) .AND. im_is_even .AND. layout(1) .LT. im/2 )
 
        if( .not. symmetrize) then
-          call mpp_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
+          call SIS2_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
        endif
        call mpp_define_domains( (/1,im,1,jm/), layout, Domain, maskmap=maskmap,   &
                                 xflags=CYCLIC_GLOBAL_DOMAIN, xhalo=1,             &
@@ -592,22 +559,16 @@ contains
                geo_lat(isc:iec,jsc:jec), geo_lon (isc:iec,jsc:jec),  &
                cor    (isc:iec,jsc:jec), sin_rot (isd:ied,jsd:jed),  &
                cos_rot(isd:ied,jsd:jed), latitude(isc:iec,jsc:jec) )
-    allocate ( geo_latv_ib(isc:iec,jsc:jec), geo_lonv_ib(isc:iec,jsc:jec) )
-    !--- read data from grid_spec.nc
-    wett = 0.0
-    if(grid_version == VERSION_2) then
-       allocate(depth(isc:iec,jsc:jec))
-       call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
-       do j = jsc, jec
-          do i = isc, iec
-             if(depth(i,j) > 0) wett(i,j) = 1.0
-          end do
-       end do
-       deallocate(depth)
-    else
-       call read_data(grid_file, 'wet', wett(isc:iec,jsc:jec), Domain)
-    end if
-    call mpp_update_domains(wett, Domain)
+
+  !--- read data from grid_spec.nc
+  wett(:,:) = 0.0
+  allocate(depth(isc:iec,jsc:jec))
+  call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
+  do j=jsc,jec ; do i=isc,iec
+    if (depth(i,j) > 0) wett(i,j) = 1.0
+  enddo ; enddo
+  deallocate(depth)
+  call mpp_update_domains(wett, Domain)
 
     do j = jsc, jec
        do i = isc, iec
@@ -620,8 +581,8 @@ contains
     enddo
 
     if(tripolar_grid) then
-       if (jsc==1.and.any(wett(:,jsc)>0.5)) call error_mesg ('ice_model_mod', &
-            'ice model requires southernmost row of land', FATAL);
+       if (jsc==1.and.any(wett(:,jsc)>0.5)) call SIS2_error(FATAL, &
+          'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
     evp_sub_steps = dyn_sub_steps_in
@@ -646,60 +607,30 @@ contains
     allocate (grid_y_t(nj))    
     grid_x_t = 0.0;grid_y_t = 0.0 
 
-    select case(grid_version)
-    case(VERSION_0)
-       call mpp_copy_domain(domain, domain2)
-       call mpp_set_compute_domain(domain2, isc, iec+1, jsc, jec+1, iec-isc+2, jec-jsc+2 )
-       call mpp_set_data_domain   (domain2, isd, ied+1, jsd, jed+1, ied-isd+2, jed-jsd+2 )   
-       call mpp_set_global_domain (domain2, isg, ieg+1, jsg, jeg+1, ieg-isg+2, jeg-jsg+2 )
-       call read_data(grid_file, 'geolon_vert_t', geo_lonv, domain2)
-       call read_data(grid_file, 'geolat_vert_t', geo_latv, domain2)  
-       call read_data(grid_file, 'AREA_OCN', cell_area, Domain)    
-       !Read similar to ocean
-       call read_data(grid_file, "gridlon_t", grid_x_t, no_domain = .true.)
-       call read_data(grid_file, "gridlat_t", grid_y_t, no_domain = .true.)
-    case(VERSION_1)
-       allocate ( x_vert_t(isc:iec,jsc:jec,4), y_vert_t(isc:iec,jsc:jec,4) )
-       call read_data(grid_file, 'x_vert_T', x_vert_t,  Domain)
-       call read_data(grid_file, 'y_vert_T', y_vert_t,  Domain)
-       call read_data(grid_file, 'AREA_OCN', cell_area, Domain)
-       geo_lonv(isc:iec,jsc:jec) = x_vert_t(isc:iec,jsc:jec,1)
-       geo_lonv(iec+1,  jsc:jec) = x_vert_t(iec,jsc:jec,    2)
-       geo_lonv(isc:iec,jec+1  ) = x_vert_t(isc:iec,jec,    4)
-       geo_lonv(iec+1,  jec+1  ) = x_vert_t(iec,jec,        3)
-       geo_latv(isc:iec,jsc:jec) = y_vert_t(isc:iec,jsc:jec,1)
-       geo_latv(iec+1,  jsc:jec) = y_vert_t(iec,jsc:jec,    2)
-       geo_latv(isc:iec,jec+1  ) = y_vert_t(isc:iec,jec,    4)
-       geo_latv(iec+1,  jec+1  ) = y_vert_t(iec,    jec,    3)
-       deallocate(x_vert_t, y_vert_t)
-    case(VERSION_2)
-       call mpp_copy_domain(domain, domain2)
-       call mpp_set_compute_domain(domain2, 2*isc-1, 2*iec+1, 2*jsc-1, 2*jec+1, 2*(iec-isc)+3, 2*(jec-jsc)+3 )
-       call mpp_set_data_domain   (domain2, 2*isd-1, 2*ied+1, 2*jsd-1, 2*jed+1, 2*(ied-isd)+3, 2*(jed-jsd)+3 )   
-       call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
-       call mpp_get_compute_domain(domain2, is, ie, js, je)
-       if(is .NE. 2*isc-1 .OR. ie .NE. 2*iec+1 .OR. js .NE. 2*jsc-1 .OR. je .NE. 2*jec+1) then
-          call mpp_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
-       endif
-       allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
-       call read_data(ocean_hgrid, 'x', tmpx, domain2)
-       call read_data(ocean_hgrid, 'y', tmpy, domain2)     
-       do j = jsc, jec+1
-          do i = isc, iec+1
-             geo_lonv(i,j) = tmpx(2*i-1,2*j-1)
-             geo_latv(i,j) = tmpy(2*i-1,2*j-1)
-          end do
-       end do
-       call calc_mosaic_grid_area(geo_lonv(isc:iec+1, jsc:jec+1)*pi/180, geo_latv(isc:iec+1, jsc:jec+1)*pi/180, cell_area)
-       cell_area = cell_area/(4*PI*RADIUS*RADIUS)
-       deallocate(tmpx, tmpy)
-       do j = jsc, jec
-          do i = isc, iec
-             if(wett(i,j) ==0) cell_area(i,j) = 0.0
-          end do
-       end do       
-       call mpp_deallocate_domain(domain2)
-    end select
+  call mpp_copy_domain(domain, domain2)
+  call mpp_set_compute_domain(domain2, 2*isc-1, 2*iec+1, 2*jsc-1, 2*jec+1, 2*(iec-isc)+3, 2*(jec-jsc)+3 )
+  call mpp_set_data_domain   (domain2, 2*isd-1, 2*ied+1, 2*jsd-1, 2*jed+1, 2*(ied-isd)+3, 2*(jed-jsd)+3 )   
+  call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
+  call mpp_get_compute_domain(domain2, is, ie, js, je)
+  if(is .NE. 2*isc-1 .OR. ie .NE. 2*iec+1 .OR. js .NE. 2*jsc-1 .OR. je .NE. 2*jec+1) then
+    call SIS2_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
+  endif
+  allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
+  call read_data(ocean_hgrid, 'x', tmpx, domain2)
+  call read_data(ocean_hgrid, 'y', tmpy, domain2)     
+  do j=jsc,jec+1 ; do i=isc,iec+1
+    geo_lonv(i,j) = tmpx(2*i-1,2*j-1)
+    geo_latv(i,j) = tmpy(2*i-1,2*j-1)
+  enddo ; enddo
+  call calc_mosaic_grid_area(geo_lonv(isc:iec+1, jsc:jec+1)*pi/180, &
+                             geo_latv(isc:iec+1, jsc:jec+1)*pi/180, cell_area)
+  cell_area = cell_area/(4*PI*RADIUS*RADIUS)
+  deallocate(tmpx, tmpy)
+  do j=jsc,jec ; do i=isc,iec
+    if (wett(i,j) == 0.) cell_area(i,j) = 0.0
+  enddo ; enddo       
+  call mpp_deallocate_domain(domain2)
+
 
     ! Determine the domain-averaged latitudes and longitudes on the grid for
     ! diagnostic purposes. This is a hold-over and will be changed to match
@@ -842,10 +773,10 @@ contains
        do p = 1, npes
           if( jslist(p) == jsc .AND. islist(p) + iec == im+1 ) then
              if( jelist(p) .NE. jec ) then
-                call mpp_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
+                call SIS2_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
              endif
              if( ielist(p) + isc .NE. im+1) then
-                call mpp_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
+                call SIS2_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
              endif
              comm_pe = pelist(p)
              exit 
@@ -1133,8 +1064,8 @@ end subroutine ice_grid_end
 
     !    uv(isc:iec,jsc:jec) = global_uv(isc:iec,jsc:jec)
 
-    ! if (cut_error) call error_mesg ('ice_model_mod', &
-         !                     'cut check of mirror anti-symmetry failed', FATAL)
+    ! if (cut_error) call SIS2_error(FATAL, &
+    !             'ice_model_mod: cut check of mirror anti-symmetry failed', .true.)
   end subroutine cut_check
   !#####################################################################
 

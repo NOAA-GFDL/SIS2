@@ -22,7 +22,6 @@ module ice_type_mod
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
-  use ice_grid_mod,     only: geo_lonv_ib, geo_latv_ib
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid, dtn, dte, wetv
   use ice_grid_mod,     only: reproduce_siena_201303
