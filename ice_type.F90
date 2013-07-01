@@ -21,9 +21,9 @@ module ice_type_mod
   use ice_grid_mod,     only: set_ice_grid, t_to_uv, ice_grid_end
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
+  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
-  use ice_grid_mod,     only: x_cyclic, tripolar_grid, wetv
+  use ice_grid_mod,     only: x_cyclic, tripolar_grid
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
   use ice_dyn_mod,      only: ice_dyn_param
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -545,12 +545,12 @@ public  :: earth_area
 
     do j = jsc, jec
        do i = isc, iec
-          if( wett(i,j) > 0.5 ) then
+          if( Ice%grid%mask2dT(i,j) > 0.5 ) then
              Ice % mask(i,j) = .true.
           else
              Ice % mask(i,j) = .false.
           end if
-          if( wetv(i,j) > 0.5 ) then
+          if( Ice%grid%mask2dBu(i,j) > 0.5 ) then
              Ice % vmask(i,j) = 1.
           else
              Ice % vmask(i,j) = 0.
@@ -721,7 +721,7 @@ public  :: earth_area
 
     Ice%part_size_uv(:,:,1) = 1.0
     do k=2,km
-       call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k))
+       call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%grid)
        Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
     end do
 
@@ -745,7 +745,7 @@ public  :: earth_area
     if (do_icebergs) call icebergs_init(Ice%icebergs, &
              im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
              dt_slow, Time, Ice%grid%geoLonBu(isc:iec,jsc:jec), Ice%grid%geoLatBu(isc:iec,jsc:jec), &
-             wett, Ice%grid%dxCv, Ice%grid%dyCu, cell_area, cos_rot, sin_rot )
+             Ice%grid%mask2dT, Ice%grid%dxCv, Ice%grid%dyCu, cell_area, cos_rot, sin_rot )
 
    if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 

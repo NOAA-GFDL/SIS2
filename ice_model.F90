@@ -81,7 +81,7 @@ module ice_model_mod
   use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_spec_mod,     only: get_sea_surface
-  use ice_grid_mod,     only: dt_adv, wett
+  use ice_grid_mod,     only: dt_adv
 
   !
   ! the following two modules are the work horses of the sea ice model
@@ -378,13 +378,15 @@ contains
        call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
        do k=1,km
           call vel_t_to_uv( -Ice%flux_u_top(:,:,k),-Ice%flux_v_top(:,:,k), &
-               Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
+                      Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), &
+                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%grid)
        end do
     else
       call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
       do k=1,km
          call vel_t_to_uv( Ice%flux_u_top(:,:,k),Ice%flux_v_top(:,:,k), &
-              Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k) )
+                      Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), &
+                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%grid )
       end do
     endif
 
@@ -510,7 +512,7 @@ contains
        call mpp_update_domains(Ice%h_ice(:,:,2), Domain )       ! these two updates cannot be combined
        Ice%part_size_uv(:,:,1) = 1.0
        do k=2,km
-          call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k))
+          call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%grid)
        enddo
        do k=2,km
           do j=jsc,jec
@@ -531,7 +533,7 @@ contains
        do k=2,km
           do j=jsc,jec
              do i=isc,iec
-                if ((Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0)) then
+                if ((Ice%part_size(i,j,k)>0.0) .and. (Ice%h_ice(i,j,k)>0.0)) then
                    if (slab_ice) then
                       heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) * Ice%h_ice(i,j,2)*DI*LI
                    else
@@ -691,11 +693,11 @@ contains
     call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain, gridtype=BGRID_NE)
 
     ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
-    call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1))
-    call uv_to_t(Ice%v_ocn, Ice%v_surf(:,:,1))
+    call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1), Ice%grid)
+    call uv_to_t(Ice%v_ocn, Ice%v_surf(:,:,1), Ice%grid)
 
-    call uv_to_t(Ice%u_ice, Ice%u_surf(:,:,2))
-    call uv_to_t(Ice%v_ice, Ice%v_surf(:,:,2))
+    call uv_to_t(Ice%u_ice, Ice%u_surf(:,:,2), Ice%grid)
+    call uv_to_t(Ice%v_ice, Ice%v_surf(:,:,2), Ice%grid)
 
     do k=1,2
        do j = jsc, jec
@@ -1458,7 +1460,7 @@ contains
        enddo
     enddo
     do k=2,km
-       call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k))
+       call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%grid)
        Ice%part_size_uv(:,:,1) = Ice%part_size_uv(:,:,1) - Ice%part_size_uv(:,:,k)
     end do
     call mpp_clock_end(iceClock8)
@@ -1689,47 +1691,47 @@ subroutine transport (Ice, G)
         do i = isc, iec
           if (Ice%u_ice(i,j).ne.0..and.Ice%vmask(i,j)==0.) stop 'Ooops' ! Debug new vmask
           if (Ice%v_ice(i,j).ne.0..and.Ice%vmask(i,j)==0.) stop 'Ooops' ! Debug new vmask
-          if (uc(i,j)==0. & ! this is a redundant test due to following line
-             .and. Ice%vmask(i,j)+Ice%vmask(i,j-1)==0. &  ! =0 => no vels
-             .and. wett(i,j)*wett(i+1,j)>0.) then ! >0 => open for transport
-               grad_eta=(Ice%sea_lev(i+1,j)-Ice%sea_lev(i,j))    & ! delta_i eta
-                        /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
-               u_visc=-ssh_gravity*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
-                        *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*G%dyCu(I,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
-               u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-               cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
-               uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-               ! Limit flow to be stable for fully divergent flow
-               if (uc(i,j)>0.) then
-                 uc(i,j)=min( uc(i,j), chan_cfl_limit*G%dxT(i,j)/dt_adv)
-               else
-                 uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
-               endif
-               if (id_ustar>0) ustar(i,j)=uc(i,j)
-               if (id_uocean>0) ustaro(i,j)=u_ocn
-               if (id_uchan>0) ustarv(i,j)=u_visc
+          if ((uc(i,j)==0.) .and. & ! this is a redundant test due to following line
+              (Ice%vmask(i,j)+Ice%vmask(i,j-1)==0.) .and. &  ! =0 => no vels
+              (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
+            grad_eta=(Ice%sea_lev(i+1,j)-Ice%sea_lev(i,j))    & ! delta_i eta
+                     /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
+            u_visc=-ssh_gravity*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+                     *grad_eta                                                  ! d/dx eta
+            u_ocn=sqrt( ssh_gravity*G%dyCu(I,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+            u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+            cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
+            uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
+            ! Limit flow to be stable for fully divergent flow
+            if (uc(i,j)>0.) then
+              uc(i,j)=min( uc(i,j), chan_cfl_limit*G%dxT(i,j)/dt_adv)
+            else
+              uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
+            endif
+            if (id_ustar>0) ustar(i,j)=uc(i,j)
+            if (id_uocean>0) ustaro(i,j)=u_ocn
+            if (id_uchan>0) ustarv(i,j)=u_visc
           endif
-          if (vc(i,j)==0. & ! this is a redundant test due to following line
-             .and. Ice%vmask(i,j)+Ice%vmask(i-1,j)==0. &  ! =0 => no vels
-             .and. wett(i,j)*wett(i,j+1)>0.) then ! >0 => open for transport
-               grad_eta=(Ice%sea_lev(i,j+1)-Ice%sea_lev(i,j))    & ! delta_i eta
-                        /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
-               u_visc=-ssh_gravity*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
-                        *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*G%dxCv(i,J)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
-               u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-               cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
-               vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-               ! Limit flow to be stable for fully divergent flow
-               if (vc(i,j)>0.) then
-                 vc(i,j)=min( vc(i,j), chan_cfl_limit*G%dyT(i,j)/dt_adv)
-               else
-                 vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
-               endif
-               if (id_vstar>0) vstar(i,j)=vc(i,j)
-               if (id_vocean>0) vstaro(i,j)=u_ocn
-               if (id_vchan>0) vstarv(i,j)=u_visc
+          if ((vc(i,j)==0.) .and. & ! this is a redundant test due to following line
+              (Ice%vmask(i,j)+Ice%vmask(i-1,j)==0.) .and. &  ! =0 => no vels
+              (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
+            grad_eta=(Ice%sea_lev(i,j+1)-Ice%sea_lev(i,j))    & ! delta_i eta
+                    /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
+            u_visc=-ssh_gravity*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+                    *grad_eta                                                  ! d/dx eta
+            u_ocn=sqrt( ssh_gravity*G%dxCv(i,J)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+            u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+            cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
+            vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
+            ! Limit flow to be stable for fully divergent flow
+            if (vc(i,j)>0.) then
+             vc(i,j)=min( vc(i,j), chan_cfl_limit*G%dyT(i,j)/dt_adv)
+            else
+             vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
+            endif
+            if (id_vstar>0) vstar(i,j)=vc(i,j)
+            if (id_vocean>0) vstaro(i,j)=u_ocn
+            if (id_vchan>0) vstarv(i,j)=u_visc
           endif
         enddo
       enddo

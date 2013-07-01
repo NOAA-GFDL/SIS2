@@ -8,7 +8,6 @@ module ice_dyn_mod
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: grav, pi
   use ice_grid_mod,    only: Domain, isc, iec, im, jsc, jec, isd, ied, jsd, jed, jm
-  use ice_grid_mod,    only: cor, wett, wetv
   use ice_grid_mod,    only: t_on_uv, t_to_uv, dTdx, dTdy, dt_evp, evp_sub_steps
   use ice_grid_mod,    only: dydx, dxdy
   use ice_grid_mod,    only: sea_ice_grid_type
@@ -52,8 +51,8 @@ contains
 ! set_strn - calculate generalized orthogonal coordinate strain tensor         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do loop
-    real, intent(in ), dimension(isd:ied,jsd:jed) :: ui, vi
-    real, intent(out), dimension(isc:iec,jsc:jec) :: strn11, strn22, strn12
+  real, intent(in ), dimension(isd:ied,jsd:jed) :: ui, vi
+  real, intent(out), dimension(isc:iec,jsc:jec) :: strn11, strn22, strn12
   type(sea_ice_grid_type), intent(in) :: G
 
     real, allocatable, dimension(:,:), save :: fac1, fac2, fac3, fac4
@@ -174,8 +173,8 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     enddo
 
     ! put ice/snow mass and concentration on v-grid
-    call t_to_uv(ci*(hi*DI+hs*DS), miv)
-    call t_to_uv(ci, civ)
+    call t_to_uv(ci*(hi*DI+hs*DS), miv, G)
+    call t_to_uv(ci, civ, G)
     !
     ! precompute prs, elastic timestep parameter, and linear drag coefficient
     !
@@ -191,7 +190,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
     do j = jsc, jec
        do i = isc, iec
-          if((wetv(i,j)>0.5) .and. miv(i,j) > MIV_MIN ) then ! values for velocity calculation (on v-grid)
+          if((G%mask2dBu(i,j)>0.5) .and. miv(i,j) > MIV_MIN ) then ! values for velocity calculation (on v-grid)
              dtmiv(i,j) = dt_evp/miv(i,j)
           else
              ui(i,j) = 0.0
@@ -244,7 +243,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
        do j = jsc, jec
           do i = isc, iec
-             if( (wett(i,j)>0.5) .and.(ci(i,j)*(DI*hi(i,j)+DS*hs(i,j))>MIV_MIN) ) then
+             if( (G%mask2dT(i,j)>0.5) .and.(ci(i,j)*(DI*hi(i,j)+DS*hs(i,j))>MIV_MIN) ) then
                 f11(i,j)   = mp4z(i,j)+sig11(i,j)/edt(i,j)+strn11(i,j)
                 f22(i,j)   = mp4z(i,j)+sig22(i,j)/edt(i,j)+strn22(i,j)
                 sig11(i,j) = (t1(i,j)*f22(i,j)+f11(i,j))/t2(i,j)
@@ -272,8 +271,9 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
        do j = jsc, jec
           do i = isc, iec
-             if( (wetv(i,j)>0.5).and.(miv(i,j)>MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-                rr       = cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j)))*exp(sign(blturn*pi/180,cor(i,j))*(0.0,1.0))
+             if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+                rr       = cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+                           exp(sign(blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
                 !
                 ! first, timestep explicit parts (ice, wind & ocean part of water stress)
                 !
@@ -283,9 +283,10 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
                 ui(i,j) = ui(i,j)+(fxic_now+civ(i,j)*fxat(i,j)+ real(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldx(i,j)
                 vi(i,j) = vi(i,j)+(fyic_now+civ(i,j)*fyat(i,j)+aimag(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldy(i,j)
                 !
-                ! second, timestep implicit parts (coriolis and ice part of water stress)
+                ! second, timestep implicit parts (Coriolis and ice part of water stress)
                 !
-                newuv = cmplx(ui(i,j),vi(i,j))/(1+dt_evp*(0.0,1.0)*cor(i,j)+civ(i,j)*rr*dtmiv(i,j))
+                newuv = cmplx(ui(i,j),vi(i,j)) / &
+                    (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(i,j) + civ(i,j)*rr*dtmiv(i,j))
                 ui(i,j) = real(newuv); vi(i,j) = aimag(newuv)
                 !
                 ! sum for averages
@@ -294,8 +295,8 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
                 fyic(i,j) = fyic(i,j) + fyic_now
                 fxoc(i,j) = fxoc(i,j) +  real(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j)))
                 fyoc(i,j) = fyoc(i,j) + aimag(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j)))
-                fxco(i,j) = fxco(i,j) - miv(i,j)*real ((0.0,1.0)*cor(i,j)*cmplx(ui(i,j),vi(i,j)))
-                fyco(i,j) = fyco(i,j) - miv(i,j)*aimag((0.0,1.0)*cor(i,j)*cmplx(ui(i,j),vi(i,j)))              
+                fxco(i,j) = fxco(i,j) - miv(i,j)*real ((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))
+                fyco(i,j) = fyco(i,j) - miv(i,j)*aimag((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))              
              endif
           enddo
        enddo
@@ -305,7 +306,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     !
     do j = jsc, jec
        do i = isc, iec
-          if( (wetv(i,j)>0.5) .and. miv(i,j)>MIV_MIN ) then
+          if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>MIV_MIN ) then
              fxoc(i,j) = fxoc(i,j)/evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/evp_sub_steps
              fxic(i,j) = fxic(i,j)/evp_sub_steps;  fyic(i,j) = fyic(i,j)/evp_sub_steps
              fxco(i,j) = fxco(i,j)/evp_sub_steps;  fyco(i,j) = fyco(i,j)/evp_sub_steps             

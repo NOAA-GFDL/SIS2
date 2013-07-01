@@ -25,14 +25,16 @@ module ice_grid_mod
   include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-  public :: set_ice_grid, dt_evp, evp_sub_steps, g_sum, ice_avg, all_avg
-  public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  public :: cor, xb1d, yb1d
-  public :: sin_rot, cos_rot, cell_area, wett, wetv
-  public :: grid_x_t,grid_y_t
+  public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
-  public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
-  public :: dxdy, dydx, ice_grid_end
+  public :: ice_line, vel_t_to_uv, cut_check, slab_ice_advect
+
+  public :: dt_evp, evp_sub_steps
+  public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+  public :: xb1d, yb1d
+  public :: sin_rot, cos_rot, cell_area, latitude
+  public :: grid_x_t,grid_y_t
+  public :: dxdy, dydx
   public :: tripolar_grid, x_cyclic, dt_adv
 
   type(domain2D), save :: Domain
@@ -142,7 +144,7 @@ end type SIS2_domain_type
   integer                           :: isc, iec, jsc, jec ! compute domain
   integer                           :: isd, ied, jsd, jed ! data domain
   integer                           :: im, jm, km         ! global domain and vertical size
-  real, allocatable, dimension(:,:) :: wett, wetv         ! t and v cell masks
+
   !
   ! grid geometry
   !
@@ -150,7 +152,6 @@ end type SIS2_domain_type
   logical                           ::  tripolar_grid      ! y boundary condition
   real, allocatable, dimension(:,:) ::  dxdy, dydx         
   real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
-  real, allocatable, dimension(:,:) ::  cor                ! coriolis on v cells
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  sin_rot, cos_rot   ! sin/cos of vector rotation angle
@@ -249,44 +250,43 @@ contains
     return
   end function g_sum
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! uv_to_t - average v-values to t-points and apply mask                        !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine uv_to_t(uv, t)
-    real,    intent(in   ), dimension(isd:,jsd:) :: uv
-    real,    intent(  out), dimension(isc:,jsc:) :: t
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! uv_to_t - average v-values to t-points and apply mask                        !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine uv_to_t(uv, t, G)
+  real,    intent(in   ), dimension(isd:,jsd:) :: uv
+  real,    intent(  out), dimension(isc:,jsc:) :: t
+  type(sea_ice_grid_type), intent(in) :: G
 
-    integer :: i, j
+  integer :: i, j
 
-    do j = jsc, jec
-       do i = isc, iec
-          if(wett(i,j) > 0.5 ) then
-             t(i,j) = 0.25*(uv(i,j) + uv(i,j-1) + uv(i-1,j) + uv(i-1,j-1) )   
-          else
-             t(i,j) = 0.0
-          endif
-       enddo
-    enddo
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do j=jsc,jec ; do i=isc,iec
+    if(G%mask2dT(i,j) > 0.5 ) then
+       t(i,j) = 0.25*(uv(i,j) + uv(i,j-1) + uv(i-1,j) + uv(i-1,j-1) )   
+    else
+       t(i,j) = 0.0
+    endif
+  enddo ; enddo
 
-  end subroutine uv_to_t
+end subroutine uv_to_t
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! dTdx - eastward difference of tracer, result on uv cells                     !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function dTdx(T)
-    real, intent(in   ), dimension(isd:,jsd:) :: T 
-    real, dimension(isc:iec,jsc:jec)          :: dTdx
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! dTdx - eastward difference of tracer, result on uv cells                     !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function dTdx(T)
+  real, intent(in   ), dimension(isd:,jsd:) :: T 
+  real, dimension(isc:iec,jsc:jec)          :: dTdx
 
-    integer :: i, j
+  integer :: i, j
 
-    do j = jsc, jec
-       do i = isc, iec
-          DTdx(i,j) = 0.5*(T(i+1,j+1) - T(i,j+1) + T(i+1,j) - T(i,j) )
-       enddo
-    enddo
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do j=jsc,jec ; do i=isc,iec
+    DTdx(i,j) = 0.5*(T(i+1,j+1) - T(i,j+1) + T(i+1,j) - T(i,j) )
+  enddo ; enddo
 
-    return
-  end function dTdx
+  return
+end function dTdx
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! dTdy - northward difference of tracer, result on uv cells                    !
@@ -297,6 +297,7 @@ contains
 
     integer :: i, j
 
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
     do j = jsc, jec
        do i = isc, iec
           DTdy(i,j) = 0.5*(T(i+1,j+1) - T(i+1,j) + T(i,j+1) - T(i,j) )
@@ -315,6 +316,7 @@ contains
 
     integer :: i, j
 
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
     do j = jsc, jec
        do i = isc, iec
           t_on_uv(i,j) = 0.25*(T(i+1,j+1)+T(i+1,j)+T(i,j+1)+T(i,j) )
@@ -324,49 +326,49 @@ contains
     return
   end function t_on_uv
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! t_to_uv - average t-values to v-points and apply mask                        !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine t_to_uv(t, uv)
-    real,    intent(in ), dimension(isd:,jsd:) :: t
-    real,    intent(out), dimension(isc:,jsc:) :: uv
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! t_to_uv - average t-values to v-points and apply mask                        !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine t_to_uv(t, uv, G)
+  real,    intent(in ), dimension(isd:,jsd:) :: t
+  real,    intent(out), dimension(isc:,jsc:) :: uv
+  type(sea_ice_grid_type), intent(in) :: G
 
-    integer :: i, j
+  integer :: i, j
 
-    do j = jsc, jec
-       do i = isc, iec
-          if(wetv(i,j) > 0.5 ) then
-             uv(i,j) = 0.25*( t(i+1, j+1)+t(i+1, j) + t(i,j+1)+t(i,j) )
-          else
-             uv(i,j) = 0.0
-          endif
-       enddo
-    enddo
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do j=jsc,jec ; do i=isc,iec
+    if(G%mask2dBu(i,j) > 0.5 ) then
+       uv(i,j) = 0.25*( t(i+1,j+1) + t(i+1,j) + t(i,j+1) + t(i,j) )
+    else
+       uv(i,j) = 0.0
+    endif
+  enddo ; enddo
 
-  end subroutine t_to_uv
+end subroutine t_to_uv
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! vel_t_to_uv - average vel component on t-points to v-points and apply mask   !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine vel_t_to_uv(tx, ty, uvx, uvy)
-    real,    intent(in   ), dimension(isd:,jsd:) :: tx, ty
-    real,    intent(  out), dimension(isc:,jsc:) :: uvx, uvy
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! vel_t_to_uv - average vel component on t-points to v-points and apply mask   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine vel_t_to_uv(tx, ty, uvx, uvy, G)
+  real,    intent(in   ), dimension(isd:,jsd:) :: tx, ty
+  real,    intent(  out), dimension(isc:,jsc:) :: uvx, uvy
+  type(sea_ice_grid_type), intent(in) :: G
 
-    integer :: i, j
+  integer :: i, j
 
-    do j = jsc, jec
-       do i = isc, iec
-          if( wetv(i,j) > 0.5 ) then
-             uvx(i,j) = 0.25*( tx(i+1, j+1)+tx(i+1, j) + tx(i,j+1)+tx(i,j) )
-             uvy(i,j) = 0.25*( ty(i+1, j+1)+ty(i+1, j) + ty(i,j+1)+ty(i,j) )
-          else
-             uvx(i,j) = 0.0
-             uvy(i,j) = 0.0
-          endif
-       enddo
-    enddo
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do j=jsc,jec ; do i=isc,iec
+    if( G%mask2dBu(i,j) > 0.5 ) then
+       uvx(i,j) = 0.25*( tx(i+1, j+1) + tx(i+1, j) + tx(i,j+1) + tx(i,j) )
+       uvy(i,j) = 0.25*( ty(i+1, j+1) + ty(i+1, j) + ty(i,j+1) + ty(i,j) )
+    else
+       uvx(i,j) = 0.0
+       uvy(i,j) = 0.0
+    endif
+  enddo ; enddo
 
-  end subroutine vel_t_to_uv
+end subroutine vel_t_to_uv
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
@@ -538,33 +540,30 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
   call allocate_metrics(grid)
 
-    allocate ( wett   (isd:ied,jsd:jed), wetv   ( isc:iec,jsc:jec),  &
-               dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
-               cor    (isc:iec,jsc:jec), sin_rot (isd:ied,jsd:jed),  &
+    allocate ( dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
+               sin_rot (isd:ied,jsd:jed),  &
                cos_rot(isd:ied,jsd:jed), latitude(isc:iec,jsc:jec) )
 
   !--- read data from grid_spec.nc
-  wett(:,:) = 0.0
   allocate(depth(isc:iec,jsc:jec))
   call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
   do j=jsc,jec ; do i=isc,iec
-    if (depth(i,j) > 0) wett(i,j) = 1.0
+    if (depth(i,j) > 0) grid%mask2dT(i,j) = 1.0
   enddo ; enddo
   deallocate(depth)
-  call mpp_update_domains(wett, Domain)
+  call mpp_update_domains(grid%mask2dT, Domain)
 
-    do j = jsc, jec
-       do i = isc, iec
-          if( wett(i,j)>0.5 .and. wett(i,j+1)>0.5 .and. wett(i+1,j)>0.5 .and. wett(i+1,j+1)>0.5 ) then
-             wetv(i,j) = 1.0
-          else
-             wetv(i,j) = 0.0
-          endif
-       enddo
-    enddo
+  do J=jsc-1,jec ; do I=isc-1,iec
+    if( grid%mask2dT(i,j)>0.5 .and. grid%mask2dT(i,j+1)>0.5 .and. &
+        grid%mask2dT(i+1,j)>0.5 .and. grid%mask2dT(i+1,j+1)>0.5 ) then
+       grid%mask2dBu(I,J) = 1.0
+    else
+       grid%mask2dBu(I,J) = 0.0
+    endif
+  enddo ; enddo
 
     if(tripolar_grid) then
-       if (jsc==1.and.any(wett(:,jsc)>0.5)) call SIS2_error(FATAL, &
+       if (jsc==1.and.any(grid%mask2dT(:,jsc)>0.5)) call SIS2_error(FATAL, &
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
@@ -610,7 +609,7 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   cell_area = cell_area/(4*PI*RADIUS*RADIUS)
   deallocate(tmpx, tmpy)
   do j=jsc,jec ; do i=isc,iec
-    if (wett(i,j) == 0.) cell_area(i,j) = 0.0
+    if (grid%mask2dT(i,j) == 0.) cell_area(i,j) = 0.0
   enddo ; enddo       
   call mpp_deallocate_domain(domain2)
 
@@ -717,8 +716,8 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
                          grid%geoLatBu(I-1,J)   + grid%geoLatBu(I,J)) / 4
   enddo ; enddo
 
-  do J=jsc,jec ; do I=isc,iec
-    cor(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
+  do J=jsc-1,jec ; do I=isc-1,iec
+    grid%CoriolisBu(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
   enddo ; enddo
   latitude(:,:) = grid%geoLatT(isc:iec,jsc:jec)*pi/180
 
@@ -781,8 +780,8 @@ subroutine ice_grid_end(G)
 
   DEALLOC_(G%CoriolisBu)
 
-  deallocate(wett, wetv, latitude )
-  deallocate(cor, xb1d, yb1d, sin_rot, cos_rot, cell_area )
+  deallocate( latitude )
+  deallocate( xb1d, yb1d, sin_rot, cos_rot, cell_area )
 
 
 end subroutine ice_grid_end
@@ -879,7 +878,7 @@ subroutine ice_advect(uc, vc, trc, G, uf, vf)
 
     do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
       trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j) - uflx(I,j) + &
-                 vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT
+                 vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT ?
     enddo ; enddo
 
     call mpp_update_domains(trc, Domain)
@@ -953,7 +952,7 @@ subroutine slab_ice_advect(ui, vi, trc, stop_lim, G)
 
     do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
       trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j)-uflx(I,j) + vflx(i,J-1)-vflx(i,J) ) / &
-                                     (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT
+                                     (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT ?
     enddo ; enddo
 
     call mpp_update_domains(trc, Domain)
