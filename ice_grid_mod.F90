@@ -27,7 +27,7 @@ module ice_grid_mod
 
   public :: set_ice_grid, dt_evp, evp_sub_steps, g_sum, ice_avg, all_avg
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  public :: dxt, dxv, dyt, dyv, cor, xb1d, yb1d
+  public :: cor, xb1d, yb1d
   public :: geo_lon, geo_lat, sin_rot, cos_rot, cell_area, wett, wetv
   public :: grid_x_t,grid_y_t
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
@@ -148,8 +148,6 @@ end type SIS2_domain_type
   !
   logical                           ::  x_cyclic           ! x boundary condition
   logical                           ::  tripolar_grid      ! y boundary condition
-  real, allocatable, dimension(:,:) ::  dxt, dxv           ! x-extent of t and v cells
-  real, allocatable, dimension(:,:) ::  dyt, dyv           ! y-extent of t and v cells
   real, allocatable, dimension(:,:) ::  dxdy, dydx         
   real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
   real, allocatable, dimension(:,:) ::  cor                ! coriolis on v cells
@@ -543,8 +541,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   call allocate_metrics(grid)
 
     allocate ( wett   (isd:ied,jsd:jed), wetv   ( isc:iec,jsc:jec),  &
-               dxt    (isd:ied,jsd:jed), dxv     (isd:ied,jsd:jed),  &
-               dyt    (isd:ied,jsd:jed), dyv     (isd:ied,jsd:jed),  &
                dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
                geo_lat(isc:iec,jsc:jec), geo_lon (isc:iec,jsc:jec),  &
                cor    (isc:iec,jsc:jec), sin_rot (isd:ied,jsd:jed),  &
@@ -689,41 +685,39 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     call mpp_update_domains(cos_rot, Domain)
     call mpp_update_domains(sin_rot, Domain)
 
-    dxt(:,:) = 0.0
-    dyt(:,:) = 0.0
-
     do j = jsc, jec
        do i = isc, iec
-          dxt(i,j) = (grid%dxCv(i,J-1) + grid%dxCv(I,j) )/2
+          grid%dxT(i,j) = (grid%dxCv(i,J-1) + grid%dxCv(I,j) )/2
           if(cell_area(i,j) > 0.0) then
-             dyt(i,j) = cell_area(i,j)*4*pi*radius*radius/dxt(i,j)
+             grid%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/grid%dxT(i,j)
           else
-             dyt(i,j) = (grid%dyCu(I-1,j) + grid%dyCu(I,j) )/2
+             grid%dyT(i,j) = (grid%dyCu(I-1,j) + grid%dyCu(I,j) )/2
           endif
        enddo
     enddo
 
-    call mpp_update_domains(dxt, Domain )
-    call mpp_update_domains(dyt, Domain )
+  ! ### THIS SHOULD BE A SCALAR PAIR FOR CUBED SPHERE, ETC. -RWH
+    call mpp_update_domains(grid%dxT, Domain )
+    call mpp_update_domains(grid%dyT, Domain )
 
-    dxv(:,:) = 1.0
-    dyv(:,:) = 1.0
+    grid%dxBu(:,:) = 1.0
+    grid%dyBu(:,:) = 1.0
 
-    dxv(isc:iec,jsc:jec) = t_on_uv(dxt)
-    dyv(isc:iec,jsc:jec) = t_on_uv(dyt)
+    grid%dxBu(isc:iec,jsc:jec) = t_on_uv(grid%dxT)
+    grid%dyBu(isc:iec,jsc:jec) = t_on_uv(grid%dyT)
 
-  call mpp_update_domains(dxv, dyv, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
+  call mpp_update_domains(grid%dxBu, grid%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
 
     !--- dxdy and dydx to be used by ice_dyn_mod.
-    dydx(:,:) = dTdx(dyt(:,:))
-    dxdy(:,:) = dTdy(dxt(:,:))
+    dydx(:,:) = dTdx(grid%dyT(:,:))
+    dxdy(:,:) = dTdy(grid%dxT(:,:))
 
   do j=jsc,jec ; do i=isc,iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
     geo_lon(i,j) = lon_avg( (/ grid%geoLonBu(I-1,J-1), grid%geoLonBu(I,J-1), &
                                grid%geoLonBu(I-1,J), grid%geoLonBu(I,J) /) )
-    geo_lat(i,j) = (grid%geoLatBu(I-1,J-1)   + grid%geoLatBu(I,J-1) + &
-                    grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J)) / 4
+    geo_lat(i,j) = (grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1) + &
+                    grid%geoLatBu(I-1,J)   + grid%geoLatBu(I,J)) / 4
   enddo ; enddo
 
   do J=jsc,jec ; do I=isc,iec
@@ -790,7 +784,7 @@ subroutine ice_grid_end(G)
 
   DEALLOC_(G%CoriolisBu)
 
-  deallocate(wett, wetv, dxt, dxv, dyt, dyv, latitude )
+  deallocate(wett, wetv, latitude )
   deallocate(cor, geo_lat, geo_lon, xb1d, yb1d, sin_rot, cos_rot, cell_area )
 
 
@@ -887,7 +881,7 @@ subroutine ice_advect(uc, vc, trc, G, uf, vf)
 
     do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
       trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j) - uflx(I,j) + &
-                 vflx(i,J-1) - vflx(i,J) )/ ( dxt(i,j) * dyt(i,j) ) 
+                 vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT
     enddo ; enddo
 
     call mpp_update_domains(trc, Domain)
@@ -961,7 +955,7 @@ subroutine slab_ice_advect(ui, vi, trc, stop_lim, G)
 
     do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
       trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j)-uflx(I,j) + vflx(i,J-1)-vflx(i,J) ) / &
-                                     (dxt(i,j)*dyt(i,j))
+                                     (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT
     enddo ; enddo
 
     call mpp_update_domains(trc, Domain)

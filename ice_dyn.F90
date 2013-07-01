@@ -8,7 +8,7 @@ module ice_dyn_mod
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: grav, pi
   use ice_grid_mod,    only: Domain, isc, iec, im, jsc, jec, isd, ied, jsd, jed, jm
-  use ice_grid_mod,    only: dxt, dxv, dyt, dyv, cor, wett, wetv
+  use ice_grid_mod,    only: cor, wett, wetv
   use ice_grid_mod,    only: t_on_uv, t_to_uv, dTdx, dTdy, dt_evp, evp_sub_steps
   use ice_grid_mod,    only: dydx, dxdy
   use ice_grid_mod,    only: sea_ice_grid_type
@@ -65,10 +65,10 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
                  fac3(isc:iec,jsc:jec), fac4(isc:iec,jsc:jec)  )
        do j = jsc, jec
           do i = isc, iec
-             fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/dyt(i,j)
-             fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/dxt(i,j)
-             fac3(i,j) = 0.5*dyt(i,j)/dxt(i,j)
-             fac4(i,j) = 0.5*dxt(i,j)/dyt(i,j)
+             fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/G%dyT(i,j) !### Use G%IdyT?
+             fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/G%dxT(i,j)
+             fac3(i,j) = 0.5*G%dyT(i,j)/G%dxT(i,j)
+             fac4(i,j) = 0.5*G%dxT(i,j)/G%dyT(i,j)
           enddo
        enddo
        initialized = .true.
@@ -77,13 +77,15 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     do j = jsc, jec
        do i = isc, iec
           strn11(i,j) = (0.5*(ui(i,j)-ui(i-1,j)+ui(i,j-1)-ui(i-1,j-1))        &
-                      + 0.25*(vi(i,j)+vi(i,j-1)+vi(i-1,j)+vi(i-1,j-1))*fac1(i,j))/dxt(i,j)
+                      + 0.25*(vi(i,j)+vi(i,j-1)+vi(i-1,j)+vi(i-1,j-1))*fac1(i,j)) / &
+                      G%dxT(i,j)   !### Use G%IdxT?
           strn22(i,j) = (0.5*(vi(i,j)-vi(i,j-1)+vi(i-1,j)-vi(i-1,j-1))        &
-                      + 0.25*(ui(i,j)+ui(i,j-1)+ui(i-1,j)+ui(i-1,j-1))*fac2(i,j))/dyt(i,j)
-          strn12(i,j) = fac3(i,j)*(0.5*(vi(i,j)/dyv(i,j)-vi(i-1,j)/dyv(i-1,j) &
-                      + vi(i,j-1)/dyv(i,j-1)-vi(i-1,j-1)/dyv(i-1,j-1)))       &
-                      + fac4(i,j)*(0.5*(ui(i,j)/dxv(i,j)-ui(i,j-1)/dxv(i,j-1) &
-                      + ui(i-1,j)/dxv(i-1,j)-ui(i-1,j-1)/dxv(i-1,j-1)))
+                      + 0.25*(ui(i,j)+ui(i,j-1)+ui(i-1,j)+ui(i-1,j-1))*fac2(i,j)) / &
+                      G%dyT(i,j)
+          strn12(i,j) = fac3(i,j)*(0.5*(vi(i,j)/G%dyBu(I,J) - vi(i-1,j)/G%dyBu(I-1,J) &
+                      + vi(i,j-1)/G%dyBu(i,j-1) - vi(i-1,j-1)/G%dyBu(i-1,j-1)))       &
+                      + fac4(i,j)*(0.5*(ui(i,j)/G%dxBu(i,j)-ui(i,j-1)/G%dxBu(i,j-1) &
+                      + ui(i-1,j)/G%dxBu(i-1,j)-ui(i-1,j-1)/G%dxBu(i-1,j-1)))
        enddo
     enddo
 
@@ -164,10 +166,10 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     !
     do j = jsc, jec
        do i = isc, iec
-          sldx(i,j) = -dt_evp*grav*(0.5*(sea_lev(i+1,j+1)-sea_lev(i,j+1) &
-                    + sea_lev(i+1,j)-sea_lev(i,j)))/dxv(i,j)
-          sldy(i,j) = -dt_evp*grav*(0.5*(sea_lev(i+1,j+1)-sea_lev(i+1,j) &
-                    + sea_lev(i,j+1)-sea_lev(i,j)))/dyv(i,j)
+          sldx(I,J) = -dt_evp*grav*(0.5*(sea_lev(i+1,j+1)-sea_lev(i,j+1) &
+                    + sea_lev(i+1,j)-sea_lev(i,j)))/G%dxBu(i,J)
+          sldy(I,J) = -dt_evp*grav*(0.5*(sea_lev(i+1,j+1)-sea_lev(i+1,j) &
+                    + sea_lev(i,j+1)-sea_lev(i,j)))/G%dyBu(I,J)
        enddo
     enddo
 
@@ -179,15 +181,13 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     !
     prs = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec) )
 
-    do j = jsc, jec
-       do i = isc, iec
-          if(dxt(i,j) < dyt(i,j) ) then
-             edt(i,j) = (DI*dxt(i,j)*dxt(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
-          else
-             edt(i,j) = (DI*dyt(i,j)*dyt(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
-          endif
-       enddo
-    enddo
+    do j=jsc,jec ; do i=isc,iec
+      if(G%dxT(i,j) < G%dyT(i,j) ) then
+        edt(i,j) = (DI*G%dxT(i,j)*G%dxT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      else
+        edt(i,j) = (DI*G%dyT(i,j)*G%dyT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      endif
+    enddo ; enddo
 
     do j = jsc, jec
        do i = isc, iec
@@ -262,13 +262,13 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
        call mpp_update_domains(sig22, Domain, complete=.false.)
        call mpp_update_domains(sig12, Domain, complete=.true.)
 
-       tmp1 = dTdy(sig12*dxt)
-       tmp2 = dTdx(sig11*dyt)
-       tmp3 = t_on_uv(sig12)
-       tmp4 = t_on_uv(sig22)
-       tmp5 = t_on_uv(sig11)
-       tmp6 = dTdx(sig12*dyt)
-       tmp7 = dTdy(sig22*dxt)
+       tmp1(isc:iec,jsc:jec) = dTdy(sig12(isd:ied,jsd:jed)*G%dxT(isd:ied,jsd:jed))
+       tmp2(isc:iec,jsc:jec) = dTdx(sig11(isd:ied,jsd:jed)*G%dyT(isd:ied,jsd:jed))
+       tmp3(isc:iec,jsc:jec) = t_on_uv(sig12)
+       tmp4(isc:iec,jsc:jec) = t_on_uv(sig22(:,:))
+       tmp5(isc:iec,jsc:jec) = t_on_uv(sig11(:,:))
+       tmp6(isc:iec,jsc:jec) = dTdx(sig12(isd:ied,jsd:jed)*G%dyT(isd:ied,jsd:jed))
+       tmp7(isc:iec,jsc:jec) = dTdy(sig22(isd:ied,jsd:jed)*G%dxT(isd:ied,jsd:jed))
 
        do j = jsc, jec
           do i = isc, iec
@@ -277,8 +277,8 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
                 !
                 ! first, timestep explicit parts (ice, wind & ocean part of water stress)
                 !
-                fxic_now = ( tmp1(i,j) + tmp2(i,j) + tmp3(i,j)*dxdy(i,j) - tmp4(i,j)*dydx(i,j) )/(dxv(i,j)*dyv(i,j)) 
-                fyic_now = ( tmp6(i,j) + tmp7(i,j) + tmp3(i,j)*dydx (i,j) - tmp5(i,j)*dxdy(i,j))/(dxv(i,j)*dyv(i,j)) 
+                fxic_now = ( tmp1(i,j) + tmp2(i,j) + tmp3(i,j)*dxdy(i,j) - tmp4(i,j)*dydx(i,j) )/(G%dxBu(i,j)*G%dyBu(I,J)) 
+                fyic_now = ( tmp6(i,j) + tmp7(i,j) + tmp3(i,j)*dydx (i,j) - tmp5(i,j)*dxdy(i,j))/(G%dxBu(i,j)*G%dyBu(I,J)) 
 
                 ui(i,j) = ui(i,j)+(fxic_now+civ(i,j)*fxat(i,j)+ real(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldx(i,j)
                 vi(i,j) = vi(i,j)+(fyic_now+civ(i,j)*fyat(i,j)+aimag(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldy(i,j)

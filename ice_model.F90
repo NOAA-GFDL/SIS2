@@ -79,8 +79,9 @@ module ice_model_mod
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: ice_advect, ice_avg, all_avg, ice_line, slab_ice_advect
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, latitude
+  use ice_grid_mod,     only: sea_ice_grid_type
   use ice_spec_mod,     only: get_sea_surface
-  use ice_grid_mod,     only: dxv, dyv, dxt, dyt, dt_adv, wett
+  use ice_grid_mod,     only: dt_adv, wett
 
   !
   ! the following two modules are the work horses of the sea ice model
@@ -1407,7 +1408,7 @@ contains
     ! Ice transport ... all ocean fluxes have been calculated by now
     !
     h2o_change = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
-    call transport(Ice)
+    call transport(Ice, Ice%grid)
 
     x = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
     if (id_mi>0) sent = send_data(id_mi, x, Ice%Time, mask = Ice%mask)
@@ -1619,11 +1620,12 @@ contains
 
   end subroutine ice_redistribute
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! transport - do ice transport and thickness class redistribution              !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine transport (Ice)
-    type (ice_data_type), intent(inout) :: Ice
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! transport - do ice transport and thickness class redistribution              !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine transport (Ice, G)
+  type (ice_data_type), intent(inout) :: Ice
+  type(sea_ice_grid_type), intent(in) :: G
     integer :: i, j, k
     logical :: sent
     real, dimension(size(Ice%t_surf,1),size(Ice%t_surf,2)) :: uf0, uf, vf0, vf
@@ -1634,7 +1636,7 @@ contains
     real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
 
     if (slab_ice) then
-       call slab_ice_advect(Ice%u_ice, Ice%v_ice, Ice%h_ice(:,:,2), 4.0, Ice%grid)
+       call slab_ice_advect(Ice%u_ice, Ice%v_ice, Ice%h_ice(:,:,2), 4.0, G)
        call mpp_update_domains(Ice%h_ice(:,:,2), Domain)
        do j = jsd, jed
           do i = isd, ied
@@ -1691,18 +1693,18 @@ contains
              .and. Ice%vmask(i,j)+Ice%vmask(i,j-1)==0. &  ! =0 => no vels
              .and. wett(i,j)*wett(i+1,j)>0.) then ! >0 => open for transport
                grad_eta=(Ice%sea_lev(i+1,j)-Ice%sea_lev(i,j))    & ! delta_i eta
-                        /(0.5*(dxv(i,j)+dxv(i,j-1)))               ! /dx
-               u_visc=-ssh_gravity*((Ice%grid%dyCu(I,j)*Ice%grid%dyCu(I,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+                        /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
+               u_visc=-ssh_gravity*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
                         *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*Ice%grid%dyCu(I,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+               u_ocn=sqrt( ssh_gravity*G%dyCu(I,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
                u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
                cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
                uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (uc(i,j)>0.) then
-                 uc(i,j)=min( uc(i,j), chan_cfl_limit*dxt(i,j)/dt_adv)
+                 uc(i,j)=min( uc(i,j), chan_cfl_limit*G%dxT(i,j)/dt_adv)
                else
-                 uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*dxt(i+1,j)/dt_adv)
+                 uc(i,j)=max( uc(i,j),(-1*chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
                endif
                if (id_ustar>0) ustar(i,j)=uc(i,j)
                if (id_uocean>0) ustaro(i,j)=u_ocn
@@ -1712,18 +1714,18 @@ contains
              .and. Ice%vmask(i,j)+Ice%vmask(i-1,j)==0. &  ! =0 => no vels
              .and. wett(i,j)*wett(i,j+1)>0.) then ! >0 => open for transport
                grad_eta=(Ice%sea_lev(i,j+1)-Ice%sea_lev(i,j))    & ! delta_i eta
-                        /(0.5*(dyv(i,j)+dyv(i,j-1)))               ! /dy
-               u_visc=-ssh_gravity*((Ice%grid%dxCv(i,J)*Ice%grid%dxCv(i,J))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+                        /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
+               u_visc=-ssh_gravity*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
                         *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*Ice%grid%dxCv(i,J)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+               u_ocn=sqrt( ssh_gravity*G%dxCv(i,J)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
                u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
                cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
                vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
                ! Limit flow to be stable for fully divergent flow
                if (vc(i,j)>0.) then
-                 vc(i,j)=min( vc(i,j), chan_cfl_limit*dyt(i,j)/dt_adv)
+                 vc(i,j)=min( vc(i,j), chan_cfl_limit*G%dyT(i,j)/dt_adv)
                else
-                 vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*dyt(i,j+1)/dt_adv)
+                 vc(i,j)=max( vc(i,j),(-1*chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
                endif
                if (id_vstar>0) vstar(i,j)=vc(i,j)
                if (id_vocean>0) vstaro(i,j)=u_ocn
@@ -1737,16 +1739,16 @@ contains
 
     uf = 0.0; vf = 0.0
     do k=2,km
-       call ice_advect(uc, vc, Ice%part_size(:,:,k), Ice%grid)
-       call ice_advect(uc, vc, Ice%h_snow   (:,:,k), Ice%grid, uf0, vf0)
+       call ice_advect(uc, vc, Ice%part_size(:,:,k), G)
+       call ice_advect(uc, vc, Ice%h_snow   (:,:,k), G, uf0, vf0)
        uf = uf + DS*uf0; vf = vf + DS*vf0
-       call ice_advect(uc, vc, Ice%h_ice    (:,:,k), Ice%grid, uf0, vf0)
+       call ice_advect(uc, vc, Ice%h_ice    (:,:,k), G, uf0, vf0)
        uf = uf + DI*uf0; vf = vf + DI*vf0
-       call ice_advect(uc, vc, Ice%t_snow   (:,:,k), Ice%grid)
-       call ice_advect(uc, vc, Ice%t_ice1   (:,:,k), Ice%grid)
-       call ice_advect(uc, vc, Ice%t_ice2   (:,:,k), Ice%grid)
-       call ice_advect(uc, vc, Ice%t_ice3   (:,:,k), Ice%grid)
-       call ice_advect(uc, vc, Ice%t_ice4   (:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%t_snow   (:,:,k), G)
+       call ice_advect(uc, vc, Ice%t_ice1   (:,:,k), G)
+       call ice_advect(uc, vc, Ice%t_ice2   (:,:,k), G)
+       call ice_advect(uc, vc, Ice%t_ice3   (:,:,k), G)
+       call ice_advect(uc, vc, Ice%t_ice4   (:,:,k), G)
     end do
     sent = send_data(id_ix_trans,  uf, Ice%Time)
     sent = send_data(id_iy_trans,  vf, Ice%Time)
