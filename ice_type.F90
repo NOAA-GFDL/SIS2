@@ -23,7 +23,7 @@ module ice_type_mod
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
-  use ice_grid_mod,     only: x_cyclic, tripolar_grid, dtn, dte, wetv
+  use ice_grid_mod,     only: x_cyclic, tripolar_grid, wetv
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
   use ice_dyn_mod,      only: ice_dyn_param
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -745,7 +745,7 @@ public  :: earth_area
     if (do_icebergs) call icebergs_init(Ice%icebergs, &
              im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
              dt_slow, Time, Ice%grid%geoLonBu(isc:iec,jsc:jec), Ice%grid%geoLatBu(isc:iec,jsc:jec), &
-             wett, dtn, dte, cell_area, cos_rot, sin_rot )
+             wett, Ice%grid%dxCv, Ice%grid%dyCu, cell_area, cos_rot, sin_rot )
 
    if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 

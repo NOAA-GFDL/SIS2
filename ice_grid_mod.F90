@@ -27,7 +27,7 @@ module ice_grid_mod
 
   public :: set_ice_grid, dt_evp, evp_sub_steps, g_sum, ice_avg, all_avg
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  public :: dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, cor, xb1d, yb1d
+  public :: dxt, dxv, dyt, dyv, cor, xb1d, yb1d
   public :: geo_lon, geo_lat, sin_rot, cos_rot, cell_area, wett, wetv
   public :: grid_x_t,grid_y_t
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
@@ -148,7 +148,6 @@ end type SIS2_domain_type
   !
   logical                           ::  x_cyclic           ! x boundary condition
   logical                           ::  tripolar_grid      ! y boundary condition
-  real, allocatable, dimension(:,:) ::  dtw, dte, dts, dtn ! size of t cell sides
   real, allocatable, dimension(:,:) ::  dxt, dxv           ! x-extent of t and v cells
   real, allocatable, dimension(:,:) ::  dyt, dyv           ! y-extent of t and v cells
   real, allocatable, dimension(:,:) ::  dxdy, dydx         
@@ -546,8 +545,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     allocate ( wett   (isd:ied,jsd:jed), wetv   ( isc:iec,jsc:jec),  &
                dxt    (isd:ied,jsd:jed), dxv     (isd:ied,jsd:jed),  &
                dyt    (isd:ied,jsd:jed), dyv     (isd:ied,jsd:jed),  &
-               dtw    (isc:iec,jsc:jec), dte     (isd:ied,jsd:jed),  &
-               dts    (isc:iec,jsc:jec), dtn     (isd:ied,jsd:jed),  &
                dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
                geo_lat(isc:iec,jsc:jec), geo_lon (isc:iec,jsc:jec),  &
                cor    (isc:iec,jsc:jec), sin_rot (isd:ied,jsd:jed),  &
@@ -664,20 +661,18 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     endif
 
 
-  dte(:,:) = 0.0 ! ; dtw(:,:) = 0.0
-  dtn(:,:) = 0.0 ! ; dts(:,:) = 0.0
   cos_rot(:,:) = 0.0
   sin_rot(:,:) = 0.0
 
+  do j=jsc,jec ; do I=isc-1,iec
+    grid%dyCu(I,j) = edge_length(grid%geoLonBu(I,J-1),grid%geoLatBu(I,J-1), &
+                                 grid%geoLonBu(I,J),grid%geoLatBu(I,J))
+  enddo ; enddo
+  do J=jsc-1,jec ; do i=isc,iec
+    grid%dxCv(i,J) = edge_length(grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J), &
+                                 grid%geoLonBu(I,J), grid%geoLatBu(I,J))
+  enddo ; enddo
   do j=jsc,jec ; do i=isc,iec
-    dts(i,j)     = edge_length(grid%geoLonBu(I-1,J-1), grid%geoLatBu(I-1,J-1), &
-                               grid%geoLonBu(I,J-1), grid%geoLatBu(I,J-1))
-    dtn(i,j)     = edge_length(grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J), &
-                               grid%geoLonBu(I,J), grid%geoLatBu(I,J))
-    dtw(i,j)     = edge_length(grid%geoLonBu(I-1,J-1),  grid%geoLatBu(I-1,J-1), &
-                               grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J))
-    dte(i,j)     = edge_length(grid%geoLonBu(I,J-1),grid%geoLatBu(I,J-1), &
-                               grid%geoLonBu(I,J),grid%geoLatBu(I,J))
     lon_scale    = cos((grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1  ) + &
                         grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J)) * atan(1.0)/180)
     angle        = atan2((grid%geoLonBu(I-1,J) + grid%geoLonBu(I,J) - &
@@ -688,7 +683,7 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
-  call mpp_update_domains(dte, dtn, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
+  call mpp_update_domains(grid%dyCu, grid%dxCv, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
 
   ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
     call mpp_update_domains(cos_rot, Domain)
@@ -699,11 +694,11 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
     do j = jsc, jec
        do i = isc, iec
-          dxt(i,j) = (dts(i,j) + dtn(i,j) )/2
+          dxt(i,j) = (grid%dxCv(i,J-1) + grid%dxCv(I,j) )/2
           if(cell_area(i,j) > 0.0) then
              dyt(i,j) = cell_area(i,j)*4*pi*radius*radius/dxt(i,j)
           else
-             dyt(i,j) = (dtw(i,j) + dte(i,j) )/2
+             dyt(i,j) = (grid%dyCu(I-1,j) + grid%dyCu(I,j) )/2
           endif
        enddo
     enddo
@@ -795,7 +790,7 @@ subroutine ice_grid_end(G)
 
   DEALLOC_(G%CoriolisBu)
 
-  deallocate(wett, wetv, dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, latitude )
+  deallocate(wett, wetv, dxt, dxv, dyt, dyv, latitude )
   deallocate(cor, geo_lat, geo_lon, xb1d, yb1d, sin_rot, cos_rot, cell_area )
 
 
@@ -852,80 +847,76 @@ end subroutine ice_grid_end
        print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
   end subroutine ice_line
 
-  !#####################################################################
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_advect - take adv_sub_steps upstream advection timesteps                 !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_advect(uc, vc, trc, uf, vf)
-    real, intent(in   ),           dimension(isd:,jsd:) :: uc, vc  ! advecting velocity on C-grid
-    real, intent(inout),           dimension(isd:,jsd:) :: trc     ! tracer to advect
-    real, optional, intent(inout), dimension(isc:,jsc:) :: uf, vf
+!#####################################################################
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_advect - take adv_sub_steps upstream advection timesteps                 !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_advect(uc, vc, trc, G, uf, vf)
+  real, intent(in   ),           dimension(isd:,jsd:) :: uc, vc  ! advecting velocity on C-grid
+  real, intent(inout),           dimension(isd:,jsd:) :: trc     ! tracer to advect
+  type(sea_ice_grid_type), intent(in) :: G
+  real, optional, intent(inout), dimension(isc:,jsc:) :: uf, vf
 
-    integer                          :: l, i, j
-    real, dimension(isd:ied,jsd:jed) ::  uflx, vflx
+  integer                          :: l, i, j
+  real, dimension(isd:ied,jsd:jed) ::  uflx, vflx
 
-    if (adv_sub_steps==0) return;
+  if (adv_sub_steps==0) return;
 
-    if (present(uf)) uf = 0.0
-    if (present(vf)) vf = 0.0
+  if (present(uf)) uf(:,:) = 0.0
+  if (present(vf)) vf(:,:) = 0.0
 
-    uflx = 0.0
-    vflx = 0.0
+  uflx(:,:) = 0.0
+  vflx(:,:) = 0.0
 
-    do l=1,adv_sub_steps
-       do j = jsd, jec
-          do i = isd, iec
-             if( uc(i,j) > 0.0 ) then
-                uflx(i,j) = uc(i,j) * trc(i,j) * dte(i,j)
-             else
-                uflx(i,j) = uc(i,j) * trc(i+1,j) * dte(i,j)
-             endif
+  do l=1,adv_sub_steps
+    do j=jsd,jec ; do I=isc-1,iec
+      if( uc(I,j) > 0.0 ) then
+         uflx(I,j) = uc(I,j) * trc(i,j) * G%dyCu(I,j)
+      else
+         uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dyCu(I,j)
+      endif
+    enddo ; enddo
 
-             if( vc(i,j) > 0.0 ) then
-                vflx(i,j) = vc(i,j) * trc(i,j) * dtn(i,j)
-             else
-                vflx(i,j) = vc(i,j) * trc(i,j+1) * dtn(i,j)
-             endif
-          enddo
-       enddo
+    do J=jsc-1,jec ; do i=isd,iec
+      if( vc(i,J) > 0.0 ) then
+         vflx(i,J) = vc(i,J) * trc(i,j) * G%dxCv(i,J)
+      else
+         vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dxCv(i,J)
+      endif
+    enddo ; enddo
 
-       do j = jsc, jec
-          do i = isc, iec
-             trc(i,j) = trc(i,j) + dt_adv * ( uflx(i-1,j) - uflx(i,j) + &
-                        vflx(i,j-1) - vflx(i,j) )/ ( dxt(i,j) * dyt(i,j) ) 
-          enddo
-       enddo
+    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j) - uflx(I,j) + &
+                 vflx(i,J-1) - vflx(i,J) )/ ( dxt(i,j) * dyt(i,j) ) 
+    enddo ; enddo
 
-       call mpp_update_domains(trc, Domain)
+    call mpp_update_domains(trc, Domain)
 
-       if (present(uf)) then
-          do j = jsc, jec
-             do i = isc, iec       
-                uf(i,j) = uf(i,j) + uflx(i,j)
-             enddo
-          enddo
-       endif
+    if (present(uf)) then
+      do j=jsc,jec ; do I=isc,iec       
+        uf(I,j) = uf(I,j) + uflx(I,j)
+      enddo ; enddo
+    endif
 
-       if (present(vf)) then
-          do j = jsc, jec
-             do i = isc, iec       
-                vf(i,j) = vf(i,j) + vflx(i,j)
-             enddo
-          enddo
-       endif
+    if (present(vf)) then
+      do J=jsc,jec ; do I=isc,iec       
+        vf(i,J) = vf(i,J) + vflx(i,J)
+      enddo ; enddo
+    endif
 
-    end do
+  enddo
 
-    if (present(uf)) uf = uf/adv_sub_steps;
-    if (present(vf)) vf = vf/adv_sub_steps;
+  if (present(uf)) uf = uf/adv_sub_steps;
+  if (present(vf)) vf = vf/adv_sub_steps;
 
-  end subroutine ice_advect
+end subroutine ice_advect
 
-  !#####################################################################
-  subroutine slab_ice_advect(ui, vi, trc, stop_lim)
-    real, intent(in   ), dimension(isd:,jsd:) :: ui, vi       ! advecting velocity
-    real, intent(inout), dimension(isd:,jsd:) :: trc          ! tracer to advect
-    real, intent(in   )                             :: stop_lim
+!#####################################################################
+subroutine slab_ice_advect(ui, vi, trc, stop_lim, G)
+  real, intent(in   ), dimension(isd:,jsd:) :: ui, vi       ! advecting velocity
+  real, intent(inout), dimension(isd:,jsd:) :: trc          ! tracer to advect
+  real, intent(in   )                             :: stop_lim
+  type(sea_ice_grid_type), intent(in) :: G
 
     integer                          :: l, i, j
     real, dimension(isd:ied,jsd:jed) :: ue, vn, uflx, vflx
@@ -936,50 +927,47 @@ end subroutine ice_grid_end
     ue(:,jsd) = 0.0; ue(:,jed) = 0.0
     vn(:,jsd) = 0.0; vn(:,jed) = 0.0
 
-    do j = jsc, jec
-       do i = isc, iec
-          ue(i,j) = 0.5 * ( ui(i,j-1) + ui(i,j) )
-          vn(i,j) = 0.5 * ( vi(i-1,j) + vi(i,j) )
-       enddo
-    enddo
+  do J=jsc,jec ; do I=isc,iec       
+    ue(I,J) = 0.5 * ( ui(I,j-1) + ui(I,j) )
+    vn(I,J) = 0.5 * ( vi(i-1,J) + vi(i,J) )
+  enddo ; enddo
 
   call mpp_update_domains(ue, vn, Domain, gridtype=CGRID_NE)
 
-    do l=1,adv_sub_steps
-       do j = jsd, jec
-          do i = isd, iec
-             avg = ( trc(i,j) + trc(i+1,j) )/2
-             dif = trc(i+1,j) - trc(i,j)
-             if( avg > stop_lim .and. ue(i,j) * dif > 0.0) then
-                uflx(i,j) = 0.0
-             else if( ue(i,j) > 0.0 ) then
-                uflx(i,j) = ue(i,j) * trc(i,j) * dte(i,j)
-             else
-                uflx(i,j) = ue(i,j) * trc(i+1,j) * dte(i,j)
-             endif
+  do l=1,adv_sub_steps
+    do j=jsc,jec ; do I=isc-1,iec
+      avg = ( trc(i,j) + trc(i+1,j) )/2
+      dif = trc(i+1,j) - trc(i,j)
+      if( avg > stop_lim .and. ue(I,j) * dif > 0.0) then
+        uflx(I,j) = 0.0
+      else if( ue(i,j) > 0.0 ) then
+        uflx(I,j) = ue(I,j) * trc(i,j) * G%dyCu(I,j)
+      else
+        uflx(I,j) = ue(I,j) * trc(i+1,j) * G%dyCu(I,j)
+      endif
+    enddo ; enddo
 
-             avg = ( trc(i,j) + trc(i,j+1) )/2
-             dif = trc(i,j+1) - trc(i,j)
-             if( avg > stop_lim .and. vn(i,j) * dif > 0.0) then
-                vflx(i,j) = 0.0
-             else if( vn(i,j) > 0.0 ) then
-                vflx(i,j) = vn(i,j) * trc(i,j) * dtn(i,j)
-             else
-                vflx(i,j) = vn(i,j) * trc(i,j+1) * dtn(i,j)
-             endif
-          enddo
-       enddo
+    do J=jsc-1,jec ; do i=isc,iec
+      avg = ( trc(i,j) + trc(i,j+1) )/2
+      dif = trc(i,j+1) - trc(i,j)
+      if( avg > stop_lim .and. vn(i,J) * dif > 0.0) then
+        vflx(i,J) = 0.0
+      else if( vn(i,J) > 0.0 ) then
+        vflx(i,J) = vn(i,j) * trc(i,j) * G%dxCv(i,J)
+      else
+        vflx(i,J) = vn(i,J) * trc(i,j+1) * G%dxCv(i,J)
+      endif
+    enddo ; enddo
 
-       do j = jsc, jec
-          do i = isc, iec
-             trc(i,j) = trc(i,j) + dt_adv * ( uflx(i-1,j)-uflx(i,j) + vflx(i,j-1)-vflx(i,j) ) / (dxt(i,j)*dyt(i,j))
-          enddo
-       enddo
+    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j)-uflx(I,j) + vflx(i,J-1)-vflx(i,J) ) / &
+                                     (dxt(i,j)*dyt(i,j))
+    enddo ; enddo
 
-       call mpp_update_domains(trc, Domain)
+    call mpp_update_domains(trc, Domain)
+  enddo
 
-    end do
-  end subroutine slab_ice_advect
+end subroutine slab_ice_advect
 
   !#####################################################################
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

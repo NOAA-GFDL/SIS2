@@ -8,9 +8,10 @@ module ice_dyn_mod
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: grav, pi
   use ice_grid_mod,    only: Domain, isc, iec, im, jsc, jec, isd, ied, jsd, jed, jm
-  use ice_grid_mod,    only: dtw, dte, dts, dtn, dxt, dxv, dyt, dyv, cor, wett, wetv
+  use ice_grid_mod,    only: dxt, dxv, dyt, dyv, cor, wett, wetv
   use ice_grid_mod,    only: t_on_uv, t_to_uv, dTdx, dTdy, dt_evp, evp_sub_steps
   use ice_grid_mod,    only: dydx, dxdy
+  use ice_grid_mod,    only: sea_ice_grid_type
   use ice_thm_mod,     only: DI, DS, DW
 
   implicit none
@@ -47,12 +48,14 @@ contains
     SLAB_ICE = slab_ice_in
   end subroutine ice_dyn_param
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! set_strn - calculate generalized orthogonal coordinate strain tensor         !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine set_strn(ui, vi, strn11, strn22, strn12) ! ??? may change to do loop
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! set_strn - calculate generalized orthogonal coordinate strain tensor         !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do loop
     real, intent(in ), dimension(isd:ied,jsd:jed) :: ui, vi
     real, intent(out), dimension(isc:iec,jsc:jec) :: strn11, strn22, strn12
+  type(sea_ice_grid_type), intent(in) :: G
+
     real, allocatable, dimension(:,:), save :: fac1, fac2, fac3, fac4
     logical, save :: initialized = .false.
     integer       :: i, j
@@ -62,8 +65,8 @@ contains
                  fac3(isc:iec,jsc:jec), fac4(isc:iec,jsc:jec)  )
        do j = jsc, jec
           do i = isc, iec
-             fac1(i,j) = (dtn(i,j)-dts(i,j))/dyt(i,j)
-             fac2(i,j) = (dte(i,j)-dtw(i,j))/dxt(i,j)
+             fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/dyt(i,j)
+             fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/dxt(i,j)
              fac3(i,j) = 0.5*dyt(i,j)/dxt(i,j)
              fac4(i,j) = 0.5*dxt(i,j)/dyt(i,j)
           enddo
@@ -110,7 +113,7 @@ contains
   ! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
-       fxat, fyat, sea_lev, fxoc, fyoc, fxic, fyic, fxco, fyco)
+       fxat, fyat, sea_lev, fxoc, fyoc, fxic, fyic, fxco, fyco, G)
 !!$    real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
     real, intent(in   ), dimension(isd:,jsd:) :: ci, hs, hi  ! ice properties
     real, intent(inout), dimension(isd:ied,jsd:jed) :: ui, vi      ! ice velocity
@@ -122,6 +125,7 @@ contains
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxoc, fyoc  ! ice stress on ocean
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxic, fyic  ! ice int. stress
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxco, fyco  ! coriolis force
+  type(sea_ice_grid_type), intent(in) :: G
 
     real, dimension(isc:iec,jsc:jec)    :: prs                    ! ice pressure
     real                                :: zeta, eta              ! bulk/shear viscosities
@@ -201,7 +205,7 @@ contains
        ! calculate strain tensor for viscosities and forcing elastic eqn.
        call mpp_update_domains(ui, vi, Domain, gridtype=BGRID_NE)
        !
-       call set_strn(ui, vi, strn11, strn22, strn12)
+       call set_strn(ui, vi, strn11, strn22, strn12, G)
        !
        ! calculate viscosities - how often should we do this ?
        !
@@ -314,13 +318,14 @@ contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! strain_angle                                                                 !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function strain_angle(ui, vi)
+  function strain_angle(ui, vi, G)
     real, dimension(isd:ied,jsd:jed), intent(in) :: ui, vi
+  type(sea_ice_grid_type), intent(in) :: G
     real, dimension(isc:iec,jsc:jec)             :: strn11, strn22, strn12, strain_angle
 
     integer :: i, j
 
-    call set_strn(ui, vi, strn11, strn22, strn12)
+    call set_strn(ui, vi, strn11, strn22, strn12, G)
 
     do j = jsc, jec
        do i = isc, iec

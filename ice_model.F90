@@ -80,7 +80,7 @@ module ice_model_mod
   use ice_grid_mod,     only: ice_advect, ice_avg, all_avg, ice_line, slab_ice_advect
   use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, latitude
   use ice_spec_mod,     only: get_sea_surface
-  use ice_grid_mod,     only: dte, dtn, dxv, dyv, dxt, dyt, dt_adv, wett
+  use ice_grid_mod,     only: dxv, dyv, dxt, dyt, dt_adv, wett
 
   !
   ! the following two modules are the work horses of the sea ice model
@@ -1093,7 +1093,7 @@ contains
                      Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
                      ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor)
+                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor, Ice%grid)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
@@ -1116,7 +1116,7 @@ contains
     if (id_fwy>0) sent = send_data(id_fwy, -fy_wat, Ice%Time) ! ...= -ice on water
 
     if (id_strna>0) &
-         sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice), Ice%Time, mask=Ice%mask)
+         sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%grid), Ice%Time, mask=Ice%mask)
     if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
                     Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
                     Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
@@ -1634,7 +1634,7 @@ contains
     real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
 
     if (slab_ice) then
-       call slab_ice_advect(Ice%u_ice, Ice%v_ice, Ice%h_ice(:,:,2), 4.0)
+       call slab_ice_advect(Ice%u_ice, Ice%v_ice, Ice%h_ice(:,:,2), 4.0, Ice%grid)
        call mpp_update_domains(Ice%h_ice(:,:,2), Domain)
        do j = jsd, jed
           do i = isd, ied
@@ -1692,9 +1692,9 @@ contains
              .and. wett(i,j)*wett(i+1,j)>0.) then ! >0 => open for transport
                grad_eta=(Ice%sea_lev(i+1,j)-Ice%sea_lev(i,j))    & ! delta_i eta
                         /(0.5*(dxv(i,j)+dxv(i,j-1)))               ! /dx
-               u_visc=-ssh_gravity*((dte(i,j)*dte(i,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+               u_visc=-ssh_gravity*((Ice%grid%dyCu(I,j)*Ice%grid%dyCu(I,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
                         *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*dte(i,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+               u_ocn=sqrt( ssh_gravity*Ice%grid%dyCu(I,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
                u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
                cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
                uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
@@ -1713,9 +1713,9 @@ contains
              .and. wett(i,j)*wett(i,j+1)>0.) then ! >0 => open for transport
                grad_eta=(Ice%sea_lev(i,j+1)-Ice%sea_lev(i,j))    & ! delta_i eta
                         /(0.5*(dyv(i,j)+dyv(i,j-1)))               ! /dy
-               u_visc=-ssh_gravity*((dtn(i,j)*dtn(i,j))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
+               u_visc=-ssh_gravity*((Ice%grid%dxCv(i,J)*Ice%grid%dxCv(i,J))/(12.*channel_viscosity)) & ! -g*dy^2/(12*visc)
                         *grad_eta                                                  ! d/dx eta
-               u_ocn=sqrt( ssh_gravity*dtn(i,j)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
+               u_ocn=sqrt( ssh_gravity*Ice%grid%dxCv(i,J)*abs(grad_eta)/(36.*smag_ocn) ) ! Magnitude of ocean current
                u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
                cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
                vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
@@ -1737,16 +1737,16 @@ contains
 
     uf = 0.0; vf = 0.0
     do k=2,km
-       call ice_advect(uc, vc, Ice%part_size(:,:,k))
-       call ice_advect(uc, vc, Ice%h_snow   (:,:,k), uf0, vf0)
+       call ice_advect(uc, vc, Ice%part_size(:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%h_snow   (:,:,k), Ice%grid, uf0, vf0)
        uf = uf + DS*uf0; vf = vf + DS*vf0
-       call ice_advect(uc, vc, Ice%h_ice    (:,:,k), uf0, vf0)
+       call ice_advect(uc, vc, Ice%h_ice    (:,:,k), Ice%grid, uf0, vf0)
        uf = uf + DI*uf0; vf = vf + DI*vf0
-       call ice_advect(uc, vc, Ice%t_snow   (:,:,k))
-       call ice_advect(uc, vc, Ice%t_ice1   (:,:,k))
-       call ice_advect(uc, vc, Ice%t_ice2   (:,:,k))
-       call ice_advect(uc, vc, Ice%t_ice3   (:,:,k))
-       call ice_advect(uc, vc, Ice%t_ice4   (:,:,k))
+       call ice_advect(uc, vc, Ice%t_snow   (:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%t_ice1   (:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%t_ice2   (:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%t_ice3   (:,:,k), Ice%grid)
+       call ice_advect(uc, vc, Ice%t_ice4   (:,:,k), Ice%grid)
     end do
     sent = send_data(id_ix_trans,  uf, Ice%Time)
     sent = send_data(id_iy_trans,  vf, Ice%Time)
