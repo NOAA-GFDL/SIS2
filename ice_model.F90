@@ -78,7 +78,7 @@ module ice_model_mod
   use ice_grid_mod,     only: uv_to_t, t_to_uv, vel_t_to_uv, cut_check, tripolar_grid
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: ice_advect, ice_avg, all_avg, ice_line, slab_ice_advect
-  use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, latitude
+  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_spec_mod,     only: get_sea_surface
   use ice_grid_mod,     only: dt_adv, wett
@@ -810,7 +810,7 @@ contains
       time_since_ae = orbital_time(Ice%Time)
 !--------------------------------------------------------------------
 !    call diurnal_solar_2d to calculate astronomy fields
-!    convert geo_lon and geo_lat to radians
+!    convert G%geoLonT and G%geoLatT to radians
 !    Per Rick Hemler:
 !      call daily_mean_solar to get cosz (over a day)
 !      call diurnal_solar with dtime=Dt_ice to get cosz over Dt_ice
@@ -822,9 +822,9 @@ contains
     if (add_diurnal_sw) then
       do j = jsc, jec
         do i = isc, iec
-          call diurnal_solar(geo_lat(i,j)*rad, geo_lon(i,j)*rad, Ice%time, cosz=cosz_dt_ice,     &
+          call diurnal_solar(Ice%grid%geoLatT(i,j)*rad, Ice%grid%geoLonT(i,j)*rad, Ice%time, cosz=cosz_dt_ice, &
                              fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
-          call daily_mean_solar (geo_lat(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
+          call daily_mean_solar (Ice%grid%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
           diurnal_factor(i,j) = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice /   &
                                        max(1e-30, cosz_day*fracday_day*rrsun_day)
         enddo
@@ -895,8 +895,8 @@ contains
                                   Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
     if (do_sun_angle_for_alb) then
-      call diurnal_solar(geo_lat*rad, geo_lon*rad, Ice%time, cosz=cosz_alb,	&
-			     fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
+      call diurnal_solar(Ice%grid%geoLatT(isc:iec,jsc:jec)*rad, Ice%grid%geoLonT(isc:iec,jsc:jec)*rad, &
+                   Ice%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
       call compute_ocean_albedo (Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                                    Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                                    Ice%albedo_nir_dif(:,:,1), latitude )
@@ -1552,13 +1552,13 @@ contains
     call get_date(Ice%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(Ice%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     if(verbose)  call ice_line(iyr, iday+1, isec, Ice%part_size(isc:iec,jsc:jec,:), &
-               Ice%t_surf(:,:,1)-Tfreeze) 
+               Ice%t_surf(:,:,1)-Tfreeze, Ice%grid) 
 
     do j=jsc, jec
        do i=isc, iec 
           if (Ice%mask(i,j).and.(abs(sum(Ice%part_size(i,j,:))-1.0)>1e-2)) &
                print *,'ICE%PART_SIZE=',Ice%part_size(i,j,:), 'DOES NOT SUM TO 1 AT', &
-               geo_lon(i,j), geo_lat(i,j)
+               Ice%grid%geoLonT(i,j), Ice%grid%geoLatT(i,j)
        end do
     end do
     call mpp_clock_end(iceClock9)

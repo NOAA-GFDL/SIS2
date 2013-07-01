@@ -28,7 +28,7 @@ module ice_grid_mod
   public :: set_ice_grid, dt_evp, evp_sub_steps, g_sum, ice_avg, all_avg
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: cor, xb1d, yb1d
-  public :: geo_lon, geo_lat, sin_rot, cos_rot, cell_area, wett, wetv
+  public :: sin_rot, cos_rot, cell_area, wett, wetv
   public :: grid_x_t,grid_y_t
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
   public :: ice_line, vel_t_to_uv, cut_check, latitude, slab_ice_advect
@@ -151,8 +151,6 @@ end type SIS2_domain_type
   real, allocatable, dimension(:,:) ::  dxdy, dydx         
   real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
   real, allocatable, dimension(:,:) ::  cor                ! coriolis on v cells
-  real, allocatable, dimension(:,:) ::  geo_lat            ! true latitude (rotated grid)
-  real, allocatable, dimension(:,:) ::  geo_lon            ! true longitude              
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  sin_rot, cos_rot   ! sin/cos of vector rotation angle
@@ -542,7 +540,6 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
     allocate ( wett   (isd:ied,jsd:jed), wetv   ( isc:iec,jsc:jec),  &
                dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
-               geo_lat(isc:iec,jsc:jec), geo_lon (isc:iec,jsc:jec),  &
                cor    (isc:iec,jsc:jec), sin_rot (isd:ied,jsd:jed),  &
                cos_rot(isd:ied,jsd:jed), latitude(isc:iec,jsc:jec) )
 
@@ -714,16 +711,16 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
   do j=jsc,jec ; do i=isc,iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
-    geo_lon(i,j) = lon_avg( (/ grid%geoLonBu(I-1,J-1), grid%geoLonBu(I,J-1), &
+    grid%geoLonT(i,j) = lon_avg( (/ grid%geoLonBu(I-1,J-1), grid%geoLonBu(I,J-1), &
                                grid%geoLonBu(I-1,J), grid%geoLonBu(I,J) /) )
-    geo_lat(i,j) = (grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1) + &
-                    grid%geoLatBu(I-1,J)   + grid%geoLatBu(I,J)) / 4
+    grid%geoLatT(i,j) = (grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1) + &
+                         grid%geoLatBu(I-1,J)   + grid%geoLatBu(I,J)) / 4
   enddo ; enddo
 
   do J=jsc,jec ; do I=isc,iec
     cor(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
   enddo ; enddo
-  latitude(:,:) = geo_lat(isc:iec,jsc:jec)*pi/180
+  latitude(:,:) = grid%geoLatT(isc:iec,jsc:jec)*pi/180
 
     !--- z1l: loop through the pelist to find the symmetry processor.
     !--- This is needed to address the possibility that some of the all-land processor 
@@ -785,7 +782,7 @@ subroutine ice_grid_end(G)
   DEALLOC_(G%CoriolisBu)
 
   deallocate(wett, wetv, latitude )
-  deallocate(cor, geo_lat, geo_lon, xb1d, yb1d, sin_rot, cos_rot, cell_area )
+  deallocate(cor, xb1d, yb1d, sin_rot, cos_rot, cell_area )
 
 
 end subroutine ice_grid_end
@@ -819,21 +816,22 @@ end subroutine ice_grid_end
   end function edge_length
 
   !#####################################################################
-  subroutine ice_line(year, day, second, cn, sst)
-    integer,                               intent(in) :: year, day, second
+  subroutine ice_line(year, day, second, cn, sst, G)
+    integer,                         intent(in) :: year, day, second
     real, dimension(isc:,jsc:,1:),   intent(in) :: cn
     real, dimension(isc:,jsc:),      intent(in) :: sst
+    type(sea_ice_grid_type),         intent(in) :: G
 
     real, dimension(isc:iec,jsc:jec) :: x
     real                             :: gx(3)
     integer                          :: i
 
     do i=-1,1,2
-       x = 0.0
-       where (cn(:,:,1)<0.85 .and. i*geo_lat>0.0) x=cell_area
-       gx((i+3)/2) = g_sum(x)*4*pi*radius*radius/1e12
+       x(:,:) = 0.0
+       where (cn(:,:,1)<0.85 .and. i*G%geoLatT(isc:iec,jsc:jec)>0.0) x(:,:)=cell_area(:,:)
+       gx((i+3)/2) = g_sum(x(:,:))*4*pi*radius*radius/1e12
     end do
-    gx(3) = g_sum(sst*cell_area)/(g_sum(cell_area)+1e-10)
+    gx(3) = g_sum(sst(:,:)*cell_area(:,:))/(g_sum(cell_area(:,:))+1e-10)
     !
     ! print info every 5 days
     !

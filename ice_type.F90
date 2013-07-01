@@ -21,7 +21,7 @@ module ice_type_mod
   use ice_grid_mod,     only: set_ice_grid, t_to_uv, ice_grid_end
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: geo_lon, geo_lat, cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
+  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, wett, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid, wetv
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
@@ -1088,8 +1088,8 @@ public  :: earth_area
 
     if (id_sin_rot>0)   sent=send_data(id_sin_rot, sin_rot(isc:iec,jsc:jec), Ice%Time);
     if (id_cos_rot>0)   sent=send_data(id_cos_rot, cos_rot(isc:iec,jsc:jec), Ice%Time);
-    if (id_geo_lon>0)   sent=send_data(id_geo_lon, geo_lon, Ice%Time);
-    if (id_geo_lat>0)   sent=send_data(id_geo_lat, geo_lat, Ice%Time);
+    if (id_geo_lon>0)   sent=send_data(id_geo_lon, Ice%grid%geoLonT(isc:iec,jsc:jec), Ice%Time);
+    if (id_geo_lat>0)   sent=send_data(id_geo_lat, Ice%grid%geoLatT(isc:iec,jsc:jec), Ice%Time);
     if (id_cell_area>0) sent=send_data(id_cell_area, cell_area, Ice%Time);
 
   end subroutine ice_diagnostics_init

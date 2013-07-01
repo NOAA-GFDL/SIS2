@@ -320,7 +320,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   function strain_angle(ui, vi, G)
     real, dimension(isd:ied,jsd:jed), intent(in) :: ui, vi
-  type(sea_ice_grid_type), intent(in) :: G
+    type(sea_ice_grid_type), intent(in) :: G
     real, dimension(isc:iec,jsc:jec)             :: strn11, strn22, strn12, strain_angle
 
     integer :: i, j
