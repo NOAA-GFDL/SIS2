@@ -168,7 +168,7 @@ end type SIS2_domain_type
 
 contains
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_avg - take area weighted average over ice partiions                      !
+  ! ice_avg - take area weighted average over ice partitions                     !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   function ice_avg(x,part)
     real, dimension(:,:,:),    intent(in) :: x
@@ -214,7 +214,7 @@ contains
   end function ice_avg
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! all_avg - take area weighted average over all partiions                      !
+  ! all_avg - take area weighted average over all partitions                     !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   function all_avg(x,part)
     real, dimension(:,:, :),             intent(in) :: x

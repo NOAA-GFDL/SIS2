@@ -50,9 +50,8 @@ module ice_model_mod
                               id_runoff, id_calving, id_evap, id_saltf, id_tmelt,&
                               id_mi, id_bmelt, id_bheat, id_frazil, id_alb,      &
                               id_xprt, id_lsrc, id_lsnk, id_bsnk, id_strna,      &
-                              id_sigi, id_sigii, id_stren, id_ui, id_vi, id_fax, &
-                              id_fay, id_fix, id_fiy, id_fcx, id_fcy, id_fwx,    &
-                              id_fwy, id_sn2ic,  id_ext, id_slp, id_sst, id_sss, &
+                              id_fax, id_fay,                                    &
+                              id_sn2ic,  id_ext, id_slp, id_sst, id_sss,         &
                               id_ssh, id_uo, id_vo, id_e2m, id_qflim, id_qfres,  &
                               id_ix_trans, id_iy_trans,                          &
                               do_ice_restore, do_ice_limit, max_ice_limit,       &
@@ -88,7 +87,7 @@ module ice_model_mod
   !
   use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, MU_TS, TFI, CI, e_to_melt
-  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_param, strain_angle, ice_strength, sigI, sigII
+  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_init, strain_angle, ice_strength, sigI, sigII
   use ice_bergs,        only: icebergs_run, icebergs_incr_mass
 
   implicit none
@@ -1096,7 +1095,8 @@ contains
                      Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
                      ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor, Ice%grid)
+                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor, &
+                     Ice%grid, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
@@ -1111,28 +1111,31 @@ contains
          sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
     if (id_fay>0) &
          sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
-    if (id_fix>0) sent = send_data(id_fix, fx_ice, Ice%Time)
-    if (id_fiy>0) sent = send_data(id_fiy, fy_ice, Ice%Time)
-    if (id_fcx>0) sent = send_data(id_fcx, fx_cor, Ice%Time)
-    if (id_fcy>0) sent = send_data(id_fcy, fy_cor, Ice%Time)
-    if (id_fwx>0) sent = send_data(id_fwx, -fx_wat, Ice%Time) ! water force on ice
-    if (id_fwy>0) sent = send_data(id_fwy, -fy_wat, Ice%Time) ! ...= -ice on water
 
-    if (id_strna>0) &
-         sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%grid), Ice%Time, mask=Ice%mask)
-    if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
-                    Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-                    Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
-                    Ice%Time, mask=Ice%mask)
-    if (id_sigii>0) sent = send_data(id_sigii, sigII(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),        &
-                    Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-                    Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
-                    Ice%Time, mask=Ice%mask)
-    if (id_stren>0) sent = send_data(id_stren, ice_strength(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:), &
-                    Ice%part_size(isc:iec,jsc:jec,:)), 1-Ice%part_size(isc:iec,jsc:jec,1)), Ice%Time, mask=Ice%mask)
+    ! The following diagnostics are now being sent from inside ice_dyanmics.
+    ! Delete these once it is verified that they are working.
+!   if (id_fix>0) sent = send_data(id_fix, fx_ice, Ice%Time)
+!   if (id_fiy>0) sent = send_data(id_fiy, fy_ice, Ice%Time)
+!   if (id_fcx>0) sent = send_data(id_fcx, fx_cor, Ice%Time)
+!   if (id_fcy>0) sent = send_data(id_fcy, fy_cor, Ice%Time)
+!   if (id_fwx>0) sent = send_data(id_fwx, -fx_wat, Ice%Time) ! water force on ice
+!   if (id_fwy>0) sent = send_data(id_fwy, -fy_wat, Ice%Time) ! ...= -ice on water
 
-    if (id_ui>0) sent = send_data(id_ui, Ice%u_ice(isc:iec,jsc:jec), Ice%Time)
-    if (id_vi>0) sent = send_data(id_vi, Ice%v_ice(isc:iec,jsc:jec), Ice%Time)
+!   if (id_strna>0) &
+!        sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%grid), Ice%Time, mask=Ice%mask)
+!   if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
+!                   Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
+!                   Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
+!                   Ice%Time, mask=Ice%mask)
+!   if (id_sigii>0) sent = send_data(id_sigii, sigII(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),        &
+!                   Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
+!                   Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
+!                   Ice%Time, mask=Ice%mask)
+!   if (id_stren>0) sent = send_data(id_stren, ice_strength(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:), &
+!                   Ice%part_size(isc:iec,jsc:jec,:)), 1-Ice%part_size(isc:iec,jsc:jec,1)), Ice%Time, mask=Ice%mask)
+
+!   if (id_ui>0) sent = send_data(id_ui, Ice%u_ice(isc:iec,jsc:jec), Ice%Time)
+!   if (id_vi>0) sent = send_data(id_vi, Ice%v_ice(isc:iec,jsc:jec), Ice%Time)
 
     do k=2,km
        do j = jsc, jec

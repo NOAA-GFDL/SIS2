@@ -1,9 +1,35 @@
+module ice_dyn_mod
+!***********************************************************************
+!*                   GNU General Public License                        *
+!* This file is a part of SIS2.                                        *
+!*                                                                     *
+!* SIS2 is free software; you can redistribute it and/or modify it and *
+!* are expected to follow the terms of the GNU General Public License  *
+!* as published by the Free Software Foundation; either version 2 of   *
+!* the License, or (at your option) any later version.                 *
+!*                                                                     *
+!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
+!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
+!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
+!* License for more details.                                           *
+!*                                                                     *
+!* For the full text of the GNU General Public License,                *
+!* write to: Free Software Foundation, Inc.,                           *
+!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
+!* or see:   http://www.gnu.org/licenses/gpl.html                      *
+!***********************************************************************
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
 ! SEA ICE DYNAMICS using ELASTIC-VISCOUS-PLASTIC RHEOLOGY adapted from         !
-! Hunke and Dukowicz (JPO 1990, H&D hereafter) -Mike Winton (Michael.Winton@noaa.gov) !
+! Hunke and Dukowicz (JPO 1997, H&D hereafter) -Mike Winton (Michael.Winton@noaa.gov) !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_dyn_mod
+
+use MOM_diag_mediator, only : post_data, query_averaging_enabled, diag_ctrl
+use MOM_diag_mediator, only : register_diag_field, safe_alloc_ptr, time_type
+use MOM_error_handler, only : SIS2_error=>MOM_error, FATAL, WARNING, SIS2_mesg=>MOM_mesg
+use MOM_file_parser, only : get_param, read_param, log_version, param_file_type
+  use diag_manager_mod, only:  send_data
 
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: grav, pi
@@ -16,36 +42,83 @@ module ice_dyn_mod
   implicit none
   private
 
-  public :: ice_dyn_param, ice_dynamics, strain_angle, ice_strength, sigI, sigII
-  public :: blturn
+  public :: ice_dyn_init, ice_dynamics, strain_angle, ice_strength, sigI, sigII
+!  public :: blturn
 
-  logical         :: SLAB_ICE = .false.  ! should we do old style GFDL slab ice?
-  !
+type, public :: ice_dyn_CS ; private
   ! parameters for calculating water drag and internal ice stresses
-  !
-  real            :: p0 = 2.75e4         ! pressure constant (Pa)
-  real            :: c0 = 20.0           ! another pressure constant
-  real            :: cdw = 3.24e-3       ! ice/water drag coef.
-  real            :: blturn = 25.0       ! air/water surf. turning angle (NH) 25
-  real, parameter :: EC = 2.0            ! yield curve axis ratio
-  real, parameter :: EC2I = 1.0/(EC*EC)
-  real, parameter :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
+  logical :: SLAB_ICE = .false.  ! should we do old style GFDL slab ice?
+  real :: p0 = 2.75e4         ! pressure constant (Pa)
+  real :: c0 = 20.0           ! another pressure constant
+  real :: cdw = 3.24e-3       ! ice/water drag coef.
+  real :: blturn = 25.0       ! air/water surf. turning angle (NH) 25
+  real :: EC = 2.0            ! yield curve axis ratio
+  real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
+
+  type(time_type), pointer :: Time ! A pointer to the ice model's clock.
+  type(diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+                             ! timing of diagnostic output.
+  integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1                  
+  integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1                  
+  integer :: id_stren = -1, id_ui = -1, id_vi = -1
+end type ice_dyn_CS
+
 
 contains
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_dyn_param - set ice dynamic parameters                                   !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_dyn_param(p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_in)
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_dyn_param - set ice dynamic parameters                                   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_dyn_init(Time, G, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_in)
+  type(time_type), target, intent(in)    :: Time
+  type(sea_ice_grid_type), intent(in)    :: G
+!  type(param_file_type),   intent(in)    :: param_file
+!  type(diag_ctrl), target, intent(inout) :: diag
+  type(ice_dyn_CS),        pointer    :: CS
     real,    intent(in)   :: p0_in, c0_in, cdw_in, wd_turn_in
     logical, intent(in)   :: slab_ice_in
 
-    p0 = p0_in
-    c0 = c0_in
-    cdw = cdw_in
-    blturn = wd_turn_in
-    SLAB_ICE = slab_ice_in
-  end subroutine ice_dyn_param
+    real, parameter       :: missing = -1e34
+
+  if (associated(CS)) then
+    call SIS2_error(WARNING, "ice_dyn_init called with associated control structure.")
+    return
+  endif
+  allocate(CS)
+
+!  CS%diag => diag
+  CS%Time => Time
+
+  CS%p0 = p0_in
+  CS%c0 = c0_in
+  CS%cdw = cdw_in
+  CS%blturn = wd_turn_in
+  CS%SLAB_ICE = slab_ice_in
+
+  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,G%axesT1, Time,         &
+            'first stress invariant', 'none', missing_value=missing)
+  CS%id_sigii = register_diag_field('ice_model','SIGII' ,G%axesT1, Time,        &
+            'second stress invariant', 'none', missing_value=missing)
+  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,G%axesT1, Time,     &
+            'ice strength', 'Pa*m', missing_value=missing)
+  CS%id_fix   = register_diag_field('ice_model', 'FI_X', G%axesB1, Time,        &
+            'ice internal stress - x component', 'Pa', missing_value=missing)
+  CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', G%axesB1, Time,        &
+            'ice internal stress - y component', 'Pa', missing_value=missing)
+  CS%id_fcx   = register_diag_field('ice_model', 'FC_X', G%axesB1, Time,        &
+            'coriolis force - x component', 'Pa', missing_value=missing)
+  CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', G%axesB1, Time,        &
+            'coriolis force - y component', 'Pa', missing_value=missing)
+  CS%id_fwx   = register_diag_field('ice_model', 'FW_X', G%axesB1, Time,        &
+            'water stress on ice - x component', 'Pa', missing_value=missing)
+  CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', G%axesB1, Time,        &
+            'water stress on ice - y component', 'Pa', missing_value=missing)
+  CS%id_ui    = register_diag_field('ice_model', 'UI', G%axesB1, Time,          &
+            'ice velocity - x component', 'm/s', missing_value=missing)
+  CS%id_vi    = register_diag_field('ice_model', 'VI', G%axesB1, Time,          &
+            'ice velocity - y component', 'm/s', missing_value=missing)
+
+end subroutine ice_dyn_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_strn - calculate generalized orthogonal coordinate strain tensor         !
@@ -91,30 +164,31 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     return
   end subroutine set_strn
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_strength - magnitude of force on ice in plastic deformation              !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function ice_strength(hi, ci) ! ??? may change to do loop
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_strength - magnitude of force on ice in plastic deformation              !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function ice_strength(hi, ci, G, CS) ! ??? may change to do loop
 !!$    real, dimension(isc:iec,jsc:jec), intent(in) :: hi, ci
-    real, dimension(isc:,jsc:), intent(in) :: hi, ci
-    real, dimension(isc:iec,jsc:jec)             :: ice_strength
+  real, dimension(isc:,jsc:), intent(in) :: hi, ci
+  type(sea_ice_grid_type), intent(in)    :: G
+  type(ice_dyn_CS),        pointer       :: CS
 
-    integer :: i, j
+  real, dimension(isc:iec,jsc:jec)             :: ice_strength
 
-    do j = jsc, jec
-       do i = isc, iec
-          ice_strength(i,j) = p0*hi(i,j)*ci(i,j)*exp(-c0*(1-ci(i,j)))
-       enddo
-    enddo
+  integer :: i, j
 
-    return
-  end function ice_strength
+  do j=jsc,jec ; do i=isc,iec
+    ice_strength(i,j) = CS%p0*hi(i,j)*ci(i,j)*exp(-CS%c0*(1-ci(i,j)))
+  enddo ; enddo
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
-       fxat, fyat, sea_lev, fxoc, fyoc, fxic, fyic, fxco, fyco, G)
+end function ice_strength
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
+     fxat, fyat, sea_lev, fxoc, fyoc, fxic, fyic, fxco, fyco, G, CS)
+
 !!$    real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
     real, intent(in   ), dimension(isd:,jsd:) :: ci, hs, hi  ! ice properties
     real, intent(inout), dimension(isd:ied,jsd:jed) :: ui, vi      ! ice velocity
@@ -127,6 +201,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxic, fyic  ! ice int. stress
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxco, fyco  ! coriolis force
   type(sea_ice_grid_type), intent(in) :: G
+  type(ice_dyn_CS),        pointer    :: CS
 
     real, dimension(isc:iec,jsc:jec)    :: prs                    ! ice pressure
     real                                :: zeta, eta              ! bulk/shear viscosities
@@ -146,14 +221,22 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
     ! for velocity calculation
     real,    dimension(isc:iec,jsc:jec) :: dtmiv, rpart, fpart, uvfac
+  real :: EC2I  ! 1/EC^2, where EC is the yield curve axis ratio.
     complex                             :: newuv
-    integer                             :: i,j,l
 
-    fxoc = 0.0; fyoc = 0.0 ! zero these for summing later
-    fxic = 0.0; fyic = 0.0
-    fxco = 0.0; fyco = 0.0
+  logical :: sent
+  integer :: i,j,l
 
-    if (SLAB_ICE) then
+  if (.not.associated(CS)) call SIS2_error(FATAL, &
+         "ice_dynamics: Module must be initialized before it is used.")
+
+  EC2I = 1.0/(CS%EC*CS%EC)
+
+    fxoc(:,:) = 0.0; fyoc(:,:) = 0.0 ! zero these for summing later
+    fxic(:,:) = 0.0; fyic(:,:) = 0.0
+    fxco(:,:) = 0.0; fyco(:,:) = 0.0
+
+    if (CS%SLAB_ICE) then
        ui = uo; vi = vo;
        fxoc = fxat; fyoc = fyat;
        return
@@ -178,7 +261,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     !
     ! precompute prs, elastic timestep parameter, and linear drag coefficient
     !
-    prs = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec) )
+    prs = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec), G, CS)
 
     do j=jsc,jec ; do i=isc,iec
       if(G%dxT(i,j) < G%dyT(i,j) ) then
@@ -190,7 +273,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
     do j = jsc, jec
        do i = isc, iec
-          if((G%mask2dBu(i,j)>0.5) .and. miv(i,j) > MIV_MIN ) then ! values for velocity calculation (on v-grid)
+          if((G%mask2dBu(i,j)>0.5) .and. miv(i,j) > CS%MIV_MIN ) then ! values for velocity calculation (on v-grid)
              dtmiv(i,j) = dt_evp/miv(i,j)
           else
              ui(i,j) = 0.0
@@ -243,7 +326,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
        do j = jsc, jec
           do i = isc, iec
-             if( (G%mask2dT(i,j)>0.5) .and.(ci(i,j)*(DI*hi(i,j)+DS*hs(i,j))>MIV_MIN) ) then
+             if( (G%mask2dT(i,j)>0.5) .and.(ci(i,j)*(DI*hi(i,j)+DS*hs(i,j))>CS%MIV_MIN) ) then
                 f11(i,j)   = mp4z(i,j)+sig11(i,j)/edt(i,j)+strn11(i,j)
                 f22(i,j)   = mp4z(i,j)+sig22(i,j)/edt(i,j)+strn22(i,j)
                 sig11(i,j) = (t1(i,j)*f22(i,j)+f11(i,j))/t2(i,j)
@@ -271,9 +354,9 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
 
        do j = jsc, jec
           do i = isc, iec
-             if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-                rr       = cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-                           exp(sign(blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+             if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+                rr       = CS%cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+                           exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
                 !
                 ! first, timestep explicit parts (ice, wind & ocean part of water stress)
                 !
@@ -306,7 +389,7 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     !
     do j = jsc, jec
        do i = isc, iec
-          if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>MIV_MIN ) then
+          if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
              fxoc(i,j) = fxoc(i,j)/evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/evp_sub_steps
              fxic(i,j) = fxic(i,j)/evp_sub_steps;  fyic(i,j) = fyic(i,j)/evp_sub_steps
              fxco(i,j) = fxco(i,j)/evp_sub_steps;  fyco(i,j) = fyco(i,j)/evp_sub_steps             
@@ -314,7 +397,36 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
        enddo
     enddo
 
-  end subroutine ice_dynamics
+  ! Write out diagnostics associated with the ice dynamics.
+!  The diagnistics of fxat and fyat are supposed to be taken over all partitions
+!  (ocean & ice), whereas fxat and fyat here are only averaged over ice.
+!## if (CS%id_fax>0) &
+!##      sent = send_data(CS%id_fax, all_avg(CS%flux_u_top_bgrid(isc:iec,jsc:jec,:),CS%part_size_uv), CS%Time)
+!## if (CS%id_fay>0) &
+!##      sent = send_data(CS%id_fay, all_avg(CS%flux_v_top_bgrid(isc:iec,jsc:jec,:),CS%part_size_uv), CS%Time)
+
+  if (CS%id_fix>0) sent = send_data(CS%id_fix, fxic, CS%Time)
+  if (CS%id_fiy>0) sent = send_data(CS%id_fiy, fyic, CS%Time)
+  if (CS%id_fcx>0) sent = send_data(CS%id_fcx, fxco, CS%Time)
+  if (CS%id_fcy>0) sent = send_data(CS%id_fcy, fyco, CS%Time)
+  if (CS%id_fwx>0) sent = send_data(CS%id_fwx, -fxoc, CS%Time) ! water force on ice
+  if (CS%id_fwy>0) sent = send_data(CS%id_fwy, -fyoc, CS%Time) ! ...= -ice on water
+
+  if (CS%id_sigi>0)  sent = send_data(CS%id_sigi, sigI(hi(isc:iec,jsc:jec),          &
+                    ci(isc:iec,jsc:jec),         &
+                    sig11(isc:iec,jsc:jec),sig22(isc:iec,jsc:jec),sig12(isc:iec,jsc:jec), G, CS), &
+                    CS%Time) !### , mask=CS%mask)
+  if (CS%id_sigii>0) sent = send_data(CS%id_sigii, sigII(hi(isc:iec,jsc:jec),        &
+                    ci(isc:iec,jsc:jec),         &
+                    sig11(isc:iec,jsc:jec),sig22(isc:iec,jsc:jec),sig12(isc:iec,jsc:jec), G, CS), &
+                    CS%Time) !### , mask=Ice%mask)
+  if (CS%id_stren>0) sent = send_data(CS%id_stren, ice_strength(hi(isc:iec,jsc:jec), &
+                                      ci(isc:iec,jsc:jec), G, CS), CS%Time) !, mask=Ice%mask)
+
+  if (CS%id_ui>0) sent = send_data(CS%id_ui, ui(isc:iec,jsc:jec), CS%Time)
+  if (CS%id_vi>0) sent = send_data(CS%id_vi, vi(isc:iec,jsc:jec), CS%Time)
+
+end subroutine ice_dynamics
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! strain_angle                                                                 !
@@ -346,44 +458,42 @@ subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do lo
     return
   end function strain_angle
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! sigI - first stress invariant                                                !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function sigI(hi, ci, sig11, sig22, sig12)
-    real, dimension(isc:iec,jsc:jec), intent(in) :: hi, ci, sig11, sig22, sig12
-    real, dimension(isc:iec,jsc:jec)             :: sigI
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! sigI - first stress invariant                                                !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function sigI(hi, ci, sig11, sig22, sig12, G, CS)
+  real, dimension(isc:iec,jsc:jec), intent(in) :: hi, ci, sig11, sig22, sig12
+  real, dimension(isc:iec,jsc:jec)             :: sigI
+  type(sea_ice_grid_type), intent(in)    :: G
+  type(ice_dyn_CS),        pointer       :: CS
 
-    integer :: i, j
+  integer :: i, j
 
-    sigI = ice_strength(hi,ci)
+  sigI = ice_strength(hi, ci, G, CS)
 
-    do j = jsc, jec
-       do i = isc, iec
-          if(sigI(i,j) > 0.0) sigI(i,j) = (sig11(i,j) + sig22(i,j))/sigI(i,j)
-       enddo
-    enddo
+  do j=jsc,jec ; do i=isc,iec
+    if(sigI(i,j) > 0.0) sigI(i,j) = (sig11(i,j) + sig22(i,j))/sigI(i,j)
+  enddo ; enddo
 
-    return
-  end function sigI
+end function sigI
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! sigII - second stress invariant                                              !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function sigII(hi, ci, sig11, sig22, sig12)
-    real, dimension(isc:iec,jsc:jec), intent(in) :: hi, ci, sig11, sig22, sig12
-    real, dimension(isc:iec,jsc:jec)             :: sigII
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! sigII - second stress invariant                                              !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function sigII(hi, ci, sig11, sig22, sig12, G, CS)
+  real, dimension(isc:iec,jsc:jec), intent(in) :: hi, ci, sig11, sig22, sig12
+  real, dimension(isc:iec,jsc:jec)             :: sigII
+  type(sea_ice_grid_type), intent(in)    :: G
+  type(ice_dyn_CS),        pointer       :: CS
 
-    integer :: i, j
+  integer :: i, j
 
-    sigII = ice_strength(hi,ci)
+  sigII = ice_strength(hi, ci, G, CS)
 
-    do j = jsc, jec
-       do i = isc, iec
-          if(sigII(i,j) > 0.0) sigII(i,j) = (((sig11(i,j)-sig22(i,j))**2+4*sig12(i,j)*sig12(i,j))/(sigII(i,j)**2))**0.5
-       enddo
-    enddo
+  do j=jsc,jec ; do i=isc,iec
+    if (sigII(i,j) > 0.0) sigII(i,j) = (((sig11(i,j)-sig22(i,j))**2+4*sig12(i,j)*sig12(i,j))/(sigII(i,j)**2))**0.5
+  enddo ; enddo
 
-    return
-  end function sigII
+end function sigII
 
 end module ice_dyn_mod

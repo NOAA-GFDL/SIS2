@@ -25,7 +25,7 @@ module ice_type_mod
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
-  use ice_dyn_mod,      only: ice_dyn_param
+  use ice_dyn_mod,      only: ice_dyn_init, ice_dyn_CS
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
   use ice_bergs,        only: icebergs_init, icebergs_end, icebergs, icebergs_stock_pe
   use ice_bergs,        only: icebergs_save_restart
@@ -49,8 +49,9 @@ public  :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain, id_runoff,    &
            id_calving, id_runoff_hflx, id_calving_hflx,                        &
            id_evap, id_saltf, id_tmelt, id_bmelt, id_bheat, id_e2m,            &
            id_frazil, id_alb, id_xprt, id_lsrc, id_lsnk, id_bsnk, id_strna,    &
-           id_sigi, id_sigii, id_stren, id_ui, id_vi, id_fax, id_fay, id_fix,  &
-           id_fiy, id_fcx, id_fcy, id_fwx, id_fwy, id_swdn, id_lwdn, id_sn2ic, &
+!          id_sigi, id_sigii, id_stren, id_ui, id_vi, id_fax, id_fay, id_fix,  &
+!          id_fiy, id_fcx, id_fcy, id_fwx, id_fwy, id_swdn, id_lwdn, id_sn2ic, &
+           id_fax, id_fay, id_swdn, id_lwdn, id_sn2ic,                         &
            id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi,&
            id_qfres, id_qflim, id_ix_trans, id_iy_trans,                       &
            id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif,      &
@@ -281,7 +282,9 @@ public  :: earth_area
      type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
      type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
      type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
-     type(icebergs), pointer            :: icebergs
+
+    type(ice_dyn_CS), pointer   :: ice_dyn_CSp
+    type(icebergs), pointer     :: icebergs
     type(sea_ice_grid_type) :: grid ! A structure containing metrics and grid info.
   end type ice_data_type
 
@@ -424,9 +427,11 @@ public  :: earth_area
     end if
     call set_domain(domain)
 
-    call ice_dyn_param(p0, c0, cdw, wd_turn, slab_ice)
-    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
-                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
+!  These would be replaced by calls to register any component-level fields that
+!  need to be in restart files. ###
+!    call ice_dyn_init(Ice%Time, Ice%grid, Ice%ice_dyn_CS, p0, c0, cdw, wd_turn, slab_ice)
+!    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
+!                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
     allocate ( Ice % mask     (isc:iec, jsc:jec)       , &
          Ice % ice_mask       (isc:iec, jsc:jec, km)   , &
@@ -725,7 +730,13 @@ public  :: earth_area
        Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
     end do
 
-    call ice_diagnostics_init(Ice)
+    call ice_diagnostics_init(Ice, Ice%grid)
+
+    call ice_dyn_init(Ice%Time, Ice%grid, Ice%ice_dyn_CSp, p0, c0, cdw, wd_turn, slab_ice)
+    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
+                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
+
+
     !Balaji
     iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
     iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
@@ -847,8 +858,9 @@ public  :: earth_area
   ! </SUBROUTINE>
   !#######################################################################
 
-  subroutine ice_diagnostics_init(Ice)
-    type (ice_data_type), intent(inout) :: Ice
+  subroutine ice_diagnostics_init(Ice, G)
+    type (ice_data_type), intent(inout)    :: Ice
+    type(sea_ice_grid_type), intent(inout) :: G
 
     real, parameter       :: missing = -1e34
     integer, dimension(2) :: axt, axv, axtv, axvt, axto
@@ -882,6 +894,11 @@ public  :: earth_area
     Ice%axes(:) = axt2(:)
     axtv = (/ id_xt, id_yv /); ! for north faces of t-cells
     axvt = (/ id_xv, id_yt /); ! for east  faces of t-cells
+
+    G%axesT1(:) = (/ id_xt, id_yt  /)
+    G%axesB1(:) = (/ id_xv, id_yv  /)
+    G%axesCv1(:) = (/ id_xt, id_yv /)
+    G%axesCu1(:) = (/ id_xv, id_yt /)
 
     id_sin_rot   = register_static_field('ice_model', 'SINROT', axt,              &
                    '-SINROT,COSROT points north', 'none')
@@ -1005,16 +1022,16 @@ public  :: earth_area
                  'Ice Limit heat flux', 'W/m^2', missing_value=missing)
     id_strna    = register_diag_field('ice_model','STRAIN_ANGLE', axt,Ice%Time,          &
                  'strain angle', 'none', missing_value=missing)
-    id_sigi     = register_diag_field('ice_model','SIGI' ,axt, Ice%Time,                 &
-                 'first stress invariant', 'none', missing_value=missing)
-    id_sigii    = register_diag_field('ice_model','SIGII' ,axt, Ice%Time,                &
-                 'second stress invariant', 'none', missing_value=missing)
-    id_stren    = register_diag_field('ice_model','STRENGTH' ,axt, Ice%Time,             &
-                 'ice strength', 'Pa*m', missing_value=missing)
-    id_ui       = register_diag_field('ice_model', 'UI', axv, Ice%Time,                  &
-                 'ice velocity - x component', 'm/s', missing_value=missing)
-    id_vi       = register_diag_field('ice_model', 'VI', axv, Ice%Time,                  &
-                 'ice velocity - y component', 'm/s', missing_value=missing)
+!   id_sigi     = register_diag_field('ice_model','SIGI' ,axt, Ice%Time,                 &
+!                'first stress invariant', 'none', missing_value=missing)
+!   id_sigii    = register_diag_field('ice_model','SIGII' ,axt, Ice%Time,                &
+!                'second stress invariant', 'none', missing_value=missing)
+!   id_stren    = register_diag_field('ice_model','STRENGTH' ,axt, Ice%Time,             &
+!                'ice strength', 'Pa*m', missing_value=missing)
+!   id_ui       = register_diag_field('ice_model', 'UI', axv, Ice%Time,                  &
+!                'ice velocity - x component', 'm/s', missing_value=missing)
+!   id_vi       = register_diag_field('ice_model', 'VI', axv, Ice%Time,                  &
+!                'ice velocity - y component', 'm/s', missing_value=missing)
     id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', axvt, Ice%Time,           &
                  'x-direction ice transport', 'kg/s', missing_value=missing)
     id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', axtv, Ice%Time,           &
@@ -1023,18 +1040,18 @@ public  :: earth_area
                  'air stress on ice - x component', 'Pa', missing_value=missing)
     id_fay      = register_diag_field('ice_model', 'FA_Y', axv, Ice%Time,                &
                  'air stress on ice - y component', 'Pa', missing_value=missing)
-    id_fix      = register_diag_field('ice_model', 'FI_X', axv, Ice%Time,                &
-                 'ice internal stress - x component', 'Pa', missing_value=missing)
-    id_fiy      = register_diag_field('ice_model', 'FI_Y', axv, Ice%Time,                &
-                 'ice internal stress - y component', 'Pa', missing_value=missing)
-    id_fcx      = register_diag_field('ice_model', 'FC_X', axv, Ice%Time,                &
-                 'coriolis force - x component', 'Pa', missing_value=missing)
-    id_fcy      = register_diag_field('ice_model', 'FC_Y', axv, Ice%Time,                &
-                 'coriolis force - y component', 'Pa', missing_value=missing)
-    id_fwx      = register_diag_field('ice_model', 'FW_X', axv, Ice%Time,                &
-                 'water stress on ice - x component', 'Pa', missing_value=missing)
-    id_fwy      = register_diag_field('ice_model', 'FW_Y', axv, Ice%Time,                &
-                 'water stress on ice - y component', 'Pa', missing_value=missing)
+!   id_fix      = register_diag_field('ice_model', 'FI_X', axv, Ice%Time,                &
+!                'ice internal stress - x component', 'Pa', missing_value=missing)
+!   id_fiy      = register_diag_field('ice_model', 'FI_Y', axv, Ice%Time,                &
+!                'ice internal stress - y component', 'Pa', missing_value=missing)
+!   id_fcx      = register_diag_field('ice_model', 'FC_X', axv, Ice%Time,                &
+!                'coriolis force - x component', 'Pa', missing_value=missing)
+!   id_fcy      = register_diag_field('ice_model', 'FC_Y', axv, Ice%Time,                &
+!                'coriolis force - y component', 'Pa', missing_value=missing)
+!   id_fwx      = register_diag_field('ice_model', 'FW_X', axv, Ice%Time,                &
+!                'water stress on ice - x component', 'Pa', missing_value=missing)
+!   id_fwy      = register_diag_field('ice_model', 'FW_Y', axv, Ice%Time,                &
+!                'water stress on ice - y component', 'Pa', missing_value=missing)
     id_uo       = register_diag_field('ice_model', 'UO', axv, Ice%Time,                  &
                  'surface current - x component', 'm/s', missing_value=missing)
     id_vo       = register_diag_field('ice_model', 'VO', axv, Ice%Time,                  &
