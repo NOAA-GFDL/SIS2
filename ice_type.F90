@@ -283,9 +283,9 @@ public  :: earth_area
      type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
      type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
-    type(ice_dyn_CS), pointer   :: ice_dyn_CSp
+    type(ice_dyn_CS), pointer   :: ice_dyn_CSp => NULL()
     type(icebergs), pointer     :: icebergs
-    type(sea_ice_grid_type) :: grid ! A structure containing metrics and grid info.
+    type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
   end type ice_data_type
 
   integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
@@ -419,17 +419,17 @@ public  :: earth_area
     endif
 
     if( ASSOCIATED(Ice%maskmap) ) then
-       call set_ice_grid(Ice%grid, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
+       call set_ice_grid(Ice%G, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
                          num_part, layout, io_layout, Ice%maskmap  )
     else
-       call set_ice_grid(Ice%grid, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
+       call set_ice_grid(Ice%G, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
                          num_part, layout, io_layout )
     end if
     call set_domain(domain)
 
 !  These would be replaced by calls to register any component-level fields that
 !  need to be in restart files. ###
-!    call ice_dyn_init(Ice%Time, Ice%grid, Ice%ice_dyn_CS, p0, c0, cdw, wd_turn, slab_ice)
+!    call ice_dyn_init(Ice%Time, Ice%G, Ice%ice_dyn_CS, p0, c0, cdw, wd_turn, slab_ice)
 !    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
 !                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
@@ -550,12 +550,12 @@ public  :: earth_area
 
     do j = jsc, jec
        do i = isc, iec
-          if( Ice%grid%mask2dT(i,j) > 0.5 ) then
+          if( Ice%G%mask2dT(i,j) > 0.5 ) then
              Ice % mask(i,j) = .true.
           else
              Ice % mask(i,j) = .false.
           end if
-          if( Ice%grid%mask2dBu(i,j) > 0.5 ) then
+          if( Ice%G%mask2dBu(i,j) > 0.5 ) then
              Ice % vmask(i,j) = 1.
           else
              Ice % vmask(i,j) = 0.
@@ -726,13 +726,13 @@ public  :: earth_area
 
     Ice%part_size_uv(:,:,1) = 1.0
     do k=2,km
-       call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%grid)
+       call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
        Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
     end do
 
-    call ice_diagnostics_init(Ice, Ice%grid)
+    call ice_diagnostics_init(Ice, Ice%G)
 
-    call ice_dyn_init(Ice%Time, Ice%grid, Ice%ice_dyn_CSp, p0, c0, cdw, wd_turn, slab_ice)
+    call ice_dyn_init(Ice%Time, Ice%G, Ice%ice_dyn_CSp, p0, c0, cdw, wd_turn, slab_ice)
     call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
                        t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
@@ -755,8 +755,8 @@ public  :: earth_area
     ! Initialize icebergs
     if (do_icebergs) call icebergs_init(Ice%icebergs, &
              im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
-             dt_slow, Time, Ice%grid%geoLonBu(isc:iec,jsc:jec), Ice%grid%geoLatBu(isc:iec,jsc:jec), &
-             Ice%grid%mask2dT, Ice%grid%dxCv, Ice%grid%dyCu, cell_area, cos_rot, sin_rot )
+             dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
+             Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, cos_rot, sin_rot )
 
    if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 
@@ -781,7 +781,7 @@ public  :: earth_area
     call ice_model_restart()
 
     !--- release memory ------------------------------------------------
-    call ice_grid_end(Ice%grid)
+    call ice_grid_end(Ice%G)
 
     deallocate(Ice % mask, Ice % ice_mask, Ice % t_surf, Ice % s_surf, Ice % sea_lev )
     deallocate(Ice % vmask)
@@ -1105,8 +1105,8 @@ public  :: earth_area
 
     if (id_sin_rot>0)   sent=send_data(id_sin_rot, sin_rot(isc:iec,jsc:jec), Ice%Time);
     if (id_cos_rot>0)   sent=send_data(id_cos_rot, cos_rot(isc:iec,jsc:jec), Ice%Time);
-    if (id_geo_lon>0)   sent=send_data(id_geo_lon, Ice%grid%geoLonT(isc:iec,jsc:jec), Ice%Time);
-    if (id_geo_lat>0)   sent=send_data(id_geo_lat, Ice%grid%geoLatT(isc:iec,jsc:jec), Ice%Time);
+    if (id_geo_lon>0)   sent=send_data(id_geo_lon, Ice%G%geoLonT(isc:iec,jsc:jec), Ice%Time);
+    if (id_geo_lat>0)   sent=send_data(id_geo_lat, Ice%G%geoLatT(isc:iec,jsc:jec), Ice%Time);
     if (id_cell_area>0) sent=send_data(id_cell_area, cell_area, Ice%Time);
 
   end subroutine ice_diagnostics_init

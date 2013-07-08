@@ -378,14 +378,14 @@ contains
        do k=1,km
           call vel_t_to_uv( -Ice%flux_u_top(:,:,k),-Ice%flux_v_top(:,:,k), &
                       Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), &
-                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%grid)
+                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%G)
        end do
     else
       call mpp_update_domains(Ice % flux_u_top, Ice % flux_v_top, Domain  )
       do k=1,km
          call vel_t_to_uv( Ice%flux_u_top(:,:,k),Ice%flux_v_top(:,:,k), &
                       Ice%flux_u_top_bgrid(isc:iec,jsc:jec,k), &
-                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%grid )
+                      Ice%flux_v_top_bgrid(isc:iec,jsc:jec,k), Ice%G )
       end do
     endif
 
@@ -511,7 +511,7 @@ contains
        call mpp_update_domains(Ice%h_ice(:,:,2), Domain )       ! these two updates cannot be combined
        Ice%part_size_uv(:,:,1) = 1.0
        do k=2,km
-          call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%grid)
+          call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%G)
        enddo
        do k=2,km
           do j=jsc,jec
@@ -692,11 +692,11 @@ contains
     call mpp_update_domains(Ice%u_ocn, Ice%v_ocn, Domain, gridtype=BGRID_NE)
 
     ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
-    call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1), Ice%grid)
-    call uv_to_t(Ice%v_ocn, Ice%v_surf(:,:,1), Ice%grid)
+    call uv_to_t(Ice%u_ocn, Ice%u_surf(:,:,1), Ice%G)
+    call uv_to_t(Ice%v_ocn, Ice%v_surf(:,:,1), Ice%G)
 
-    call uv_to_t(Ice%u_ice, Ice%u_surf(:,:,2), Ice%grid)
-    call uv_to_t(Ice%v_ice, Ice%v_surf(:,:,2), Ice%grid)
+    call uv_to_t(Ice%u_ice, Ice%u_surf(:,:,2), Ice%G)
+    call uv_to_t(Ice%v_ice, Ice%v_surf(:,:,2), Ice%G)
 
     do k=1,2
        do j = jsc, jec
@@ -823,9 +823,9 @@ contains
     if (add_diurnal_sw) then
       do j = jsc, jec
         do i = isc, iec
-          call diurnal_solar(Ice%grid%geoLatT(i,j)*rad, Ice%grid%geoLonT(i,j)*rad, Ice%time, cosz=cosz_dt_ice, &
+          call diurnal_solar(Ice%G%geoLatT(i,j)*rad, Ice%G%geoLonT(i,j)*rad, Ice%time, cosz=cosz_dt_ice, &
                              fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
-          call daily_mean_solar (Ice%grid%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
+          call daily_mean_solar (Ice%G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
           diurnal_factor(i,j) = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice /   &
                                        max(1e-30, cosz_day*fracday_day*rrsun_day)
         enddo
@@ -896,7 +896,7 @@ contains
                                   Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
     if (do_sun_angle_for_alb) then
-      call diurnal_solar(Ice%grid%geoLatT(isc:iec,jsc:jec)*rad, Ice%grid%geoLonT(isc:iec,jsc:jec)*rad, &
+      call diurnal_solar(Ice%G%geoLatT(isc:iec,jsc:jec)*rad, Ice%G%geoLonT(isc:iec,jsc:jec)*rad, &
                    Ice%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
       call compute_ocean_albedo (Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                                    Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
@@ -1096,7 +1096,7 @@ contains
                      ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor, &
-                     Ice%grid, Ice%ice_dyn_CSp)
+                     Ice%G, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
@@ -1122,7 +1122,7 @@ contains
 !   if (id_fwy>0) sent = send_data(id_fwy, -fy_wat, Ice%Time) ! ...= -ice on water
 
 !   if (id_strna>0) &
-!        sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%grid), Ice%Time, mask=Ice%mask)
+!        sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%G), Ice%Time, mask=Ice%mask)
 !   if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
 !                   Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
 !                   Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
@@ -1413,7 +1413,7 @@ contains
     ! Ice transport ... all ocean fluxes have been calculated by now
     !
     h2o_change = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
-    call transport(Ice, Ice%grid)
+    call transport(Ice, Ice%G)
 
     x = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
     if (id_mi>0) sent = send_data(id_mi, x, Ice%Time, mask = Ice%mask)
@@ -1463,7 +1463,7 @@ contains
        enddo
     enddo
     do k=2,km
-       call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%grid)
+       call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%G)
        Ice%part_size_uv(:,:,1) = Ice%part_size_uv(:,:,1) - Ice%part_size_uv(:,:,k)
     end do
     call mpp_clock_end(iceClock8)
@@ -1557,13 +1557,13 @@ contains
     call get_date(Ice%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(Ice%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     if(verbose)  call ice_line(iyr, iday+1, isec, Ice%part_size(isc:iec,jsc:jec,:), &
-               Ice%t_surf(:,:,1)-Tfreeze, Ice%grid) 
+               Ice%t_surf(:,:,1)-Tfreeze, Ice%G) 
 
     do j=jsc, jec
        do i=isc, iec 
           if (Ice%mask(i,j).and.(abs(sum(Ice%part_size(i,j,:))-1.0)>1e-2)) &
                print *,'ICE%PART_SIZE=',Ice%part_size(i,j,:), 'DOES NOT SUM TO 1 AT', &
-               Ice%grid%geoLonT(i,j), Ice%grid%geoLatT(i,j)
+               Ice%G%geoLonT(i,j), Ice%G%geoLatT(i,j)
        end do
     end do
     call mpp_clock_end(iceClock9)

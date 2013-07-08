@@ -373,9 +373,9 @@ end subroutine vel_t_to_uv
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
+subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
                         adv_sub_steps_in, km_in, layout, io_layout, maskmap )
-  type(sea_ice_grid_type), intent(inout) :: grid
+  type(sea_ice_grid_type), intent(inout) :: G
   type(domain2D),        intent(inout) :: ice_domain
   real,                  intent(in)    :: dt_slow
   integer,               intent(in)    :: dyn_sub_steps_in
@@ -519,26 +519,26 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
   ! Allocate and fill in default values for elements of the sea ice grid type.
   
-  grid%isc = isc ; grid%iec = iec ; grid%jsc = jsc ; grid%jec = jec
-  grid%isd = isd ; grid%ied = ied ; grid%jsd = jsd ; grid%jed = jed
-  grid%isg = isg ; grid%ieg = ieg ; grid%jsg = jsg ; grid%jeg = jeg
+  G%isc = isc ; G%iec = iec ; G%jsc = jsc ; G%jec = jec
+  G%isd = isd ; G%ied = ied ; G%jsd = jsd ; G%jed = jed
+  G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
 
-  grid%symmetric = .false.          ! ###This will be made run-time selectable later.
-  grid%nonblocking_updates = .true. ! ###This will be made run-time selectable later.
+  G%symmetric = .false.          ! ###This will be made run-time selectable later.
+  G%nonblocking_updates = .true. ! ###This will be made run-time selectable later.
 
-  grid%IscB = grid%isc ; grid%JscB = grid%jsc
-  grid%IsdB = grid%isd ; grid%JsdB = grid%jsd
-  grid%IsgB = grid%isg ; grid%JsgB = grid%jsg
-  if (grid%symmetric) then
-    grid%IscB = grid%isc-1 ; grid%JscB = grid%jsc-1
-    grid%IsdB = grid%isd-1 ; grid%JsdB = grid%jsd-1
-    grid%IsgB = grid%isg-1 ; grid%JsgB = grid%jsg-1
+  G%IscB = G%isc ; G%JscB = G%jsc
+  G%IsdB = G%isd ; G%JsdB = G%jsd
+  G%IsgB = G%isg ; G%JsgB = G%jsg
+  if (G%symmetric) then
+    G%IscB = G%isc-1 ; G%JscB = G%jsc-1
+    G%IsdB = G%isd-1 ; G%JsdB = G%jsd-1
+    G%IsgB = G%isg-1 ; G%JsgB = G%jsg-1
   endif
-  grid%IecB = grid%iec ; grid%JecB = grid%jec
-  grid%IedB = grid%ied ; grid%JedB = grid%jed
-  grid%IegB = grid%ieg ; grid%JegB = grid%jeg
+  G%IecB = G%iec ; G%JecB = G%jec
+  G%IedB = G%ied ; G%JedB = G%jed
+  G%IegB = G%ieg ; G%JegB = G%jeg
 
-  call allocate_metrics(grid)
+  call allocate_metrics(G)
 
     allocate ( dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
                sin_rot (isd:ied,jsd:jed),  &
@@ -548,22 +548,22 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   allocate(depth(isc:iec,jsc:jec))
   call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
   do j=jsc,jec ; do i=isc,iec
-    if (depth(i,j) > 0) grid%mask2dT(i,j) = 1.0
+    if (depth(i,j) > 0) G%mask2dT(i,j) = 1.0
   enddo ; enddo
   deallocate(depth)
-  call mpp_update_domains(grid%mask2dT, Domain)
+  call mpp_update_domains(G%mask2dT, Domain)
 
   do J=jsc-1,jec ; do I=isc-1,iec
-    if( grid%mask2dT(i,j)>0.5 .and. grid%mask2dT(i,j+1)>0.5 .and. &
-        grid%mask2dT(i+1,j)>0.5 .and. grid%mask2dT(i+1,j+1)>0.5 ) then
-       grid%mask2dBu(I,J) = 1.0
+    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
+        G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
+       G%mask2dBu(I,J) = 1.0
     else
-       grid%mask2dBu(I,J) = 0.0
+       G%mask2dBu(I,J) = 0.0
     endif
   enddo ; enddo
 
     if(tripolar_grid) then
-       if (jsc==1.and.any(grid%mask2dT(:,jsc)>0.5)) call SIS2_error(FATAL, &
+       if (jsc==1.and.any(G%mask2dT(:,jsc)>0.5)) call SIS2_error(FATAL, &
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
@@ -601,15 +601,15 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   call read_data(ocean_hgrid, 'x', tmpx, domain2)
   call read_data(ocean_hgrid, 'y', tmpy, domain2)     
   do J=jsc-1,jec ; do I=isc-1,iec
-    grid%geoLonBu(I,J) = tmpx(2*i+1,2*j+1)
-    grid%geoLatBu(I,J) = tmpy(2*i+1,2*j+1)
+    G%geoLonBu(I,J) = tmpx(2*i+1,2*j+1)
+    G%geoLatBu(I,J) = tmpy(2*i+1,2*j+1)
   enddo ; enddo
-  call calc_mosaic_grid_area(grid%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
-                             grid%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, cell_area)
+  call calc_mosaic_grid_area(G%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
+                             G%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, cell_area)
   cell_area = cell_area/(4*PI*RADIUS*RADIUS)
   deallocate(tmpx, tmpy)
   do j=jsc,jec ; do i=isc,iec
-    if (grid%mask2dT(i,j) == 0.) cell_area(i,j) = 0.0
+    if (G%mask2dT(i,j) == 0.) cell_area(i,j) = 0.0
   enddo ; enddo       
   call mpp_deallocate_domain(domain2)
 
@@ -628,19 +628,19 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
     else
        allocate ( tmpx(isc:iec+1, jm+1) )
        call mpp_set_domain_symmetry(Domain, .TRUE.)
-       call mpp_global_field(Domain, grid%geoLonBu(isc-1:iec,jsc-1:jec), tmpx, flags=YUPDATE, position=CORNER)
+       call mpp_global_field(Domain, G%geoLonBu(isc-1:iec,jsc-1:jec), tmpx, flags=YUPDATE, position=CORNER)
        allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
        tmp_2d = 0
        tmp_2d(isc:iec+1,jsc) = sum(tmpx,2)/(jm+1);
        deallocate(tmpx)
        allocate ( tmpx(im+1, jsc:jec+1) )
 
-       call mpp_global_field(Domain, grid%geoLatBu(isc-1:iec,jsc-1:jec), tmpx, flags=XUPDATE, position=CORNER)
+       call mpp_global_field(Domain, G%geoLatBu(isc-1:iec,jsc-1:jec), tmpx, flags=XUPDATE, position=CORNER)
        xb1d = tmpx(:,jsc)
        deallocate(tmpx, tmp_2d)
 
        allocate ( tmpy(im+1, jsc:jec+1) )
-       call mpp_global_field(Domain, grid%geoLatBu(isc-1:iec,jsc-1:jec), tmpy, flags=XUPDATE, position=CORNER)
+       call mpp_global_field(Domain, G%geoLatBu(isc-1:iec,jsc-1:jec), tmpy, flags=XUPDATE, position=CORNER)
        allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
        tmp_2d = 0
        tmp_2d(isc,jsc:jec+1) = sum(tmpy,1)/(im+1);
@@ -657,25 +657,25 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
   sin_rot(:,:) = 0.0
 
   do j=jsc,jec ; do I=isc-1,iec
-    grid%dyCu(I,j) = edge_length(grid%geoLonBu(I,J-1),grid%geoLatBu(I,J-1), &
-                                 grid%geoLonBu(I,J),grid%geoLatBu(I,J))
+    G%dyCu(I,j) = edge_length(G%geoLonBu(I,J-1),G%geoLatBu(I,J-1), &
+                                 G%geoLonBu(I,J),G%geoLatBu(I,J))
   enddo ; enddo
   do J=jsc-1,jec ; do i=isc,iec
-    grid%dxCv(i,J) = edge_length(grid%geoLonBu(I-1,J), grid%geoLatBu(I-1,J), &
-                                 grid%geoLonBu(I,J), grid%geoLatBu(I,J))
+    G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
+                                 G%geoLonBu(I,J), G%geoLatBu(I,J))
   enddo ; enddo
   do j=jsc,jec ; do i=isc,iec
-    lon_scale    = cos((grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1  ) + &
-                        grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J)) * atan(1.0)/180)
-    angle        = atan2((grid%geoLonBu(I-1,J) + grid%geoLonBu(I,J) - &
-                          grid%geoLonBu(I-1,J-1) - grid%geoLonBu(I,J-1))*lon_scale, &
-                          grid%geoLatBu(I-1,J) + grid%geoLatBu(I,J) - &
-                          grid%geoLatBu(I-1,J-1) - grid%geoLatBu(I,J-1) )
+    lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
+                        G%geoLatBu(I-1,J) + G%geoLatBu(I,J)) * atan(1.0)/180)
+    angle        = atan2((G%geoLonBu(I-1,J) + G%geoLonBu(I,J) - &
+                          G%geoLonBu(I-1,J-1) - G%geoLonBu(I,J-1))*lon_scale, &
+                          G%geoLatBu(I-1,J) + G%geoLatBu(I,J) - &
+                          G%geoLatBu(I-1,J-1) - G%geoLatBu(I,J-1) )
     sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
     cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
-  call mpp_update_domains(grid%dyCu, grid%dxCv, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
+  call mpp_update_domains(G%dyCu, G%dxCv, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
 
   ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
     call mpp_update_domains(cos_rot, Domain)
@@ -683,43 +683,43 @@ subroutine set_ice_grid(grid, ice_domain, dt_slow, dyn_sub_steps_in, &
 
     do j = jsc, jec
        do i = isc, iec
-          grid%dxT(i,j) = (grid%dxCv(i,J-1) + grid%dxCv(I,j) )/2
+          G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
           if(cell_area(i,j) > 0.0) then
-             grid%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/grid%dxT(i,j)
+             G%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/G%dxT(i,j)
           else
-             grid%dyT(i,j) = (grid%dyCu(I-1,j) + grid%dyCu(I,j) )/2
+             G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
           endif
        enddo
     enddo
 
   ! ### THIS SHOULD BE A SCALAR PAIR FOR CUBED SPHERE, ETC. -RWH
-    call mpp_update_domains(grid%dxT, Domain )
-    call mpp_update_domains(grid%dyT, Domain )
+    call mpp_update_domains(G%dxT, Domain )
+    call mpp_update_domains(G%dyT, Domain )
 
-    grid%dxBu(:,:) = 1.0
-    grid%dyBu(:,:) = 1.0
+    G%dxBu(:,:) = 1.0
+    G%dyBu(:,:) = 1.0
 
-    grid%dxBu(isc:iec,jsc:jec) = t_on_uv(grid%dxT)
-    grid%dyBu(isc:iec,jsc:jec) = t_on_uv(grid%dyT)
+    G%dxBu(isc:iec,jsc:jec) = t_on_uv(G%dxT)
+    G%dyBu(isc:iec,jsc:jec) = t_on_uv(G%dyT)
 
-  call mpp_update_domains(grid%dxBu, grid%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
+  call mpp_update_domains(G%dxBu, G%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
 
     !--- dxdy and dydx to be used by ice_dyn_mod.
-    dydx(:,:) = dTdx(grid%dyT(:,:))
-    dxdy(:,:) = dTdy(grid%dxT(:,:))
+    dydx(:,:) = dTdx(G%dyT(:,:))
+    dxdy(:,:) = dTdy(G%dxT(:,:))
 
   do j=jsc,jec ; do i=isc,iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
-    grid%geoLonT(i,j) = lon_avg( (/ grid%geoLonBu(I-1,J-1), grid%geoLonBu(I,J-1), &
-                               grid%geoLonBu(I-1,J), grid%geoLonBu(I,J) /) )
-    grid%geoLatT(i,j) = (grid%geoLatBu(I-1,J-1) + grid%geoLatBu(I,J-1) + &
-                         grid%geoLatBu(I-1,J)   + grid%geoLatBu(I,J)) / 4
+    G%geoLonT(i,j) = lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J-1), &
+                                 G%geoLonBu(I-1,J), G%geoLonBu(I,J) /) )
+    G%geoLatT(i,j) = (G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1) + &
+                      G%geoLatBu(I-1,J)   + G%geoLatBu(I,J)) / 4
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
-    grid%CoriolisBu(I,J) = 2*omega*sin(grid%geoLatBu(I,J)*pi/180)
+    G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
   enddo ; enddo
-  latitude(:,:) = grid%geoLatT(isc:iec,jsc:jec)*pi/180
+  latitude(:,:) = G%geoLatT(isc:iec,jsc:jec)*pi/180
 
     !--- z1l: loop through the pelist to find the symmetry processor.
     !--- This is needed to address the possibility that some of the all-land processor 
