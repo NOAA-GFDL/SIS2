@@ -3,7 +3,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_grid_mod
 
-  use constants_mod,   only: radius, omega, pi
+  use constants_mod,   only: radius, omega, pi, grav
   use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe, mpp_chksum
   use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
   use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
@@ -34,7 +34,6 @@ module ice_grid_mod
   public :: xb1d, yb1d
   public :: sin_rot, cos_rot, cell_area, latitude
   public :: grid_x_t,grid_y_t
-  public :: dxdy, dydx
   public :: tripolar_grid, x_cyclic, dt_adv
 
   type(domain2D), save :: Domain
@@ -150,7 +149,6 @@ end type SIS2_domain_type
   !
   logical                           ::  x_cyclic           ! x boundary condition
   logical                           ::  tripolar_grid      ! y boundary condition
-  real, allocatable, dimension(:,:) ::  dxdy, dydx         
   real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
@@ -540,8 +538,7 @@ subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
 
   call allocate_metrics(G)
 
-    allocate ( dxdy   (isc:iec,jsc:jec), dydx    (isc:iec,jsc:jec),  &
-               sin_rot (isd:ied,jsd:jed),  &
+    allocate ( sin_rot (isd:ied,jsd:jed),  &
                cos_rot(isd:ied,jsd:jed), latitude(isc:iec,jsc:jec) )
 
   !--- read data from grid_spec.nc
@@ -696,17 +693,16 @@ subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
     call mpp_update_domains(G%dxT, Domain )
     call mpp_update_domains(G%dyT, Domain )
 
-    G%dxBu(:,:) = 1.0
-    G%dyBu(:,:) = 1.0
+    G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
+    G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
 
     G%dxBu(isc:iec,jsc:jec) = t_on_uv(G%dxT)
+    G%IdxBu(isc:iec,jsc:jec) = 1.0 / G%IdxBu(isc:iec,jsc:jec)
     G%dyBu(isc:iec,jsc:jec) = t_on_uv(G%dyT)
+    G%IdyBu(isc:iec,jsc:jec) = 1.0 / G%dyBu(isc:iec,jsc:jec)
 
   call mpp_update_domains(G%dxBu, G%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
-
-    !--- dxdy and dydx to be used by ice_dyn_mod.
-    dydx(:,:) = dTdx(G%dyT(:,:))
-    dxdy(:,:) = dTdy(G%dxT(:,:))
+  call mpp_update_domains(G%IdxBu, G%IdyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
 
   do j=jsc,jec ; do i=isc,iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
@@ -720,6 +716,8 @@ subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
   enddo ; enddo
   latitude(:,:) = G%geoLatT(isc:iec,jsc:jec)*pi/180
+
+  G%g_Earth = grav
 
     !--- z1l: loop through the pelist to find the symmetry processor.
     !--- This is needed to address the possibility that some of the all-land processor 
@@ -748,7 +746,6 @@ subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
     endif
 !    comm_pe = mpp_pe() + layout(1) - 2*mod(mpp_pe()-mpp_root_pe(),layout(1)) - 1
 
-    return
   end subroutine set_ice_grid
 
 !#####################################################################
