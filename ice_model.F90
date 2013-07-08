@@ -1112,31 +1112,6 @@ contains
     if (id_fay>0) &
          sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
 
-    ! The following diagnostics are now being sent from inside ice_dyanmics.
-    ! Delete these once it is verified that they are working.
-!   if (id_fix>0) sent = send_data(id_fix, fx_ice, Ice%Time)
-!   if (id_fiy>0) sent = send_data(id_fiy, fy_ice, Ice%Time)
-!   if (id_fcx>0) sent = send_data(id_fcx, fx_cor, Ice%Time)
-!   if (id_fcy>0) sent = send_data(id_fcy, fy_cor, Ice%Time)
-!   if (id_fwx>0) sent = send_data(id_fwx, -fx_wat, Ice%Time) ! water force on ice
-!   if (id_fwy>0) sent = send_data(id_fwy, -fy_wat, Ice%Time) ! ...= -ice on water
-
-!   if (id_strna>0) &
-!        sent = send_data(id_strna, strain_angle(Ice%u_ice,Ice%v_ice,Ice%G), Ice%Time, mask=Ice%mask)
-!   if (id_sigi>0)  sent = send_data(id_sigi, sigI(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),          &
-!                   Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-!                   Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
-!                   Ice%Time, mask=Ice%mask)
-!   if (id_sigii>0) sent = send_data(id_sigii, sigII(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),        &
-!                   Ice%part_size(isc:iec,jsc:jec,:)),1-Ice%part_size(isc:iec,jsc:jec,1),         &
-!                   Ice%sig11(isc:iec,jsc:jec),Ice%sig22(isc:iec,jsc:jec),Ice%sig12(isc:iec,jsc:jec)), &
-!                   Ice%Time, mask=Ice%mask)
-!   if (id_stren>0) sent = send_data(id_stren, ice_strength(ice_avg(Ice%h_ice(isc:iec,jsc:jec,:), &
-!                   Ice%part_size(isc:iec,jsc:jec,:)), 1-Ice%part_size(isc:iec,jsc:jec,1)), Ice%Time, mask=Ice%mask)
-
-!   if (id_ui>0) sent = send_data(id_ui, Ice%u_ice(isc:iec,jsc:jec), Ice%Time)
-!   if (id_vi>0) sent = send_data(id_vi, Ice%v_ice(isc:iec,jsc:jec), Ice%Time)
-
     do k=2,km
        do j = jsc, jec
           do i = isc, iec
