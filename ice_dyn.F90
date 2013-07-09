@@ -33,9 +33,9 @@ use MOM_file_parser, only : get_param, read_param, log_version, param_file_type
 
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: pi
-  use ice_grid_mod,    only: Domain, isc, iec, im, jsc, jec, isd, ied, jsd, jed, jm
-  use ice_grid_mod,    only: t_on_uv, t_to_uv, dTdx, dTdy, dt_evp, evp_sub_steps
-  use ice_grid_mod,    only: sea_ice_grid_type
+  use ice_grid_mod,    only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed
+  use ice_grid_mod,    only: dt_evp, evp_sub_steps
+use ice_grid_mod,    only: sea_ice_grid_type
   use ice_thm_mod,     only: DI, DS, DW
 
 implicit none ; private
@@ -203,8 +203,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     real                                :: zeta, eta              ! bulk/shear viscosities
     real, dimension(isc:iec,jsc:jec)    :: strn11, strn12, strn22 ! strain tensor
 
-    real,    dimension(isc:iec,jsc:jec) :: miv                 ! mass on v-points
-    real,    dimension(isc:iec,jsc:jec) :: civ                 ! conc. on v-points
+    real,    dimension(isd:ied,jsd:jed) :: mit                 ! mass on t-points
+    real,    dimension(isd:ied,jsd:jed) :: miv                 ! mass on v-points
+    real,    dimension(isd:ied,jsd:jed) :: civ                 ! conc. on v-points
     complex                             :: rr                  ! linear drag coefficient
     real                                :: fxic_now, fyic_now  ! ice internal stress
 
@@ -247,9 +248,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     dxdy(I,J) = 0.5*(G%dxT(i+1,j+1) - G%dxT(i+1,j) + G%dxT(i,j+1) - G%dxT(i,j) )
   enddo ; enddo
 
-  !
   ! sea level slope force
-  !
   ! ### Add parentheses for rotational consistency.
   ! ### Multiply by G%IdxBu, etc.
   do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
@@ -259,13 +258,20 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
               + sea_lev(i,j+1)-sea_lev(i,j))) / G%dyBu(I,J)
   enddo ; enddo
 
-  ! put ice/snow mass and concentration on v-grid
-  call t_to_uv(ci*(hi*DI+hs*DS), miv, G)
-  call t_to_uv(ci, civ, G)
-  !
+  ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
+  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+    mit(i,j) = ci(i,j)*(hi(i,j)*DI + hs(i,j)*DS)
+  enddo ; enddo
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
+    miv(I,J) = 0.25*( mit(i+1,j+1) + mit(i+1,j) + mit(i,j+1) + mit(i,j) )
+    civ(I,J) = 0.25*( ci(i+1,j+1) + ci(i+1,j) + ci(i,j+1) + ci(i,j) )
+  else
+    miv(I,J) = 0.0 ; civ(I,J) = 0.0
+  endif ; enddo ; enddo
+    
   ! precompute prs, elastic timestep parameter, and linear drag coefficient
-  !
-  prs = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec), G, CS)
+  prs(:,:) = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec), G, CS)
 
   do j=jsc,jec ; do i=isc,iec
     if(G%dxT(i,j) < G%dyT(i,j) ) then
@@ -312,8 +318,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
           mp4z(i,j) = -prs(i,j)/(4*zeta)
           t0(i,j)   = 2*eta/(2*eta+edt(i,j))
           tmp       = 1/(4*eta*zeta)
-          a         = 1/edt(i,j) + (zeta+eta)*tmp
-          b         = (zeta-eta)*tmp
+          a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
+          b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
           t1(i,j)   = b/a
           t2(i,j)   = a - b*b/a
         endif
@@ -350,6 +356,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
                        sig12(i+1,j)*G%dyT(i+1,j) - sig12(i,j)*G%dyT(i,j) )
       tmp7(I,J) = 0.5*(sig22(i+1,j+1)*G%dxT(i+1,j+1) - sig22(i+1,j)*G%dxT(i+1,j) + &
                        sig22(i,j+1)*G%dxT(i,j+1) - sig22(i,j)*G%dxT(i,j) )
+      tmp3(I,J) = 0.25*(sig12(i+1,j+1)+sig12(i+1,j)+sig12(i,j+1)+sig12(i,j) )
+      tmp4(I,J) = 0.25*(sig22(i+1,j+1)+sig22(i+1,j)+sig22(i,j+1)+sig22(i,j) )
+      tmp5(I,J) = 0.25*(sig11(i+1,j+1)+sig11(i+1,j)+sig11(i,j+1)+sig11(i,j) )
 
     enddo ; enddo
 
@@ -359,44 +368,44 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 !       tmp6(isc:iec,jsc:jec) = dTdx(sig12(isd:ied,jsd:jed)*G%dyT(isd:ied,jsd:jed))
 !       tmp7(isc:iec,jsc:jec) = dTdy(sig22(isd:ied,jsd:jed)*G%dxT(isd:ied,jsd:jed))
 
-    tmp3(isc:iec,jsc:jec) = t_on_uv(sig12(:,:))
-    tmp4(isc:iec,jsc:jec) = t_on_uv(sig22(:,:))
-    tmp5(isc:iec,jsc:jec) = t_on_uv(sig11(:,:))
+!    tmp3(isc:iec,jsc:jec) = t_on_uv(sig12(:,:))
+!    tmp4(isc:iec,jsc:jec) = t_on_uv(sig22(:,:))
+!    tmp5(isc:iec,jsc:jec) = t_on_uv(sig11(:,:))
 
     do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
-             if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-                rr       = CS%cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-                           exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
-                !
-                ! first, timestep explicit parts (ice, wind & ocean part of water stress)
-                !
-                fxic_now = ( tmp1(i,j) + tmp2(i,j) + tmp3(i,j)*dxdy(i,j) - tmp4(i,j)*dydx(i,j) )/(G%dxBu(i,j)*G%dyBu(I,J)) 
-                fyic_now = ( tmp6(i,j) + tmp7(i,j) + tmp3(i,j)*dydx (i,j) - tmp5(i,j)*dxdy(i,j))/(G%dxBu(i,j)*G%dyBu(I,J)) 
+      if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+        rr       = CS%cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+                   exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+        !
+        ! first, timestep explicit parts (ice, wind & ocean part of water stress)
+        !
+        fxic_now = ( tmp1(i,j) + tmp2(i,j) + tmp3(i,j)*dxdy(i,j) - tmp4(i,j)*dydx(i,j) ) / (G%dxBu(i,j)*G%dyBu(I,J)) 
+        fyic_now = ( tmp6(i,j) + tmp7(i,j) + tmp3(i,j)*dydx(i,j) - tmp5(i,j)*dxdy(i,j)) / (G%dxBu(i,j)*G%dyBu(I,J)) 
 
-                ui(i,j) = ui(i,j)+(fxic_now+civ(i,j)*fxat(i,j)+ real(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldx(i,j)
-                vi(i,j) = vi(i,j)+(fyic_now+civ(i,j)*fyat(i,j)+aimag(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldy(i,j)
-                !
-                ! second, timestep implicit parts (Coriolis and ice part of water stress)
-                !
-                newuv = cmplx(ui(i,j),vi(i,j)) / &
-                    (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(i,j) + civ(i,j)*rr*dtmiv(i,j))
-                ui(i,j) = real(newuv); vi(i,j) = aimag(newuv)
-                !
-                ! sum for averages
-                !
-                fxic(i,j) = fxic(i,j) + fxic_now
-                fyic(i,j) = fyic(i,j) + fyic_now
-                fxoc(i,j) = fxoc(i,j) +  real(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j)))
-                fyoc(i,j) = fyoc(i,j) + aimag(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j)))
-                fxco(i,j) = fxco(i,j) - miv(i,j)*real ((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))
-                fyco(i,j) = fyco(i,j) - miv(i,j)*aimag((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))              
-             endif
+        ui(i,j) = ui(i,j) + (fxic_now+civ(i,j)*fxat(i,j)+ real(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldx(i,j)
+        vi(i,j) = vi(i,j) + (fyic_now+civ(i,j)*fyat(i,j)+aimag(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldy(i,j)
+        !
+        ! second, timestep implicit parts (Coriolis and ice part of water stress)
+        !
+        newuv = cmplx(ui(i,j),vi(i,j)) / &
+            (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(i,j) + civ(i,j)*rr*dtmiv(i,j))
+        ui(i,j) = real(newuv); vi(i,j) = aimag(newuv)
+        !
+        ! sum for averages
+        !
+        fxic(i,j) = fxic(i,j) + fxic_now
+        fyic(i,j) = fyic(i,j) + fyic_now
+        fxoc(i,j) = fxoc(i,j) +  real(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j), vi(i,j)-vo(i,j)))
+        fyoc(i,j) = fyoc(i,j) + aimag(civ(i,j)*rr*cmplx(ui(i,j)-uo(i,j), vi(i,j)-vo(i,j)))
+        fxco(i,j) = fxco(i,j) - miv(i,j)*real ((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))
+        fyco(i,j) = fyco(i,j) - miv(i,j)*aimag((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))              
+      endif
     enddo ; enddo
   enddo ! l=1,evp_sub_steps
 
 
   ! make averages
-  ! ### Multiply by reciprocal.
+  ! ### Multiply by reciprocal of evp_sub_steps?
   do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
     if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
        fxoc(i,j) = fxoc(i,j)/evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/evp_sub_steps
@@ -424,10 +433,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
                     ci(isc:iec,jsc:jec),         &
                     sig11(isc:iec,jsc:jec),sig22(isc:iec,jsc:jec),sig12(isc:iec,jsc:jec), G, CS), &
                     CS%Time) !### , mask=CS%mask)
-  if (CS%id_sigii>0) sent = send_data(CS%id_sigii, sigII(hi(isc:iec,jsc:jec),        &
-                    ci(isc:iec,jsc:jec),         &
-                    sig11(isc:iec,jsc:jec),sig22(isc:iec,jsc:jec),sig12(isc:iec,jsc:jec), G, CS), &
-                    CS%Time) !### , mask=Ice%mask)
+  if (CS%id_sigii>0) sent = send_data(CS%id_sigii, sigII(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec), &
+                        sig11(isc:iec,jsc:jec),sig22(isc:iec,jsc:jec),sig12(isc:iec,jsc:jec), G, CS), &
+                     CS%Time) !### , mask=Ice%mask)
   if (CS%id_stren>0) sent = send_data(CS%id_stren, ice_strength(hi(isc:iec,jsc:jec), &
                                       ci(isc:iec,jsc:jec), G, CS), CS%Time) !, mask=Ice%mask)
 
