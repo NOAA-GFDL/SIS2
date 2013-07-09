@@ -87,7 +87,7 @@ module ice_model_mod
   !
   use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, MU_TS, TFI, CI, e_to_melt
-  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_init, strain_angle, ice_strength, sigI, sigII
+  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_init, ice_strength, sigI, sigII
   use ice_bergs,        only: icebergs_run, icebergs_incr_mass
 
   implicit none

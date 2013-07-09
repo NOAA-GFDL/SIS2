@@ -40,7 +40,7 @@ use ice_grid_mod,    only: sea_ice_grid_type
 
 implicit none ; private
 
-public :: ice_dyn_init, ice_dynamics, strain_angle, ice_strength, sigI, sigII
+public :: ice_dyn_init, ice_dynamics, ice_strength, sigI, sigII
 
 type, public :: ice_dyn_CS ; private
   ! parameters for calculating water drag and internal ice stresses
@@ -51,7 +51,6 @@ type, public :: ice_dyn_CS ; private
   real :: blturn = 25.0       ! air/water surf. turning angle (NH) 25
   real :: EC = 2.0            ! yield curve axis ratio
   real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
-
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
@@ -116,49 +115,6 @@ subroutine ice_dyn_init(Time, G, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_
 
 end subroutine ice_dyn_init
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_strn - calculate generalized orthogonal coordinate strain tensor         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_strn(ui, vi, strn11, strn22, strn12, G) ! ??? may change to do loop
-  real, intent(in ), dimension(isd:ied,jsd:jed) :: ui, vi
-  real, intent(out), dimension(isc:iec,jsc:jec) :: strn11, strn22, strn12
-  type(sea_ice_grid_type), intent(in) :: G
-
-    real, allocatable, dimension(:,:), save :: fac1, fac2, fac3, fac4
-    logical, save :: initialized = .false.
-    integer       :: i, j
-
-    if (.not. initialized) then
-       allocate( fac1(isc:iec,jsc:jec), fac2(isc:iec,jsc:jec), &
-                 fac3(isc:iec,jsc:jec), fac4(isc:iec,jsc:jec)  )
-       do j = jsc, jec
-          do i = isc, iec
-             fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/G%dyT(i,j) !### Use G%IdyT?
-             fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/G%dxT(i,j)
-             fac3(i,j) = 0.5*G%dyT(i,j)/G%dxT(i,j)
-             fac4(i,j) = 0.5*G%dxT(i,j)/G%dyT(i,j)
-          enddo
-       enddo
-       initialized = .true.
-    end if
-
-    do j = jsc, jec
-       do i = isc, iec
-          strn11(i,j) = (0.5*(ui(i,j)-ui(i-1,j)+ui(i,j-1)-ui(i-1,j-1))        &
-                      + 0.25*(vi(i,j)+vi(i,j-1)+vi(i-1,j)+vi(i-1,j-1))*fac1(i,j)) / &
-                      G%dxT(i,j)   !### Use G%IdxT?
-          strn22(i,j) = (0.5*(vi(i,j)-vi(i,j-1)+vi(i-1,j)-vi(i-1,j-1))        &
-                      + 0.25*(ui(i,j)+ui(i,j-1)+ui(i-1,j)+ui(i-1,j-1))*fac2(i,j)) / &
-                      G%dyT(i,j)
-          strn12(i,j) = fac3(i,j)*(0.5*(vi(i,j)/G%dyBu(I,J) - vi(i-1,j)/G%dyBu(I-1,J) &
-                      + vi(i,j-1)/G%dyBu(i,j-1) - vi(i-1,j-1)/G%dyBu(i-1,j-1)))       &
-                      + fac4(i,j)*(0.5*(ui(i,j)/G%dxBu(i,j)-ui(i,j-1)/G%dxBu(i,j-1) &
-                      + ui(i-1,j)/G%dxBu(i-1,j)-ui(i-1,j-1)/G%dxBu(i-1,j-1)))
-       enddo
-    enddo
-
-    return
-  end subroutine set_strn
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_strength - magnitude of force on ice in plastic deformation              !
@@ -209,13 +165,17 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     complex                             :: rr                  ! linear drag coefficient
     real                                :: fxic_now, fyic_now  ! ice internal stress
 
+    ! temporaries for strain calculation
+    real, dimension(isd:ied,jsd:jed) :: &
+      grid_fac1, grid_fac2, grid_fac3, grid_fac4
+    
     ! temporaries for ice stress calculation
     real                             :: del2, a, b, tmp
     real, dimension(isc:iec,jsc:jec) :: edt, mp4z, t0, t1, t2
     real, dimension(isc:iec,jsc:jec) :: f11, f22
     real, dimension(isd:ied,jsd:jed) :: sldx, sldy
     real, dimension(isd:ied,jsd:jed) :: dydx, dxdy
-    real, dimension(isc:iec,jsc:jec) :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7
+    real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7
 
     ! for velocity calculation
     real,    dimension(isc:iec,jsc:jec) :: dtmiv, rpart, fpart, uvfac
@@ -248,6 +208,13 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     dxdy(I,J) = 0.5*(G%dxT(i+1,j+1) - G%dxT(i+1,j) + G%dxT(i,j+1) - G%dxT(i,j) )
   enddo ; enddo
 
+  do j=jsc,jec ; do i=isc,iec
+    grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/G%dyT(i,j) !### Use G%IdyT?
+    grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/G%dxT(i,j)
+    grid_fac3(i,j) = 0.5*G%dyT(i,j)/G%dxT(i,j) !### Use G%IdxT?
+    grid_fac4(i,j) = 0.5*G%dxT(i,j)/G%dyT(i,j)
+  enddo ; enddo
+
   ! sea level slope force
   ! ### Add parentheses for rotational consistency.
   ! ### Multiply by G%IdxBu, etc.
@@ -271,6 +238,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
   endif ; enddo ; enddo
     
   ! precompute prs, elastic timestep parameter, and linear drag coefficient
+  !
   prs(:,:) = ice_strength(hi(isc:iec,jsc:jec), ci(isc:iec,jsc:jec), G, CS)
 
   do j=jsc,jec ; do i=isc,iec
@@ -294,7 +262,23 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     ! calculate strain tensor for viscosities and forcing elastic eqn.
     call mpp_update_domains(ui, vi, Domain, gridtype=BGRID_NE)
 
-    call set_strn(ui, vi, strn11, strn22, strn12, G)
+  !### ADD PARENTHESES FOR CLARITY
+  !### MULTIPLY BY GRID METRIC INVERSES FOR EFFICIENCY.
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! set_strain - calculate generalized orthogonal coordinate strain tensor       !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+    do j=jsc,jec ; do i=isc,iec
+      strn11(i,j) = (0.5*(ui(i,j)-ui(i-1,j)+ui(i,j-1)-ui(i-1,j-1))        &
+                  + 0.25*(vi(i,j)+vi(i,j-1)+vi(i-1,j)+vi(i-1,j-1))*grid_fac1(i,j)) / &
+                  G%dxT(i,j)   !### Use G%IdxT?
+      strn22(i,j) = (0.5*(vi(i,j)-vi(i,j-1)+vi(i-1,j)-vi(i-1,j-1))        &
+                  + 0.25*(ui(i,j)+ui(i,j-1)+ui(i-1,j)+ui(i-1,j-1))*grid_fac2(i,j)) / &
+                  G%dyT(i,j)
+      strn12(i,j) = grid_fac3(i,j)*(0.5*(vi(i,j)/G%dyBu(I,J) - vi(i-1,j)/G%dyBu(I-1,J) + &
+                                    vi(i,j-1)/G%dyBu(i,j-1) - vi(i-1,j-1)/G%dyBu(i-1,j-1))) &
+                  + grid_fac4(i,j)*(0.5*(ui(i,j)/G%dxBu(i,j)-ui(i,j-1)/G%dxBu(i,j-1) + &
+                                    ui(i-1,j)/G%dxBu(i-1,j)-ui(i-1,j-1)/G%dxBu(i-1,j-1)))
+    enddo ; enddo
 
     ! calculate viscosities - how often should we do this ?
     if (l>=1) then
@@ -345,33 +329,6 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     call mpp_update_domains(sig22, Domain, complete=.false.)
     call mpp_update_domains(sig12, Domain, complete=.true.)
 
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
-      tmp1(I,J) = 0.5*(sig12(i+1,j+1)*G%dxT(i+1,j+1) - sig12(i+1,j)*G%dxT(i+1,j) + &
-                       sig12(i,j+1)*G%dxT(i,j+1) - sig12(i,j)*G%dxT(i,j) )
-
-      tmp2(I,J) = 0.5*(sig11(i+1,j+1)*G%dyT(i+1,j+1) - sig11(i,j+1)*G%dyT(i,j+1) + &
-                       sig11(i+1,j)*G%dyT(i+1,j) - sig11(i,j)*G%dyT(i,j) )
-      tmp6(I,J) = 0.5*(sig12(i+1,j+1)*G%dyT(i+1,j+1) - sig12(i,j+1)*G%dyT(i,j+1) + &
-                       sig12(i+1,j)*G%dyT(i+1,j) - sig12(i,j)*G%dyT(i,j) )
-      tmp7(I,J) = 0.5*(sig22(i+1,j+1)*G%dxT(i+1,j+1) - sig22(i+1,j)*G%dxT(i+1,j) + &
-                       sig22(i,j+1)*G%dxT(i,j+1) - sig22(i,j)*G%dxT(i,j) )
-      tmp3(I,J) = 0.25*(sig12(i+1,j+1)+sig12(i+1,j)+sig12(i,j+1)+sig12(i,j) )
-      tmp4(I,J) = 0.25*(sig22(i+1,j+1)+sig22(i+1,j)+sig22(i,j+1)+sig22(i,j) )
-      tmp5(I,J) = 0.25*(sig11(i+1,j+1)+sig11(i+1,j)+sig11(i,j+1)+sig11(i,j) )
-
-    enddo ; enddo
-
-!       tmp1(isc:iec,jsc:jec) = dTdy(sig12(isd:ied,jsd:jed)*G%dxT(isd:ied,jsd:jed))
-!       tmp2(isc:iec,jsc:jec) = dTdx(sig11(isd:ied,jsd:jed)*G%dyT(isd:ied,jsd:jed))
-
-!       tmp6(isc:iec,jsc:jec) = dTdx(sig12(isd:ied,jsd:jed)*G%dyT(isd:ied,jsd:jed))
-!       tmp7(isc:iec,jsc:jec) = dTdy(sig22(isd:ied,jsd:jed)*G%dxT(isd:ied,jsd:jed))
-
-!    tmp3(isc:iec,jsc:jec) = t_on_uv(sig12(:,:))
-!    tmp4(isc:iec,jsc:jec) = t_on_uv(sig22(:,:))
-!    tmp5(isc:iec,jsc:jec) = t_on_uv(sig11(:,:))
-
     do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
         rr       = CS%cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
@@ -379,8 +336,22 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
-        fxic_now = ( tmp1(i,j) + tmp2(i,j) + tmp3(i,j)*dxdy(i,j) - tmp4(i,j)*dydx(i,j) ) / (G%dxBu(i,j)*G%dyBu(I,J)) 
-        fyic_now = ( tmp6(i,j) + tmp7(i,j) + tmp3(i,j)*dydx(i,j) - tmp5(i,j)*dxdy(i,j)) / (G%dxBu(i,j)*G%dyBu(I,J)) 
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+        tmp1 = 0.5*(sig12(i+1,j+1)*G%dxT(i+1,j+1) - sig12(i+1,j)*G%dxT(i+1,j) + &
+                    sig12(i,j+1)*G%dxT(i,j+1) - sig12(i,j)*G%dxT(i,j) )
+        tmp2 = 0.5*(sig11(i+1,j+1)*G%dyT(i+1,j+1) - sig11(i,j+1)*G%dyT(i,j+1) + &
+                    sig11(i+1,j)*G%dyT(i+1,j) - sig11(i,j)*G%dyT(i,j) )
+        tmp6 = 0.5*(sig12(i+1,j+1)*G%dyT(i+1,j+1) - sig12(i,j+1)*G%dyT(i,j+1) + &
+                    sig12(i+1,j)*G%dyT(i+1,j) - sig12(i,j)*G%dyT(i,j) )
+        tmp7 = 0.5*(sig22(i+1,j+1)*G%dxT(i+1,j+1) - sig22(i+1,j)*G%dxT(i+1,j) + &
+                    sig22(i,j+1)*G%dxT(i,j+1) - sig22(i,j)*G%dxT(i,j) )
+        tmp3 = 0.25*(sig12(i+1,j+1)+sig12(i+1,j)+sig12(i,j+1)+sig12(i,j) )
+        tmp4 = 0.25*(sig22(i+1,j+1)+sig22(i+1,j)+sig22(i,j+1)+sig22(i,j) )
+        tmp5 = 0.25*(sig11(i+1,j+1)+sig11(i+1,j)+sig11(i,j+1)+sig11(i,j) )
+
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+        fxic_now = ( tmp1 + tmp2 + tmp3*dxdy(i,j) - tmp4*dydx(i,j) ) / (G%dxBu(i,j)*G%dyBu(I,J)) 
+        fyic_now = ( tmp6 + tmp7 + tmp3*dydx(i,j) - tmp5*dxdy(i,j) ) / (G%dxBu(i,j)*G%dyBu(I,J)) 
 
         ui(i,j) = ui(i,j) + (fxic_now+civ(i,j)*fxat(i,j)+ real(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldx(i,j)
         vi(i,j) = vi(i,j) + (fyic_now+civ(i,j)*fyat(i,j)+aimag(civ(i,j)*rr*cmplx(uo(i,j),vo(i,j))))*dtmiv(i,j)+sldy(i,j)
@@ -443,36 +414,6 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
   if (CS%id_vi>0) sent = send_data(CS%id_vi, vi(isc:iec,jsc:jec), CS%Time)
 
 end subroutine ice_dynamics
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! strain_angle                                                                 !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function strain_angle(ui, vi, G)
-    real, dimension(isd:ied,jsd:jed), intent(in) :: ui, vi
-    type(sea_ice_grid_type), intent(in) :: G
-    real, dimension(isc:iec,jsc:jec)             :: strn11, strn22, strn12, strain_angle
-
-    integer :: i, j
-
-    call set_strn(ui, vi, strn11, strn22, strn12, G)
-
-    do j = jsc, jec
-       do i = isc, iec
-          if(strn11(i,j) + strn22(i,j) == 0.0 ) then
-             strain_angle(i,j) = pi
-          else
-             strain_angle(i,j) = atan(((strn11(i,j)-strn22(i,j))**2+4*strn12(i,j)**2)**0.5/(strn11(i,j)+strn22(i,j)))
-          endif
-          if(strain_angle(i,j) < 0) then
-             strain_angle(i,j) = 180 + strain_angle(i,j)*180/pi
-          else
-             strain_angle(i,j) = strain_angle(i,j)*180/pi
-          endif
-       enddo
-    enddo
-
-    return
-  end function strain_angle
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigI - first stress invariant                                                !
