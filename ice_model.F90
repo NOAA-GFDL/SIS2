@@ -87,7 +87,7 @@ module ice_model_mod
   !
   use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, MU_TS, TFI, CI, e_to_melt
-  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_init, ice_strength, sigI, sigII
+  use ice_dyn_mod,      only: ice_dynamics, ice_dyn_init
   use ice_bergs,        only: icebergs_run, icebergs_incr_mass
 
   implicit none
@@ -954,7 +954,6 @@ contains
     real, dimension(:,:,:),           intent(in), optional :: p_surf ! obsolete
 
     real, dimension(isc:iec,jsc:jec)      :: fx_ice, fy_ice
-    real, dimension(isc:iec,jsc:jec)      :: fx_cor, fy_cor
     real, dimension(isc:iec,jsc:jec)      :: fx_wat, fy_wat
     real, dimension(isc:iec,jsc:jec)      :: hi_change, h2o_change, bsnk, x
     real, dimension(isc:iec,jsc:jec,2:km) :: snow_to_ice
@@ -1095,7 +1094,7 @@ contains
                      Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
                      ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                     Ice%sea_lev, fx_wat, fy_wat, fx_ice, fy_ice, fx_cor, fy_cor, &
+                     Ice%sea_lev, fx_wat, fy_wat, &
                      Ice%G, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
