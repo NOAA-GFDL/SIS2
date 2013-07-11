@@ -25,9 +25,9 @@ module ice_dyn_mod
 ! Hunke and Dukowicz (JPO 1997, H&D hereafter) -Mike Winton (Michael.Winton@noaa.gov) !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use MOM_diag_mediator, only : post_data, query_averaging_enabled, diag_ctrl
-use MOM_diag_mediator, only : register_diag_field, safe_alloc_ptr, time_type
-use MOM_error_handler, only : SIS2_error=>MOM_error, FATAL, WARNING, SIS2_mesg=>MOM_mesg
+use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
+use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, read_param, log_version, param_file_type
   use diag_manager_mod, only:  send_data
 
@@ -52,7 +52,7 @@ type, public :: ice_dyn_CS ; private
   real :: EC = 2.0            ! yield curve axis ratio
   real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
-  type(diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1                  
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1                  
@@ -64,11 +64,11 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dyn_param - set ice dynamic parameters                                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dyn_init(Time, G, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_in)
+subroutine ice_dyn_init(Time, G, param_file, diag, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_in)
   type(time_type), target, intent(in)    :: Time
   type(sea_ice_grid_type), intent(in)    :: G
-!  type(param_file_type),   intent(in)    :: param_file
-!  type(diag_ctrl), target, intent(inout) :: diag
+  type(param_file_type),   intent(in)    :: param_file
+  type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(ice_dyn_CS),        pointer    :: CS
     real,    intent(in)   :: p0_in, c0_in, cdw_in, wd_turn_in
     logical, intent(in)   :: slab_ice_in
@@ -76,12 +76,12 @@ subroutine ice_dyn_init(Time, G, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_
     real, parameter       :: missing = -1e34
 
   if (associated(CS)) then
-    call SIS2_error(WARNING, "ice_dyn_init called with associated control structure.")
+    call SIS_error(WARNING, "ice_dyn_init called with associated control structure.")
     return
   endif
   allocate(CS)
 
-!  CS%diag => diag
+  CS%diag => diag
   CS%Time => Time
 
   CS%p0 = p0_in
@@ -185,7 +185,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
   logical :: sent
   integer :: i,j,l
 
-  if (.not.associated(CS)) call SIS2_error(FATAL, &
+  if (.not.associated(CS)) call SIS_error(FATAL, &
          "ice_dynamics: Module must be initialized before it is used.")
 
   EC2I = 1.0/(CS%EC*CS%EC)

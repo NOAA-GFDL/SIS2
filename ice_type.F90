@@ -32,6 +32,10 @@ module ice_type_mod
   use astronomy_mod,    only: astronomy_init, astronomy_end
   use ice_shortwave_dEdd,only: shortwave_dEdd0_set_params
 
+  use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+  use MOM_file_parser, only : open_param_file, close_param_file
+  use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
+
   implicit none
   private
 
@@ -284,6 +288,7 @@ public  :: earth_area
      type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
     type(ice_dyn_CS), pointer   :: ice_dyn_CSp => NULL()
+    type(SIS_diag_ctrl)         :: diag
     type(icebergs), pointer     :: icebergs
     type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
   end type ice_data_type
@@ -378,6 +383,7 @@ public  :: earth_area
     real              :: dt_slow
     character(len=64) :: restart_file
     integer           :: stdlogunit, stdoutunit
+    type(param_file_type) :: param_file
 
     stdlogunit=stdlog()
     stdoutunit = stdout()
@@ -397,6 +403,9 @@ public  :: earth_area
     write (stdlogunit, ice_model_nml)
 
     call write_version_number( version, tagname )
+
+    !### DO THIS PROPERLY LATER.
+    call open_param_file("./MOM_input", param_file)
 
     if (spec_ice) then
        slab_ice = .true.
@@ -426,12 +435,6 @@ public  :: earth_area
                          num_part, layout, io_layout )
     end if
     call set_domain(domain)
-
-!  These would be replaced by calls to register any component-level fields that
-!  need to be in restart files. ###
-!    call ice_dyn_init(Ice%Time, Ice%G, Ice%ice_dyn_CS, p0, c0, cdw, wd_turn, slab_ice)
-!    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
-!                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
     allocate ( Ice % mask     (isc:iec, jsc:jec)       , &
          Ice % ice_mask       (isc:iec, jsc:jec, km)   , &
@@ -730,12 +733,18 @@ public  :: earth_area
        Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
     end do
 
+    
+    call SIS_diag_mediator_init(Ice%G, param_file, Ice%diag, component="SIS")
+    call set_SIS_axes_info(Ice%G, param_file, Ice%diag)
+
     call ice_diagnostics_init(Ice, Ice%G)
 
-    call ice_dyn_init(Ice%Time, Ice%G, Ice%ice_dyn_CSp, p0, c0, cdw, wd_turn, slab_ice)
+    call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp, &
+                      p0, c0, cdw, wd_turn, slab_ice)
     call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
                        t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
+    call close_param_file(param_file)
 
     !Balaji
     iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
