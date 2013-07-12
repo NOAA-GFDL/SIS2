@@ -32,12 +32,12 @@ module ice_type_mod
   use astronomy_mod,    only: astronomy_init, astronomy_end
   use ice_shortwave_dEdd,only: shortwave_dEdd0_set_params
 
-  use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-  use MOM_file_parser, only : open_param_file, close_param_file
-  use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
+use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+use MOM_file_parser, only : open_param_file, close_param_file
+use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
+use SIS_get_input, only : Get_SIS_input, directories
 
-  implicit none
-  private
+implicit none ; private
 
 public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
           mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice,         &
@@ -402,10 +402,9 @@ public  :: earth_area
     write (stdoutunit, ice_model_nml)
     write (stdlogunit, ice_model_nml)
 
-    call write_version_number( version, tagname )
+    call Get_SIS_Input(param_file)
 
-    !### DO THIS PROPERLY LATER.
-    call open_param_file("./MOM_input", param_file)
+    call write_version_number( version, tagname )
 
     if (spec_ice) then
        slab_ice = .true.

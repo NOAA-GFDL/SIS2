@@ -36,7 +36,7 @@ use MOM_file_parser, only : get_param, read_param, log_version, param_file_type
   use ice_grid_mod,    only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed
   use ice_grid_mod,    only: dt_evp, evp_sub_steps
 use ice_grid_mod,    only: sea_ice_grid_type
-  use ice_thm_mod,     only: DI, DS, DW
+!  use ice_thm_mod,     only: DI, DS, DW
 
 implicit none ; private
 
@@ -51,6 +51,10 @@ type, public :: ice_dyn_CS ; private
   real :: blturn = 25.0       ! air/water surf. turning angle (NH) 25
   real :: EC = 2.0            ! yield curve axis ratio
   real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
+  real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
+  real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
+  real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
+                              ! kg m-3.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
@@ -73,6 +77,23 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS, p0_in, c0_in, cdw_in, wd_
     real,    intent(in)   :: p0_in, c0_in, cdw_in, wd_turn_in
     logical, intent(in)   :: slab_ice_in
 
+! Arguments: Time - The current model time.
+!  (in)      G - The ocean's grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+!  (in)      diag - A structure that is used to regulate diagnostic output.
+!  (inout)   AD - A structure pointing to the various accelerations in
+!                 the momentum equations.
+!  (in/out)  CS - A pointer that is set to point to the control structure
+!                 for this module
+
+!   This subroutine sets the parameters and registers the diagnostics associated
+! with the ice dynamics.
+
+! This include declares and sets the variable "version".
+#include "version_variable.h"
+  character(len=40)  :: mod = "ice_dyn" ! This module's name.
+
     real, parameter       :: missing = -1e34
 
   if (associated(CS)) then
@@ -89,6 +110,36 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS, p0_in, c0_in, cdw_in, wd_
   CS%cdw = cdw_in
   CS%blturn = wd_turn_in
   CS%SLAB_ICE = slab_ice_in
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod, version)
+  call get_param(param_file, mod, "ICE_STRENGTH_PSTAR", CS%p0, &
+                 "A constant in the expression for the ice strength, \n"//&
+                 "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
+  call get_param(param_file, mod, "ICE_STRENGTH_CSTAR", CS%c0, &
+                 "A constant in the exponent of the expression for the \n"//&
+                 "ice strength, c* in Hunke & Dukowicz 1997.", &
+                 units="nondim", default=20.)
+  call get_param(param_file, mod, "ICE_CDRAG_WATER", CS%cdw, &
+                 "The drag coefficient between the sea ice and water.", &
+                 units="nondim", default=3.24e-3)
+
+  call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
+                 "The nominal density of sea water as used by SIS.", &
+                 units="kg m-3", default=1030.0)
+  call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
+                 "The nominal density of sea ice as used by SIS.", &
+                 units="kg m-3", default=905.0)
+  call get_param(param_file, mod, "RHO_SNOW", CS%Rho_snow, &
+                 "The nominal density of snow as used by SIS.", &
+                 units="kg m-3", default=330.0)
+
+  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+                 "If true, use the very old slab-style ice.", default=.false.)
+  call get_param(param_file, mod, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
+                 "An angle by which to rotate the velocities at the air- \n"//&
+                 "water boundary in calculating stresses.", units="degrees", &
+                 default=0.0)
+
 
   CS%id_sigi  = register_diag_field('ice_model','SIGI' ,G%axesT1, Time,         &
             'first stress invariant', 'none', missing_value=missing)
@@ -227,7 +278,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    mit(i,j) = ci(i,j)*(hi(i,j)*DI + hs(i,j)*DS)
+    mit(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
   enddo ; enddo
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
@@ -243,9 +294,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 
   do j=jsc,jec ; do i=isc,iec
     if(G%dxT(i,j) < G%dyT(i,j) ) then
-      edt(i,j) = (DI*G%dxT(i,j)*G%dxT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      edt(i,j) = (CS%Rho_ice*G%dxT(i,j)*G%dxT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
     else
-      edt(i,j) = (DI*G%dyT(i,j)*G%dyT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      edt(i,j) = (CS%Rho_ice*G%dyT(i,j)*G%dyT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
     endif
   enddo ; enddo
 
@@ -312,7 +363,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 
    ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
-      if( (G%mask2dT(i,j)>0.5) .and. (ci(i,j)*(DI*hi(i,j)+DS*hs(i,j))>CS%MIV_MIN) ) then
+      if( (G%mask2dT(i,j)>0.5) .and. &
+          (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + sig22(i,j)/edt(i,j) + strn22(i,j)
         sig11(i,j) = (t1(i,j)*f22 + f11) / t2(i,j)
@@ -331,8 +383,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 
     do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-        rr       = CS%cdw*dw*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-                   exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+        rr = CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+             exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !

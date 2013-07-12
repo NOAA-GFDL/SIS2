@@ -1096,8 +1096,8 @@ subroutine allocate_metrics(G)
 
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
 
-  allocate(G%gridLonT(isg:ieg))   ; G%gridLatT(:) = 0.0
-  allocate(G%gridLonB(isg-1:ieg)) ; G%gridLatT(:) = 0.0
+  allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
+  allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
   allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 

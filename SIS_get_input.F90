@@ -96,7 +96,7 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
     do io = 1, npf
       if (len_trim(trim(parameter_filename(io))) > 0) then
         call open_param_file(trim(parameter_filename(io)), param_file, &
-                             check_params)
+                             check_params, component="SIS")
         valid_param_files = valid_param_files + 1
       endif
     enddo
