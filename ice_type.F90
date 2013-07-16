@@ -738,8 +738,7 @@ public  :: earth_area
 
     call ice_diagnostics_init(Ice, Ice%G)
 
-    call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp, &
-                      p0, c0, cdw, wd_turn, slab_ice)
+    call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp)
     call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
                        t_range_melt, ks, h_lo_lim,do_deltaEdd)
 

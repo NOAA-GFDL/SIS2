@@ -28,13 +28,12 @@ module ice_dyn_mod
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_file_parser, only : get_param, read_param, log_version, param_file_type
+use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
   use diag_manager_mod, only:  send_data
 
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: pi
   use ice_grid_mod,    only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed
-  use ice_grid_mod,    only: dt_evp, evp_sub_steps
 use ice_grid_mod,    only: sea_ice_grid_type
 !  use ice_thm_mod,     only: DI, DS, DW
 
@@ -48,13 +47,17 @@ type, public :: ice_dyn_CS ; private
   real :: p0 = 2.75e4         ! pressure constant (Pa)
   real :: c0 = 20.0           ! another pressure constant
   real :: cdw = 3.24e-3       ! ice/water drag coef.
-  real :: blturn = 25.0       ! air/water surf. turning angle (NH) 25
+  real :: blturn = 0.0        ! air/water surf. turning angle (degrees)
   real :: EC = 2.0            ! yield curve axis ratio
   real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
   real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
                               ! kg m-3.
+  logical :: specified_ice    ! If true, the sea ice is specified and there is
+                              ! no need for ice dynamics.
+  integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
+                              ! for each slow time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
@@ -68,15 +71,12 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dyn_param - set ice dynamic parameters                                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dyn_init(Time, G, param_file, diag, CS, p0_in, c0_in, cdw_in, wd_turn_in, slab_ice_in)
-  type(time_type), target, intent(in)    :: Time
-  type(sea_ice_grid_type), intent(in)    :: G
-  type(param_file_type),   intent(in)    :: param_file
+subroutine ice_dyn_init(Time, G, param_file, diag, CS)
+  type(time_type),     target, intent(in)    :: Time
+  type(sea_ice_grid_type),     intent(in)    :: G
+  type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_dyn_CS),        pointer    :: CS
-    real,    intent(in)   :: p0_in, c0_in, cdw_in, wd_turn_in
-    logical, intent(in)   :: slab_ice_in
-
+  type(ice_dyn_CS),            pointer       :: CS
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -105,13 +105,22 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS, p0_in, c0_in, cdw_in, wd_
   CS%diag => diag
   CS%Time => Time
 
-  CS%p0 = p0_in
-  CS%c0 = c0_in
-  CS%cdw = cdw_in
-  CS%blturn = wd_turn_in
-  CS%SLAB_ICE = slab_ice_in
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
+  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+                 "If true, the ice is specified and there is no dynamics.", &
+                 default=.false.)
+  if ( CS%specified_ice ) then
+    CS%evp_sub_steps = 0
+    call log_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+                 "The number of iterations in the EVP dynamics for each \n"//&
+                 "slow time step.  With SPECIFIED_ICE this is always 0.")
+  else
+    call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+                 "The number of iterations in the EVP dynamics for each \n"//&
+                 "slow time step.", default=432)
+  endif
+
   call get_param(param_file, mod, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
                  "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
@@ -188,7 +197,7 @@ end subroutine find_ice_strength
 ! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
-     fxat, fyat, sea_lev, fxoc, fyoc, G, CS)
+     fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
 !!$    real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
     real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
@@ -199,8 +208,22 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     real, intent(in   ), dimension(isc:,jsc:) :: fxat, fyat  ! air stress on ice
     real, intent(in   ), dimension(isd:ied,jsd:jed) :: sea_lev     ! sea level
     real, intent(  out), dimension(isc:iec,jsc:jec) :: fxoc, fyoc  ! ice stress on ocean
+  real,                    intent(in) :: dt_slow
   type(sea_ice_grid_type), intent(in) :: G
   type(ice_dyn_CS),        pointer    :: CS
+! Arguments: ci - The sea ice concentration, nondim.
+!  (in)      hs - The thickness of the snow, in m.
+!  (in)      hi - The thickness of the ice, in m.
+!  (inout)   ui - The zonal ice velocity, in m s-1.
+!  (inout)   vi - The meridional ice velocity, in m s-1.
+!  (in)      uo - The zonal ocean velocity, in m s-1.
+!  (in)      vo - The meridional ocean velocity, in m s-1.
+!  (in)      sea_lev - The height of the sea level (i.e., the water-ice
+!                      interface?), in m.
+!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
+!                      advanced, in s.
+!  (in)      G - The ocean's grid structure.
+!  (in/out)  CS - A pointer to the control structure for this module.
 
   real, dimension(isc:iec,jsc:jec) :: fxic, fyic  ! ice int. stress
   real, dimension(isc:iec,jsc:jec) :: fxco, fyco  ! coriolis force
@@ -230,7 +253,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 
     ! for velocity calculation
     real,    dimension(isc:iec,jsc:jec) :: dtmiv, rpart, fpart, uvfac
-  real :: EC2I  ! 1/EC^2, where EC is the yield curve axis ratio.
+  real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s. 
+  real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
     complex                             :: newuv
 
   logical :: sent
@@ -251,7 +275,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     return
   end if
 
-  if (evp_sub_steps==0) return;
+  if (CS%evp_sub_steps==0) return;
+
+  dt_evp = dt_slow/CS%evp_sub_steps
 
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   do J=jsc-1,jec ; do I=isc-1,iec
@@ -308,7 +334,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     endif
   enddo ; enddo
 
-  do l=1,evp_sub_steps
+  do l=1,CS%evp_sub_steps
 
     ! calculate strain tensor for viscosities and forcing elastic eqn.
     call mpp_update_domains(ui, vi, Domain, gridtype=BGRID_NE)
@@ -426,15 +452,15 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
         fyco(i,j) = fyco(i,j) - miv(i,j)*aimag((0.0,1.0)*G%CoriolisBu(i,j) * cmplx(ui(i,j),vi(i,j)))              
       endif
     enddo ; enddo
-  enddo ! l=1,evp_sub_steps
+  enddo ! l=1,CS%evp_sub_steps
 
   ! make averages
   ! ### Multiply by reciprocal of evp_sub_steps?
   do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
     if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
-       fxoc(i,j) = fxoc(i,j)/evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/evp_sub_steps
-       fxic(i,j) = fxic(i,j)/evp_sub_steps;  fyic(i,j) = fyic(i,j)/evp_sub_steps
-       fxco(i,j) = fxco(i,j)/evp_sub_steps;  fyco(i,j) = fyco(i,j)/evp_sub_steps             
+       fxoc(i,j) = fxoc(i,j)/CS%evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/CS%evp_sub_steps
+       fxic(i,j) = fxic(i,j)/CS%evp_sub_steps;  fyic(i,j) = fyic(i,j)/CS%evp_sub_steps
+       fxco(i,j) = fxco(i,j)/CS%evp_sub_steps;  fyco(i,j) = fyco(i,j)/CS%evp_sub_steps             
     endif
   enddo ; enddo
 

@@ -30,7 +30,7 @@ module ice_grid_mod
   public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t, ice_advect
   public :: ice_line, vel_t_to_uv, cut_check, slab_ice_advect
 
-  public :: dt_evp, evp_sub_steps
+  public :: evp_sub_steps
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: xb1d, yb1d
   public :: sin_rot, cos_rot, cell_area, latitude
@@ -160,7 +160,6 @@ end type SIS2_domain_type
   ! timestep parameters
   !
   integer            :: evp_sub_steps                ! evp subcycles / timestep
-  real               :: dt_evp = 0.0                 ! evp timestep (sec)
   integer            :: adv_sub_steps                ! advection steps / timestep
   real               :: dt_adv = 0.0                 ! advection timestep (sec)
   integer            :: comm_pe                      ! pe to be communicated with
@@ -578,11 +577,6 @@ subroutine set_ice_grid(G, ice_domain, dt_slow, dyn_sub_steps_in, &
     endif
 
     evp_sub_steps = dyn_sub_steps_in
-    if (evp_sub_steps>0) then
-       dt_evp = dt_slow/evp_sub_steps
-    else                            ! evp_sub_steps==0 means no dynamics
-       dt_evp = dt_slow              ! but set dt>0 to avoid divide by zero
-    end if
 
     adv_sub_steps = adv_sub_steps_in
     if (adv_sub_steps>0) then

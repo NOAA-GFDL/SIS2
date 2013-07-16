@@ -1095,7 +1095,7 @@ contains
                      ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
                      Ice%sea_lev, fx_wat, fy_wat, &
-                     Ice%G, Ice%ice_dyn_CSp)
+                     dt_slow, Ice%G, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)
