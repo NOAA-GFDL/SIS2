@@ -71,16 +71,16 @@ module ice_model_mod
   use ice_type_mod,     only: do_sun_angle_for_alb,              &
 			      id_alb_vis_dir, id_alb_vis_dif,    &
 	                      id_alb_nir_dir, id_alb_nir_dif
+  use ice_type_mod,     only: adv_sub_steps, dt_adv
   use ice_type_mod,     only: id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,&
                               id_sw_pen,id_sw_trn
 
   use ice_grid_mod,     only: uv_to_t, t_to_uv, vel_t_to_uv, cut_check, tripolar_grid
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: ice_advect, ice_avg, all_avg, ice_line, slab_ice_advect
+  use ice_grid_mod,     only: ice_avg, all_avg, ice_line
   use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_spec_mod,     only: get_sea_surface
-  use ice_grid_mod,     only: dt_adv
 
   !
   ! the following two modules are the work horses of the sea ice model
@@ -1767,6 +1767,128 @@ subroutine transport (Ice, G)
     return
 
   end subroutine transport
+
+!#####################################################################
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_advect - take adv_sub_steps upstream advection timesteps                 !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_advect(uc, vc, trc, G, uf, vf)
+  real, intent(in   ),           dimension(isd:,jsd:) :: uc, vc  ! advecting velocity on C-grid
+  real, intent(inout),           dimension(isd:,jsd:) :: trc     ! tracer to advect
+  type(sea_ice_grid_type), intent(in) :: G
+  real, optional, intent(inout), dimension(isc:,jsc:) :: uf, vf
+
+  integer                          :: l, i, j
+  real, dimension(isd:ied,jsd:jed) ::  uflx, vflx
+
+  if (adv_sub_steps==0) return;
+
+  if (present(uf)) uf(:,:) = 0.0
+  if (present(vf)) vf(:,:) = 0.0
+
+  uflx(:,:) = 0.0
+  vflx(:,:) = 0.0
+
+  do l=1,adv_sub_steps
+    do j=jsd,jec ; do I=isc-1,iec
+      if( uc(I,j) > 0.0 ) then
+         uflx(I,j) = uc(I,j) * trc(i,j) * G%dyCu(I,j)
+      else
+         uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dyCu(I,j)
+      endif
+    enddo ; enddo
+
+    do J=jsc-1,jec ; do i=isd,iec
+      if( vc(i,J) > 0.0 ) then
+         vflx(i,J) = vc(i,J) * trc(i,j) * G%dxCv(i,J)
+      else
+         vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dxCv(i,J)
+      endif
+    enddo ; enddo
+
+    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j) - uflx(I,j) + &
+                 vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT ?
+    enddo ; enddo
+
+    call mpp_update_domains(trc, Domain)
+
+    if (present(uf)) then
+      do j=jsc,jec ; do I=isc,iec       
+        uf(I,j) = uf(I,j) + uflx(I,j)
+      enddo ; enddo
+    endif
+
+    if (present(vf)) then
+      do J=jsc,jec ; do I=isc,iec       
+        vf(i,J) = vf(i,J) + vflx(i,J)
+      enddo ; enddo
+    endif
+
+  enddo
+
+  if (present(uf)) uf(:,:) = uf(:,:)/adv_sub_steps;
+  if (present(vf)) vf(:,:) = vf(:,:)/adv_sub_steps;
+
+end subroutine ice_advect
+
+!#####################################################################
+subroutine slab_ice_advect(ui, vi, trc, stop_lim, G)
+  real, intent(in   ), dimension(isd:,jsd:) :: ui, vi       ! advecting velocity
+  real, intent(inout), dimension(isd:,jsd:) :: trc          ! tracer to advect
+  real, intent(in   )                             :: stop_lim
+  type(sea_ice_grid_type), intent(in) :: G
+
+    integer                          :: l, i, j
+    real, dimension(isd:ied,jsd:jed) :: ue, vn, uflx, vflx
+    real                             :: avg, dif
+
+    if (adv_sub_steps==0) return;
+
+    ue(:,jsd) = 0.0; ue(:,jed) = 0.0
+    vn(:,jsd) = 0.0; vn(:,jed) = 0.0
+
+  do J=jsc,jec ; do I=isc,iec       
+    ue(I,J) = 0.5 * ( ui(I,j-1) + ui(I,j) )
+    vn(I,J) = 0.5 * ( vi(i-1,J) + vi(i,J) )
+  enddo ; enddo
+
+  call mpp_update_domains(ue, vn, Domain, gridtype=CGRID_NE)
+
+  do l=1,adv_sub_steps
+    do j=jsc,jec ; do I=isc-1,iec
+      avg = ( trc(i,j) + trc(i+1,j) )/2
+      dif = trc(i+1,j) - trc(i,j)
+      if( avg > stop_lim .and. ue(I,j) * dif > 0.0) then
+        uflx(I,j) = 0.0
+      else if( ue(i,j) > 0.0 ) then
+        uflx(I,j) = ue(I,j) * trc(i,j) * G%dyCu(I,j)
+      else
+        uflx(I,j) = ue(I,j) * trc(i+1,j) * G%dyCu(I,j)
+      endif
+    enddo ; enddo
+
+    do J=jsc-1,jec ; do i=isc,iec
+      avg = ( trc(i,j) + trc(i,j+1) )/2
+      dif = trc(i,j+1) - trc(i,j)
+      if( avg > stop_lim .and. vn(i,J) * dif > 0.0) then
+        vflx(i,J) = 0.0
+      else if( vn(i,J) > 0.0 ) then
+        vflx(i,J) = vn(i,j) * trc(i,j) * G%dxCv(i,J)
+      else
+        vflx(i,J) = vn(i,J) * trc(i,j+1) * G%dxCv(i,J)
+      endif
+    enddo ; enddo
+
+    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j)-uflx(I,j) + vflx(i,J-1)-vflx(i,J) ) / &
+                                     (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT ?
+    enddo ; enddo
+
+    call mpp_update_domains(trc, Domain)
+  enddo
+
+end subroutine slab_ice_advect
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! ext - modeled ice is one if ice cover >= 0.15 otherwise zero                 !

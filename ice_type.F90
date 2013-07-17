@@ -66,7 +66,7 @@ public  :: id_alb_vis_dir, id_alb_vis_dif,id_alb_nir_dir, id_alb_nir_dif, id_cos
 public  :: id_abs_int,id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,id_sw_pen,id_sw_trn
 public  :: iceClock,iceClock1,iceClock2,iceClock3,iceClock4,iceClock5,iceClock6,iceClock7,iceClock8,iceClock9
 public  :: iceClocka,iceClockb,iceClockc
-public  :: earth_area
+public  :: earth_area, adv_sub_steps, dt_adv
 
   real, parameter :: earth_area = 4*PI*RADIUS*RADIUS !5.10064471909788E+14 m^2
   !---- id for diagnositics -------------------
@@ -175,6 +175,12 @@ public  :: earth_area
                              ! 2 - h2o/heat flux down at top of ice
                              ! 3 - h2o/heat flux down at bottom of ice
                              ! 4 - final ice h2o/heat content
+
+  !
+  ! timestep parameters
+  !
+  integer            :: adv_sub_steps                ! advection steps / timestep
+  real               :: dt_adv = 0.0                 ! advection timestep (sec)
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! This structure contains the ice model data (some used by calling routines);  !
@@ -427,13 +433,19 @@ public  :: earth_area
     endif
 
     if( ASSOCIATED(Ice%maskmap) ) then
-       call set_ice_grid(Ice%G, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
-                         num_part, layout, io_layout, Ice%maskmap  )
+       call set_ice_grid(Ice%G, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
     else
-       call set_ice_grid(Ice%G, Ice%domain, dt_slow, nsteps_dyn, nsteps_adv, &
-                         num_part, layout, io_layout )
+       call set_ice_grid(Ice%G, Ice%domain, num_part, layout, io_layout )
     end if
     call set_domain(domain)
+
+    adv_sub_steps = nsteps_adv
+    if (adv_sub_steps>0) then
+       dt_adv = dt_slow/adv_sub_steps
+    else                            ! adv_sub_steps==0 means no advection
+       dt_adv = dt_slow              ! but set dt>0 to avoid divide by zero
+    end if
+
 
     allocate ( Ice % mask     (isc:iec, jsc:jec)       , &
          Ice % ice_mask       (isc:iec, jsc:jec, km)   , &
