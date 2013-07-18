@@ -506,20 +506,17 @@ contains
 
     if (do_init) then
        call get_sea_surface(Ice%Time, Ice%t_surf(:,:,1), Ice%part_size(isc:iec,jsc:jec,1:2), &
-            Ice%h_ice    (isc:iec,jsc:jec,2  ) )
+                            Ice%h_ice(isc:iec,jsc:jec,2) )
        call mpp_update_domains(Ice%part_size(:,:,1:2), Domain ) ! these two updates cannot be combined
        call mpp_update_domains(Ice%h_ice(:,:,2), Domain )       ! these two updates cannot be combined
+       Ice%part_size_uv(:,:,:) = 0.0
        Ice%part_size_uv(:,:,1) = 1.0
        do k=2,km
-          call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%G)
+         call t_to_uv(Ice%part_size(:,:,k),Ice%part_size_uv(:,:,k), Ice%G)
        enddo
-       do k=2,km
-          do j=jsc,jec
-             do i=isc,iec
-                Ice%part_size_uv (i,j,1) = Ice%part_size_uv(i,j,1)-Ice%part_size_uv (i,j,k)
-             enddo
-          end do
-       end do
+       do k=2,km ; do j=jsc,jec ; do i=isc,iec
+         Ice%part_size_uv (i,j,1) = Ice%part_size_uv(i,j,1)-Ice%part_size_uv (i,j,k)
+       enddo ; enddo ; enddo
        do_init = .false.
     end if
 
@@ -953,14 +950,14 @@ contains
     real, dimension(isc:iec,jsc:jec), intent(in), optional :: runoff_hflx, calving_hflx
     real, dimension(:,:,:),           intent(in), optional :: p_surf ! obsolete
 
-    real, dimension(isc:iec,jsc:jec)      :: fx_ice, fy_ice
-    real, dimension(isc:iec,jsc:jec)      :: fx_wat, fy_wat
+    real, dimension(isd:ied,jsd:jed)      :: fx_wat, fy_wat
     real, dimension(isc:iec,jsc:jec)      :: hi_change, h2o_change, bsnk, x
     real, dimension(isc:iec,jsc:jec,2:km) :: snow_to_ice
     real, dimension(isc:iec,jsc:jec,km)   :: part_save, part_save_uv
     real, dimension(isc:iec,jsc:jec)      :: dum1, Obs_h_ice ! for qflux calculation
     real, dimension(isc:iec,jsc:jec,2)    :: Obs_cn_ice      ! partition 2 = ice concentration
     real, dimension(isd:ied,jsd:jed)      :: tmp1, tmp2
+    real, dimension(isd:ied,jsd:jed)      :: wind_stress_x, wind_stress_y
     real, dimension(2:km)                 :: e2m
     integer                               :: i, j, k, l, sc, dy, iyr, imon, iday, ihr, imin, isec
     real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
@@ -973,7 +970,7 @@ contains
     !
     ! Fluxes
     !
-    if (present( runoff)) then ! save liquid runoff for ocean
+    if (present(runoff)) then ! save liquid runoff for ocean
        do j = jsc, jec
           do i = isc, iec
              Ice % runoff(i,j)  = runoff(i,j)
@@ -1005,7 +1002,7 @@ contains
        enddo
     endif
 
-    if (present( runoff_hflx)) then ! save liquid runoff hflx for ocean
+    if (present(runoff_hflx)) then ! save liquid runoff hflx for ocean
        do j = jsc, jec
           do i = isc, iec
              Ice % runoff_hflx(i,j)  = runoff_hflx(i,j)
@@ -1040,8 +1037,8 @@ contains
     !TOM> assume that open water area is not up to date:
     call mpp_clock_end(iceClock)
     call mpp_clock_end(iceClock2)
-    tmp1=1.-max(1.-sum(Ice%part_size(:,:,2:km),dim=3),0.0)
-    tmp2=ice_avg(Ice%h_ice,Ice%part_size)
+    tmp1(:,:) = 1.-max(1.-sum(Ice%part_size(:,:,2:km),dim=3),0.0)
+    tmp2(:,:) = ice_avg(Ice%h_ice,Ice%part_size)
     ! Calve off icebergs and integrate forward iceberg trajectories
     if (do_icebergs) call icebergs_run( Ice%icebergs,Ice%Time,                 &
                       Ice%calving, Ice%u_ocn, Ice%v_ocn, Ice%u_ice, Ice%v_ice, &
@@ -1052,14 +1049,10 @@ contains
 
     call avg_top_quantities(Ice) ! average fluxes from update_ice_model_fast
 
-    do k = 1, km
-       do j = jsc, jec
-          do i = isc, iec
-             part_save(i,j,k)    = Ice%part_size(i,j,k)
-             part_save_uv(i,j,k) = Ice%part_size_uv(i,j,k)
-          enddo
-       enddo
-    enddo
+    do k=1,km ; do j=jsc,jec ; do i=isc,iec
+      part_save(i,j,k)    = Ice%part_size(i,j,k)
+      part_save_uv(i,j,k) = Ice%part_size_uv(i,j,k)
+    enddo ; enddo ; enddo
     !
     ! conservation checks: top fluxes
     !
@@ -1086,15 +1079,16 @@ contains
     !
 
     call mpp_clock_begin(iceClock4)
-    tmp1 = ice_avg(Ice%h_snow,Ice%part_size)
-    tmp2 = ice_avg(Ice%h_ice,Ice%part_size)
+    tmp1(:,:) = ice_avg(Ice%h_snow,Ice%part_size)
+    tmp2(:,:) = ice_avg(Ice%h_ice,Ice%part_size)
+    wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
+    wind_stress_x(isc:iec,jsc:jec) = ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
+    wind_stress_y(isc:iec,jsc:jec) = ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
 
     call mpp_clock_begin(iceClocka)
-    call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice,                      &
-                     Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn,                         &
-                     ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                     ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv(isc:iec,jsc:jec,:) ),  &
-                     Ice%sea_lev, fx_wat, fy_wat, &
+    call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice, &
+                     Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn, &
+                     wind_stress_x, wind_stress_y, Ice%sea_lev, fx_wat, fy_wat, &
                      dt_slow, Ice%G, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
@@ -1107,18 +1101,16 @@ contains
     ! Dynamics diagnostics
     !
     if (id_fax>0) &
-         sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
+         sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
+                                          Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
     if (id_fay>0) &
-         sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:),Ice%part_size_uv), Ice%Time)
+         sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
+                                          Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
 
-    do k=2,km
-       do j = jsc, jec
-          do i = isc, iec
-             Ice%flux_u_top_bgrid(i,j,k) = fx_wat(i,j)  ! stress of ice on ocean
-             Ice%flux_v_top_bgrid(i,j,k) = fy_wat(i,j)  !
-          enddo
-       enddo
-    end do
+    do k=2,km ; do j=jsc,jec ; do i=isc,iec
+      Ice%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
+      Ice%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
+    enddo ; enddo ; enddo
     call mpp_clock_end(iceClockc)
     call mpp_clock_end(iceClock4)
 
@@ -1432,7 +1424,7 @@ contains
     do k=2,km
        do j = jsd, jed
           do i = isd, ied
-             Ice%part_size(i,j,1) = Ice%part_size   (i,j,1) - Ice%part_size   (i,j,k)
+             Ice%part_size(i,j,1) = Ice%part_size(i,j,1) - Ice%part_size(i,j,k)
           enddo
        enddo
     enddo

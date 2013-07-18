@@ -199,15 +199,13 @@ end subroutine find_ice_strength
 subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
-!!$    real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
     real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
     real, intent(inout), dimension(isd:ied,jsd:jed) :: ui, vi      ! ice velocity
     real, intent(inout), dimension(isd:ied,jsd:jed) :: sig11, sig22, sig12       ! stress tensor
     real, intent(in   ), dimension(isd:ied,jsd:jed) :: uo, vo      ! ocean velocity
-!!$    real, intent(in   ), dimension(isc:iec,jsc:jec) :: fxat, fyat  ! air stress on ice
-    real, intent(in   ), dimension(isc:,jsc:) :: fxat, fyat  ! air stress on ice
+    real, intent(in   ), dimension(isd:ied,jsd:jed) :: fxat, fyat  ! air stress on ice
     real, intent(in   ), dimension(isd:ied,jsd:jed) :: sea_lev     ! sea level
-    real, intent(  out), dimension(isc:iec,jsc:jec) :: fxoc, fyoc  ! ice stress on ocean
+    real, intent(  out), dimension(isd:ied,jsd:jed) :: fxoc, fyoc  ! ice stress on ocean
   real,                    intent(in) :: dt_slow
   type(sea_ice_grid_type), intent(in) :: G
   type(ice_dyn_CS),        pointer    :: CS
@@ -225,34 +223,34 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
 
-  real, dimension(isc:iec,jsc:jec) :: fxic, fyic  ! ice int. stress
-  real, dimension(isc:iec,jsc:jec) :: fxco, fyco  ! coriolis force
+  real, dimension(isd:ied,jsd:jed) :: fxic, fyic  ! ice int. stress
+  real, dimension(isd:ied,jsd:jed) :: fxco, fyco  ! coriolis force
 
-  real, dimension(isd:ied,jsd:jed)    :: prs                    ! ice pressure
-  real                                :: zeta, eta              ! bulk/shear viscosities
-  real, dimension(isc:iec,jsc:jec)    :: strn11, strn12, strn22 ! strain tensor
+  real, dimension(isd:ied,jsd:jed) :: prs                    ! ice pressure
+  real                             :: zeta, eta              ! bulk/shear viscosities
+  real, dimension(isd:ied,jsd:jed) :: strn11, strn12, strn22 ! strain tensor
 
-    real,    dimension(isd:ied,jsd:jed) :: mit                 ! mass on t-points
-    real,    dimension(isd:ied,jsd:jed) :: miv                 ! mass on v-points
-    real,    dimension(isd:ied,jsd:jed) :: civ                 ! conc. on v-points
-    real,    dimension(isd:ied,jsd:jed) :: diag_val            ! A temporary diagnostic array
-    complex                             :: rr                  ! linear drag coefficient
-    real                                :: fxic_now, fyic_now  ! ice internal stress
+  real, dimension(isd:ied,jsd:jed) :: mit                 ! mass on t-points
+  real, dimension(isd:ied,jsd:jed) :: miv                 ! mass on v-points
+  real, dimension(isd:ied,jsd:jed) :: civ                 ! conc. on v-points
+  real, dimension(isd:ied,jsd:jed) :: diag_val            ! A temporary diagnostic array
+  complex                             :: rr                  ! linear drag coefficient
+  real                                :: fxic_now, fyic_now  ! ice internal stress
 
-    ! temporaries for strain calculation
-    real, dimension(isd:ied,jsd:jed) :: &
-      grid_fac1, grid_fac2, grid_fac3, grid_fac4
-    
+  ! temporaries for strain calculation
+  real, dimension(isd:ied,jsd:jed) :: &
+    grid_fac1, grid_fac2, grid_fac3, grid_fac4
+
     ! temporaries for ice stress calculation
     real                             :: del2, a, b, tmp
-    real, dimension(isc:iec,jsc:jec) :: edt, mp4z, t0, t1, t2
+    real, dimension(isd:ied,jsd:jed) :: edt, mp4z, t0, t1, t2
     real                             :: f11, f22
     real, dimension(isd:ied,jsd:jed) :: sldx, sldy
     real, dimension(isd:ied,jsd:jed) :: dydx, dxdy
     real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7
 
     ! for velocity calculation
-    real,    dimension(isc:iec,jsc:jec) :: dtmiv, rpart, fpart, uvfac
+    real,    dimension(isd:ied,jsd:jed) :: dtmiv, rpart, fpart, uvfac
   real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s. 
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
     complex                             :: newuv
@@ -381,8 +379,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
           tmp       = 1/(4*eta*zeta)
           a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
           b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
-          t1(i,j)   = b/a
-          t2(i,j)   = a - b*b/a
+          t1(i,j)   = b/a                         ! = (1-EC2I)*edt(i,j) / (4*eta + (1+EC2I)*edt(i,j))
+          t2(i,j)   = a - b*b/a                   ! 1/t2 = a / (a*a - b*b)
         endif
       enddo ; enddo
     endif
@@ -468,16 +466,18 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 !  The diagnistics of fxat and fyat are supposed to be taken over all partitions
 !  (ocean & ice), whereas fxat and fyat here are only averaged over ice.
 !## if (CS%id_fax>0) &
-!##      sent = send_data(CS%id_fax, all_avg(CS%flux_u_top_bgrid(isc:iec,jsc:jec,:),CS%part_size_uv), CS%Time)
+!##      sent = send_data(CS%id_fax, all_avg(CS%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
+!##                                          CS%part_size_uv(isc:iec,jsc:jec)), CS%Time)
 !## if (CS%id_fay>0) &
-!##      sent = send_data(CS%id_fay, all_avg(CS%flux_v_top_bgrid(isc:iec,jsc:jec,:),CS%part_size_uv), CS%Time)
+!##      sent = send_data(CS%id_fay, all_avg(CS%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
+!##                                          CS%part_size_uv(isc:iec,jsc:jec)), CS%Time)
 
-  if (CS%id_fix>0) sent = send_data(CS%id_fix, fxic, CS%Time)
-  if (CS%id_fiy>0) sent = send_data(CS%id_fiy, fyic, CS%Time)
-  if (CS%id_fcx>0) sent = send_data(CS%id_fcx, fxco, CS%Time)
-  if (CS%id_fcy>0) sent = send_data(CS%id_fcy, fyco, CS%Time)
-  if (CS%id_fwx>0) sent = send_data(CS%id_fwx, -fxoc, CS%Time) ! water force on ice
-  if (CS%id_fwy>0) sent = send_data(CS%id_fwy, -fyoc, CS%Time) ! ...= -ice on water
+  if (CS%id_fix>0) sent = send_data(CS%id_fix, fxic(isc:iec,jsc:jec), CS%Time)
+  if (CS%id_fiy>0) sent = send_data(CS%id_fiy, fyic(isc:iec,jsc:jec), CS%Time)
+  if (CS%id_fcx>0) sent = send_data(CS%id_fcx, fxco(isc:iec,jsc:jec), CS%Time)
+  if (CS%id_fcy>0) sent = send_data(CS%id_fcy, fyco(isc:iec,jsc:jec), CS%Time)
+  if (CS%id_fwx>0) sent = send_data(CS%id_fwx, -fxoc(isc:iec,jsc:jec), CS%Time) ! water force on ice
+  if (CS%id_fwy>0) sent = send_data(CS%id_fwy, -fyoc(isc:iec,jsc:jec), CS%Time) ! ...= -ice on water
 
   if (CS%id_sigi>0) then
     diag_val(:,:) =  sigI(hi, ci, sig11, sig22, sig12, G, CS)
