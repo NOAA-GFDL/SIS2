@@ -21,8 +21,9 @@ module ice_dyn_mod
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
-! SEA ICE DYNAMICS using ELASTIC-VISCOUS-PLASTIC RHEOLOGY adapted from         !
+! B-grid SEA ICE DYNAMICS using ELASTIC-VISCOUS-PLASTIC RHEOLOGY adapted from  !
 ! Hunke and Dukowicz (JPO 1997, H&D hereafter) -Mike Winton (Michael.Winton@noaa.gov) !
+! Recoded for consistency with MOM6 and symmetry by R. Hallberg, 7/2013.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
@@ -33,11 +34,12 @@ use MOM_file_parser, only : get_param, log_param, read_param, log_version, param
 
   use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
   use constants_mod,   only: pi
-  use ice_grid_mod,    only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed
+  use ice_grid_mod,    only: Domain
 use ice_grid_mod,    only: sea_ice_grid_type
-!  use ice_thm_mod,     only: DI, DS, DW
 
 implicit none ; private
+
+#include <SIS2_memory.h>
 
 public :: ice_dyn_init, ice_dynamics
 
@@ -180,12 +182,13 @@ end subroutine ice_dyn_init
 ! find_ice_strength - magnitude of force on ice in plastic deformation         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine find_ice_strength(hi, ci, ice_strength, G, CS) ! ??? may change to do loop
-  real, dimension(isd:ied,jsd:jed), intent(in)  :: hi, ci
-  real, dimension(isd:ied,jsd:jed), intent(out) :: ice_strength
   type(sea_ice_grid_type),          intent(in)  :: G
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: hi, ci
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_dyn_CS),                 pointer     :: CS
 
-  integer :: i, j
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do j=jsc,jec ; do i=isc,iec
     ice_strength(i,j) = CS%p0*hi(i,j)*ci(i,j)*exp(-CS%c0*(1-ci(i,j)))
@@ -199,15 +202,15 @@ end subroutine find_ice_strength
 subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
-    real, intent(in   ), dimension(isd:ied,jsd:jed) :: ci, hs, hi  ! ice properties
-    real, intent(inout), dimension(isd:ied,jsd:jed) :: ui, vi      ! ice velocity
-    real, intent(inout), dimension(isd:ied,jsd:jed) :: sig11, sig22, sig12       ! stress tensor
-    real, intent(in   ), dimension(isd:ied,jsd:jed) :: uo, vo      ! ocean velocity
-    real, intent(in   ), dimension(isd:ied,jsd:jed) :: fxat, fyat  ! air stress on ice
-    real, intent(in   ), dimension(isd:ied,jsd:jed) :: sea_lev     ! sea level
-    real, intent(  out), dimension(isd:ied,jsd:jed) :: fxoc, fyoc  ! ice stress on ocean
-  real,                    intent(in) :: dt_slow
   type(sea_ice_grid_type), intent(in) :: G
+    real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: ci, hs, hi  ! ice properties
+    real, intent(inout), dimension(SZIB_(G),SZJB_(G)) :: ui, vi      ! ice velocity
+    real, intent(inout), dimension(SZI_(G),SZJ_(G)) :: sig11, sig22, sig12       ! stress tensor
+    real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: uo, vo      ! ocean velocity
+    real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: fxat, fyat  ! air stress on ice
+    real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: sea_lev     ! sea level
+    real, intent(  out), dimension(SZIB_(G),SZJB_(G)) :: fxoc, fyoc  ! ice stress on ocean
+  real,                    intent(in) :: dt_slow
   type(ice_dyn_CS),        pointer    :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      hs - The thickness of the snow, in m.
@@ -223,40 +226,42 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
 
-  real, dimension(isd:ied,jsd:jed) :: fxic, fyic  ! ice int. stress
-  real, dimension(isd:ied,jsd:jed) :: fxco, fyco  ! coriolis force
+  real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice int. stress
+  real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! coriolis force
 
-  real, dimension(isd:ied,jsd:jed) :: prs                    ! ice pressure
+  real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! ice pressure
   real                             :: zeta, eta              ! bulk/shear viscosities
-  real, dimension(isd:ied,jsd:jed) :: strn11, strn12, strn22 ! strain tensor
+  real, dimension(SZI_(G),SZJ_(G)) :: strn11, strn12, strn22 ! strain tensor
 
-  real, dimension(isd:ied,jsd:jed) :: mit                 ! mass on t-points
-  real, dimension(isd:ied,jsd:jed) :: miv                 ! mass on v-points
-  real, dimension(isd:ied,jsd:jed) :: civ                 ! conc. on v-points
-  real, dimension(isd:ied,jsd:jed) :: diag_val            ! A temporary diagnostic array
+  real, dimension(SZI_(G),SZJ_(G)) :: mit                 ! mass on t-points
+  real, dimension(SZIB_(G),SZJB_(G)) :: miv                 ! mass on v-points
+  real, dimension(SZIB_(G),SZJB_(G)) :: civ                 ! conc. on v-points
+  real, dimension(SZI_(G),SZJ_(G)) :: diag_val            ! A temporary diagnostic array
   complex                             :: rr                  ! linear drag coefficient
   real                                :: fxic_now, fyic_now  ! ice internal stress
 
   ! temporaries for strain calculation
-  real, dimension(isd:ied,jsd:jed) :: &
+  real, dimension(SZI_(G),SZJ_(G)) :: &
     grid_fac1, grid_fac2, grid_fac3, grid_fac4
 
     ! temporaries for ice stress calculation
     real                             :: del2, a, b, tmp
-    real, dimension(isd:ied,jsd:jed) :: edt, mp4z, t0, t1, t2
+    real, dimension(SZI_(G),SZJ_(G)) :: edt, mp4z, t0, t1, t2
     real                             :: f11, f22
-    real, dimension(isd:ied,jsd:jed) :: sldx, sldy
-    real, dimension(isd:ied,jsd:jed) :: dydx, dxdy
+    real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
+    real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
     real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7
 
     ! for velocity calculation
-    real,    dimension(isd:ied,jsd:jed) :: dtmiv, rpart, fpart, uvfac
+    real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
   real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s. 
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
     complex                             :: newuv
 
   logical :: sent
-  integer :: i,j,l
+  integer :: l
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "ice_dynamics: Module must be initialized before it is used.")
@@ -501,12 +506,13 @@ end subroutine ice_dynamics
 ! sigI - first stress invariant                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 function sigI(hi, ci, sig11, sig22, sig12, G, CS)
-  real, dimension(isd:ied,jsd:jed), intent(in) :: hi, ci, sig11, sig22, sig12
-  real, dimension(isd:ied,jsd:jed)             :: sigI
   type(sea_ice_grid_type), intent(in)    :: G
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: hi, ci, sig11, sig22, sig12
+  real, dimension(SZI_(G),SZJ_(G))             :: sigI
   type(ice_dyn_CS),        pointer       :: CS
 
-  integer :: i, j
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   call find_ice_strength(hi, ci, sigI, G, CS)
 
@@ -520,12 +526,13 @@ end function sigI
 ! sigII - second stress invariant                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 function sigII(hi, ci, sig11, sig22, sig12, G, CS)
-  real, dimension(isd:ied,jsd:jed), intent(in) :: hi, ci, sig11, sig22, sig12
-  real, dimension(isd:ied,jsd:jed)             :: sigII
   type(sea_ice_grid_type), intent(in)    :: G
-  type(ice_dyn_CS),        pointer       :: CS
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: hi, ci, sig11, sig22, sig12
+  real, dimension(SZI_(G),SZJ_(G))             :: sigII
+  type(ice_dyn_CS),                 pointer    :: CS
 
-  integer :: i, j
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   call find_ice_strength(hi, ci, sigII, G, CS)
 
