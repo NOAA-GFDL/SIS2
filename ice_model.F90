@@ -29,6 +29,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_model_mod
 
+use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
   use mpp_mod,          only: mpp_clock_begin, mpp_clock_end
   use mpp_domains_mod,  only: mpp_update_domains, BGRID_NE, CGRID_NE
   use fms_mod,          only: error_mesg
@@ -459,6 +460,9 @@ contains
     type (ice_data_type), intent(inout) :: Ice
     real, dimension (:,:,:), intent(in) :: part_size, part_size_uv
     integer                             :: m, n
+
+!    Ice % flux_u  = all_avg( Ice % flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
+!    Ice % flux_v  = all_avg( Ice % flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
 
     Ice % flux_u  = all_avg( Ice % flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
     Ice % flux_v  = all_avg( Ice % flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
@@ -1085,6 +1089,7 @@ contains
     wind_stress_x(isc:iec,jsc:jec) = ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
     wind_stress_y(isc:iec,jsc:jec) = ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
 
+    call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
     call mpp_clock_begin(iceClocka)
     call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice, &
                      Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn, &
@@ -1106,6 +1111,8 @@ contains
     if (id_fay>0) &
          sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
                                           Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
+    call disable_SIS_averaging(Ice%diag)
+
 
     do k=2,km ; do j=jsc,jec ; do i=isc,iec
       Ice%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean

@@ -476,29 +476,30 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
 !## if (CS%id_fay>0) &
 !##      sent = send_data(CS%id_fay, all_avg(CS%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
 !##                                          CS%part_size_uv(isc:iec,jsc:jec)), CS%Time)
+  if (query_SIS_averaging_enabled(CS%diag)) then
+    if (CS%id_fix>0) call post_SIS_data(CS%id_fix, fxic, CS%diag)
+    if (CS%id_fiy>0) call post_SIS_data(CS%id_fiy, fyic, CS%diag)
+    if (CS%id_fcx>0) call post_SIS_data(CS%id_fcx, fxco, CS%diag)
+    if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, fyco, CS%diag)
+    if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
+    if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
 
-  if (CS%id_fix>0) sent = send_data(CS%id_fix, fxic(isc:iec,jsc:jec), CS%Time)
-  if (CS%id_fiy>0) sent = send_data(CS%id_fiy, fyic(isc:iec,jsc:jec), CS%Time)
-  if (CS%id_fcx>0) sent = send_data(CS%id_fcx, fxco(isc:iec,jsc:jec), CS%Time)
-  if (CS%id_fcy>0) sent = send_data(CS%id_fcy, fyco(isc:iec,jsc:jec), CS%Time)
-  if (CS%id_fwx>0) sent = send_data(CS%id_fwx, -fxoc(isc:iec,jsc:jec), CS%Time) ! water force on ice
-  if (CS%id_fwy>0) sent = send_data(CS%id_fwy, -fyoc(isc:iec,jsc:jec), CS%Time) ! ...= -ice on water
+    if (CS%id_sigi>0) then
+      diag_val(:,:) =  sigI(hi, ci, sig11, sig22, sig12, G, CS)
+      call post_SIS_data(CS%id_sigi, diag_val, CS%diag) !### , mask=CS%mask)
+    endif
+    if (CS%id_sigii>0) then
+      diag_val(:,:) = sigII(hi, ci, sig11, sig22, sig12, G, CS)
+      call post_SIS_data(CS%id_sigii, diag_val, CS%diag) !### , mask=Ice%mask)
+    endif
+    if (CS%id_stren>0) then
+      call find_ice_strength(hi, ci, diag_val, G, CS)
+      call post_SIS_data(CS%id_stren, diag_val, CS%diag) !, mask=Ice%mask)
+    endif
 
-  if (CS%id_sigi>0) then
-    diag_val(:,:) =  sigI(hi, ci, sig11, sig22, sig12, G, CS)
-    sent = send_data(CS%id_sigi, diag_val(isc:iec,jsc:jec), CS%Time) !### , mask=CS%mask)
+    if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
+    if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
   endif
-  if (CS%id_sigii>0) then
-    diag_val(:,:) = sigII(hi, ci, sig11, sig22, sig12, G, CS)
-    sent = send_data(CS%id_sigii, diag_val(isc:iec,jsc:jec), CS%Time) !### , mask=Ice%mask)
-  endif
-  if (CS%id_stren>0) then
-    call find_ice_strength(hi, ci, diag_val, G, CS)
-    sent = send_data(CS%id_stren, diag_val(isc:iec,jsc:jec), CS%Time) !, mask=Ice%mask)
-  endif
-
-  if (CS%id_ui>0) sent = send_data(CS%id_ui, ui(isc:iec,jsc:jec), CS%Time)
-  if (CS%id_vi>0) sent = send_data(CS%id_vi, vi(isc:iec,jsc:jec), CS%Time)
 
 end subroutine ice_dynamics
 

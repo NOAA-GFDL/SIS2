@@ -59,7 +59,10 @@ end interface post_SIS_data
 type, public :: SIS_diag_ctrl
 
 ! The following fields are used for the output of the data.
+! These give the computational-domain sizes, and are relative to a start value
+! of 1 in memory for the tracer-point arrays.
   integer :: is, ie, js, je
+! These give the memory-domain sizes, and can be start at any value on each PE.
   integer :: isd, ied, jsd, jed
   real :: time_int              ! The time interval in s for any fields
                                 ! that are offered for averaging.
@@ -198,7 +201,8 @@ subroutine set_SIS_diag_mediator_grid(G, diag)
   type(SIS_diag_ctrl),       intent(inout) :: diag
 ! Arguments: G - The ocean's grid structure.
 !  (inout)   diag - A structure that is used to regulate diagnostic output.
-  diag%is = G%isc ; diag%ie = G%iec ; diag%js = G%jsc ; diag%je = G%jec
+  diag%is = G%isc - (G%isd-1) ; diag%ie = G%iec - (G%isd-1)
+  diag%js = G%jsc - (G%jsd-1) ; diag%je = G%jec - (G%jsd-1)
   diag%isd = G%isd ; diag%ied = G%ied ; diag%jsd = G%jsd ; diag%jed = G%jed
 end subroutine set_SIS_diag_mediator_grid
 
@@ -474,7 +478,8 @@ subroutine SIS_diag_mediator_init(G, param_file, diag, component, err_msg)
 
   call diag_manager_init(err_msg=err_msg)
 
-  diag%is = G%isc ; diag%ie = G%iec ; diag%js = G%jsc ; diag%je = G%jec
+  diag%is = G%isc - (G%isd-1) ; diag%ie = G%iec - (G%isd-1)
+  diag%js = G%jsc - (G%jsd-1) ; diag%je = G%jec - (G%jsd-1)
   diag%isd = G%isd ; diag%ied = G%ied ; diag%jsd = G%jsd ; diag%jed = G%jed
 
   if (is_root_pe()) then

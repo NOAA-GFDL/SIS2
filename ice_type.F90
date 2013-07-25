@@ -463,7 +463,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
          Ice % rough_heat     (isc:iec, jsc:jec, km)   , &
          Ice % rough_moist    (isc:iec, jsc:jec, km)   , &
          Ice % coszen         (isc:iec, jsc:jec, km)   , &
-         Ice % albedo         (isc:iec, jsc:jec, km)   , &                
+         Ice % albedo         (isc:iec, jsc:jec, km)   , &
          Ice % albedo_vis_dir (isc:iec, jsc:jec, km)   , &
          Ice % albedo_nir_dir (isc:iec, jsc:jec, km)   , &
          Ice % albedo_vis_dif (isc:iec, jsc:jec, km)   , &
@@ -740,9 +740,10 @@ public  :: earth_area, adv_sub_steps, dt_adv
 
     Ice%part_size_uv(:,:,1) = 1.0
     do k=2,km
-       call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
-       Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
-    end do
+      Ice%part_size_uv(:,:,k) = 0.0
+      call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
+      Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
+    enddo
 
     
     call SIS_diag_mediator_init(Ice%G, param_file, Ice%diag, component="SIS")
