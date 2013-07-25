@@ -30,11 +30,8 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-  use diag_manager_mod, only:  send_data
-
-  use mpp_domains_mod, only: mpp_update_domains, BGRID_NE
+use MOM_domains, only : pass_var, pass_vector, BGRID_NE
   use constants_mod,   only: pi
-  use ice_grid_mod,    only: Domain
 use ice_grid_mod,    only: sea_ice_grid_type
 
 implicit none ; private
@@ -202,7 +199,7 @@ end subroutine find_ice_strength
 subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
-  type(sea_ice_grid_type), intent(in) :: G
+  type(sea_ice_grid_type), intent(inout) :: G
     real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: ci, hs, hi  ! ice properties
     real, intent(inout), dimension(SZIB_(G),SZJB_(G)) :: ui, vi      ! ice velocity
     real, intent(inout), dimension(SZI_(G),SZJ_(G)) :: sig11, sig22, sig12       ! stress tensor
@@ -340,7 +337,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
   do l=1,CS%evp_sub_steps
 
     ! calculate strain tensor for viscosities and forcing elastic eqn.
-    call mpp_update_domains(ui, vi, Domain, gridtype=BGRID_NE)
+    call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
 
   !### ADD PARENTHESES FOR CLARITY
   !### MULTIPLY BY GRID METRIC INVERSES FOR EFFICIENCY.
@@ -406,9 +403,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
       endif
     enddo ; enddo
 
-    call mpp_update_domains(sig11, Domain, complete=.false.)
-    call mpp_update_domains(sig22, Domain, complete=.false.)
-    call mpp_update_domains(sig12, Domain, complete=.true.)
+    call pass_var(sig11, G%Domain, complete=.false.)
+    call pass_var(sig22, G%Domain, complete=.false.)
+    call pass_var(sig12, G%Domain, complete=.true.)
 
     do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
