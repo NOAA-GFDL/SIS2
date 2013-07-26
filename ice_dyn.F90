@@ -30,22 +30,28 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains, only : pass_var, pass_vector, BGRID_NE
-  use constants_mod,   only: pi
-use ice_grid_mod,    only: sea_ice_grid_type
+use MOM_domains,     only : pass_var, pass_vector, BGRID_NE
+use constants_mod,   only : pi
+use ice_grid_mod,    only : sea_ice_grid_type
+use fms_io_mod,      only : register_restart_field, restart_file_type
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_dyn_init, ice_dynamics
+public :: ice_dyn_init, ice_dynamics, ice_dyn_end, ice_dyn_register_restarts
 
 type, public :: ice_dyn_CS ; private
+  real, dimension(:,:), pointer :: &
+    sig11 => NULL(), &  ! sig11, sig12, and sig22 are the three elements of
+    sig12 => NULL(), &  ! the stress tensor, all in units of Pa m.
+    sig22 => NULL()
+
   ! parameters for calculating water drag and internal ice stresses
   logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
   real :: p0 = 2.75e4         ! pressure constant (Pa)
   real :: c0 = 20.0           ! another pressure constant
-  real :: cdw = 3.24e-3       ! ice/water drag coef.
+  real :: cdw = 3.24e-3       ! ice/water drag coef. (nondim)
   real :: blturn = 0.0        ! air/water surf. turning angle (degrees)
   real :: EC = 2.0            ! yield curve axis ratio
   real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
@@ -68,7 +74,7 @@ end type ice_dyn_CS
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_param - set ice dynamic parameters                                   !
+! ice_dyn_init - initialize the ice dynamics and set parameters.               !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_dyn_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
@@ -81,10 +87,8 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS)
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (in)      diag - A structure that is used to regulate diagnostic output.
-!  (inout)   AD - A structure pointing to the various accelerations in
-!                 the momentum equations.
 !  (in/out)  CS - A pointer that is set to point to the control structure
-!                 for this module
+!                 for this module.
 
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
@@ -95,11 +99,11 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS)
 
     real, parameter       :: missing = -1e34
 
-  if (associated(CS)) then
-    call SIS_error(WARNING, "ice_dyn_init called with associated control structure.")
+  if (.not.associated(CS)) then
+    call SIS_error(FATAL, "ice_dyn_init called with an unassociated control structure. \n"//&
+                    "ice_dyn_register_restarts must be called before ice_dyn_init.")
     return
   endif
-  allocate(CS)
 
   CS%diag => diag
   CS%Time => Time
@@ -196,13 +200,12 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
+subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(sea_ice_grid_type), intent(inout) :: G
     real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: ci, hs, hi  ! ice properties
     real, intent(inout), dimension(SZIB_(G),SZJB_(G)) :: ui, vi      ! ice velocity
-    real, intent(inout), dimension(SZI_(G),SZJ_(G)) :: sig11, sig22, sig12       ! stress tensor
     real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: uo, vo      ! ocean velocity
     real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: fxat, fyat  ! air stress on ice
     real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: sea_lev     ! sea level
@@ -391,21 +394,21 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     do j=jsc,jec ; do i=isc,iec
       if( (G%mask2dT(i,j)>0.5) .and. &
           (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
-        f11   = mp4z(i,j) + sig11(i,j)/edt(i,j) + strn11(i,j)
-        f22   = mp4z(i,j) + sig22(i,j)/edt(i,j) + strn22(i,j)
-        sig11(i,j) = (t1(i,j)*f22 + f11) / t2(i,j)
-        sig22(i,j) = (t1(i,j)*f11 + f22) / t2(i,j)
-        sig12(i,j) = t0(i,j) * (sig12(i,j) + edt(i,j)*strn12(i,j))
+        f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
+        f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
+        CS%sig11(i,j) = (t1(i,j)*f22 + f11) / t2(i,j)
+        CS%sig22(i,j) = (t1(i,j)*f11 + f22) / t2(i,j)
+        CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
       else
-        sig11(i,j) = 0.0
-        sig22(i,j) = 0.0
-        sig12(i,j) = 0.0 ! eliminate internal ice forces 
+        CS%sig11(i,j) = 0.0
+        CS%sig22(i,j) = 0.0
+        CS%sig12(i,j) = 0.0 ! eliminate internal ice forces 
       endif
     enddo ; enddo
 
-    call pass_var(sig11, G%Domain, complete=.false.)
-    call pass_var(sig22, G%Domain, complete=.false.)
-    call pass_var(sig12, G%Domain, complete=.true.)
+    call pass_var(CS%sig11, G%Domain, complete=.false.)
+    call pass_var(CS%sig22, G%Domain, complete=.false.)
+    call pass_var(CS%sig12, G%Domain, complete=.true.)
 
     do j=jsc,jec ; do i=isc,iec ! ###RESIZE  do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
@@ -415,17 +418,17 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-        tmp1 = 0.5*(sig12(i+1,j+1)*G%dxT(i+1,j+1) - sig12(i+1,j)*G%dxT(i+1,j) + &
-                    sig12(i,j+1)*G%dxT(i,j+1) - sig12(i,j)*G%dxT(i,j) )
-        tmp2 = 0.5*(sig11(i+1,j+1)*G%dyT(i+1,j+1) - sig11(i,j+1)*G%dyT(i,j+1) + &
-                    sig11(i+1,j)*G%dyT(i+1,j) - sig11(i,j)*G%dyT(i,j) )
-        tmp6 = 0.5*(sig12(i+1,j+1)*G%dyT(i+1,j+1) - sig12(i,j+1)*G%dyT(i,j+1) + &
-                    sig12(i+1,j)*G%dyT(i+1,j) - sig12(i,j)*G%dyT(i,j) )
-        tmp7 = 0.5*(sig22(i+1,j+1)*G%dxT(i+1,j+1) - sig22(i+1,j)*G%dxT(i+1,j) + &
-                    sig22(i,j+1)*G%dxT(i,j+1) - sig22(i,j)*G%dxT(i,j) )
-        tmp3 = 0.25*(sig12(i+1,j+1)+sig12(i+1,j)+sig12(i,j+1)+sig12(i,j) )
-        tmp4 = 0.25*(sig22(i+1,j+1)+sig22(i+1,j)+sig22(i,j+1)+sig22(i,j) )
-        tmp5 = 0.25*(sig11(i+1,j+1)+sig11(i+1,j)+sig11(i,j+1)+sig11(i,j) )
+        tmp1 = 0.5*(CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j) + &
+                    CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j) )
+        tmp2 = 0.5*(CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1) + &
+                    CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j) )
+        tmp6 = 0.5*(CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1) + &
+                    CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j) )
+        tmp7 = 0.5*(CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j) + &
+                    CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j) )
+        tmp3 = 0.25*(CS%sig12(i+1,j+1)+CS%sig12(i+1,j)+CS%sig12(i,j+1)+CS%sig12(i,j) )
+        tmp4 = 0.25*(CS%sig22(i+1,j+1)+CS%sig22(i+1,j)+CS%sig22(i,j+1)+CS%sig22(i,j) )
+        tmp5 = 0.25*(CS%sig11(i+1,j+1)+CS%sig11(i+1,j)+CS%sig11(i,j+1)+CS%sig11(i,j) )
 
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
         fxic_now = ( tmp1 + tmp2 + tmp3*dxdy(i,j) - tmp4*dydx(i,j) ) / (G%dxBu(i,j)*G%dyBu(I,J)) 
@@ -482,11 +485,11 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, sig11, sig22, sig12, uo, vo,       &
     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
 
     if (CS%id_sigi>0) then
-      diag_val(:,:) =  sigI(hi, ci, sig11, sig22, sig12, G, CS)
+      diag_val(:,:) =  sigI(hi, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
       call post_SIS_data(CS%id_sigi, diag_val, CS%diag) !### , mask=CS%mask)
     endif
     if (CS%id_sigii>0) then
-      diag_val(:,:) = sigII(hi, ci, sig11, sig22, sig12, G, CS)
+      diag_val(:,:) = sigII(hi, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
       call post_SIS_data(CS%id_sigii, diag_val, CS%diag) !### , mask=Ice%mask)
     endif
     if (CS%id_stren>0) then
@@ -539,5 +542,58 @@ function sigII(hi, ci, sig11, sig22, sig12, G, CS)
   enddo ; enddo
 
 end function sigII
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_dyn_register_restarts - allocate and register any variables for this     !
+!      module that need to be included in the restart files.                   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
+  type(sea_ice_grid_type),     intent(in)    :: G
+  type(param_file_type),       intent(in)    :: param_file
+  type(ice_dyn_CS),            pointer       :: CS
+  type(restart_file_type),     intent(inout) :: Ice_restart
+  character(len=*),            intent(in)    :: restart_file
+
+! Arguments: G - The ocean's grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+!  (in/out)  CS - A pointer that is set to point to the control structure
+!                 for this module.
+!  
+
+!   This subroutine registers the restart variables associated with the
+! the ice dynamics.
+
+  integer :: isd, ied, jsd, jed, id
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+
+  if (associated(CS)) then
+    call SIS_error(WARNING, "ice_dyn_register_restarts called with an "//&
+                            "associated control structure.")
+    return
+  endif
+  allocate(CS)
+
+  allocate(CS%sig11(isd:ied, jsd:jed)) ; CS%sig11(:,:) = 0.0
+  allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
+  allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
+  id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
+                              domain=G%Domain%mpp_domain)
+  id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
+                              domain=G%Domain%mpp_domain)
+  id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
+                              domain=G%Domain%mpp_domain)
+end subroutine ice_dyn_register_restarts
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_dyn_end - deallocate the memory associated with this module.             !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_dyn_end(CS)
+  type(ice_dyn_CS), pointer :: CS
+
+  deallocate(CS%sig11) ; deallocate(CS%sig12) ; deallocate(CS%sig22)
+
+  deallocate(CS)
+end subroutine ice_dyn_end
 
 end module ice_dyn_mod

@@ -1092,9 +1092,9 @@ contains
     call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
     call mpp_clock_begin(iceClocka)
     call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice, &
-                     Ice%sig11, Ice%sig22, Ice%sig12, Ice%u_ocn, Ice%v_ocn, &
-                     wind_stress_x, wind_stress_y, Ice%sea_lev, fx_wat, fy_wat, &
-                     dt_slow, Ice%G, Ice%ice_dyn_CSp)
+                      Ice%u_ocn, Ice%v_ocn, &
+                      wind_stress_x, wind_stress_y, Ice%sea_lev, fx_wat, fy_wat, &
+                      dt_slow, Ice%G, Ice%ice_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     call mpp_clock_begin(iceClockb)

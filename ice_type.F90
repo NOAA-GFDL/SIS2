@@ -25,7 +25,7 @@ module ice_type_mod
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
-  use ice_dyn_mod,      only: ice_dyn_init, ice_dyn_CS
+  use ice_dyn_mod,      only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
   use ice_bergs,        only: icebergs_init, icebergs_end, icebergs, icebergs_stock_pe
   use ice_bergs,        only: icebergs_save_restart
@@ -268,9 +268,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
      real,    pointer, dimension(:,:,:) :: t_ice4              =>NULL()
      real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
-     real,    pointer, dimension(:,:)   :: sig11               =>NULL()
-     real,    pointer, dimension(:,:)   :: sig22               =>NULL()
-     real,    pointer, dimension(:,:)   :: sig12               =>NULL()
      real,    pointer, dimension(:,:)   :: frazil              =>NULL()
      real,    pointer, dimension(:,:)   :: bheat               =>NULL()
      real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
@@ -506,9 +503,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
          Ice % lwdn            (isc:iec, jsc:jec ) ,       &
          Ice % swdn            (isc:iec, jsc:jec )         )
     allocate ( Ice % frazil (isc:iec, jsc:jec), Ice % bheat  (isc:iec, jsc:jec), &
-               Ice % u_ice  (isd:ied, jsd:jed), Ice % v_ice  (isd:ied, jsd:jed), &
-               Ice % sig11  (isd:ied, jsd:jed), Ice % sig22  (isd:ied, jsd:jed), &
-               Ice % sig12  (isd:ied, jsd:jed)                               )
+               Ice % u_ice  (isd:ied, jsd:jed), Ice % v_ice  (isd:ied, jsd:jed) )
     allocate ( Ice % tmelt  (isc:iec, jsc:jec, 2:km), Ice % bmelt  (isc:iec, jsc:jec, 2:km) , &
                Ice % pen    (isc:iec, jsc:jec, 2:km), Ice % trn    (isc:iec, jsc:jec, 2:km) , &
                Ice % sw_abs_sfc  (isc:iec, jsc:jec, 2:km), Ice % sw_abs_snow (isc:iec, jsc:jec, 2:km) , &
@@ -540,9 +535,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
     Ice % v_ocn(:,:)           =0.
     Ice % u_ice(:,:)           =0.
     Ice % v_ice(:,:)           =0.
-    Ice % sig11(:,:)           =0.
-    Ice % sig12(:,:)           =0.
-    Ice % sig22(:,:)           =0.
     Ice % h_snow(:,:,:)   =0.
     Ice % t_snow(:,:,:)   =0.
     Ice % h_ice(:,:,:)    =0.
@@ -615,9 +607,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
     id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice4(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'sig11',       Ice%sig11,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'sig22',       Ice%sig22,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'sig12',       Ice%sig12,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,           domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,           domain=domain)
@@ -641,6 +630,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
                                                 domain=domain, mandatory=.false.)
     id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    Ice%coszen,    domain=domain, mandatory=.false.)
 
+    call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
 !
 !        Total SW flux is broken into 4 components in Nalanda,
 !        it was a single component preNalanda.
@@ -683,9 +673,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
        call mpp_update_domains(Ice%t_ice4(:,:,2:km), Domain )
 
       call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
-       call mpp_update_domains(Ice%sig11, Domain )
-       call mpp_update_domains(Ice%sig22, Domain )
-       call mpp_update_domains(Ice%sig12, Domain )
     else ! no restart => no ice
        Ice % part_size(:,:,:)  = 0.0
        !   where (Ice%mask) Ice % part_size (:,:,1) = 1.0  - flux_exchange won't allow
@@ -708,9 +695,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
        Ice % t_ice4(:,:,:) = -5.0
        Ice % u_ice(:,:) = 0.0
        Ice % v_ice(:,:) = 0.0
-       Ice % sig11(:,:) = 0.0
-       Ice % sig22(:,:) = 0.0
-       Ice % sig12(:,:) = 0.0
        Ice % flux_u(:,:) = 0.0 
        Ice % flux_v(:,:) = 0.0
        Ice % flux_t(:,:) = 0.0 
@@ -787,7 +771,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
   end subroutine ice_model_init
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_model_end - writes the restart file                                      !
+  ! ice_model_end - writes the restart file and deallocates memory               !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   subroutine ice_model_end (Ice)
     type (ice_data_type), intent(inout) :: Ice
@@ -815,16 +799,17 @@ public  :: earth_area, adv_sub_steps, dt_adv
     deallocate(Ice % flux_lh, Ice % lprec, Ice % fprec, Ice % p_surf, Ice % runoff ) 
     deallocate(Ice % calving, Ice % runoff_hflx, Ice % calving_hflx )
     deallocate(Ice % flux_salt)
-    deallocate( Ice % lwdn)
-    deallocate( Ice % swdn, Ice % coszen)
+    deallocate( Ice % lwdn, Ice % swdn, Ice % coszen)
     deallocate( Ice % frazil )
-    deallocate(Ice % bheat, Ice % u_ice, Ice % v_ice, Ice % sig11, Ice % sig22 )
-    deallocate(Ice % sig12, Ice % tmelt, Ice % bmelt, Ice % pen, Ice % trn )
+    deallocate(Ice % bheat, Ice % u_ice, Ice % v_ice )
+    deallocate(Ice % tmelt, Ice % bmelt, Ice % pen, Ice % trn )
     deallocate(Ice % h_snow, Ice % t_snow, Ice % h_ice )
     deallocate(Ice % t_ice1, Ice % t_ice2, Ice % t_ice3, Ice % t_ice4  )
     deallocate(Ice % qflx_lim_ice, Ice % qflx_res_ice )
     deallocate(Ice % flux_sw_vis_dir, Ice % flux_sw_vis_dif )
     deallocate(Ice % flux_sw_nir_dir, Ice % flux_sw_nir_dif )
+
+    call ice_dyn_end(Ice%ice_dyn_CSp)
 
     ! End icebergs
     if (do_icebergs) call icebergs_end(Ice%icebergs)
@@ -1203,9 +1188,6 @@ subroutine ice_data_type_chksum(id, timestep, data_type)
     write(outunit,100) 'ice_data_type%t_ice4             ',mpp_chksum(data_type%t_ice4             )
     write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(data_type%u_ice              )
     write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(data_type%v_ice              )
-    write(outunit,100) 'ice_data_type%sig11              ',mpp_chksum(data_type%sig11              )
-    write(outunit,100) 'ice_data_type%sig22              ',mpp_chksum(data_type%sig22              )
-    write(outunit,100) 'ice_data_type%sig12              ',mpp_chksum(data_type%sig12)
     write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(data_type%frazil)
     write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(data_type%bheat)
     write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(data_type%qflx_lim_ice)
