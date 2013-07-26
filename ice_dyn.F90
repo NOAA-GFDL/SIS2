@@ -219,8 +219,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 !  (inout)   vi - The meridional ice velocity, in m s-1.
 !  (in)      uo - The zonal ocean velocity, in m s-1.
 !  (in)      vo - The meridional ocean velocity, in m s-1.
-!  (in)      sea_lev - The height of the sea level (i.e., the water-ice
-!                      interface?), in m.
+!  (in)      sea_lev - The height of the sea level, including contributions
+!                      from non-levitating ice from an earlier time step, in m.
 !  (in)      dt_slow - The amount of time over which the ice dynamics are to be
 !                      advanced, in s.
 !  (in)      G - The ocean's grid structure.
@@ -229,16 +229,16 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice int. stress
   real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! coriolis force
 
-  real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! ice pressure
+  real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! ice internal pressure
   real                             :: zeta, eta              ! bulk/shear viscosities
   real, dimension(SZI_(G),SZJ_(G)) :: strn11, strn12, strn22 ! strain tensor
 
-  real, dimension(SZI_(G),SZJ_(G)) :: mit                 ! mass on t-points
+  real, dimension(SZI_(G),SZJ_(G))   :: mit                 ! mass on t-points
   real, dimension(SZIB_(G),SZJB_(G)) :: miv                 ! mass on v-points
   real, dimension(SZIB_(G),SZJB_(G)) :: civ                 ! conc. on v-points
-  real, dimension(SZI_(G),SZJ_(G)) :: diag_val            ! A temporary diagnostic array
-  complex                             :: rr                  ! linear drag coefficient
-  real                                :: fxic_now, fyic_now  ! ice internal stress
+  real, dimension(SZI_(G),SZJ_(G))   :: diag_val            ! A temporary diagnostic array
+  complex                            :: rr                  ! linear drag coefficient
+  real                               :: fxic_now, fyic_now  ! ice internal stress
 
   ! temporaries for strain calculation
   real, dimension(SZI_(G),SZJ_(G)) :: &

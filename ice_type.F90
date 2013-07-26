@@ -25,7 +25,8 @@ module ice_type_mod
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
-  use ice_dyn_mod,      only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
+use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
+use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport_end ! , ice_transport_register_restarts
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
   use ice_bergs,        only: icebergs_init, icebergs_end, icebergs, icebergs_stock_pe
   use ice_bergs,        only: icebergs_save_restart
@@ -290,7 +291,8 @@ public  :: earth_area, adv_sub_steps, dt_adv
      type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
      type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
-    type(ice_dyn_CS), pointer   :: ice_dyn_CSp => NULL()
+    type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
+    type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
     type(SIS_diag_ctrl)         :: diag
     type(icebergs), pointer     :: icebergs
     type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
@@ -631,6 +633,8 @@ public  :: earth_area, adv_sub_steps, dt_adv
     id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    Ice%coszen,    domain=domain, mandatory=.false.)
 
     call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
+!    call ice_transport_register_restarts(Ice%G, param_file, Ice%ice_transport_CSp, Ice_restart, restart_file)
+
 !
 !        Total SW flux is broken into 4 components in Nalanda,
 !        it was a single component preNalanda.
@@ -736,6 +740,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
     call ice_diagnostics_init(Ice, Ice%G)
 
     call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp)
+    call ice_transport_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_transport_CSp)
     call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
                        t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
@@ -810,6 +815,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
     deallocate(Ice % flux_sw_nir_dir, Ice % flux_sw_nir_dif )
 
     call ice_dyn_end(Ice%ice_dyn_CSp)
+    call ice_transport_end(Ice%ice_transport_CSp)
 
     ! End icebergs
     if (do_icebergs) call icebergs_end(Ice%icebergs)
@@ -1037,10 +1043,10 @@ public  :: earth_area, adv_sub_steps, dt_adv
 !                'ice velocity - x component', 'm/s', missing_value=missing)
 !   id_vi       = register_diag_field('ice_model', 'VI', axv, Ice%Time,                  &
 !                'ice velocity - y component', 'm/s', missing_value=missing)
-    id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', axvt, Ice%Time,           &
-                 'x-direction ice transport', 'kg/s', missing_value=missing)
-    id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', axtv, Ice%Time,           &
-                 'y-direction ice transport', 'kg/s', missing_value=missing)
+!    id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', axvt, Ice%Time,           &
+!                 'x-direction ice transport', 'kg/s', missing_value=missing)
+!    id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', axtv, Ice%Time,           &
+!                 'y-direction ice transport', 'kg/s', missing_value=missing)
     id_fax      = register_diag_field('ice_model', 'FA_X', axv, Ice%Time,                &
                  'air stress on ice - x component', 'Pa', missing_value=missing)
     id_fay      = register_diag_field('ice_model', 'FA_Y', axv, Ice%Time,                &
@@ -1075,18 +1081,18 @@ public  :: earth_area, adv_sub_steps, dt_adv
                  'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
     id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,axt, Ice%Time,         &
                  'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-    id_ustar    = register_diag_field('ice_model', 'U_STAR', axvt, Ice%Time,              &
-                 'channel transport velocity - x component', 'm/s', missing_value=missing)
-    id_vstar    = register_diag_field('ice_model', 'V_STAR', axtv, Ice%Time,              &
-                 'channel transport velocity - y component', 'm/s', missing_value=missing)
-    id_uocean   = register_diag_field('ice_model', 'U_CHAN_OCN', axvt, Ice%Time,          &
-                 'ocean component of channel transport - x', 'm/s', missing_value=missing)
-    id_vocean   = register_diag_field('ice_model', 'V_CHAN_OCN', axtv, Ice%Time,          &
-                 'ocean component of channel transport - y', 'm/s', missing_value=missing)
-    id_uchan    = register_diag_field('ice_model', 'U_CHAN_VISC', axvt, Ice%Time,         &
-                 'viscous component of channel transport - x', 'm/s', missing_value=missing)
-    id_vchan    = register_diag_field('ice_model', 'V_CHAN_VISC', axtv, Ice%Time,         &
-                 'viscous component of channel transport - y', 'm/s', missing_value=missing)
+!   id_ustar    = register_diag_field('ice_model', 'U_STAR', axvt, Ice%Time,              &
+!                'channel transport velocity - x component', 'm/s', missing_value=missing)
+!   id_vstar    = register_diag_field('ice_model', 'V_STAR', axtv, Ice%Time,              &
+!                'channel transport velocity - y component', 'm/s', missing_value=missing)
+!   id_uocean   = register_diag_field('ice_model', 'U_CHAN_OCN', axvt, Ice%Time,          &
+!                'ocean component of channel transport - x', 'm/s', missing_value=missing)
+!   id_vocean   = register_diag_field('ice_model', 'V_CHAN_OCN', axtv, Ice%Time,          &
+!                'ocean component of channel transport - y', 'm/s', missing_value=missing)
+!   id_uchan    = register_diag_field('ice_model', 'U_CHAN_VISC', axvt, Ice%Time,         &
+!                'viscous component of channel transport - x', 'm/s', missing_value=missing)
+!   id_vchan    = register_diag_field('ice_model', 'V_CHAN_VISC', axtv, Ice%Time,         &
+!                'viscous component of channel transport - y', 'm/s', missing_value=missing)
 
     !
     ! diagnostics for quantities produced outside the ice model
