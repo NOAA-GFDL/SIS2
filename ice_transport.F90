@@ -84,7 +84,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
   type(ice_transport_CS), pointer :: CS
   
 
-    real, dimension(isc:ied,jsc:jec) :: uf0, uf, vf0, vf
+    real, dimension(isd:ied,jsd:jed) :: uf0, uf, vf0, vf
     real, dimension(isd:ied,jsd:jed) :: tmp1 ! Local variables, 2D ice concentration
     real, dimension(isd:ied,jsd:jed) :: ustar, vstar ! Local variables, C-grid transporting velocities
     real, dimension(isd:ied,jsd:jed) :: ustaro, vstaro, ustarv, vstarv ! Local variables, C-grid transporting velocities
@@ -196,8 +196,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
       call ice_advect(uc, vc, t_ice3(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, t_ice4(:,:,k), dt_slow, G, CS)
     enddo
-    sent = send_data(CS%id_ix_trans,  uf, CS%Time)
-    sent = send_data(CS%id_iy_trans,  vf, CS%Time)
+    sent = send_data(CS%id_ix_trans, uf(isc:iec,jsc:jec), CS%Time)
+    sent = send_data(CS%id_iy_trans, vf(isc:iec,jsc:jec), CS%Time)
 
     do j=jsc, jec
        do i=isc, iec
@@ -245,7 +245,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
   real,                    intent(in) :: dt_slow
   type(sea_ice_grid_type), intent(in) :: G
   type(ice_transport_CS), pointer :: CS
-  real, optional, intent(inout), dimension(isc:,jsc:) :: uf, vf
+  real, optional, intent(inout), dimension(isd:ied,jsd:jed) :: uf, vf
 
   real, dimension(isd:ied,jsd:jed) ::  uflx, vflx
   real :: dt_adv
@@ -285,22 +285,23 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
 
     call mpp_update_domains(trc, Domain)
 
-    if (present(uf)) then
-      do j=jsc,jec ; do I=isc,iec       
-        uf(I,j) = uf(I,j) + uflx(I,j)
-      enddo ; enddo
-    endif
+    if (present(uf)) then ; do j=jsc,jec ; do I=isc,iec       
+      uf(I,j) = uf(I,j) + uflx(I,j)
+    enddo ; enddo ; endif
 
-    if (present(vf)) then
-      do J=jsc,jec ; do I=isc,iec       
-        vf(i,J) = vf(i,J) + vflx(i,J)
-      enddo ; enddo
-    endif
+    if (present(vf)) then ;  do J=jsc,jec ; do i=isc,iec       
+      vf(i,J) = vf(i,J) + vflx(i,J)
+    enddo ; enddo ; endif
 
   enddo
 
-  if (present(uf)) uf(:,:) = uf(:,:)/CS%adv_sub_steps;
-  if (present(vf)) vf(:,:) = vf(:,:)/CS%adv_sub_steps;
+  !### MULTIPLY BY INVERSE.
+  if (present(uf)) then ; do j=jsc,jec ; do I=isc,iec       
+    uf(I,j) = uf(I,j)/CS%adv_sub_steps
+  enddo ; enddo ; endif
+  if (present(vf)) then ;  do J=jsc,jec ; do i=isc,iec       
+    vf(i,J) = vf(i,J)/CS%adv_sub_steps
+  enddo ; enddo ; endif
 
 end subroutine ice_advect
 
