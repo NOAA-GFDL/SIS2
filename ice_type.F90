@@ -36,7 +36,7 @@ use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
-use SIS_get_input, only : Get_SIS_input, directories
+use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
 
 implicit none ; private
 
@@ -45,8 +45,7 @@ public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
           conservation_check, do_icebergs, ice_model_restart,       &
-          add_diurnal_sw, channel_viscosity, smag_ocn, ssh_gravity,           &
-          chan_cfl_limit, ice_data_type_chksum
+          add_diurnal_sw, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
 public  :: id_cn, id_hi, id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts,id_hio
@@ -54,14 +53,11 @@ public  :: id_mi, id_sh, id_lh, id_sw, id_lw, id_snofl, id_rain, id_runoff,    &
            id_calving, id_runoff_hflx, id_calving_hflx,                        &
            id_evap, id_saltf, id_tmelt, id_bmelt, id_bheat, id_e2m,            &
            id_frazil, id_alb, id_xprt, id_lsrc, id_lsnk, id_bsnk, id_strna,    &
-!          id_sigi, id_sigii, id_stren, id_ui, id_vi, id_fax, id_fay, id_fix,  &
-!          id_fiy, id_fcx, id_fcy, id_fwx, id_fwy, id_swdn, id_lwdn, id_sn2ic, &
            id_fax, id_fay, id_swdn, id_lwdn, id_sn2ic,                         &
            id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi,&
            id_qfres, id_qflim, id_ix_trans, id_iy_trans,                       &
            id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif,      &
-           id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar, id_vstar, id_vocean,&
-           id_uocean, id_vchan, id_uchan
+           id_sw_nir_dir, id_sw_nir_dif, id_mib
 
 public  :: id_alb_vis_dir, id_alb_vis_dif,id_alb_nir_dir, id_alb_nir_dif, id_coszen
 public  :: id_abs_int,id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,id_sw_pen,id_sw_trn
@@ -70,6 +66,8 @@ public  :: iceClocka,iceClockb,iceClockc
 public  :: earth_area, adv_sub_steps, dt_adv
 
   real, parameter :: earth_area = 4*PI*RADIUS*RADIUS !5.10064471909788E+14 m^2
+  real, parameter :: missing = -1e34
+  integer, parameter :: miss_int = -9999
   !---- id for diagnositics -------------------
   integer :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
   integer :: id_cn, id_hi, id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts,id_hio
@@ -82,8 +80,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
   integer :: id_slp, id_ext, id_sst, id_sss, id_ssh, id_uo, id_vo, id_ta, id_obi
   integer :: id_qfres, id_qflim, id_ix_trans, id_iy_trans
   integer :: id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir, id_sw_vis_dif
-  integer :: id_sw_nir_dir, id_sw_nir_dif, id_mib, id_ustar
-  integer :: id_vstar,id_vocean,id_uocean,id_vchan, id_uchan
+  integer :: id_sw_nir_dir, id_sw_nir_dif, id_mib
   integer :: id_alb_vis_dir, id_alb_vis_dif, id_alb_nir_dir, id_alb_nir_dif, id_coszen 
   integer :: id_abs_int,id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,id_sw_pen,id_sw_trn
 
@@ -101,13 +98,7 @@ public  :: earth_area, adv_sub_steps, dt_adv
   real    :: opt_dep_ice    = 0.67       ! ice optical depth
   real    :: t_range_melt   = 1.0        ! melt albedos scaled in over T range
   real    :: ice_bulk_salin = 0.004      ! ice bulk salinity (for ocean salt flux)!CICE value
-  real    :: p0             = 2.75e4     ! ice strength parameter
-  real    :: c0             = 20.0       ! another ice strength parameter
-  real    :: cdw            = 3.24e-3    ! water/ice drag coefficient
-  real    :: wd_turn        = 25.0       ! water/ice drag turning angle
   real    :: h_lo_lim       = 0.0        ! min ice thickness for temp. calc.
-  integer :: nsteps_dyn     = 432        ! dynamics steps per slow timestep
-  integer :: nsteps_adv     = 8          ! advection steps per slow timestep
   integer :: num_part       = 6          ! number of ice grid partitions
                                          ! partition 1 is open water
                                          ! partitions 2 to num_part-1 are
@@ -129,15 +120,25 @@ public  :: earth_area, adv_sub_steps, dt_adv
   logical :: verbose            = .false.! control printing message, will slow model down when turn true
   logical :: do_icebergs        = .false.! call iceberg code to modify calving field
   logical :: add_diurnal_sw     = .false.! apply an additional diurnal cycle to shortwave radiation
-  real    :: channel_viscosity  = 0.     ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
-  real    :: smag_ocn           = 0.15   ! Smagorinksy coefficient for viscosity (dimensionless)
-  real    :: ssh_gravity        = 9.81   ! Gravity parameter used in channel viscosity parameterization (m/s^2)
-  real    :: chan_cfl_limit     = 0.25   ! CFL limit for channel viscosity parameterization (dimensionless)
   logical :: do_sun_angle_for_alb = .false.! find the sun angle for ocean albed in the frame of the ice model
   integer :: layout(2)          = (/0, 0/)
   integer :: io_layout(2)       = (/0, 0/)
   real    :: R_ice=0., R_snw=0., R_pnd=0.
   logical :: do_deltaEdd = .true.
+
+  ! The following are archaic namelist variables. They are here only for error
+  ! checking of attempts to use out-of-date namelist values.
+  real    :: p0             = missing    ! ice strength parameter
+  real    :: c0             = missing    ! another ice strength parameter
+  real    :: cdw            = missing    ! water/ice drag coefficient
+  real    :: wd_turn        = missing    ! water/ice drag turning angle
+  real    :: channel_viscosity = missing ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
+  real    :: smag_ocn          = missing ! Smagorinksy coefficient for viscosity (dimensionless)
+  real    :: ssh_gravity       = missing ! Gravity parameter used in channel viscosity parameterization (m/s^2)
+  real    :: chan_cfl_limit    = missing ! CFL limit for channel viscosity parameterization (dimensionless)
+  integer :: nsteps_dyn     = miss_int   ! dynamics steps per slow timestep
+  integer :: nsteps_adv     = miss_int   ! advection steps per slow timestep
+
   ! mask_table contains information for masking domain ( n_mask, layout and mask_list).
   !   A text file to specify n_mask, layout and mask_list to reduce number of processor
   !   usage by masking out some domain regions which contain all land points. 
@@ -154,7 +155,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
   !     4,6
   !     1,2
   !     3,6
-
   character(len=128) :: mask_table = "INPUT/ice_mask_table"
 
 
@@ -410,6 +410,22 @@ public  :: earth_area, adv_sub_steps, dt_adv
     call Get_SIS_Input(param_file)
 
     call write_version_number( version, tagname )
+
+    ! Check for parameters that are still being set via the namelist but which
+    ! should be set via the param_file instead.  This has to be somewhere that
+    ! has all of the namelist variables in scope.
+    call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
+    call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
+    call archaic_nml_check(param_file, "ICE_STRENGTH_CSTAR", "c0", c0, missing)
+    call archaic_nml_check(param_file, "ICE_CDRAG_WATER", "cdw", cdw, missing)
+    ! call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
+    call archaic_nml_check(param_file, "AIR_WATER_STRESS_TURN_ANGLE", "wd_turn", wd_turn, missing)
+    ! call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
+    call archaic_nml_check(param_file, "NSTEPS_ADV", "nsteps_adv", nsteps_adv, miss_int, 1)
+    call archaic_nml_check(param_file, "ICE_CHANNEL_VISCOSITY", &
+                           "channel_viscosity", channel_viscosity, missing, 0.0)
+    call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
+    call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
 
     if (spec_ice) then
        slab_ice = .true.
@@ -1033,36 +1049,10 @@ public  :: earth_area, adv_sub_steps, dt_adv
                  'Ice Limit heat flux', 'W/m^2', missing_value=missing)
     id_strna    = register_diag_field('ice_model','STRAIN_ANGLE', axt,Ice%Time,          &
                  'strain angle', 'none', missing_value=missing)
-!   id_sigi     = register_diag_field('ice_model','SIGI' ,axt, Ice%Time,                 &
-!                'first stress invariant', 'none', missing_value=missing)
-!   id_sigii    = register_diag_field('ice_model','SIGII' ,axt, Ice%Time,                &
-!                'second stress invariant', 'none', missing_value=missing)
-!   id_stren    = register_diag_field('ice_model','STRENGTH' ,axt, Ice%Time,             &
-!                'ice strength', 'Pa*m', missing_value=missing)
-!   id_ui       = register_diag_field('ice_model', 'UI', axv, Ice%Time,                  &
-!                'ice velocity - x component', 'm/s', missing_value=missing)
-!   id_vi       = register_diag_field('ice_model', 'VI', axv, Ice%Time,                  &
-!                'ice velocity - y component', 'm/s', missing_value=missing)
-!    id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', axvt, Ice%Time,           &
-!                 'x-direction ice transport', 'kg/s', missing_value=missing)
-!    id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', axtv, Ice%Time,           &
-!                 'y-direction ice transport', 'kg/s', missing_value=missing)
     id_fax      = register_diag_field('ice_model', 'FA_X', axv, Ice%Time,                &
                  'air stress on ice - x component', 'Pa', missing_value=missing)
     id_fay      = register_diag_field('ice_model', 'FA_Y', axv, Ice%Time,                &
                  'air stress on ice - y component', 'Pa', missing_value=missing)
-!   id_fix      = register_diag_field('ice_model', 'FI_X', axv, Ice%Time,                &
-!                'ice internal stress - x component', 'Pa', missing_value=missing)
-!   id_fiy      = register_diag_field('ice_model', 'FI_Y', axv, Ice%Time,                &
-!                'ice internal stress - y component', 'Pa', missing_value=missing)
-!   id_fcx      = register_diag_field('ice_model', 'FC_X', axv, Ice%Time,                &
-!                'coriolis force - x component', 'Pa', missing_value=missing)
-!   id_fcy      = register_diag_field('ice_model', 'FC_Y', axv, Ice%Time,                &
-!                'coriolis force - y component', 'Pa', missing_value=missing)
-!   id_fwx      = register_diag_field('ice_model', 'FW_X', axv, Ice%Time,                &
-!                'water stress on ice - x component', 'Pa', missing_value=missing)
-!   id_fwy      = register_diag_field('ice_model', 'FW_Y', axv, Ice%Time,                &
-!                'water stress on ice - y component', 'Pa', missing_value=missing)
     id_uo       = register_diag_field('ice_model', 'UO', axv, Ice%Time,                  &
                  'surface current - x component', 'm/s', missing_value=missing)
     id_vo       = register_diag_field('ice_model', 'VO', axv, Ice%Time,                  &
@@ -1081,18 +1071,6 @@ public  :: earth_area, adv_sub_steps, dt_adv
                  'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
     id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,axt, Ice%Time,         &
                  'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-!   id_ustar    = register_diag_field('ice_model', 'U_STAR', axvt, Ice%Time,              &
-!                'channel transport velocity - x component', 'm/s', missing_value=missing)
-!   id_vstar    = register_diag_field('ice_model', 'V_STAR', axtv, Ice%Time,              &
-!                'channel transport velocity - y component', 'm/s', missing_value=missing)
-!   id_uocean   = register_diag_field('ice_model', 'U_CHAN_OCN', axvt, Ice%Time,          &
-!                'ocean component of channel transport - x', 'm/s', missing_value=missing)
-!   id_vocean   = register_diag_field('ice_model', 'V_CHAN_OCN', axtv, Ice%Time,          &
-!                'ocean component of channel transport - y', 'm/s', missing_value=missing)
-!   id_uchan    = register_diag_field('ice_model', 'U_CHAN_VISC', axvt, Ice%Time,         &
-!                'viscous component of channel transport - x', 'm/s', missing_value=missing)
-!   id_vchan    = register_diag_field('ice_model', 'V_CHAN_VISC', axtv, Ice%Time,         &
-!                'viscous component of channel transport - y', 'm/s', missing_value=missing)
 
     !
     ! diagnostics for quantities produced outside the ice model
