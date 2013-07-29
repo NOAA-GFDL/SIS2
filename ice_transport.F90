@@ -28,16 +28,11 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,     only : pass_var, pass_vector, BGRID_NE
-  use mpp_domains_mod,  only: mpp_update_domains, BGRID_NE, CGRID_NE
-  use fms_mod,          only: error_mesg
-  use diag_manager_mod, only: send_data
-  use time_manager_mod, only: time_type, operator(+), get_date, get_time
-  use time_manager_mod, only: operator(-), set_date
+use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
-  use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: sea_ice_grid_type
-  use ice_thm_mod,      only: thm_pack, thm_unpack, DI, DS, CI
+  use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+use ice_grid_mod,     only: sea_ice_grid_type
+  use ice_thm_mod,      only: thm_pack, thm_unpack ! , DI, DS, CI
 
 implicit none ; private
 
@@ -80,7 +75,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
   real, dimension(isd:ied, jsd:jed), intent(in)    :: sea_lev
   real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
   real,                    intent(in) :: dt_slow
-  type(sea_ice_grid_type), intent(in) :: G
+  type(sea_ice_grid_type), intent(inout) :: G
   type(ice_transport_CS), pointer :: CS
   
 
@@ -94,9 +89,9 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     logical :: sent
 
   if (CS%slab_ice) then
-    call mpp_update_domains(uc, vc, Domain, gridtype=CGRID_NE)
+    call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
     call slab_ice_advect(uc, vc, h_ice(:,:,2), 4.0, dt_slow, G, CS)
-    call mpp_update_domains(h_ice(:,:,2), Domain)
+    call pass_var(h_ice(:,:,2), G%Domain)
     do j=jsd,jed ; do i=isd,ied
       if (h_ice(i,j,2) > 0.0) then
         part_sz(i,j,2) = 1.0
@@ -112,14 +107,14 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
                   t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:),&
                   t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
 
-    call mpp_update_domains(part_sz, Domain) ! cannot be combined with updates below
-    call mpp_update_domains(h_snow, Domain, complete=.false.)
-    call mpp_update_domains(t_snow, Domain, complete=.false.)
-    call mpp_update_domains(h_ice, Domain, complete=.false.)
-    call mpp_update_domains(t_ice1, Domain, complete=.false.)
-    call mpp_update_domains(t_ice2, Domain, complete=.false.)
-    call mpp_update_domains(t_ice3, Domain, complete=.false.)
-    call mpp_update_domains(t_ice4, Domain, complete=.true.)
+    call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
+    call pass_var(h_snow, G%Domain, complete=.false.)
+    call pass_var(t_snow, G%Domain, complete=.false.)
+    call pass_var(h_ice,  G%Domain, complete=.false.)
+    call pass_var(t_ice1, G%Domain, complete=.false.)
+    call pass_var(t_ice2, G%Domain, complete=.false.)
+    call pass_var(t_ice3, G%Domain, complete=.false.)
+    call pass_var(t_ice4, G%Domain, complete=.true.)
 
     if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
     ! This block of code is a parameterization of either (or both)
@@ -181,23 +176,23 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
       enddo
     endif
 
-    call mpp_update_domains(uc, vc, Domain, gridtype=CGRID_NE)
+    call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
     uf(:,:) = 0.0; vf(:,:) = 0.0
     do k=2,km
       call ice_advect(uc, vc, part_sz(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, h_snow(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf = uf + DS*uf0; vf = vf + DS*vf0
+      uf = uf + CS%Rho_snow*uf0; vf = vf + CS%Rho_snow*vf0
       call ice_advect(uc, vc, h_ice(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf = uf + DI*uf0; vf = vf + DI*vf0
+      uf = uf + CS%Rho_ice*uf0; vf = vf + CS%Rho_ice*vf0
       call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, t_ice1(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, t_ice2(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, t_ice3(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, t_ice4(:,:,k), dt_slow, G, CS)
     enddo
-    sent = send_data(CS%id_ix_trans, uf(isc:iec,jsc:jec), CS%Time)
-    sent = send_data(CS%id_iy_trans, vf(isc:iec,jsc:jec), CS%Time)
+    call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
+    call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
 
     do j=jsc, jec
        do i=isc, iec
@@ -219,16 +214,16 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
                           t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:), &
                            t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
 
-    call mpp_update_domains(part_sz, Domain) ! cannot be combined with the two updates below
-    call mpp_update_domains(h_snow, Domain, complete=.false.)
-    call mpp_update_domains(h_ice, Domain, complete=.true.)
+    call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
+    call pass_var(h_snow, G%Domain, complete=.false.)
+    call pass_var(h_ice, G%Domain, complete=.true.)
 
-    if (CS%id_ustar >0) sent = send_data(CS%id_ustar , ustar(isc:iec,jsc:jec) , CS%Time)
-    if (CS%id_vstar >0) sent = send_data(CS%id_vstar , vstar(isc:iec,jsc:jec) , CS%Time)
-    if (CS%id_vocean>0) sent = send_data(CS%id_vocean, vstaro(isc:iec,jsc:jec) , CS%Time)
-    if (CS%id_uocean>0) sent = send_data(CS%id_uocean, ustaro(isc:iec,jsc:jec) , CS%Time)
-    if (CS%id_vchan>0)  sent = send_data(CS%id_vchan,  vstarv(isc:iec,jsc:jec) , CS%Time)
-    if (CS%id_uchan>0)  sent = send_data(CS%id_uchan,  ustarv(isc:iec,jsc:jec) , CS%Time)
+    if (CS%id_ustar >0) call post_SIS_data(CS%id_ustar, ustar, CS%diag)
+    if (CS%id_vstar >0) call post_SIS_data(CS%id_vstar , vstar, CS%diag)
+    if (CS%id_vocean>0) call post_SIS_data(CS%id_vocean, vstaro, CS%diag)
+    if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
+    if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
+    if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
 
     return
 
@@ -243,7 +238,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
   real, intent(in   ), dimension(isd:ied,jsd:jed) :: vc  ! y-face advecting velocity
   real, intent(inout), dimension(isd:ied,jsd:ied) :: trc     ! tracer to advect
   real,                    intent(in) :: dt_slow
-  type(sea_ice_grid_type), intent(in) :: G
+  type(sea_ice_grid_type), intent(inout) :: G
   type(ice_transport_CS), pointer :: CS
   real, optional, intent(inout), dimension(isd:ied,jsd:jed) :: uf, vf
 
@@ -283,7 +278,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
                  vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT ?
     enddo ; enddo
 
-    call mpp_update_domains(trc, Domain)
+    call pass_var(trc, G%Domain)
 
     if (present(uf)) then ; do j=jsc,jec ; do I=isc,iec       
       uf(I,j) = uf(I,j) + uflx(I,j)
@@ -313,7 +308,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
   real, intent(in   )                             :: stop_lim
   real,                    intent(in) :: dt_slow
   type(ice_transport_CS), pointer :: CS
-  type(sea_ice_grid_type), intent(in) :: G
+  type(sea_ice_grid_type), intent(inout) :: G
 
   real, dimension(isd:ied,jsd:jed) :: uflx, vflx
   real                             :: avg, dif
@@ -354,7 +349,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
                                      (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT ?
     enddo ; enddo
 
-    call mpp_update_domains(trc, Domain)
+    call pass_var(trc, G%Domain)
   enddo
 
 end subroutine slab_ice_advect

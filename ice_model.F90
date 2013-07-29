@@ -1373,6 +1373,8 @@ contains
        enddo
        sent = send_data(id_lsrc,  x, Ice%Time, mask=Ice%mask)
     end if
+
+    call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
     if (id_bsnk>0)  sent = send_data(id_bsnk, bsnk*864e2*365/dt_slow, Ice%Time, mask=Ice%mask)
     if (id_tmelt>0) sent = send_data(id_tmelt, ice_avg(Ice%tmelt,Ice%part_size(isc:iec,jsc:jec,:))/dt_slow,   &
                            Ice%Time, mask=Ice%mask)
@@ -1405,14 +1407,13 @@ contains
     enddo ; enddo ; enddo
    
 
-    x = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+    x(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+    do j=jsc,jec ; do i=isc,iec
+      Ice%mi(i,j) = x(i,j) 
+    enddo ; enddo
     if (id_mi>0) sent = send_data(id_mi, x, Ice%Time, mask = Ice%mask)
-    
-    do j = jsc, jec
-       do i = isc, iec
-         Ice%mi(i,j) = x(i,j) 
-       enddo
-    enddo
+
+    call disable_SIS_averaging(Ice%diag)
 
     if (do_icebergs) call icebergs_incr_mass(Ice%icebergs, x) ! Add icebergs mass in kg/m^2
     if (id_mib>0) sent = send_data(id_mib, x, Ice%Time, mask = Ice%mask) ! Diagnose total mass
