@@ -65,14 +65,10 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
                               id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir,    &
                               id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif,id_coszen,       &
                               ice_stock_pe, do_icebergs, ice_model_restart, &
-                              add_diurnal_sw, id_mib, ice_data_type_chksum,      &
-                              id_ustar, id_vstar, channel_viscosity, smag_ocn,   &
-                              ssh_gravity, chan_cfl_limit, id_vocean, id_uocean, &
-                              id_vchan, id_uchan
+                              add_diurnal_sw, id_mib, ice_data_type_chksum
   use ice_type_mod,     only: do_sun_angle_for_alb,              &
 			      id_alb_vis_dir, id_alb_vis_dif,    &
 	                      id_alb_nir_dir, id_alb_nir_dif
-  use ice_type_mod,     only: adv_sub_steps, dt_adv
   use ice_type_mod,     only: id_sw_abs_snow,id_sw_abs_ice1,id_sw_abs_ice2,id_sw_abs_ice3,id_sw_abs_ice4,&
                               id_sw_pen,id_sw_trn
 
@@ -964,6 +960,9 @@ contains
     real, dimension(isd:ied,jsd:jed)      :: tmp1, tmp2
     real, dimension(isd:ied,jsd:jed)      :: wind_stress_x, wind_stress_y
     real, dimension(2:km)                 :: e2m
+  real, dimension(isd:ied,jsd:jed) :: uc, vc ! Ice velocities interpolated onto
+                                             ! a C-grid, in m s-1.
+
     integer                               :: i, j, k, l, sc, dy, iyr, imon, iday, ihr, imin, isec
     real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
     real                                  :: heat_limit_ice, heat_res_ice
@@ -1387,7 +1386,17 @@ contains
     ! Ice transport ... all ocean fluxes have been calculated by now
     !
     h2o_change = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
-    call ice_transport(Ice%part_size, Ice%h_ice, Ice%h_snow, Ice%u_ice, Ice%v_ice, &
+
+    ! Convert the velocities to C-grid points for transport.
+    uc(:,:) = 0.0; vc(:,:) = 0.0
+    do j=jsc,jec ; do I=isc-1,iec
+      uc(I,j) = 0.5 * ( Ice%u_ice(i,j-1) + Ice%u_ice(i,j) )
+    enddo ; enddo
+    do J=jsc-1,jec ; do i = isc,iec
+      vc(i,J) = 0.5 * ( Ice%v_ice(i-1,j) + Ice%v_ice(i,j) )
+    enddo ; enddo
+    
+    call ice_transport(Ice%part_size, Ice%h_ice, Ice%h_snow, uc, vc, &
                        Ice%t_ice1, Ice%t_ice2, Ice%t_ice3, Ice%t_ice4, Ice%t_snow, &
                        Ice%sea_lev, hlim, dt_slow, Ice%G, Ice%ice_transport_CSp)
     ! Set appropriate surface quantities in categories with no ice.
