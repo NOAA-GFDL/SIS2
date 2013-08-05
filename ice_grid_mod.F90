@@ -27,7 +27,7 @@ module ice_grid_mod
 #include <SIS2_memory.h>
 
   public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg
-  public :: dTdx, dTdy, t_on_uv, t_to_uv, uv_to_t
+  public :: t_on_uv, t_to_uv, uv_to_t
   public :: ice_line, vel_t_to_uv, cut_check
 
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
@@ -49,7 +49,13 @@ type, public :: sea_ice_grid_type
   integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indicies.
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
-  integer :: ks, ke             ! The range of layer's vertical indicies.
+  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
+  integer :: CatIce             ! The number of sea ice categories.
+  integer :: NkIce              ! The number of vertical partitions within the
+                                ! sea ice.
+  integer :: NkSnow             ! The number of vertical partitions within the
+                                ! snow atop the sea ice.
+  
   logical :: symmetric          ! True if symmetric memory is used.
   logical :: nonblocking_updates  ! If true, non-blocking halo updates are
                                   ! allowed.  The default is .false. (for now).
@@ -262,42 +268,6 @@ subroutine uv_to_t(uv, t, G)
 
 end subroutine uv_to_t
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! dTdx - eastward difference of tracer, result on uv cells                     !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function dTdx(T)
-  real, intent(in   ), dimension(isd:,jsd:) :: T 
-  real, dimension(isc:iec,jsc:jec)          :: dTdx
-
-  integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do j=jsc,jec ; do i=isc,iec
-    DTdx(i,j) = 0.5*(T(i+1,j+1) - T(i,j+1) + T(i+1,j) - T(i,j) )
-  enddo ; enddo
-
-  return
-end function dTdx
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! dTdy - northward difference of tracer, result on uv cells                    !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function dTdy(T)
-    real, intent(in   ), dimension(isd:,jsd:) :: T 
-    real, dimension(isc:iec,jsc:jec)          :: dTdy
-
-    integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do j = jsc, jec
-       do i = isc, iec
-          DTdy(i,j) = 0.5*(T(i+1,j+1) - T(i+1,j) + T(i,j+1) - T(i,j) )
-       enddo
-    enddo
-
-    return
-  end function dTdy
-
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! t_on_uv - average tracer to uv cells                                      !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -364,13 +334,20 @@ end subroutine vel_t_to_uv
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, ice_domain, km_in, layout, io_layout, maskmap )
+subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, maskmap )
   type(sea_ice_grid_type), intent(inout) :: G
+  type(param_file_type), intent(in)    :: param_file
+
   type(domain2D),        intent(inout) :: ice_domain
   integer,               intent(in)    :: km_in
   integer, dimension(2), intent(inout) :: layout
   integer, dimension(2), intent(inout) :: io_layout
   logical, optional,     intent(in)    :: maskmap(:,:)
+! Arguments: G - The sea-ice's grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+! This include declares and sets the variable "version".
+#include "version_variable.h"
 
     real                                :: angle, lon_scale
     integer                             :: i, j, m, ntiles, ncontacts
@@ -565,7 +542,39 @@ subroutine set_ice_grid(G, ice_domain, km_in, layout, io_layout, maskmap )
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
+#ifdef STATIC_MEMORY_
+  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=km_in-1)
+  if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file "//&
+       "or the input namelist file.")
+  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=NK_ICE_)
+  if (G%NkIce /= NK_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
+
+  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=NK_SNOW_)
+  if (G%NkSnow /= NK_SNOW_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
+
+#else
+  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=km_in-1)
+  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
+  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
+#endif
+
     km = km_in
+    km = G%CatIce + 1  ! Add 1 for the ice-free category.
 
     allocate ( cell_area(isc:iec,jsc:jec) )
     

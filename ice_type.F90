@@ -442,9 +442,9 @@ public  :: earth_area
     endif
 
     if( ASSOCIATED(Ice%maskmap) ) then
-       call set_ice_grid(Ice%G, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
+       call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
     else
-       call set_ice_grid(Ice%G, Ice%domain, num_part, layout, io_layout )
+       call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
     end if
     call set_domain(domain)
 
