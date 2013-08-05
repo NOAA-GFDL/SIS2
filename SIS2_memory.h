@@ -1,6 +1,6 @@
 !********+*********+*********+*********+*********+*********+*********+*
 !*   This include file determines the compile-time memory settings    *
-!*  for the Modular Ocean Model (MOM), versions 6 and later.          *
+!*  for the Sea Ice Simulator (SIS), versions 2 and later.            *
 !********+*********+*********+*********+*********+*********+*********+*
 
 !  Specify the numerical domain.
@@ -10,8 +10,17 @@
                                !  grid points in the zonal and meridional
                                !  directions of the physical domain.
 #define NK_ NONSENSE_NK
-                               !    The number of layers.
-
+                               !    The number of layers in the ocean.
+#define NCAT_ICE_ NONSENSE_NCAT
+                               !    The number of sea-ice categories.  When
+                               !  open water is considered, there are 0:NCAT_ICE
+                               !  categories in total.
+#define NK_ICE_  NONSENSE_NK_ICE
+                               !    The number of vertical partitions within the
+                               !  sea-ice.  (For SIS this is 2; for SIS5L it is 4.)
+#define NK_SNOW_ NONSENSE_NK_SNOW
+                               !    The number of vertical partitions within the
+                               !  snow layer atop the sea-ice, usually 1.
 #undef STATIC_MEMORY_
                                !    If STATIC_MEMORY_ is defined, the principle
                                !  variables will have sizes that are statically
@@ -46,3 +55,4 @@
                                ! memory halos on each side.
 
 #include <MOM_memory_macros.h>
+#include <SIS_memory_macros.h>
