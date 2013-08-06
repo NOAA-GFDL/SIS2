@@ -30,7 +30,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
-  use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+  use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm
 use ice_grid_mod,     only: sea_ice_grid_type
   use ice_thm_mod,      only: thm_pack, thm_unpack ! , DI, DS, CI
 
@@ -70,8 +70,8 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3, t_ice4, t_snow, sea_lev, hlim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(isd:ied, jsd:jed, 0:km-1), intent(inout) :: part_sz
-  real, dimension(isd:ied, jsd:jed, km-1), intent(inout) :: h_ice, h_snow, t_ice1, t_ice2, t_ice3, t_ice4, t_snow
+  real, dimension(isd:ied, jsd:jed, 0:G%CatIce), intent(inout) :: part_sz
+  real, dimension(isd:ied, jsd:jed, G%CatIce), intent(inout) :: h_ice, h_snow, t_ice1, t_ice2, t_ice3, t_ice4, t_snow
   real, dimension(isd:ied, jsd:jed), intent(inout) :: uc, vc
   real, dimension(isd:ied, jsd:jed), intent(in)    :: sea_lev
   real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
@@ -102,7 +102,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     return
   endif
 
-    call thm_pack(part_sz(isc:iec,jsc:jec,1:km-1), h_snow(isc:iec,jsc:jec,:), &
+    call thm_pack(part_sz(isc:iec,jsc:jec,1:G%CatIce), h_snow(isc:iec,jsc:jec,:), &
                   t_snow(isc:iec,jsc:jec,:), h_ice(isc:iec,jsc:jec,:), &
                   t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:),&
                   t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
@@ -124,7 +124,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     ! masking of velocities to zero in a single-cell wide channel.
       dt_adv = dt_slow/CS%adv_sub_steps
 
-      tmp1=1.-max(1.-sum(part_sz(:,:,1:km-1),dim=3),0.0)
+      tmp1=1.-max(1.-sum(part_sz(:,:,1:G%CatIce),dim=3),0.0)
       ustar(:,:)=0.; vstar(:,:)=0.
       ustaro(:,:)=0.; vstaro(:,:)=0.
       ustarv(:,:)=0.; vstarv(:,:)=0.
@@ -179,7 +179,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
     uf(:,:) = 0.0; vf(:,:) = 0.0
-    do k=1,km-1
+    do k=1,G%CatIce
       call ice_advect(uc, vc, part_sz(:,:,k), dt_slow, G, CS)
       call ice_advect(uc, vc, h_snow(:,:,k), dt_slow, G, CS, uf0, vf0)
       uf = uf + CS%Rho_snow*uf0; vf = vf + CS%Rho_snow*vf0
@@ -197,35 +197,33 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     do j=jsc, jec
        do i=isc, iec
           if (sum(h_ice(i,j,:))>0)                                  &
-               call ice_redistribute(part_sz(i,j,1:km-1),           &
+            call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
                h_snow(i,j,:), t_snow(i,j,:), h_ice (i,j,:), &
                t_ice1(i,j,:), t_ice2(i,j,:), &
                t_ice3(i,j,:), t_ice4(i,j,:), hlim)
        end do
     end do
-    do k=1,km-1 ; do j=jsc,jec ; do i=isc,iec
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (part_sz(i,j,k)<1e-10) h_ice(i,j,k) = 0.0 ! thm_unpack will zero other quantities
     enddo ; enddo ; enddo
 
-    call thm_unpack(part_sz(isc:iec,jsc:jec,1:km-1), h_snow(isc:iec,jsc:jec,:), &
+    call thm_unpack(part_sz(isc:iec,jsc:jec,1:G%CatIce), h_snow(isc:iec,jsc:jec,:), &
                            t_snow(isc:iec,jsc:jec,:), h_ice(isc:iec,jsc:jec,:), &
                            t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:), &
                            t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
 
-    call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
-    call pass_var(h_snow, G%Domain, complete=.false.)
-    call pass_var(h_ice, G%Domain, complete=.true.)
+  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
+  call pass_var(h_snow, G%Domain, complete=.false.)
+  call pass_var(h_ice, G%Domain, complete=.true.)
 
-    if (CS%id_ustar >0) call post_SIS_data(CS%id_ustar, ustar, CS%diag)
-    if (CS%id_vstar >0) call post_SIS_data(CS%id_vstar , vstar, CS%diag)
-    if (CS%id_vocean>0) call post_SIS_data(CS%id_vocean, vstaro, CS%diag)
-    if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
-    if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
-    if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
+  if (CS%id_ustar >0) call post_SIS_data(CS%id_ustar, ustar, CS%diag)
+  if (CS%id_vstar >0) call post_SIS_data(CS%id_vstar , vstar, CS%diag)
+  if (CS%id_vocean>0) call post_SIS_data(CS%id_vocean, vstaro, CS%diag)
+  if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
+  if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
+  if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
 
-    return
-
-  end subroutine ice_transport
+end subroutine ice_transport
 
 !#####################################################################
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -300,13 +298,13 @@ end subroutine ice_advect
 
 !#####################################################################
 subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
+  type(sea_ice_grid_type), intent(inout) :: G
   real, intent(in   ), dimension(isd:ied,jsd:jed) :: uc  ! x-face advecting velocity
   real, intent(in   ), dimension(isd:ied,jsd:jed) :: vc  ! y-face advecting velocity
   real, intent(inout), dimension(isd:ied,jsd:jed) :: trc ! tracer to advect
   real, intent(in   )                             :: stop_lim
   real,                    intent(in) :: dt_slow
   type(ice_transport_CS), pointer :: CS
-  type(sea_ice_grid_type), intent(inout) :: G
 
   real, dimension(isd:ied,jsd:jed) :: uflx, vflx
   real                             :: avg, dif
@@ -355,9 +353,10 @@ end subroutine slab_ice_advect
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_redistribute - a simple ice redistribution scheme from Igor Polyakov     !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_redistribute(cn, hs, tsn, hi, t1, t2, t3, t4, hlim)
-!!$    real, intent(inout), dimension(1:km-1)           :: cn, hs, hi, t1, t2
-  real, intent(inout), dimension(1:)          :: cn, hs, tsn, hi, t1, t2, t3, t4
+subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
+!!$    real, intent(inout), dimension(1:G%CatIce)           :: cn, hs, hi, t1, t2
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, intent(inout), dimension(:) :: cn, hs, tsn, hi, t1, t2, t3, t4
   real, dimension(:), intent(in) :: hlim
 
   real    :: cw                                 ! open water concentration
@@ -366,7 +365,7 @@ subroutine ice_redistribute(cn, hs, tsn, hi, t1, t2, t3, t4, hlim)
   cw = 1-sum(cn)
   if (cw<0) cn(1) = cw + cn(1) ! open water has been eliminated by convergence
 
-  do k=1,km-2 ; if (cn(k)<0) then
+  do k=1,G%CatIce-1 ; if (cn(k)<0) then
     cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! pass concentration deficit up to
     hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! next thicker category
     tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
@@ -377,7 +376,7 @@ subroutine ice_redistribute(cn, hs, tsn, hi, t1, t2, t3, t4, hlim)
     t4(k+1) = t4(k+1)+t4(k); t4(k) = 0 ! averaging
   endif ; enddo
 
-  do k=1,km-2 ; if (hi(k)>hlim(k+1)*cn(k)) then
+  do k=1,G%CatIce-1 ; if (hi(k)>hlim(k+1)*cn(k)) then
     cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! upper thickness limit exceeded
     hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! move ice up to next thicker category
     tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
@@ -388,7 +387,7 @@ subroutine ice_redistribute(cn, hs, tsn, hi, t1, t2, t3, t4, hlim)
     t4(k+1) = t4(k+1)+t4(k); t4(k) = 0
   endif ; enddo
 
-  do k=km-1,2,-1 ; if (hi(k)<hlim(k)*cn(k)) then
+  do k=G%CatIce,2,-1 ; if (hi(k)<hlim(k)*cn(k)) then
     cn(k-1) = cn(k-1)+cn(k); cn(k) = 0  ! lower thickness limit exceeded;
     hs(k-1) = hs(k-1)+hs(k); hs(k) = 0  ! move ice down to thinner category
     tsn(k-1) = tsn(k-1)+tsn(k); tsn(k) = 0
