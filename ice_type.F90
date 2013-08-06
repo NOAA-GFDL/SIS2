@@ -245,10 +245,7 @@ public  :: earth_area
      real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
      real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
      real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
-     real,    pointer, dimension(:,:,:) :: sw_abs_ice1         =>NULL() ! frac abs sw abs in ice layer 1
-     real,    pointer, dimension(:,:,:) :: sw_abs_ice2         =>NULL() ! frac abs sw abs in ice layer 2
-     real,    pointer, dimension(:,:,:) :: sw_abs_ice3         =>NULL() ! frac abs sw abs in ice layer 3
-     real,    pointer, dimension(:,:,:) :: sw_abs_ice4         =>NULL() ! frac abs sw abs in ice layer 4
+     real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
      real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
      real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
      real,    pointer, dimension(:,:,:) :: coszen              =>NULL()
@@ -257,10 +254,7 @@ public  :: earth_area
      real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
      real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
      real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_ice1              =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_ice2              =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_ice3              =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_ice4              =>NULL()
+     real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
      real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: frazil              =>NULL()
@@ -338,9 +332,9 @@ public  :: earth_area
                    else
                       value = value - cell_area(i,j) * Ice%part_size(i,j,k)           &
                                      *e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), &
-                                                Ice%h_ice(i,j,k), Ice%t_ice1(i,j,k),  &
-                                                Ice%t_ice2(i,j,k), Ice%t_ice3(i,j,k), &
-                                                Ice%t_ice4(i,j,k)                     )
+                                                Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1),  &
+                                                Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3), &
+                                                Ice%t_ice(i,j,k,4)                     )
                    end if
                 end if
              end do
@@ -377,7 +371,7 @@ public  :: earth_area
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
-    integer           :: sc, dy, i, j
+    integer           :: sc, dy, i, j, l
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
     character(len=64) :: restart_file
@@ -511,16 +505,14 @@ public  :: earth_area
     allocate ( Ice%tmelt  (isc:iec, jsc:jec, 2:km), Ice%bmelt  (isc:iec, jsc:jec, 2:km) , &
                Ice%pen    (isc:iec, jsc:jec, 2:km), Ice%trn    (isc:iec, jsc:jec, 2:km) , &
                Ice%sw_abs_sfc  (isc:iec, jsc:jec, 2:km), Ice%sw_abs_snow (isc:iec, jsc:jec, 2:km) , &
-               Ice%sw_abs_ice1 (isc:iec, jsc:jec, 2:km), Ice%sw_abs_ice2 (isc:iec, jsc:jec, 2:km) , &
-               Ice%sw_abs_ice3 (isc:iec, jsc:jec, 2:km), Ice%sw_abs_ice4 (isc:iec, jsc:jec, 2:km) , &
+               Ice%sw_abs_ice (isc:iec, jsc:jec, 2:km, Ice%G%NkIce), &
                Ice%sw_abs_ocn  (isc:iec, jsc:jec, 2:km), Ice%sw_abs_int  (isc:iec, jsc:jec, 2:km), &
                Ice%h_snow (isd:ied, jsd:jed, 2:km), Ice%t_snow (isd:ied, jsd:jed, 2:km) , &
                Ice%h_ice  (isd:ied, jsd:jed, 2:km),                                         &
-               Ice%t_ice1 (isd:ied, jsd:jed, 2:km), Ice%t_ice2 (isd:ied, jsd:jed, 2:km) , &
-               Ice%t_ice3 (isd:ied, jsd:jed, 2:km), Ice%t_ice4 (isd:ied, jsd:jed, 2:km)   )
-    allocate ( Ice%qflx_lim_ice  (isc:iec, jsc:jec) , Ice%qflx_res_ice  (isc:iec, jsc:jec)   )
-    allocate ( Ice%area          (isc:iec, jsc:jec) )
-    allocate ( Ice%mi            (isc:iec, jsc:jec) )
+               Ice%t_ice  (isd:ied, jsd:jed, 2:km, Ice%G%NkIce) )
+    allocate ( Ice%qflx_lim_ice(isc:iec, jsc:jec) , Ice%qflx_res_ice(isc:iec, jsc:jec)   )
+    allocate ( Ice%area        (isc:iec, jsc:jec) )
+    allocate ( Ice%mi          (isc:iec, jsc:jec) )
 
     Ice%flux_sw_vis_dir(:,:) =0.
     Ice%flux_sw_vis_dif(:,:) =0.
@@ -542,20 +534,14 @@ public  :: earth_area
     Ice%h_snow(:,:,:)   =0.
     Ice%t_snow(:,:,:)   =0.
     Ice%h_ice(:,:,:)    =0.
-    Ice%t_ice1(:,:,:)   =0.
-    Ice%t_ice2(:,:,:)   =0.
-    Ice%t_ice3(:,:,:)   =0.
-    Ice%t_ice4(:,:,:)   =0.
+    Ice%t_ice(:,:,:,:) = 0.0
     Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
     Ice%mi(:,:)         =0.
     Ice%sw_abs_sfc(:,:,:) = 0.
     Ice%sw_abs_ocn(:,:,:) = 0.
     Ice%sw_abs_int(:,:,:) = 0.
     Ice%sw_abs_snow(:,:,:) = 0.
-    Ice%sw_abs_ice1(:,:,:) = 0.
-    Ice%sw_abs_ice2(:,:,:) = 0.
-    Ice%sw_abs_ice3(:,:,:) = 0.
-    Ice%sw_abs_ice4(:,:,:) = 0.
+    Ice%sw_abs_ice(:,:,:,:) = 0.
     Ice%coszen(:,:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
     do j = jsc, jec
@@ -605,10 +591,10 @@ public  :: earth_area
     id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      Ice%h_snow(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      Ice%t_snow(:,:,2:km), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       Ice%h_ice(:,:,2:km),  domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice1(:,:,2:km), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice2(:,:,2:km), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice3(:,:,2:km), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice4(:,:,2:km), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice(:,:,2:km,1), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice(:,:,2:km,2), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice(:,:,2:km,3), domain=domain)
+    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice(:,:,2:km,4), domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
     id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
@@ -673,10 +659,10 @@ public  :: earth_area
        call mpp_update_domains(Ice%h_snow(:,:,2:km), Domain )
        call mpp_update_domains(Ice%t_snow(:,:,2:km), Domain )
        call mpp_update_domains(Ice%h_ice (:,:,2:km), Domain )
-       call mpp_update_domains(Ice%t_ice1(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%t_ice2(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%t_ice3(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%t_ice4(:,:,2:km), Domain )
+       
+       do l=1,Ice%G%NkIce
+         call mpp_update_domains(Ice%t_ice(:,:,2:km,l), Domain )
+       enddo
 
       call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
     else ! no restart => no ice
@@ -695,10 +681,7 @@ public  :: earth_area
        Ice%h_snow(:,:,:) = 0.0
        Ice%t_snow(:,:,:) = -5.0
        Ice%h_ice(:,:,:) = 0.0
-       Ice%t_ice1(:,:,:) = -5.0
-       Ice%t_ice2(:,:,:) = -5.0
-       Ice%t_ice3(:,:,:) = -5.0
-       Ice%t_ice4(:,:,:) = -5.0
+       Ice%t_ice(:,:,:,:) = -5.0
        Ice%u_ice(:,:) = 0.0
        Ice%v_ice(:,:) = 0.0
        Ice%flux_u(:,:) = 0.0 
@@ -811,7 +794,7 @@ public  :: earth_area
     deallocate(Ice%bheat, Ice%u_ice, Ice%v_ice )
     deallocate(Ice%tmelt, Ice%bmelt, Ice%pen, Ice%trn )
     deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
-    deallocate(Ice%t_ice1, Ice%t_ice2, Ice%t_ice3, Ice%t_ice4  )
+    deallocate(Ice%t_ice)
     deallocate(Ice%qflx_lim_ice, Ice%qflx_res_ice )
     deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
     deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
@@ -934,7 +917,7 @@ public  :: earth_area
     end if
     id_mi       = register_diag_field('ice_model', 'MI', axt, Ice%Time,                  &
                  'ice mass', 'kg/m^2', missing_value=missing)
-    id_mib      = register_diag_field('ice_model', 'MIB', axt, Ice%Time,                  &
+    id_mib      = register_diag_field('ice_model', 'MIB', axt, Ice%Time,                 &
                  'ice + bergs mass', 'kg/m^2', missing_value=missing)
     id_cn       = register_diag_field('ice_model', 'CN', axt2, Ice%Time,                 &
                  'ice concentration', '0-1', missing_value=missing)
@@ -944,7 +927,7 @@ public  :: earth_area
                  'snow layer temperature', 'C',  missing_value=missing)
     id_hi       = register_diag_field('ice_model', 'HI', axt, Ice%Time,                  &
                  'ice thickness', 'm-ice', missing_value=missing)
-    id_hio      = register_diag_field('ice_model', 'HIO', axto, Ice%Time,                  &
+    id_hio      = register_diag_field('ice_model', 'HIO', axto, Ice%Time,                &
                  'ice thickness', 'm-ice', missing_value=missing)
     id_t1       = register_diag_field('ice_model', 'T1', axt, Ice%Time,                  &
                  'top ice layer temperature', 'C',  missing_value=missing)
@@ -1151,10 +1134,10 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(Ice%h_snow             )
   write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(Ice%t_snow             )
   write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(Ice%h_ice              )
-  write(outunit,100) 'ice_data_type%t_ice1             ',mpp_chksum(Ice%t_ice1             )
-  write(outunit,100) 'ice_data_type%t_ice2             ',mpp_chksum(Ice%t_ice2             )
-  write(outunit,100) 'ice_data_type%t_ice3             ',mpp_chksum(Ice%t_ice3             )
-  write(outunit,100) 'ice_data_type%t_ice4             ',mpp_chksum(Ice%t_ice4             )
+  write(outunit,100) 'ice_data_type%t_ice(1)           ',mpp_chksum(Ice%t_ice(:,:,:,1)     )
+  write(outunit,100) 'ice_data_type%t_ice(2)           ',mpp_chksum(Ice%t_ice(:,:,:,2)     )
+  write(outunit,100) 'ice_data_type%t_ice(3)           ',mpp_chksum(Ice%t_ice(:,:,:,3)     )
+  write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(Ice%t_ice(:,:,:,4)     )
   write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(Ice%u_ice              )
   write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(Ice%v_ice              )
   write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(Ice%frazil)
