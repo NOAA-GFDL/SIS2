@@ -43,7 +43,7 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none
 private
-public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, ice5lay_temp,               &
+public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, get_thermo_coefs, ice5lay_temp,    &
           ice5lay_resize, thm_pack, thm_unpack, ice_thm_param, e_to_melt     !&
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
@@ -1167,6 +1167,37 @@ real, dimension(:,:,:), intent(inout) :: cn, hs, tsn, hi, t1, t2, t3, t4
   return
 
 end subroutine thm_pack
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! get_thermo_coefs - return various thermodynamic coefficients.                !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine get_thermo_coefs(pocket_coef, layer_coefs)
+  real, optional, intent(out) :: pocket_coef
+  real, dimension(:), optional, intent(out) :: layer_coefs
+! Arguments: pocket_coef - Minus the partial derivative of the freezing point
+!                          with salinity, times the latent heat of fusion over
+!                          the heat capacity of ice, in degC^2/psu.  This term
+!                          is used in the conversion of heat into a form of
+!                          enthalpy that is conserved with brine pockets.
+!            layer_coefs - pocket_coef times a prescribed salinity for each of
+!                          up to 4 layers, in degC^2.  With more than 4 layers,
+!                          the prescribed salinity of layer 4 is used for all
+!                          subsequent layers.
+  integer k, nk
+
+  ! Enthalpy = T + pocket_coef*S / T
+  if (present(pocket_coef)) pocket_coef = MU_TS*LI/CI
+
+  if (present(layer_coefs)) then  
+    nk = size(layer_coefs)
+    if (nk >= 1) layer_coefs(1) = MU_TS*SI1*LI/CI
+    if (nk >= 2) layer_coefs(2) = MU_TS*SI2*LI/CI
+    if (nk >= 3) layer_coefs(3) = MU_TS*SI3*LI/CI
+    if (nk >= 4) layer_coefs(4) = MU_TS*SI4*LI/CI
+    do k=5,nk ; layer_coefs(k) = MU_TS*SI4*LI/CI ; enddo
+  endif
+
+end subroutine get_thermo_coefs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! thm_unpack - reform ice properties from advectively conserved quantities     !
