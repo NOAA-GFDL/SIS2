@@ -32,7 +32,8 @@ use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
   use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm
 use ice_grid_mod,     only: sea_ice_grid_type
-  use ice_thm_mod,      only: thm_pack, thm_unpack ! , DI, DS, CI
+!  use ice_thm_mod,      only: thm_pack, thm_unpack ! , DI, DS, CI
+use ice_thm_mod, only : get_thermo_coefs
 
 implicit none ; private
 
@@ -68,24 +69,27 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3, t_ice4, t_snow, sea_lev, hlim, dt_slow, G, CS)
+subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, sea_lev, hlim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(isd:ied, jsd:jed, 0:G%CatIce), intent(inout) :: part_sz
-  real, dimension(isd:ied, jsd:jed, G%CatIce), intent(inout) :: h_ice, h_snow, t_ice1, t_ice2, t_ice3, t_ice4, t_snow
+  real, dimension(isd:ied, jsd:jed, G%CatIce), intent(inout) :: h_ice, h_snow, t_snow
+  real, dimension(isd:ied, jsd:jed, G%CatIce, G%NkIce), intent(inout) :: t_ice
   real, dimension(isd:ied, jsd:jed), intent(inout) :: uc, vc
   real, dimension(isd:ied, jsd:jed), intent(in)    :: sea_lev
   real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
   real,                    intent(in) :: dt_slow
   type(ice_transport_CS), pointer :: CS
   
-
+  real, dimension(G%NkIce) :: pocket_enth ! Coefficients relating to the enthalpy
+                                          ! contribution from melting in brine
+                                          ! pockets, in degC2.
     real, dimension(isd:ied,jsd:jed) :: uf0, uf, vf0, vf
     real, dimension(isd:ied,jsd:jed) :: tmp1 ! Local variables, 2D ice concentration
     real, dimension(isd:ied,jsd:jed) :: ustar, vstar ! Local variables, C-grid transporting velocities
     real, dimension(isd:ied,jsd:jed) :: ustaro, vstaro, ustarv, vstarv ! Local variables, C-grid transporting velocities
     real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
   real :: dt_adv
-    integer :: i, j, k
+  integer :: i, j, k, l, bad
     logical :: sent
 
   if (CS%slab_ice) then
@@ -102,115 +106,166 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice1, t_ice2, t_ice3
     return
   endif
 
-    call thm_pack(part_sz(isc:iec,jsc:jec,1:G%CatIce), h_snow(isc:iec,jsc:jec,:), &
-                  t_snow(isc:iec,jsc:jec,:), h_ice(isc:iec,jsc:jec,:), &
-                  t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:),&
-                  t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
-
-    call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
-    call pass_var(h_snow, G%Domain, complete=.false.)
-    call pass_var(t_snow, G%Domain, complete=.false.)
-    call pass_var(h_ice,  G%Domain, complete=.false.)
-    call pass_var(t_ice1, G%Domain, complete=.false.)
-    call pass_var(t_ice2, G%Domain, complete=.false.)
-    call pass_var(t_ice3, G%Domain, complete=.false.)
-    call pass_var(t_ice4, G%Domain, complete=.true.)
-
-    if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
-    ! This block of code is a parameterization of either (or both)
-    ! i) the pressure driven oceanic flow in a narrow channel, or
-    ! ii) pressure driven flow of ice itself.
-    ! The latter is a speculative but both are missing due to
-    ! masking of velocities to zero in a single-cell wide channel.
-      dt_adv = dt_slow/CS%adv_sub_steps
-
-      tmp1=1.-max(1.-sum(part_sz(:,:,1:G%CatIce),dim=3),0.0)
-      ustar(:,:)=0.; vstar(:,:)=0.
-      ustaro(:,:)=0.; vstaro(:,:)=0.
-      ustarv(:,:)=0.; vstarv(:,:)=0.
-      do j = jsc, jec
-        do i = isc, iec
-          if ((uc(i,j)==0.) .and. & ! this is a redundant test due to following line
-              (G%mask2dBu(i,j)+G%mask2dBu(i,j-1)==0.) .and. &  ! =0 => no vels
-              (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
-            grad_eta=(sea_lev(i+1,j)-sea_lev(i,j))    & ! delta_i eta
-                     /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
-            u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                     *grad_eta                                                  ! d/dx eta
-            u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-            u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-            cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
-            uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-            ! Limit flow to be stable for fully divergent flow
-            if (uc(i,j)>0.) then
-              uc(i,j)=min( uc(i,j), CS%chan_cfl_limit*G%dxT(i,j)/dt_adv)
-            else
-              uc(i,j)=max( uc(i,j),(-1*CS%chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
-            endif
-            if (CS%id_ustar>0) ustar(i,j)=uc(i,j)
-            if (CS%id_uocean>0) ustaro(i,j)=u_ocn
-            if (CS%id_uchan>0) ustarv(i,j)=u_visc
-          endif
-          if ((vc(i,j)==0.) .and. & ! this is a redundant test due to following line
-              (G%mask2dBu(i,j)+G%mask2dBu(i-1,j)==0.) .and. &  ! =0 => no vels
-              (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
-            grad_eta=(sea_lev(i,j+1)-sea_lev(i,j))    & ! delta_i eta
-                    /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
-            u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                    *grad_eta                                                  ! d/dx eta
-            u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-            u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-            cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
-            vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-            ! Limit flow to be stable for fully divergent flow
-            if (vc(i,j)>0.) then
-             vc(i,j)=min( vc(i,j), CS%chan_cfl_limit*G%dyT(i,j)/dt_adv)
-            else
-             vc(i,j)=max( vc(i,j),(-1*CS%chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
-            endif
-            if (CS%id_vstar>0) vstar(i,j)=vc(i,j)
-            if (CS%id_vocean>0) vstaro(i,j)=u_ocn
-            if (CS%id_vchan>0) vstarv(i,j)=u_visc
-          endif
-        enddo
+  call get_thermo_coefs(layer_coefs=pocket_enth)
+  !   Convert from ice temperature (which is not conserved) to enthalpy, which
+  ! includes the heat requirements for melting of brine pockets associated with 
+  ! temperature changes.  These expressions stem from the assumptions that
+  ! brine pockets will shrink or grow until their salinity gives a freezing
+  ! point that matches the local temperature.
+  ! This was prevously the subroutine thm_pack.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (h_ice(i,j,k)>0.0) then
+      h_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
+      do l=1,G%NkIce
+        t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l)) * &
+                          h_ice(i,j,k)
       enddo
+      h_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
+      t_snow(i,j,k) = t_snow(i,j,k)*h_snow(i,j,k)
+    else 
+      part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
+      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+      h_snow(i,j,k) = 0.0
+      t_snow(i,j,k) = 0.0
     endif
+  enddo ; enddo ; enddo
+  
+  call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
+  do l=1,G%NkIce ! The do loop allows these to be combined with the following.
+    call pass_var(t_ice(:,:,:,l), G%Domain, complete=.false.)
+  enddo
+  call pass_var(t_snow, G%Domain, complete=.false.)
+  call pass_var(h_ice,  G%Domain, complete=.false.)
+  call pass_var(h_snow, G%Domain, complete=.true.)
 
-    call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
+  if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
+  ! This block of code is a parameterization of either (or both)
+  ! i) the pressure driven oceanic flow in a narrow channel, or
+  ! ii) pressure driven flow of ice itself.
+  ! The latter is a speculative but both are missing due to
+  ! masking of velocities to zero in a single-cell wide channel.
+    dt_adv = dt_slow/CS%adv_sub_steps
 
-    uf(:,:) = 0.0; vf(:,:) = 0.0
-    do k=1,G%CatIce
-      call ice_advect(uc, vc, part_sz(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, h_snow(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf = uf + CS%Rho_snow*uf0; vf = vf + CS%Rho_snow*vf0
-      call ice_advect(uc, vc, h_ice(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf = uf + CS%Rho_ice*uf0; vf = vf + CS%Rho_ice*vf0
-      call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, t_ice1(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, t_ice2(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, t_ice3(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, t_ice4(:,:,k), dt_slow, G, CS)
+    tmp1=1.-max(1.-sum(part_sz(:,:,1:G%CatIce),dim=3),0.0)
+    ustar(:,:)=0.; vstar(:,:)=0.
+    ustaro(:,:)=0.; vstaro(:,:)=0.
+    ustarv(:,:)=0.; vstarv(:,:)=0.
+    do j = jsc, jec
+      do i = isc, iec
+        if ((uc(i,j)==0.) .and. & ! this is a redundant test due to following line
+            (G%mask2dBu(i,j)+G%mask2dBu(i,j-1)==0.) .and. &  ! =0 => no vels
+            (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
+          grad_eta=(sea_lev(i+1,j)-sea_lev(i,j))    & ! delta_i eta
+                   /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
+          u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+                   *grad_eta                                                  ! d/dx eta
+          u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+          u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+          cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
+          uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
+          ! Limit flow to be stable for fully divergent flow
+          if (uc(i,j)>0.) then
+            uc(i,j)=min( uc(i,j), CS%chan_cfl_limit*G%dxT(i,j)/dt_adv)
+          else
+            uc(i,j)=max( uc(i,j),(-1*CS%chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
+          endif
+          if (CS%id_ustar>0) ustar(i,j)=uc(i,j)
+          if (CS%id_uocean>0) ustaro(i,j)=u_ocn
+          if (CS%id_uchan>0) ustarv(i,j)=u_visc
+        endif
+        if ((vc(i,j)==0.) .and. & ! this is a redundant test due to following line
+            (G%mask2dBu(i,j)+G%mask2dBu(i-1,j)==0.) .and. &  ! =0 => no vels
+            (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
+          grad_eta=(sea_lev(i,j+1)-sea_lev(i,j))    & ! delta_i eta
+                  /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
+          u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+                  *grad_eta                                                  ! d/dx eta
+          u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+          u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+          cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
+          vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
+          ! Limit flow to be stable for fully divergent flow
+          if (vc(i,j)>0.) then
+           vc(i,j)=min( vc(i,j), CS%chan_cfl_limit*G%dyT(i,j)/dt_adv)
+          else
+           vc(i,j)=max( vc(i,j),(-1*CS%chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
+          endif
+          if (CS%id_vstar>0) vstar(i,j)=vc(i,j)
+          if (CS%id_vocean>0) vstaro(i,j)=u_ocn
+          if (CS%id_vchan>0) vstarv(i,j)=u_visc
+        endif
+      enddo
     enddo
-    call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
-    call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
+  endif
 
-    do j=jsc, jec
-       do i=isc, iec
-          if (sum(h_ice(i,j,:))>0)                                  &
-            call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
-               h_snow(i,j,:), t_snow(i,j,:), h_ice (i,j,:), &
-               t_ice1(i,j,:), t_ice2(i,j,:), &
-               t_ice3(i,j,:), t_ice4(i,j,:), hlim)
-       end do
-    end do
-    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      if (part_sz(i,j,k)<1e-10) h_ice(i,j,k) = 0.0 ! thm_unpack will zero other quantities
-    enddo ; enddo ; enddo
+  call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
-    call thm_unpack(part_sz(isc:iec,jsc:jec,1:G%CatIce), h_snow(isc:iec,jsc:jec,:), &
-                           t_snow(isc:iec,jsc:jec,:), h_ice(isc:iec,jsc:jec,:), &
-                           t_ice1(isc:iec,jsc:jec,:), t_ice2(isc:iec,jsc:jec,:), &
-                           t_ice3(isc:iec,jsc:jec,:), t_ice4(isc:iec,jsc:jec,:) )
+  uf(:,:) = 0.0; vf(:,:) = 0.0
+  do k=1,G%CatIce
+    call ice_advect(uc, vc, part_sz(:,:,k), dt_slow, G, CS)
+    call ice_advect(uc, vc, h_snow(:,:,k), dt_slow, G, CS, uf0, vf0)
+    uf = uf + CS%Rho_snow*uf0; vf = vf + CS%Rho_snow*vf0
+    call ice_advect(uc, vc, h_ice(:,:,k), dt_slow, G, CS, uf0, vf0)
+    uf = uf + CS%Rho_ice*uf0; vf = vf + CS%Rho_ice*vf0
+    call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
+    do l=1,G%NkIce
+      call ice_advect(uc, vc, t_ice(:,:,k,l), dt_slow, G, CS)
+    enddo
+  enddo
+  call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
+  call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
+
+  do j=jsc, jec
+     do i=isc, iec
+        if (sum(h_ice(i,j,:))>0)                                  &
+          call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
+             h_snow(i,j,:), t_snow(i,j,:), h_ice (i,j,:), &
+             t_ice(i,j,:,1), t_ice(i,j,:,2), &
+             t_ice(i,j,:,3), t_ice(i,j,:,4), hlim)
+     end do
+  end do
+
+  !   Convert from enthalpy back to ice temperature. These expressions stem from
+  ! the assumptions that brine pockets will shrink or grow until their salinity
+  ! gives a freezing point that matches the local temperature.
+  ! This was prevously the subroutine thm_unpack.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (part_sz(i,j,k)<1e-10) h_ice(i,j,k) = 0.0
+    if (h_ice(i,j,k)>0.0) then
+      do l=1,G%NkIce
+        t_ice(i,j,k,l) = t_ice(i,j,k,l) / h_ice(i,j,k)
+        t_ice(i,j,k,l) = 0.5*(t_ice(i,j,k,l) - &
+                              sqrt(t_ice(i,j,k,l)*t_ice(i,j,k,l) + 4.0*pocket_enth(l)))
+      enddo
+      h_ice(i,j,k) = h_ice(i,j,k)/part_sz(i,j,k)
+      if (h_snow(i,j,k)>0.0) then
+        t_snow(i,j,k) = t_snow(i,j,k)/h_snow(i,j,k)
+      else
+        t_snow(i,j,k) = 0.0
+      endif
+      h_snow(i,j,k) = h_snow(i,j,k)/part_sz(i,j,k)
+      
+      ! Check for bad values.
+      bad = 0
+      if (h_snow(i,j,k) <0.0 .or. h_snow(i,j,k) > 1e3 ) bad = bad+1
+      if (h_ice(i,j,k) <0.0 .or. h_ice(i,j,k) > 1e3 ) bad = bad+1
+      if (t_snow(i,j,k)>0.0.or.t_snow(i,j,k)<-100.0) bad = bad+1
+      do l=1,G%NkIce
+        if (t_ice(i,j,k,l) > 0.0 .or. t_ice(i,j,k,l) < -100.0) bad = bad+1
+      enddo      
+!### USE BETTER ERROR HANDLING LATER.
+      if (bad>0) then
+        print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',h_snow(i,j,k),h_ice(i,j,k),'tsn/tice=', &
+                          t_snow(i,j,k),t_ice(i,j,k,1),t_ice(i,j,k,2),t_ice(i,j,k,3), &
+                          t_ice(i,j,k,4),'cn=',part_sz(i,j,k)
+      endif
+    else
+      part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
+      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+      h_snow(i,j,k) = 0.0
+      t_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
   call pass_var(h_snow, G%Domain, complete=.false.)

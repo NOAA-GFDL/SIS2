@@ -1403,8 +1403,8 @@ contains
     enddo ; enddo
     
     call ice_transport(Ice%part_size, Ice%h_ice, Ice%h_snow, uc, vc, &
-                       Ice%t_ice(:,:,:,1), Ice%t_ice(:,:,:,2), Ice%t_ice(:,:,:,3), Ice%t_ice(:,:,:,4), Ice%t_snow, &
-                       Ice%sea_lev, hlim, dt_slow, Ice%G, Ice%ice_transport_CSp)
+                       Ice%t_ice, Ice%t_snow, Ice%sea_lev, hlim, dt_slow, &
+                       Ice%G, Ice%ice_transport_CSp)
     ! Set appropriate surface quantities in categories with no ice.
     do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (Ice%part_size(i,j,k)<1e-10) &
       Ice%t_surf(i,j,k) = Tfreeze-MU_TS*Ice%s_surf(i,j)
