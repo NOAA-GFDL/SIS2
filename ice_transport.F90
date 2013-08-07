@@ -30,10 +30,9 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
-  use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm
-use ice_grid_mod,     only: sea_ice_grid_type
-!  use ice_thm_mod,      only: thm_pack, thm_unpack ! , DI, DS, CI
-use ice_thm_mod, only : get_thermo_coefs
+!   use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed
+use ice_grid_mod, only : sea_ice_grid_type
+use ice_thm_mod,  only : get_thermo_coefs
 
 implicit none ; private
 
@@ -69,34 +68,59 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, sea_lev, hlim, dt_slow, G, CS)
+subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
+                          sea_lev, hlim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(isd:ied, jsd:jed, 0:G%CatIce), intent(inout) :: part_sz
-  real, dimension(isd:ied, jsd:jed, G%CatIce), intent(inout) :: h_ice, h_snow, t_snow
-  real, dimension(isd:ied, jsd:jed, G%CatIce, G%NkIce), intent(inout) :: t_ice
-  real, dimension(isd:ied, jsd:jed), intent(inout) :: uc, vc
-  real, dimension(isd:ied, jsd:jed), intent(in)    :: sea_lev
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: t_ice
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
+  real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
+  real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
+  real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
   real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
   real,                    intent(in) :: dt_slow
   type(ice_transport_CS), pointer :: CS
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1, in/out.
+!  (inout)   h_ice - The thickness of the ice in each category in m.
+!  (inout)   h_snow - The thickness of the snow atop the ice in each category
+!                     in m.
+!  (in)      uc - The zonal ice velocity, in m s-1.
+!  (in)      vc - The meridional ice velocity, in m s-1.
+!  (inout)   t_ice - The temperature of the ice in each category and layer
+!                    within the ice in degC.
+!  (inout)   t_snow - The temperature of the snow atop the ice in each category
+!                     in degC.
+!  (in)      hlim - The lower thickness limit of each category, in m.
+!  (in)      sea_lev - The height of the sea level, including contributions
+!                      from non-levitating ice from an earlier time step, in m.
+!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
+!                      advanced, in s.
+!  (in)      G - The ocean's grid structure.
+!  (in/out)  CS - A pointer to the control structure for this module.
   
   real, dimension(G%NkIce) :: pocket_enth ! Coefficients relating to the enthalpy
                                           ! contribution from melting in brine
                                           ! pockets, in degC2.
-    real, dimension(isd:ied,jsd:jed) :: uf0, uf, vf0, vf
-    real, dimension(isd:ied,jsd:jed) :: tmp1 ! Local variables, 2D ice concentration
-    real, dimension(isd:ied,jsd:jed) :: ustar, vstar ! Local variables, C-grid transporting velocities
-    real, dimension(isd:ied,jsd:jed) :: ustaro, vstaro, ustarv, vstarv ! Local variables, C-grid transporting velocities
-    real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
+  real, dimension(SZIB_(G),SZJ_(G)) :: &
+    uf0, uf, & ! Zonal fluxes in m3 s-1 and kg s-1.
+    ustar, ustaro, ustarv ! Local variables, transporting velocities
+  real, dimension(SZI_(G),SZJB_(G)) :: &
+    vf0, vf, & ! Zonal fluxes in m3 s-1 and kg s-1.
+    vstar, vstaro, vstarv ! Local variables, transporting velocities
+  real, dimension(SZI_(G),SZJ_(G)) :: tmp1 ! Local variables, 2D ice concentration
+  real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
+
   real :: dt_adv
-  integer :: i, j, k, l, bad
-    logical :: sent
+  integer :: i, j, k, l, bad, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
     call slab_ice_advect(uc, vc, h_ice(:,:,2), 4.0, dt_slow, G, CS)
     call pass_var(h_ice(:,:,2), G%Domain)
-    do j=jsd,jed ; do i=isd,ied
+    do j=G%jsd,G%jed ; do i=G%isd,G%ied
       if (h_ice(i,j,2) > 0.0) then
         part_sz(i,j,2) = 1.0
       else 
@@ -155,7 +179,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, sea_lev
         if ((uc(i,j)==0.) .and. & ! this is a redundant test due to following line
             (G%mask2dBu(i,j)+G%mask2dBu(i,j-1)==0.) .and. &  ! =0 => no vels
             (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
-          grad_eta=(sea_lev(i+1,j)-sea_lev(i,j))    & ! delta_i eta
+          grad_eta=(sea_lev(i+1,j)-sea_lev(i,j)) & ! delta_i eta
                    /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
           u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
                    *grad_eta                                                  ! d/dx eta
@@ -176,7 +200,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, sea_lev
         if ((vc(i,j)==0.) .and. & ! this is a redundant test due to following line
             (G%mask2dBu(i,j)+G%mask2dBu(i-1,j)==0.) .and. &  ! =0 => no vels
             (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
-          grad_eta=(sea_lev(i,j+1)-sea_lev(i,j))    & ! delta_i eta
+          grad_eta=(sea_lev(i,j+1)-sea_lev(i,j)) & ! delta_i eta
                   /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
           u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
                   *grad_eta                                                  ! d/dx eta
@@ -217,7 +241,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, sea_lev
 
   do j=jsc, jec
      do i=isc, iec
-        if (sum(h_ice(i,j,:))>0)                                  &
+        if (sum(h_ice(i,j,:))>0) &
           call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
              h_snow(i,j,:), t_snow(i,j,:), h_ice (i,j,:), &
              t_ice(i,j,:,1), t_ice(i,j,:,2), &
@@ -285,21 +309,33 @@ end subroutine ice_transport
 ! ice_advect - take adv_sub_steps upstream advection timesteps                 !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
-  real, intent(in   ), dimension(isd:ied,jsd:jed) :: uc  ! x-face advecting velocity
-  real, intent(in   ), dimension(isd:ied,jsd:jed) :: vc  ! y-face advecting velocity
-  real, intent(inout), dimension(isd:ied,jsd:ied) :: trc     ! tracer to advect
-  real,                    intent(in) :: dt_slow
   type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_transport_CS), pointer :: CS
-  real, optional, intent(inout), dimension(isd:ied,jsd:jed) :: uf, vf
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  ! x-face advecting velocity
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  ! y-face advecting velocity
+  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc ! tracer to advect
+  real,                              intent(in   ) :: dt_slow
+  type(ice_transport_CS),            pointer       :: CS
+  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(  out) :: uf
+  real, dimension(SZI_(G),SZJB_(G)), optional, intent(  out) :: vf
+! Arguments: uc - The zonal ice velocity, in m s-1.
+!  (in)      vc - The meridional ice velocity, in m s-1.
+!  (inout)   trc - A tracer concentration times thickness, in m kg kg-1 or
+!                  other units.
+!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
+!                      advanced, in s.
+!  (in)      G - The ocean's grid structure.
+!  (in/out)  CS - A pointer to the control structure for this module.
+!  (out)     vf - The averaged zonal tracer flux, in m3 kg kg-1 s-1.
+!  (out)     vf - The averaged meridional tracer flux, in m3 kg kg-1 s-1.
 
-  real, dimension(isd:ied,jsd:jed) ::  uflx, vflx
+  real, dimension(SZIB_(G),SZJ_(G)) :: uflx
+  real, dimension(SZI_(G),SZJB_(G)) :: vflx
   real :: dt_adv
-  integer                          :: l, i, j
+  integer :: l, i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (CS%adv_sub_steps==0) return;
   dt_adv = dt_slow/CS%adv_sub_steps
-
 
   if (present(uf)) uf(:,:) = 0.0
   if (present(vf)) vf(:,:) = 0.0
@@ -308,7 +344,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
   vflx(:,:) = 0.0
 
   do l=1,CS%adv_sub_steps
-    do j=jsd,jec ; do I=isc-1,iec
+    do j=jsc,jec ; do I=isc-1,iec
       if( uc(I,j) > 0.0 ) then
          uflx(I,j) = uc(I,j) * trc(i,j) * G%dyCu(I,j)
       else
@@ -316,7 +352,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
       endif
     enddo ; enddo
 
-    do J=jsc-1,jec ; do i=isd,iec
+    do J=jsc-1,jec ; do i=isc,iec
       if( vc(i,J) > 0.0 ) then
          vflx(i,J) = vc(i,J) * trc(i,j) * G%dxCv(i,J)
       else
@@ -338,14 +374,13 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
     if (present(vf)) then ;  do J=jsc,jec ; do i=isc,iec       
       vf(i,J) = vf(i,J) + vflx(i,J)
     enddo ; enddo ; endif
-
   enddo
 
   !### MULTIPLY BY INVERSE.
-  if (present(uf)) then ; do j=jsc,jec ; do I=isc,iec       
+  if (present(uf) .and. CS%adv_sub_steps>1) then ; do j=jsc,jec ; do I=isc,iec       
     uf(I,j) = uf(I,j)/CS%adv_sub_steps
   enddo ; enddo ; endif
-  if (present(vf)) then ;  do J=jsc,jec ; do i=isc,iec       
+  if (present(vf) .and. CS%adv_sub_steps>1) then ;  do J=jsc,jec ; do i=isc,iec       
     vf(i,J) = vf(i,J)/CS%adv_sub_steps
   enddo ; enddo ; endif
 
@@ -354,17 +389,29 @@ end subroutine ice_advect
 !#####################################################################
 subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, intent(in   ), dimension(isd:ied,jsd:jed) :: uc  ! x-face advecting velocity
-  real, intent(in   ), dimension(isd:ied,jsd:jed) :: vc  ! y-face advecting velocity
-  real, intent(inout), dimension(isd:ied,jsd:jed) :: trc ! tracer to advect
-  real, intent(in   )                             :: stop_lim
-  real,                    intent(in) :: dt_slow
-  type(ice_transport_CS), pointer :: CS
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  ! x-face advecting velocity
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  ! y-face advecting velocity
+  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc ! tracer to advect
+  real,                              intent(in   ) :: stop_lim
+  real,                              intent(in   ) :: dt_slow
+  type(ice_transport_CS),            pointer       :: CS
+! Arguments: uc - The zonal ice velocity, in m s-1.
+!  (in)      vc - The meridional ice velocity, in m s-1.
+!  (inout)   trc - A tracer concentration times thickness, in m kg kg-1 or
+!                  other units.
+!  (in)      stop_lim - ?
+!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
+!                      advanced, in s.
+!  (in)      G - The ocean's grid structure.
+!  (in/out)  CS - A pointer to the control structure for this module.
 
-  real, dimension(isd:ied,jsd:jed) :: uflx, vflx
-  real                             :: avg, dif
+  real, dimension(SZIB_(G),SZJ_(G)) :: uflx
+  real, dimension(SZI_(G),SZJB_(G)) :: vflx
+  real :: avg, dif
   real :: dt_adv
-  integer :: l, i, j
+  integer :: l, i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
 
   if (CS%adv_sub_steps==0) return;
   dt_adv = dt_slow/CS%adv_sub_steps
@@ -421,36 +468,36 @@ subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
   if (cw<0) cn(1) = cw + cn(1) ! open water has been eliminated by convergence
 
   do k=1,G%CatIce-1 ; if (cn(k)<0) then
-    cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! pass concentration deficit up to
-    hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! next thicker category
-    tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
-    hi(k+1) = hi(k+1)+hi(k); hi(k) = 0
-    t1(k+1) = t1(k+1)+t1(k); t1(k) = 0 ! NOTE:  here between the thm_pack and
-    t2(k+1) = t2(k+1)+t2(k); t2(k) = 0 ! thm_unpack calls, all quantities are
-    t3(k+1) = t3(k+1)+t3(k); t3(k) = 0 ! extensive, so we add instead of
-    t4(k+1) = t4(k+1)+t4(k); t4(k) = 0 ! averaging
+    cn(k+1) = cn(k+1)+cn(k) ; cn(k) = 0 ! pass concentration deficit up to
+    hs(k+1) = hs(k+1)+hs(k) ; hs(k) = 0 ! next thicker category
+    tsn(k+1) = tsn(k+1)+tsn(k) ; tsn(k) = 0
+    hi(k+1) = hi(k+1)+hi(k) ; hi(k) = 0
+    t1(k+1) = t1(k+1)+t1(k) ; t1(k) = 0 ! NOTE:  here between the thm_pack and
+    t2(k+1) = t2(k+1)+t2(k) ; t2(k) = 0 ! thm_unpack calls, all quantities are
+    t3(k+1) = t3(k+1)+t3(k) ; t3(k) = 0 ! extensive, so we add instead of
+    t4(k+1) = t4(k+1)+t4(k) ; t4(k) = 0 ! averaging
   endif ; enddo
 
   do k=1,G%CatIce-1 ; if (hi(k)>hlim(k+1)*cn(k)) then
-    cn(k+1) = cn(k+1)+cn(k); cn(k) = 0 ! upper thickness limit exceeded
-    hs(k+1) = hs(k+1)+hs(k); hs(k) = 0 ! move ice up to next thicker category
-    tsn(k+1) = tsn(k+1)+tsn(k); tsn(k) = 0
-    hi(k+1) = hi(k+1)+hi(k); hi(k) = 0
-    t1(k+1) = t1(k+1)+t1(k); t1(k) = 0
-    t2(k+1) = t2(k+1)+t2(k); t2(k) = 0
-    t3(k+1) = t3(k+1)+t3(k); t3(k) = 0
-    t4(k+1) = t4(k+1)+t4(k); t4(k) = 0
+    cn(k+1) = cn(k+1)+cn(k) ; cn(k) = 0 ! upper thickness limit exceeded
+    hs(k+1) = hs(k+1)+hs(k) ; hs(k) = 0 ! move ice up to next thicker category
+    tsn(k+1) = tsn(k+1)+tsn(k) ; tsn(k) = 0
+    hi(k+1) = hi(k+1)+hi(k) ; hi(k) = 0
+    t1(k+1) = t1(k+1)+t1(k) ; t1(k) = 0
+    t2(k+1) = t2(k+1)+t2(k) ; t2(k) = 0
+    t3(k+1) = t3(k+1)+t3(k) ; t3(k) = 0
+    t4(k+1) = t4(k+1)+t4(k) ; t4(k) = 0
   endif ; enddo
 
   do k=G%CatIce,2,-1 ; if (hi(k)<hlim(k)*cn(k)) then
-    cn(k-1) = cn(k-1)+cn(k); cn(k) = 0  ! lower thickness limit exceeded;
-    hs(k-1) = hs(k-1)+hs(k); hs(k) = 0  ! move ice down to thinner category
-    tsn(k-1) = tsn(k-1)+tsn(k); tsn(k) = 0
-    hi(k-1) = hi(k-1)+hi(k); hi(k) = 0
-    t1(k-1) = t1(k-1)+t1(k); t1(k) = 0
-    t2(k-1) = t2(k-1)+t2(k); t2(k) = 0
-    t3(k-1) = t3(k-1)+t3(k); t3(k) = 0
-    t4(k-1) = t4(k-1)+t4(k); t4(k) = 0
+    cn(k-1) = cn(k-1)+cn(k) ; cn(k) = 0  ! lower thickness limit exceeded;
+    hs(k-1) = hs(k-1)+hs(k) ; hs(k) = 0  ! move ice down to thinner category
+    tsn(k-1) = tsn(k-1)+tsn(k) ; tsn(k) = 0
+    hi(k-1) = hi(k-1)+hi(k) ; hi(k) = 0
+    t1(k-1) = t1(k-1)+t1(k) ; t1(k) = 0
+    t2(k-1) = t2(k-1)+t2(k) ; t2(k) = 0
+    t3(k-1) = t3(k-1)+t3(k) ; t3(k) = 0
+    t4(k-1) = t4(k-1)+t4(k) ; t4(k) = 0
   endif ; enddo
 
 end subroutine ice_redistribute
@@ -532,21 +579,21 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
 
-  CS%id_ustar = register_diag_field('ice_model', 'U_STAR', G%axesCu1, Time,              &
+  CS%id_ustar = register_diag_field('ice_model', 'U_STAR', G%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)
-  CS%id_vstar = register_diag_field('ice_model', 'V_STAR', G%axesCv1, Time,              &
+  CS%id_vstar = register_diag_field('ice_model', 'V_STAR', G%axesCv1, Time, &
               'channel transport velocity - y component', 'm/s', missing_value=missing)
-  CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', G%axesCu1, Time,          &
+  CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', G%axesCu1, Time, &
               'ocean component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', G%axesCv1, Time,          &
+  CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', G%axesCv1, Time, &
               'ocean component of channel transport - y', 'm/s', missing_value=missing)
-  CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', G%axesCu1, Time,         &
+  CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', G%axesCu1, Time, &
               'viscous component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', G%axesCv1, Time,         &
+  CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', G%axesCv1, Time, &
               'viscous component of channel transport - y', 'm/s', missing_value=missing)
-  CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', G%axesCu1, Time,           &
+  CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', G%axesCu1, Time, &
                'x-direction ice transport', 'kg/s', missing_value=missing)
-  CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', G%axesCv1, Time,           &
+  CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', G%axesCv1, Time, &
                'y-direction ice transport', 'kg/s', missing_value=missing)
 
 end subroutine ice_transport_init
