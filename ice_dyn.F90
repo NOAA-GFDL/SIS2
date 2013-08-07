@@ -204,14 +204,14 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(sea_ice_grid_type), intent(inout) :: G
-    real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: ci, hs, hi  ! ice properties
-    real, intent(inout), dimension(SZIB_(G),SZJB_(G)) :: ui, vi      ! ice velocity
-    real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: uo, vo      ! ocean velocity
-    real, intent(in   ), dimension(SZIB_(G),SZJB_(G)) :: fxat, fyat  ! air stress on ice
-    real, intent(in   ), dimension(SZI_(G),SZJ_(G)) :: sea_lev     ! sea level
-    real, intent(  out), dimension(SZIB_(G),SZJB_(G)) :: fxoc, fyoc  ! ice stress on ocean
-  real,                    intent(in) :: dt_slow
-  type(ice_dyn_CS),        pointer    :: CS
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci, hs, hi  ! ice properties
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui, vi      ! ice velocity
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: uo, vo      ! ocean velocity
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fxat, fyat  ! air stress on ice
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: sea_lev     ! sea level
+  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc, fyoc  ! ice stress on ocean
+  real,                               intent(in   ) :: dt_slow
+  type(ice_dyn_CS),                   pointer       :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      hs - The thickness of the snow, in m.
 !  (in)      hi - The thickness of the ice, in m.
@@ -510,7 +510,7 @@ function sigI(hi, ci, sig11, sig22, sig12, G, CS)
   type(sea_ice_grid_type), intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: hi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigI
-  type(ice_dyn_CS),        pointer       :: CS
+  type(ice_dyn_CS),                 pointer    :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -548,11 +548,11 @@ end function sigII
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
-  type(sea_ice_grid_type),     intent(in)    :: G
-  type(param_file_type),       intent(in)    :: param_file
-  type(ice_dyn_CS),            pointer       :: CS
-  type(restart_file_type),     intent(inout) :: Ice_restart
-  character(len=*),            intent(in)    :: restart_file
+  type(sea_ice_grid_type), intent(in)    :: G
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_dyn_CS),        pointer       :: CS
+  type(restart_file_type), intent(inout) :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
