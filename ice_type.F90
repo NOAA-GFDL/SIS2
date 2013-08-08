@@ -248,7 +248,7 @@ public  :: earth_area
      real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
      real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
      real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
-     real,    pointer, dimension(:,:,:) :: coszen              =>NULL()
+     real,    pointer, dimension(:,:)   :: coszen              =>NULL()
      real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
@@ -457,7 +457,7 @@ public  :: earth_area
          Ice%rough_mom      (isc:iec, jsc:jec, km) , &
          Ice%rough_heat     (isc:iec, jsc:jec, km) , &
          Ice%rough_moist    (isc:iec, jsc:jec, km) , &
-         Ice%coszen         (isc:iec, jsc:jec, km) , &
+         Ice%coszen         (isc:iec, jsc:jec)     , &
          Ice%albedo         (isc:iec, jsc:jec, km) , &
          Ice%albedo_vis_dir (isc:iec, jsc:jec, km) , &
          Ice%albedo_nir_dir (isc:iec, jsc:jec, km) , &
@@ -542,7 +542,7 @@ public  :: earth_area
     Ice%sw_abs_int(:,:,:) = 0.
     Ice%sw_abs_snow(:,:,:) = 0.
     Ice%sw_abs_ice(:,:,:,:) = 0.
-    Ice%coszen(:,:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
+    Ice%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
     do j = jsc, jec
        do i = isc, iec

@@ -63,7 +63,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
                               iceClock7, iceClock8, iceClock9, &
                               iceClocka, iceClockb, iceClockc, &
                               id_sw_vis, id_sw_dir, id_sw_dif, id_sw_vis_dir,    &
-                              id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif,id_coszen,       &
+                              id_sw_vis_dif, id_sw_nir_dir, id_sw_nir_dif, id_coszen, &
                               ice_stock_pe, do_icebergs, ice_model_restart, &
                               add_diurnal_sw, id_mib, ice_data_type_chksum
   use ice_type_mod,     only: do_sun_angle_for_alb,              &
@@ -566,7 +566,8 @@ enddo
          Ice%sw_abs_snow(i,j,k), Ice%sw_abs_ice(i,j,k,1), &
          Ice%sw_abs_ice(i,j,k,2), Ice%sw_abs_ice(i,j,k,3), &
          Ice%sw_abs_ice(i,j,k,4), Ice%sw_abs_ocn(i,j,k) , &
-         Ice%sw_abs_int(i,j,k),  Ice%pen(i,j,k), Ice%trn(i,j,k), coszen_in=Ice%coszen(i,j,k))
+         Ice%sw_abs_int(i,j,k),  Ice%pen(i,j,k), Ice%trn(i,j,k), &
+         coszen_in=Ice%coszen(i,j))
     !
     !Niki: Is the following correct for diagnostics?
     Ice%albedo(i,j,k)=(Ice%albedo_vis_dir(i,j,k)+Ice%albedo_nir_dir(i,j,k)&
@@ -618,14 +619,14 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock3)
-  call update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary%fluxes,  &
+  call update_ice_model_fast_old (Ice, Atmos_boundary) !, Atmos_boundary%fluxes,  &
 !                                       Atmos_boundary%u_flux,  &
 !                                       Atmos_boundary%v_flux,  &
 !                                       Atmos_boundary%u_star,  &
-                                       Atmos_boundary%sw_flux_nir_dir, &
-                                       Atmos_boundary%sw_flux_nir_dif, &
-                                       Atmos_boundary%sw_flux_vis_dir, &
-                                       Atmos_boundary%sw_flux_vis_dif ) !, &
+!                                       Atmos_boundary%sw_flux_nir_dir, &
+!                                       Atmos_boundary%sw_flux_nir_dif, &
+!                                       Atmos_boundary%sw_flux_vis_dir, &
+!                                       Atmos_boundary%sw_flux_vis_dif ) !, &
 !                                       Atmos_boundary%lw_flux, &
 !                                       Atmos_boundary%t_flux,  &
 !                                       Atmos_boundary%q_flux,  &
@@ -646,9 +647,9 @@ end subroutine update_ice_model_fast
 ! update_ice_model_fast - records fluxes (in Ice) and calculates ice temp. on  !
 !                         (fast) atmospheric timestep (see coupler_main.f90)   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes, &
+subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fluxes, &
 !     flux_u,  flux_v, u_star, &
-     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif ) !, &
+!     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif ) !, &
 !     flux_lw, flux_t, flux_q, &
 !     dhdt, dedt, drdt, &
 !     lprec, fprec, &
@@ -656,13 +657,13 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
 
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
-  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
+!  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
 !  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_u,  flux_v  ! surface stress (+ up)
 !  real, dimension(isc:iec,jsc:jec,km), intent(in) :: u_star           ! friction velocity (for ocean roughness)
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir ! net near IR direct shortwave radiation (+ down)
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dif ! net near IR diffuse shortwave radiation (+ down)
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dir ! net visible direct shortwave radiation (+ down)
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dif ! net visible diffuse shortwave radiation (+ down)
+!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir ! net near IR direct shortwave radiation (+ down)
+!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dif ! net near IR diffuse shortwave radiation (+ down)
+!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dir ! net visible direct shortwave radiation (+ down)
+!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dif ! net visible diffuse shortwave radiation (+ down)
 !  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_lw          ! net longwave radiation (+ down)
 !  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_t           ! sensible heat flux (+ up)
 !  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_q           ! specific humidity flux (+up)
@@ -694,7 +695,10 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
   if (id_alb>0) sent = send_data(id_alb, all_avg(Ice%albedo,Ice%part_size(isc:iec,jsc:jec,:)), &
        Ice%Time, mask=Ice%mask)
 
-  Ice%coszen = Atmos_boundary%coszen
+  do j=jsc,jec ; do i=isc,iec
+    Ice%coszen(i,j) = Atmos_boundary%coszen(i,j,1)
+    Ice%p_surf(i,j) = Atmos_boundary%p(i,j,1)
+  enddo ; enddo
   !
   ! set up local copies of fluxes for modification
   !
@@ -705,20 +709,16 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
     flux_q_new(i,j,k)  = Atmos_boundary%q_flux(i,j,k)
     flux_lh_new(i,j,k) = hlv*Atmos_boundary%q_flux(i,j,k)
     flux_lw_new(i,j,k) = Atmos_boundary%lw_flux(i,j,k)
-    flux_sw_nir_dir_new(i,j,k) = flux_sw_nir_dir(i,j,k)
-    flux_sw_nir_dif_new(i,j,k) = flux_sw_nir_dif(i,j,k)
-    flux_sw_vis_dir_new(i,j,k) = flux_sw_vis_dir(i,j,k)
-    flux_sw_vis_dif_new(i,j,k) = flux_sw_vis_dif(i,j,k)
+    flux_sw_nir_dir_new(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i,j,k)
+    flux_sw_nir_dif_new(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i,j,k)
+    flux_sw_vis_dir_new(i,j,k) = Atmos_boundary%sw_flux_vis_dir(i,j,k)
+    flux_sw_vis_dif_new(i,j,k) = Atmos_boundary%sw_flux_vis_dif(i,j,k)
     lprec_new(i,j,k)   = Atmos_boundary%lprec(i,j,k)
     fprec_new(i,j,k)   = Atmos_boundary%fprec(i,j,k)
     dhdt(i,j,k) = Atmos_boundary%dhdt(i,j,k)
     dedt(i,j,k) = Atmos_boundary%dedt(i,j,k)
     drdt(i,j,k) = Atmos_boundary%drdt(i,j,k)
   enddo ; enddo ; enddo
-  Ice%p_surf(:,:) = 0.0
-  Ice%p_surf(:,:) = all_avg(Atmos_boundary%p(:,:,:),Ice%part_size(isc:iec,jsc:jec,:))
-  ! Could this instead be    Ice%p_surf(:,:) = Atmos_boundary%p(:,:,1) ?
-
 
   if (add_diurnal_sw .or. do_sun_angle_for_alb) then
 !---------------------------------------------------------------------
@@ -753,10 +753,10 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
     enddo ; enddo
 
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
-      flux_sw_nir_dir_new(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_nir_dif_new(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dir_new(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dif_new(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor(i,j)
+      flux_sw_nir_dir_new(i,j,k) = flux_sw_nir_dir_new(i,j,k) * diurnal_factor(i,j)
+      flux_sw_nir_dif_new(i,j,k) = flux_sw_nir_dif_new(i,j,k) * diurnal_factor(i,j)
+      flux_sw_vis_dir_new(i,j,k) = flux_sw_vis_dir_new(i,j,k) * diurnal_factor(i,j)
+      flux_sw_vis_dif_new(i,j,k) = flux_sw_vis_dif_new(i,j,k) * diurnal_factor(i,j)
     enddo ; enddo ; enddo
   endif
 
@@ -777,8 +777,9 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
         flux_lh_new(i,j,k) = flux_lh_new(i,j,k)+hlf*flux_q_new(i,j,k)*(1-TFI/Ice%t_ice(i,j,k,1))
         latent             = hlv+hlf*(1-TFI/Ice%t_ice(i,j,k,1))
       endif
-      flux_sw = flux_sw_vis_dir(i,j,k)+flux_sw_vis_dif(i,j,k) &
-               +flux_sw_nir_dir(i,j,k)+flux_sw_nir_dif(i,j,k)
+      !### ADD PARENTHESES.
+      flux_sw = flux_sw_vis_dir_new(i,j,k)+flux_sw_vis_dif_new(i,j,k) &
+               +flux_sw_nir_dir_new(i,j,k)+flux_sw_nir_dif_new(i,j,k)
       hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
       hf  = flux_t_new(i,j,k) + flux_q_new(i,j,k)*latent - flux_lw_new(i,j,k)   &
             - (1-Ice%pen(i,j,k))*flux_sw - hfd*(Ice%t_surf(i,j,k)-Tfreeze)
@@ -811,12 +812,12 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
                                  Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                                  Ice%albedo_nir_dif(:,:,1), latitude )
   else
-    call compute_ocean_albedo (Ice%mask, Ice%coszen(:,:,1), Ice%albedo_vis_dir(:,:,1),&
+    call compute_ocean_albedo (Ice%mask, Ice%coszen(:,:), Ice%albedo_vis_dir(:,:,1),&
                                Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                                Ice%albedo_nir_dif(:,:,1), latitude )
   endif
 
-  call sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u_new,  flux_v_new, flux_t_new, &
+  call sum_top_quantities ( Ice, Atmos_boundary%fluxes, flux_u_new,  flux_v_new, flux_t_new, &
     flux_q_new, flux_sw_nir_dir_new, flux_sw_nir_dif_new, flux_sw_vis_dir_new,               &
     flux_sw_vis_dif_new, flux_lw_new, lprec_new,   fprec_new,  flux_lh_new )
 
@@ -850,8 +851,7 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary, Atmos_boundary_fluxes
   if (id_sw_trn>0) sent = send_data(id_sw_trn, all_avg(Ice%trn,Ice%part_size(isc:iec,jsc:jec,:)), &
        Ice%Time, mask=Ice%mask)
 
-  if (id_coszen>0) sent = send_data(id_coszen, all_avg(Ice%coszen,Ice%part_size(isc:iec,jsc:jec,:)), &
-       Ice%Time, mask=Ice%mask)
+  if (id_coszen>0) sent = send_data(id_coszen, Ice%coszen(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
 end subroutine update_ice_model_fast_old
 
