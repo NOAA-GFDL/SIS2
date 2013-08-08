@@ -223,15 +223,16 @@ end subroutine zero_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flux_t,  flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
-       flux_lw, lprec,   fprec, flux_lh )
+       flux_lw, lprec, fprec, flux_lh )
   type (ice_data_type),            intent(inout)  :: Ice
   type(coupler_3d_bc_type),        intent(inout)  :: Atmos_boundary_fluxes
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_u,  flux_v, flux_t, flux_q
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_lw, lprec, fprec, flux_lh
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dir
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dif
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dir
-  real, intent(in), dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dif
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_u,  flux_v, flux_t, flux_q
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_lw, lprec, fprec, flux_lh
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dif
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dir
+  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dif
+
   real,dimension(isc:iec,jsc:jec)                 :: tmp
   integer                                         :: i, j, k, m, n
 
@@ -255,7 +256,8 @@ subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flu
   do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
     do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
       do k=1,km ; do j=jsc,jec ; do i=isc,iec
-        Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) = Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) +     &
+        Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) = &
+              Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) +     &
              Atmos_boundary_fluxes%bc(n)%field(m)%values(i,j,k)
       enddo ; enddo ; enddo
     enddo  !} m
@@ -612,72 +614,21 @@ enddo
 
 end subroutine ice_bottom_to_ice_top
 
-
-subroutine update_ice_model_fast( Atmos_boundary, Ice )
-  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
-  type (ice_data_type),          intent(inout) :: Ice
-
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock3)
-  call update_ice_model_fast_old (Ice, Atmos_boundary) !, Atmos_boundary%fluxes,  &
-!                                       Atmos_boundary%u_flux,  &
-!                                       Atmos_boundary%v_flux,  &
-!                                       Atmos_boundary%u_star,  &
-!                                       Atmos_boundary%sw_flux_nir_dir, &
-!                                       Atmos_boundary%sw_flux_nir_dif, &
-!                                       Atmos_boundary%sw_flux_vis_dir, &
-!                                       Atmos_boundary%sw_flux_vis_dif ) !, &
-!                                       Atmos_boundary%lw_flux, &
-!                                       Atmos_boundary%t_flux,  &
-!                                       Atmos_boundary%q_flux,  &
-!                                       Atmos_boundary%dhdt,    &
-!                                       Atmos_boundary%dedt,    &
-!                                       Atmos_boundary%drdt,    &
-!                                       Atmos_boundary%lprec,   &
-!                                       Atmos_boundary%fprec,   &
-!                                       Atmos_boundary%coszen,  &
-!                                       Atmos_boundary%p        )
-  call mpp_clock_end(iceClock3)
-  call mpp_clock_end(iceClock)
-
-end subroutine update_ice_model_fast
-
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_fast - records fluxes (in Ice) and calculates ice temp. on  !
 !                         (fast) atmospheric timestep (see coupler_main.f90)   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fluxes, &
-!     flux_u,  flux_v, u_star, &
-!     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif ) !, &
-!     flux_lw, flux_t, flux_q, &
-!     dhdt, dedt, drdt, &
-!     lprec, fprec, &
-!     coszen, p_surf )
+subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
-!  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_u,  flux_v  ! surface stress (+ up)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: u_star           ! friction velocity (for ocean roughness)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir ! net near IR direct shortwave radiation (+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dif ! net near IR diffuse shortwave radiation (+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dir ! net visible direct shortwave radiation (+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dif ! net visible diffuse shortwave radiation (+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_lw          ! net longwave radiation (+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_t           ! sensible heat flux (+ up)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_q           ! specific humidity flux (+up)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: dhdt, dedt, drdt ! d(flux)/d(surf_temp) (+ up)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: lprec, fprec     ! liquid & frozen precip. rate [kg/(m^2*sec)](+ down)
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: coszen           ! cosine of the zenith angle
-!  real, dimension(isc:iec,jsc:jec,km), intent(in) :: p_surf
 
-  real, dimension(isc:iec,jsc:jec,km) :: flux_t_new, flux_q_new, flux_lh_new, flux_lw_new
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dir_new
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dif_new
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dir_new
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dif_new
-  real, dimension(isc:iec,jsc:jec,km) :: flux_u_new, flux_v_new, lprec_new, fprec_new
+  real, dimension(isc:iec,jsc:jec,km) :: flux_t, flux_q, flux_lh, flux_lw
+  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dir
+  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dif
+  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dir
+  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dif
+  real, dimension(isc:iec,jsc:jec,km) :: flux_u, flux_v, lprec, fprec
   real, dimension(isc:iec,jsc:jec,km) :: dhdt, dedt, drdt ! d(flux)/d(surf_temp) (+ up)
   integer                             :: dy, sc, i, j, k
   real                                :: dt_fast, ts_new, dts, hf, hfd, latent
@@ -692,6 +643,9 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
   real, dimension(isc:iec,jsc:jec,km) :: albedo_vis_dir,albedo_vis_dif,albedo_nir_dir,albedo_nir_dif
   real, dimension(isc:iec,jsc:jec,km) :: sw_abs_sfc,sw_abs_snow,sw_abs_ice1,sw_abs_ice2,sw_abs_ice3,sw_abs_ice4,sw_abs_ocn,sw_abs_int,pen,trn
 
+  call mpp_clock_begin(iceClock)
+  call mpp_clock_begin(iceClock3)
+
   if (id_alb>0) sent = send_data(id_alb, all_avg(Ice%albedo,Ice%part_size(isc:iec,jsc:jec,:)), &
        Ice%Time, mask=Ice%mask)
 
@@ -703,18 +657,18 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
   ! set up local copies of fluxes for modification
   !
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
-    flux_u_new(i,j,k)  = Atmos_boundary%u_flux(i,j,k)
-    flux_v_new(i,j,k)  = Atmos_boundary%v_flux(i,j,k)
-    flux_t_new(i,j,k)  = Atmos_boundary%t_flux(i,j,k)
-    flux_q_new(i,j,k)  = Atmos_boundary%q_flux(i,j,k)
-    flux_lh_new(i,j,k) = hlv*Atmos_boundary%q_flux(i,j,k)
-    flux_lw_new(i,j,k) = Atmos_boundary%lw_flux(i,j,k)
-    flux_sw_nir_dir_new(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i,j,k)
-    flux_sw_nir_dif_new(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i,j,k)
-    flux_sw_vis_dir_new(i,j,k) = Atmos_boundary%sw_flux_vis_dir(i,j,k)
-    flux_sw_vis_dif_new(i,j,k) = Atmos_boundary%sw_flux_vis_dif(i,j,k)
-    lprec_new(i,j,k)   = Atmos_boundary%lprec(i,j,k)
-    fprec_new(i,j,k)   = Atmos_boundary%fprec(i,j,k)
+    flux_u(i,j,k)  = Atmos_boundary%u_flux(i,j,k)
+    flux_v(i,j,k)  = Atmos_boundary%v_flux(i,j,k)
+    flux_t(i,j,k)  = Atmos_boundary%t_flux(i,j,k)
+    flux_q(i,j,k)  = Atmos_boundary%q_flux(i,j,k)
+    flux_lh(i,j,k) = hlv*Atmos_boundary%q_flux(i,j,k)
+    flux_lw(i,j,k) = Atmos_boundary%lw_flux(i,j,k)
+    flux_sw_nir_dir(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i,j,k)
+    flux_sw_nir_dif(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i,j,k)
+    flux_sw_vis_dir(i,j,k) = Atmos_boundary%sw_flux_vis_dir(i,j,k)
+    flux_sw_vis_dif(i,j,k) = Atmos_boundary%sw_flux_vis_dif(i,j,k)
+    lprec(i,j,k)   = Atmos_boundary%lprec(i,j,k)
+    fprec(i,j,k)   = Atmos_boundary%fprec(i,j,k)
     dhdt(i,j,k) = Atmos_boundary%dhdt(i,j,k)
     dedt(i,j,k) = Atmos_boundary%dedt(i,j,k)
     drdt(i,j,k) = Atmos_boundary%drdt(i,j,k)
@@ -753,10 +707,10 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
     enddo ; enddo
 
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
-      flux_sw_nir_dir_new(i,j,k) = flux_sw_nir_dir_new(i,j,k) * diurnal_factor(i,j)
-      flux_sw_nir_dif_new(i,j,k) = flux_sw_nir_dif_new(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dir_new(i,j,k) = flux_sw_vis_dir_new(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dif_new(i,j,k) = flux_sw_vis_dif_new(i,j,k) * diurnal_factor(i,j)
+      flux_sw_nir_dir(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor(i,j)
+      flux_sw_nir_dif(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor(i,j)
+      flux_sw_vis_dir(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor(i,j)
+      flux_sw_vis_dif(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor(i,j)
     enddo ; enddo ; enddo
   endif
 
@@ -768,20 +722,20 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
     if (Ice%ice_mask(i,j,k)) then
       if (slab_ice) then
-        flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + hlf*flux_q_new(i,j,k)
+        flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
         latent             = hlv+hlf
       elseif (Ice%h_snow(i,j,k)>0.0) then
-        flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + (hlf-CI*Ice%t_snow(i,j,k))*flux_q_new(i,j,k)
+        flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*Ice%t_snow(i,j,k))*flux_q(i,j,k)
         latent             = hlv+(hlf-CI*Ice%t_snow(i,j,k))
       else
-        flux_lh_new(i,j,k) = flux_lh_new(i,j,k)+hlf*flux_q_new(i,j,k)*(1-TFI/Ice%t_ice(i,j,k,1))
+        flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/Ice%t_ice(i,j,k,1))
         latent             = hlv+hlf*(1-TFI/Ice%t_ice(i,j,k,1))
       endif
       !### ADD PARENTHESES.
-      flux_sw = flux_sw_vis_dir_new(i,j,k)+flux_sw_vis_dif_new(i,j,k) &
-               +flux_sw_nir_dir_new(i,j,k)+flux_sw_nir_dif_new(i,j,k)
+      flux_sw = flux_sw_vis_dir(i,j,k)+flux_sw_vis_dif(i,j,k) &
+               +flux_sw_nir_dir(i,j,k)+flux_sw_nir_dif(i,j,k)
       hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
-      hf  = flux_t_new(i,j,k) + flux_q_new(i,j,k)*latent - flux_lw_new(i,j,k)   &
+      hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
             - (1-Ice%pen(i,j,k))*flux_sw - hfd*(Ice%t_surf(i,j,k)-Tfreeze)
       call ice5lay_temp(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),    &
                         Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3),   &
@@ -795,10 +749,10 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
                         Ice%tmelt(i,j,k), Ice%bmelt(i,j,k))
       dts                = ts_new-(Ice%t_surf(i,j,k)-Tfreeze)
       Ice%t_surf(i,j,k)  = Ice%t_surf(i,j,k)  + dts
-      flux_t_new(i,j,k)  = flux_t_new(i,j,k)  + dts * dhdt(i,j,k)
-      flux_q_new(i,j,k)  = flux_q_new(i,j,k)  + dts * dedt(i,j,k)
-      flux_lh_new(i,j,k) = flux_lh_new(i,j,k) + dts * dedt(i,j,k) * latent
-      flux_lw_new(i,j,k) = flux_lw_new(i,j,k) - dts * drdt(i,j,k)
+      flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
+      flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
+      flux_lh(i,j,k) = flux_lh(i,j,k) + dts * dedt(i,j,k) * latent
+      flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
     endif
   enddo ; enddo ; enddo
 
@@ -817,9 +771,9 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
                                Ice%albedo_nir_dif(:,:,1), latitude )
   endif
 
-  call sum_top_quantities ( Ice, Atmos_boundary%fluxes, flux_u_new,  flux_v_new, flux_t_new, &
-    flux_q_new, flux_sw_nir_dir_new, flux_sw_nir_dif_new, flux_sw_vis_dir_new,               &
-    flux_sw_vis_dif_new, flux_lw_new, lprec_new,   fprec_new,  flux_lh_new )
+  call sum_top_quantities ( Ice, Atmos_boundary%fluxes, flux_u,  flux_v, flux_t, &
+    flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir,               &
+    flux_sw_vis_dif, flux_lw, lprec,   fprec,  flux_lh )
 
   Ice%Time = Ice%Time + Ice%Time_step_fast ! advance time
 
@@ -853,7 +807,10 @@ subroutine update_ice_model_fast_old (Ice, Atmos_boundary ) !, Atmos_boundary_fl
 
   if (id_coszen>0) sent = send_data(id_coszen, Ice%coszen(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
-end subroutine update_ice_model_fast_old
+  call mpp_clock_end(iceClock3)
+  call mpp_clock_end(iceClock)
+
+end subroutine update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_slow - do ice dynamics, transport, and mass changes         !
