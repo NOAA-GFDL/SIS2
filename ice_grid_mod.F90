@@ -28,7 +28,7 @@ module ice_grid_mod
 
   public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg
   public :: t_on_uv, t_to_uv, uv_to_t
-  public :: ice_line, vel_t_to_uv, cut_check
+  public :: ice_line, cut_check
 
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: xb1d, yb1d
@@ -307,29 +307,6 @@ subroutine t_to_uv(t, uv, G)
   enddo ; enddo
 
 end subroutine t_to_uv
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! vel_t_to_uv - average vel component on t-points to v-points and apply mask   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine vel_t_to_uv(tx, ty, uvx, uvy, G)
-  real,    intent(in   ), dimension(isd:,jsd:) :: tx, ty
-  real,    intent(  out), dimension(isc:,jsc:) :: uvx, uvy
-  type(sea_ice_grid_type), intent(in) :: G
-
-  integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do j=jsc,jec ; do i=isc,iec
-    if( G%mask2dBu(i,j) > 0.5 ) then
-       uvx(i,j) = 0.25*( tx(i+1, j+1) + tx(i+1, j) + tx(i,j+1) + tx(i,j) )
-       uvy(i,j) = 0.25*( ty(i+1, j+1) + ty(i+1, j) + ty(i,j+1) + ty(i,j) )
-    else
-       uvx(i,j) = 0.0
-       uvy(i,j) = 0.0
-    endif
-  enddo ; enddo
-
-end subroutine vel_t_to_uv
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
