@@ -30,6 +30,10 @@
 module ice_model_mod
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
+use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
+use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+
   use mpp_mod,          only: mpp_clock_begin, mpp_clock_end
   use mpp_domains_mod,  only: mpp_update_domains, BGRID_NE, CGRID_NE
   use fms_mod,          only: error_mesg
@@ -74,7 +78,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 
   use ice_grid_mod,     only: uv_to_t, t_to_uv, cut_check, tripolar_grid
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: ice_avg, all_avg, ice_line
+  use ice_grid_mod,     only: ice_avg, all_avg, get_avg, ice_line
   use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_spec_mod,     only: get_sea_surface
@@ -146,6 +150,10 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
   end type
 
   logical :: first_time = .true.               ! first time ice_bottom_to_ice_top
+
+interface post_avg
+  module procedure post_avg_all, post_avg_G
+end interface post_avg
 
 contains
 
@@ -248,19 +256,26 @@ subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flu
   enddo  !} n
 
   if (id_lwdn > 0) then
-    tmp(:,:) = all_avg(flux_lw(:,:,:) + STEFAN*Ice%t_surf(:,:,:)**4, &
-                       Ice%part_size(isc:iec,jsc:jec,:))
+    call get_avg(flux_lw(:,:,:) + STEFAN*Ice%t_surf(:,:,:)**4, &
+                       Ice%part_size(isc:iec,jsc:jec,:), tmp(:,:))
+!##    tmp(:,:) = all_avg(flux_lw(:,:,:) + STEFAN*Ice%t_surf(:,:,:)**4, &
+!##                       Ice%part_size(isc:iec,jsc:jec,:))
     do j=jsc,jec ; do i=isc,iec
       if (Ice%mask(i,j)) Ice%lwdn(i,j) = Ice%lwdn(i,j) + tmp(i,j)
     enddo ; enddo
   endif
 
   if (id_swdn > 0) then
-    tmp(:,:) = all_avg(flux_sw_vis_dir(:,:,:)/(1-Ice%albedo_vis_dir(:,:,:)) + &
+    call get_avg(flux_sw_vis_dir(:,:,:)/(1-Ice%albedo_vis_dir(:,:,:)) + &
                        flux_sw_vis_dif(:,:,:)/(1-Ice%albedo_vis_dif(:,:,:)) + &
                        flux_sw_nir_dir(:,:,:)/(1-Ice%albedo_nir_dir(:,:,:)) + &
                        flux_sw_nir_dif(:,:,:)/(1-Ice%albedo_nir_dif(:,:,:)), &
-         Ice%part_size(isc:iec,jsc:jec,:) )
+         Ice%part_size(isc:iec,jsc:jec,:), tmp(:,:) )
+!##    tmp(:,:) = all_avg(flux_sw_vis_dir(:,:,:)/(1-Ice%albedo_vis_dir(:,:,:)) + &
+!##                       flux_sw_vis_dif(:,:,:)/(1-Ice%albedo_vis_dif(:,:,:)) + &
+!##                       flux_sw_nir_dir(:,:,:)/(1-Ice%albedo_nir_dir(:,:,:)) + &
+!##                       flux_sw_nir_dif(:,:,:)/(1-Ice%albedo_nir_dif(:,:,:)), &
+!##       Ice%part_size(isc:iec,jsc:jec,:) )
     do j=jsc,jec ; do i=isc,iec
       if (Ice%mask(i,j)) Ice%swdn(i,j) = Ice%swdn(i,j) + tmp(i,j)
     enddo ; enddo
@@ -299,16 +314,16 @@ subroutine avg_top_quantities ( Ice )
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   sign = 1.0 ; if (atmos_winds) sign = -1.0
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
-    if( Ice%G%mask2dBu(i,j) > 0.5 ) then
-       Ice%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
-             Ice%flux_u_top(i+1,j+1,k) + Ice%flux_u_top(i+1,j,k) + &
-             Ice%flux_u_top(i,j+1,k) + Ice%flux_u_top(i,j,k) )
-       Ice%flux_v_top_bgrid(i,j,k) = sign*0.25*( &
-             Ice%flux_v_top(i+1,j+1,k) + Ice%flux_v_top(i+1,j,k) + &
-             Ice%flux_v_top(i,j+1,k) + Ice%flux_v_top(i,j,k) )
+    if ( Ice%G%mask2dBu(i,j) > 0.5 ) then
+      Ice%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
+            Ice%flux_u_top(i+1,j+1,k) + Ice%flux_u_top(i+1,j,k) + &
+            Ice%flux_u_top(i,j+1,k) + Ice%flux_u_top(i,j,k) )
+      Ice%flux_v_top_bgrid(i,j,k) = sign*0.25*( &
+            Ice%flux_v_top(i+1,j+1,k) + Ice%flux_v_top(i+1,j,k) + &
+            Ice%flux_v_top(i,j+1,k) + Ice%flux_v_top(i,j,k) )
     else
-       Ice%flux_u_top_bgrid(i,j,k) = 0.0
-       Ice%flux_v_top_bgrid(i,j,k) = 0.0
+      Ice%flux_u_top_bgrid(i,j,k) = 0.0
+      Ice%flux_v_top_bgrid(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
 
@@ -337,8 +352,10 @@ subroutine avg_top_quantities ( Ice )
   !
   ! Flux diagnostics
   !
-  if (id_sh>0) sent = send_data(id_sh, all_avg(Ice%flux_t_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)),     &
-       Ice%Time, mask=Ice%mask)
+  if (id_sh>0) call post_avg(id_sh, Ice%flux_t_top, Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
+
+!##  if (id_sh>0) sent = send_data(id_sh, all_avg(Ice%flux_t_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)),     &
+!##       Ice%Time, mask=Ice%mask)
   if (id_lh>0) sent = send_data(id_lh, all_avg(Ice%flux_lh_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)),    &
        Ice%Time, mask=Ice%mask)
   if (id_evap>0) sent = send_data(id_evap, all_avg(Ice%flux_q_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
@@ -923,7 +940,9 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
+  call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
   call avg_top_quantities(Ice) ! average fluxes from update_ice_model_fast
+  call disable_SIS_averaging(Ice%diag)
 
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
     part_save(i,j,k)    = Ice%part_size(i,j,k)
@@ -978,12 +997,14 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   !
   ! Dynamics diagnostics
   !
-  if (id_fax>0) &
-       sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
-                                        Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
-  if (id_fay>0) &
-       sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
-                                        Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
+!#  if (id_fax>0) &
+!#       sent = send_data(id_fax, all_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
+!#                                        Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
+!#  if (id_fay>0) &
+!#       sent = send_data(id_fay, all_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
+!#                                        Ice%part_size_uv(isc:iec,jsc:jec,:)), Ice%Time)
+  if (id_fax>0) call post_avg(id_fax, Ice%flux_u_top_bgrid, Ice%part_size_uv, Ice%diag)
+  if (id_fay>0) call post_avg(id_fay, Ice%flux_v_top_bgrid, Ice%part_size_uv, Ice%diag)
   call disable_SIS_averaging(Ice%diag)
 
 
@@ -999,10 +1020,10 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   !
   call mpp_clock_begin(iceClock5)
   if (id_frazil>0) sent = send_data(id_frazil, Ice%frazil(isc:iec,jsc:jec)/dt_slow,  Ice%Time, mask=Ice%mask)
-  snow_to_ice = 0
+  snow_to_ice(:,:,:) = 0
   bsnk        = 0
 
-  hi_change  = all_avg(Ice%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))
+  call get_avg(Ice%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,2:), hi_change(:,:))
   h2o_change = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
 
   ! get observed ice thickness for ice restoring, if calculating qflux
@@ -1238,12 +1259,17 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
 
   call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
   if (id_bsnk>0)  sent = send_data(id_bsnk, bsnk(isc:iec,jsc:jec)*864e2*365/dt_slow, Ice%Time, mask=Ice%mask)
-  if (id_tmelt>0) sent = send_data(id_tmelt, ice_avg(Ice%tmelt(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow,   &
-                         Ice%Time, mask=Ice%mask)
-  if (id_bmelt>0) sent = send_data(id_bmelt, ice_avg(Ice%bmelt(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow,   &
-                         Ice%Time, mask=Ice%mask)
-  if (id_sn2ic>0) sent = send_data(id_sn2ic, all_avg(snow_to_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow, &
-                         Ice%Time, mask=Ice%mask)
+!#  if (id_tmelt>0) sent = send_data(id_tmelt, ice_avg(Ice%tmelt(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow,   &
+!#                         Ice%Time, mask=Ice%mask)
+!#  if (id_bmelt>0) sent = send_data(id_bmelt, ice_avg(Ice%bmelt(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow,   &
+!#                         Ice%Time, mask=Ice%mask)
+!#  if (id_sn2ic>0) sent = send_data(id_sn2ic, all_avg(snow_to_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))/dt_slow, &
+!#                         Ice%Time, mask=Ice%mask)
+  if (id_tmelt>0) call post_avg(id_tmelt, Ice%tmelt, Ice%part_size(isc:iec,jsc:jec,2:), Ice%diag, &
+                                scale=1.0/dt_slow, mask=Ice%mask, wtd=.true.)
+  if (id_bmelt>0) call post_avg(id_bmelt, Ice%bmelt, Ice%part_size(isc:iec,jsc:jec,2:), Ice%diag, &
+                                scale=1.0/dt_slow, mask=Ice%mask, wtd=.true.)
+  if (id_sn2ic>0) call post_avg(id_sn2ic, snow_to_ice, Ice%part_size(isc:iec,jsc:jec,2:), Ice%diag, scale=1.0/dt_slow, mask=Ice%mask)
   if (id_qflim>0) sent = send_data(id_qflim, Ice%qflx_lim_ice(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   if (id_qfres>0) sent = send_data(id_qfres, Ice%qflx_res_ice(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   !
@@ -1407,6 +1433,85 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
 end subroutine update_ice_model_slow
 
 ! =====================================================================
+
+subroutine post_avg_all(id, val, part, diag, mask, scale, offset, wtd)
+  integer, intent(in) :: id
+  real, dimension(:,:,:), intent(in) :: val, part
+  type(SIS_diag_ctrl),  intent(in) :: diag
+  logical, dimension(:,:), optional, intent(in) :: mask
+  real,                    optional, intent(in) :: scale, offset
+  logical,                 optional, intent(in) :: wtd
+  ! This subroutine determines the average of a quantity across thickness
+  ! categories and does a send data on it.
+
+  real :: avg(size(val,1),size(val,2)), wts(size(val,1),size(val,2))
+  real :: scl, off
+  logical :: do_wt
+  integer :: i, j, k, ni, nj, nk
+
+  ni = size(val,1) ; nj = size(val,2) ; nk = size(val,3)
+  if (size(part,1) /= ni) call SIS_error(FATAL, &
+    "Mismatched i-sizes in post_avg.")
+  if (size(part,2) /= nj) call SIS_error(FATAL, &
+    "Mismatched j-sizes in post_avg.")
+  if (size(part,3) /= nk) call SIS_error(FATAL, &
+    "Mismatched k-sizes in post_avg.")
+
+  scl = 1.0 ; if (present(scale)) scl = scale
+  off = 0.0 ; if (present(offset)) off = offset
+  do_wt = .false. ; if (present(wtd)) do_wt = wtd
+
+  if (do_wt) then
+    avg(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k) + off)
+      wts(i,j) = wts(i,j) + part(i,j,k)
+    enddo ; enddo ; enddo
+    do j=1,nj ; do i=1,ni
+      if (wts(i,j) > 0.) then
+        avg(i,j) = avg(i,j) / wts(i,j)
+      else
+        avg(i,j) = 0.0
+      endif
+    enddo ; enddo
+  else
+    avg(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k) + off)
+    enddo ; enddo ; enddo
+  endif
+
+  call post_SIS_data(id, avg, diag, mask=mask)
+
+end subroutine post_avg_all
+
+subroutine post_avg_G(id, G, val, part, diag, mask, scale, offset)
+  integer, intent(in) :: id
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:G%CatIce), intent(in) :: val, part
+  type(SIS_diag_ctrl),  intent(in) :: diag
+  logical, dimension(:,:), optional, intent(in) :: mask
+  real,                    optional, intent(in) :: scale, offset
+  ! This subroutine determines the average of a quantity across thickness
+  ! categories and does a send data on it.
+
+  real :: avg(G%isd:G%ied,G%jsd:G%jed)
+  real :: scl, off
+  integer :: i, j, k, isc, iec, jsc, jec, ncat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+
+  scl = 1.0 ; if (present(scale)) scl = scale
+  off = 0.0 ; if (present(offset)) off = offset
+
+  avg(:,:) = 0.0
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k) + off)
+  enddo ; enddo ; enddo
+
+  call post_SIS_data(id, avg, diag, mask=mask)
+
+end subroutine post_avg_G
 
 function is_NaN(x)
   real, intent(in) :: x
