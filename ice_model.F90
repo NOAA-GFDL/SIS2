@@ -91,8 +91,8 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
   implicit none ; private
 
   public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-  public :: ice_model_init, ice_model_end, ice_bottom_to_ice_top, update_ice_model_fast, ice_stock_pe, cell_area
-  public :: update_ice_model_slow, update_ice_model_slow_up, update_ice_model_slow_dn ! for new coupler
+  public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe, cell_area
+  public :: update_ice_model_slow_up, update_ice_model_slow_dn
   public :: ice_model_restart  ! for intermediate restart
   public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum, &
             lnd_ice_bnd_type_chksum, ice_data_type_chksum
@@ -151,23 +151,6 @@ contains
 
 !#######################################################################
 !
-! Coupler interface to provide ocean surface data to atmosphere.
-!
-subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
-  type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
-  type (ice_data_type),          intent(inout) :: Ice
-
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock1)
-  call ice_bottom_to_ice_top(Ice, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
-                             Ocean_boundary%frazil, Ocean_boundary, Ocean_boundary%s, &
-                             Ocean_boundary%sea_level )
-  call mpp_clock_end(iceClock1)
-  call mpp_clock_end(iceClock)
-
-end subroutine update_ice_model_slow_up
-
-!
 ! Coupler interface to do slow ice processes:  dynamics, transport, mass
 !
 subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
@@ -177,7 +160,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock2)
-  call update_ice_model_slow (Ice, Land_boundary%runoff, Land_boundary%calving, &
+  call update_ice_model_slow(Ice, Ice%G, Land_boundary%runoff, Land_boundary%calving, &
                Land_boundary%runoff_hflx, Land_boundary%calving_hflx, Atmos_boundary%p )
   call mpp_clock_end(iceClock2)
   call mpp_clock_end(iceClock)
@@ -223,9 +206,10 @@ end subroutine zero_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flux_t,  flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
-       flux_lw, lprec, fprec, flux_lh )
-  type (ice_data_type),            intent(inout)  :: Ice
-  type(coupler_3d_bc_type),        intent(inout)  :: Atmos_boundary_fluxes
+       flux_lw, lprec, fprec, flux_lh, G)
+  type (ice_data_type),             intent(inout) :: Ice
+  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
+  type(sea_ice_grid_type),          intent(inout) :: G
   real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_u,  flux_v, flux_t, flux_q
   real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_lw, lprec, fprec, flux_lh
   real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir
@@ -388,8 +372,9 @@ subroutine avg_top_quantities ( Ice )
 
 end subroutine avg_top_quantities
 
-subroutine ice_top_to_ice_bottom (Ice, part_size, part_size_uv)
+subroutine ice_top_to_ice_bottom (Ice, part_size, part_size_uv, G)
   type (ice_data_type), intent(inout) :: Ice
+  type(sea_ice_grid_type), intent(inout) :: G
   real, dimension (:,:,:), intent(in) :: part_size, part_size_uv
   integer                             :: m, n
 
@@ -417,12 +402,31 @@ subroutine ice_top_to_ice_bottom (Ice, part_size, part_size_uv)
 
 end subroutine ice_top_to_ice_bottom
 
+!
+! Coupler interface to provide ocean surface data to atmosphere.
+!
+subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
+  type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
+  type (ice_data_type),          intent(inout) :: Ice
+
+  call mpp_clock_begin(iceClock)
+  call mpp_clock_begin(iceClock1)
+  call ice_bottom_to_ice_top(Ice, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
+                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, &
+                             Ocean_boundary%s, Ocean_boundary%sea_level )
+  call mpp_clock_end(iceClock1)
+  call mpp_clock_end(iceClock)
+
+end subroutine update_ice_model_slow_up
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_bottom_to_ice_top - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_bottom_to_ice_top (Ice, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
-                                  frazil_ice_bot, Ocean_ice_boundary, s_surf_ice_bot, sea_lev_ice_bot )
+                                  frazil_ice_bot, Ocean_ice_boundary, G, &
+                                  s_surf_ice_bot, sea_lev_ice_bot )
   type (ice_data_type),                    intent(inout) :: Ice
+  type(sea_ice_grid_type),                 intent(inout) :: G
   real, dimension(isc:iec,jsc:jec),           intent(in) :: t_surf_ice_bot, u_surf_ice_bot
   real, dimension(isc:iec,jsc:jec),           intent(in) :: v_surf_ice_bot, frazil_ice_bot
   type(ocean_ice_boundary_type),           intent(inout) :: Ocean_ice_boundary
@@ -623,6 +627,22 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
 
+  call mpp_clock_begin(iceClock)
+  call mpp_clock_begin(iceClock3)
+
+  call do_update_ice_model_fast( Atmos_boundary, Ice, Ice%G )
+
+  call mpp_clock_end(iceClock3)
+  call mpp_clock_end(iceClock)
+
+end subroutine update_ice_model_fast
+
+subroutine do_update_ice_model_fast( Atmos_boundary, Ice, G )
+
+  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+  type(sea_ice_grid_type),       intent(inout) :: G
+  
   real, dimension(isc:iec,jsc:jec,km) :: flux_t, flux_q, flux_lh, flux_lw
   real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dir
   real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dif
@@ -642,9 +662,6 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   real, dimension(isc:iec,jsc:jec,km) :: albedo_vis_dir,albedo_vis_dif,albedo_nir_dir,albedo_nir_dif
   real, dimension(isc:iec,jsc:jec,km) :: sw_abs_sfc,sw_abs_snow,sw_abs_ice1,sw_abs_ice2,sw_abs_ice3,sw_abs_ice4,sw_abs_ocn,sw_abs_int,pen,trn
-
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock3)
 
   if (id_alb>0) sent = send_data(id_alb, all_avg(Ice%albedo,Ice%part_size(isc:iec,jsc:jec,:)), &
        Ice%Time, mask=Ice%mask)
@@ -726,10 +743,10 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
         latent             = hlv+hlf
       elseif (Ice%h_snow(i,j,k)>0.0) then
         flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*Ice%t_snow(i,j,k))*flux_q(i,j,k)
-        latent             = hlv+(hlf-CI*Ice%t_snow(i,j,k))
+        latent             = hlv + (hlf-CI*Ice%t_snow(i,j,k))
       else
         flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/Ice%t_ice(i,j,k,1))
-        latent             = hlv+hlf*(1-TFI/Ice%t_ice(i,j,k,1))
+        latent             = hlv + hlf*(1-TFI/Ice%t_ice(i,j,k,1))
       endif
       !### ADD PARENTHESES.
       flux_sw = flux_sw_vis_dir(i,j,k)+flux_sw_vis_dif(i,j,k) &
@@ -771,9 +788,9 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
                                Ice%albedo_nir_dif(:,:,1), latitude )
   endif
 
-  call sum_top_quantities ( Ice, Atmos_boundary%fluxes, flux_u,  flux_v, flux_t, &
-    flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir,               &
-    flux_sw_vis_dif, flux_lw, lprec,   fprec,  flux_lh )
+  call sum_top_quantities ( Ice, Atmos_boundary%fluxes, flux_u, flux_v, flux_t, &
+    flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
+    flux_lw, lprec, fprec, flux_lh, G )
 
   Ice%Time = Ice%Time + Ice%Time_step_fast ! advance time
 
@@ -807,18 +824,16 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   if (id_coszen>0) sent = send_data(id_coszen, Ice%coszen(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
-  call mpp_clock_end(iceClock3)
-  call mpp_clock_end(iceClock)
-
-end subroutine update_ice_model_fast
+end subroutine do_update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_slow - do ice dynamics, transport, and mass changes         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_slow (Ice, runoff, calving, &
+subroutine update_ice_model_slow (Ice, G, runoff, calving, &
                                        runoff_hflx, calving_hflx, p_surf)
 
-    type (ice_data_type),             intent(inout)        :: Ice
+  type (ice_data_type),               intent(inout) :: Ice
+  type(sea_ice_grid_type),            intent(inout) :: G
     real, dimension(isc:iec,jsc:jec), intent(in), optional :: runoff, calving
     real, dimension(isc:iec,jsc:jec), intent(in), optional :: runoff_hflx, calving_hflx
     real, dimension(:,:,:),           intent(in), optional :: p_surf ! obsolete
@@ -1335,7 +1350,7 @@ subroutine update_ice_model_slow (Ice, runoff, calving, &
     sent = send_data(id_e2m,  x, Ice%Time, mask=Ice%mask)
   endif
 
-  call ice_top_to_ice_bottom(Ice, part_save, part_save_uv)
+  call ice_top_to_ice_bottom(Ice, part_save, part_save_uv, G)
   !
   ! conservation checks:  bottom fluxes and final
   !
