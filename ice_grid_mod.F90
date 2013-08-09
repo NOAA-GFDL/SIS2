@@ -13,7 +13,7 @@ module ice_grid_mod
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
   use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
   use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
-  use MOM_error_handler, only : SIS2_error=>MOM_error, FATAL, WARNING, SIS2_mesg=>MOM_mesg
+  use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
   use MOM_file_parser, only : get_param, log_version, param_file_type
   use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
   use fms_mod,         only: field_exist, field_size, read_data
@@ -26,7 +26,7 @@ module ice_grid_mod
   include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-  public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg
+  public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg, get_avg
   public :: t_on_uv, t_to_uv, uv_to_t
   public :: ice_line, cut_check
 
@@ -73,6 +73,8 @@ type, public :: sea_ice_grid_type
     dyT, IdyT, & ! dyT is delta y at h points, in m, and IdyT is 1/dyT in m-1.
     areaT, &     ! areaT is the area of an h-cell, in m2.
     IareaT       ! IareaT = 1/areaT, in m-2.
+  logical ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+    Lmask2dT     ! .true. for ocean points, .false. for land on the h-grid.
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     mask2dCu, &  ! 0 for boundary points and 1 for ocean points on the u grid.  Nondim.
@@ -84,6 +86,8 @@ type, public :: sea_ice_grid_type
     dy_Cu_obc, & ! The unblocked lengths of the u-faces of the h-cell in m for OBC.
     IareaCu, &   ! The masked inverse areas of u-grid cells in m2.
     areaCu       ! The areas of the u-grid cells in m2.
+  logical ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
+    Lmask2dCu    ! .true. for ocean points, .false. for land on the v-grid.
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     mask2dCv, &  ! 0 for boundary points and 1 for ocean points on the v grid.  Nondim.
@@ -95,6 +99,8 @@ type, public :: sea_ice_grid_type
     dx_Cv_obc, & ! The unblocked lengths of the v-faces of the h-cell in m for OBC.
     IareaCv, &   ! The masked inverse areas of v-grid cells in m2.
     areaCv       ! The areas of the v-grid cells in m2.
+  logical ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
+    Lmask2dCv    ! .true. for ocean points, .false. for land on the v-grid.
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     mask2dBu, &  ! 0 for boundary points and 1 for ocean points on the q grid.  Nondim.
@@ -104,6 +110,8 @@ type, public :: sea_ice_grid_type
     dyBu, IdyBu, & ! dyBu is delta y at q points, in m, and IdyBu is 1/dyBu in m-1.
     areaBu, &    ! areaBu is the area of a q-cell, in m2
     IareaBu      ! IareaBu = 1/areaBu in m-2.
+  logical ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
+    Lmask2dBu    ! .true. for ocean points, .false. for land on the q-grid.
 
   real, pointer, dimension(:) :: &
     gridLatT => NULL(), gridLatB => NULL() ! The latitude of T or B points for
@@ -164,6 +172,7 @@ end type SIS2_domain_type
   integer            :: comm_pe                      ! pe to be communicated with
 
 contains
+
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! ice_avg - take area weighted average over ice partitions                     !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -232,6 +241,32 @@ contains
     end if
     return
   end function all_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! get_avg - take area weighted average over all partitions                     !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine get_avg(x, cn, avg)
+  real, dimension(:,:,:), intent(in)  :: x
+  real, dimension(:,:,:), intent(in)  :: cn
+  real, dimension(:,:),   intent(out) :: avg
+
+  integer :: i, j, k, ni, nj, nk
+
+  ni = size(x,1) ; nj = size(x,2); nk = size(x,3)
+  if ((size(cn,1) /= ni) .or. (size(cn,2) /= nj) .or. (size(cn,3) /= nk)) &
+    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and cn in get_avg.")
+  if ((size(avg,1) /= ni) .or. (size(avg,2) /= nj)) &
+    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and avg in get_avg.")
+  if (size(cn,3) /= nk) &
+    call SIS_error(FATAL, "Mismatched category sizes of x and cn in get_avg.")
+
+  avg(:,:) = 0.0
+   do k=1,nk ; do j=1,nj ; do i=1,ni
+     avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
+   enddo ; enddo ; enddo
+
+end subroutine get_avg
+
 
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   ! g_sum - returns the global sum of a real array                               !
@@ -350,12 +385,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
-            field_exist(grid_file, 'gridfiles')) ) call SIS2_error(FATAL, &
+            field_exist(grid_file, 'gridfiles')) ) call SIS_error(FATAL, &
     'Error from ice_grid_mod(set_ice_grid): '//&
     'ocn_mosaic_file or gridfiles does not exist in file ' //trim(grid_file)//&
     '\nSIS2 only works with a mosaic format grid file.')
 
-  call SIS2_mesg("   Note from ice_grid_mod(set_ice_grid): "//&
+  call SIS_mesg("   Note from ice_grid_mod(set_ice_grid): "//&
                  "read grid from mosaic version grid", 5)
 
   if( field_exist(grid_file, "ocn_mosaic_file") ) then ! coupler mosaic
@@ -365,7 +400,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     ocean_mosaic = trim(grid_file)
   end if
   ntiles = get_mosaic_ntiles(ocean_mosaic)
-  if (ntiles /= 1) call SIS2_error(FATAL, "Error from ice_grid_mod(set_ice_grid): "//&
+  if (ntiles /= 1) call SIS_error(FATAL, "Error from ice_grid_mod(set_ice_grid): "//&
       "ntiles should be 1 for ocean mosaic.")
   call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
   ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
@@ -377,28 +412,28 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   if (field_exist(ocean_mosaic, "contacts") ) then
     ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-    if (ncontacts < 1) call SIS2_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+    if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
          'number of contacts should be larger than 0 when field contacts exist in file '//&
          trim(ocean_mosaic) )
-    if (ncontacts > 2) call SIS2_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+    if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
          'number of contacts should be no larger than 2')
     call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
          istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
          istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
     do m = 1, ncontacts
       if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
-        if (istart2(m) /= iend2(m) ) call SIS2_error(FATAL,  &
+        if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
              "==>Error from ice_grid_mod(set_ice_grid): only cyclic condition is allowed for x-boundary")
         x_cyclic = .true.
       elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
         if ( jstart1(m) == jstart2(m) ) then ! folded north
            tripolar_grid=.true.
         else 
-           call SIS2_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
+           call SIS_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
              "only folded-north condition is allowed for y-boundary")
         endif
       else 
-        call SIS2_error(FATAL,  &
+        call SIS_error(FATAL,  &
              "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
       endif
     enddo
@@ -406,22 +441,22 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   !--- get grid size
   call field_size(ocean_hgrid, 'x', dims)
-  if(mod(dims(1),2) .NE. 1) call SIS2_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+  if(mod(dims(1),2) .NE. 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
       'x-size of x in file '//trim(ocean_hgrid)//' should be 2*ni+1')
-  if(mod(dims(2),2) .NE. 1) call SIS2_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+  if(mod(dims(2),2) .NE. 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
       'y-size of x in file '//trim(ocean_hgrid)//' should be 2*nj+1')
   im = dims(1)/2 
   jm = dims(2)/2 
 
   if (x_cyclic) then
-    call SIS2_mesg("==>Note from ice_grid_mod: x_boundary_type is cyclic")
+    call SIS_mesg("==>Note from ice_grid_mod: x_boundary_type is cyclic")
   else
-    call SIS2_mesg("==>Note from ice_grid_mod: x_boundary_type is solid_walls")
+    call SIS_mesg("==>Note from ice_grid_mod: x_boundary_type is solid_walls")
   endif
   if (tripolar_grid) then
-    call SIS2_mesg("==>Note from ice_grid_mod: y_boundary_type is fold_north_edge")
+    call SIS_mesg("==>Note from ice_grid_mod: y_boundary_type is fold_north_edge")
   else
-    call SIS2_mesg("==>Note from ice_grid_mod: y_boundary_type is solid_walls")
+    call SIS_mesg("==>Note from ice_grid_mod: y_boundary_type is solid_walls")
   endif
 
   ! default is merdional domain decomp. to load balance xgrid
@@ -438,7 +473,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
             (  (.NOT.ndivx_is_even) .AND. im_is_even .AND. layout(1) .LT. im/2 )
 
     if( .not. symmetrize) then
-      call SIS2_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
+      call SIS_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
     endif
     x_flags=CYCLIC_GLOBAL_DOMAIN ; y_flags=FOLD_NORTH_EDGE
   else if(x_cyclic) then
@@ -499,23 +534,52 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
   !--- read data from grid_spec.nc
   allocate(depth(isc:iec,jsc:jec))
   call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
-  do j=jsc,jec ; do i=isc,iec
-    if (depth(i,j) > 0) G%mask2dT(i,j) = 1.0
-  enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; if (depth(i,j) > 0) then
+    G%mask2dT(i,j) = 1.0
+  endif ; enddo ; enddo
   deallocate(depth)
   call mpp_update_domains(G%mask2dT, Domain)
 
   do J=jsc-1,jec ; do I=isc-1,iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
         G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
-       G%mask2dBu(I,J) = 1.0
+       G%mask2dBu(I,J) = 1.0 ; G%Lmask2dBu(I,J) = .true.
     else
-       G%mask2dBu(I,J) = 0.0
+       G%mask2dBu(I,J) = 0.0 ; G%Lmask2dBu(I,J) = .false.
     endif
   enddo ; enddo
 
+  do j=jsc,jec ; do I=isc-1,iec
+    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
+       G%mask2dCu(I,j) = 1.0 ; G%Lmask2dCu(I,j) = .true.
+    else
+       G%mask2dCu(I,j) = 0.0 ; G%Lmask2dCu(I,j) = .false.
+    endif
+  enddo ; enddo
+
+  do J=jsc-1,jec ; do i=isc,iec
+    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
+       G%mask2dCv(i,J) = 1.0 ; G%Lmask2dCv(i,J) = .true.
+    else
+       G%mask2dCv(i,J) = 0.0 ; G%Lmask2dCv(i,J) = .false.
+    endif
+  enddo ; enddo
+
+  do j=jsd,jed ; do i=isd,ied
+    G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5) 
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do i=isd,ied
+    G%Lmask2dCv(i,J) = (G%mask2dCv(i,J) > 0.5) 
+  enddo ; enddo
+  do j=jsd,jed ; do I=G%IsdB,G%IedB
+    G%Lmask2dCu(I,j) = (G%mask2dCu(I,j) > 0.5) 
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB
+    G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5) 
+  enddo ; enddo
+
     if(tripolar_grid) then
-       if (jsc==1.and.any(G%mask2dT(:,jsc)>0.5)) call SIS2_error(FATAL, &
+       if (jsc==1.and.any(G%mask2dT(:,jsc)>0.5)) call SIS_error(FATAL, &
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
@@ -565,7 +629,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
   call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
   call mpp_get_compute_domain(domain2, is, ie, js, je)
   if(is .NE. 2*isc-1 .OR. ie .NE. 2*iec+1 .OR. js .NE. 2*jsc-1 .OR. je .NE. 2*jec+1) then
-    call SIS2_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
+    call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
   endif
   allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
   call read_data(ocean_hgrid, 'x', tmpx, domain2)
@@ -711,10 +775,10 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
        do p = 1, npes
           if( jslist(p) == jsc .AND. islist(p) + iec == im+1 ) then
              if( jelist(p) .NE. jec ) then
-                call SIS2_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
+                call SIS_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
              endif
              if( ielist(p) + isc .NE. im+1) then
-                call SIS2_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
+                call SIS_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
              endif
              comm_pe = pelist(p)
              exit 
@@ -870,7 +934,7 @@ end subroutine ice_grid_end
 
     !    uv(isc:iec,jsc:jec) = global_uv(isc:iec,jsc:jec)
 
-    ! if (cut_error) call SIS2_error(FATAL, &
+    ! if (cut_error) call SIS_error(FATAL, &
     !             'ice_model_mod: cut check of mirror anti-symmetry failed', .true.)
   end subroutine cut_check
   !#####################################################################
@@ -913,6 +977,10 @@ subroutine allocate_metrics(G)
   ALLOC_(G%mask2dCu(IsdB:IedB,jsd:jed))   ; G%mask2dCu(:,:) = 0.0
   ALLOC_(G%mask2dCv(isd:ied,JsdB:JedB))   ; G%mask2dCv(:,:) = 0.0
   ALLOC_(G%mask2dBu(IsdB:IedB,JsdB:JedB)) ; G%mask2dBu(:,:) = 0.0
+  ALLOC_(G%Lmask2dT(isd:ied,jsd:jed))      ; G%Lmask2dT(:,:) = .false.
+  ALLOC_(G%Lmask2dCu(IsdB:IedB,jsd:jed))   ; G%Lmask2dCu(:,:) = .false.
+  ALLOC_(G%Lmask2dCv(isd:ied,JsdB:JedB))   ; G%Lmask2dCv(:,:) = .false.
+  ALLOC_(G%Lmask2dBu(IsdB:IedB,JsdB:JedB)) ; G%Lmask2dBu(:,:) = .false.
   ALLOC_(G%geoLatT(isd:ied,jsd:jed))      ; G%geoLatT(:,:) = 0.0
   ALLOC_(G%geoLatCu(IsdB:IedB,jsd:jed))   ; G%geoLatCu(:,:) = 0.0
   ALLOC_(G%geoLatCv(isd:ied,JsdB:JedB))   ; G%geoLatCv(:,:) = 0.0
