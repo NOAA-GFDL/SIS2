@@ -44,7 +44,7 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 implicit none
 private
 public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, get_thermo_coefs, ice5lay_temp,    &
-          ice5lay_resize, thm_pack, thm_unpack, ice_thm_param, e_to_melt     !&
+          ice5lay_resize, ice_thm_param, e_to_melt     !&
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
 
@@ -1126,49 +1126,6 @@ real :: tmlt, bmlt
 end subroutine ice5lay_resize
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! thm_pack - form conserved quantities for two-dimensional advection           !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine thm_pack(cn, hs, tsn, hi, t1, t2, t3, t4)
-real, dimension(:,:,:), intent(inout) :: cn, hs, tsn, hi, t1, t2, t3, t4
-
-    integer :: i, j, k
-    real    :: tmp1, tmp2, tmp3, tmp4
-
-    tmp1 = MU_TS*SI1*LI/CI
-    tmp2 = MU_TS*SI2*LI/CI
-    tmp3 = MU_TS*SI3*LI/CI
-    tmp4 = MU_TS*SI4*LI/CI
-
-    do k = 1, size(hi,3)
-       do j = 1, size(hi,2)
-          do i = 1, size(hi,1)
-             if (hi(i,j,k)>0.0) then
-                hi(i,j,k) = cn(i,j,k)*hi(i,j,k)
-                t1(i,j,k) = (t1(i,j,k)-tmp1/t1(i,j,k))*hi(i,j,k)
-                t2(i,j,k) = (t2(i,j,k)-tmp2/t2(i,j,k))*hi(i,j,k)
-                t3(i,j,k) = (t3(i,j,k)-tmp3/t3(i,j,k))*hi(i,j,k)
-                t4(i,j,k) = (t4(i,j,k)-tmp4/t4(i,j,k))*hi(i,j,k)
-                hs(i,j,k) = cn(i,j,k)*hs(i,j,k)
-                tsn(i,j,k) = tsn(i,j,k)*hs(i,j,k)
-             else 
-                cn(i,j,k) = 0.0
-                hi(i,j,k) = 0.0
-                t1(i,j,k) = 0.0
-                t2(i,j,k) = 0.0
-                t3(i,j,k) = 0.0
-                t4(i,j,k) = 0.0
-                hs(i,j,k) = 0.0
-                tsn(i,j,k) = 0.0
-             endif
-          enddo
-       enddo
-    enddo
-
-  return
-
-end subroutine thm_pack
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_thermo_coefs(pocket_coef, layer_coefs)
@@ -1198,56 +1155,5 @@ subroutine get_thermo_coefs(pocket_coef, layer_coefs)
   endif
 
 end subroutine get_thermo_coefs
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! thm_unpack - reform ice properties from advectively conserved quantities     !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine thm_unpack(cn, hs, tsn, hi, t1, t2, t3, t4)
-real, dimension(:,:,:), intent(inout) :: cn, hs, tsn, hi, t1, t2, t3, t4
-    integer :: i, j, k
-    real    :: tmp1, tmp2, tmp3, tmp4
-
-    tmp1 = 4*MU_TS*SI1*LI/CI
-    tmp2 = 4*MU_TS*SI2*LI/CI
-    tmp3 = 4*MU_TS*SI3*LI/CI
-    tmp4 = 4*MU_TS*SI4*LI/CI
-
-    do k = 1, size(hi,3)
-       do j = 1, size(hi,2)
-          do i = 1, size(hi,1)
-             if (hi(i,j,k)>0.0) then
-                t1(i,j,k) = t1(i,j,k)/hi(i,j,k)
-                t1(i,j,k) = 0.5*(t1(i,j,k)-sqrt(t1(i,j,k)*t1(i,j,k)+tmp1))
-                t2(i,j,k) = t2(i,j,k)/hi(i,j,k)
-                t2(i,j,k) = 0.5*(t2(i,j,k)-sqrt(t2(i,j,k)*t2(i,j,k)+tmp2))
-                t3(i,j,k) = t3(i,j,k)/hi(i,j,k)
-                t3(i,j,k) = 0.5*(t3(i,j,k)-sqrt(t3(i,j,k)*t3(i,j,k)+tmp3))
-                t4(i,j,k) = t4(i,j,k)/hi(i,j,k)
-                t4(i,j,k) = 0.5*(t4(i,j,k)-sqrt(t4(i,j,k)*t4(i,j,k)+tmp4))
-                hi(i,j,k) = hi(i,j,k)/cn(i,j,k)
-                if (hs(i,j,k)>0.0) then
-                  tsn(i,j,k) = tsn(i,j,k)/hs(i,j,k)
-                else
-                  tsn(i,j,k) = 0.0
-                endif
-                hs(i,j,k) = hs(i,j,k)/cn(i,j,k)
-                call unpack_check(hs(i,j,k), tsn(i,j,k), hi(i,j,k), t1(i,j,k), &
-                                     t2(i,j,k), t3(i,j,k), t4(i,j,k), cn(i,j,k))
-             else
-                cn(i,j,k) = 0.0
-                hi(i,j,k) = 0.0
-                t1(i,j,k) = 0.0
-                t2(i,j,k) = 0.0
-                t3(i,j,k) = 0.0
-                t4(i,j,k) = 0.0
-                hs(i,j,k) = 0.0
-                tsn(i,j,k) = 0.0
-             endif
-          enddo
-       enddo
-    enddo
-
-  return
-end subroutine thm_unpack
 
 end module ice_thm_mod
