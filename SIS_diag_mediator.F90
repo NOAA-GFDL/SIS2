@@ -211,7 +211,7 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
   real,              intent(in) :: field(:,:)
   type(SIS_diag_ctrl), intent(in) :: diag
   logical, optional, intent(in) :: is_static
-  real,    optional, intent(in) :: mask(:,:)
+  logical, optional, intent(in) :: mask(:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
 !                            previous call to register_diag_field.
 !  (in)      field - The 2-d array being offered for output or averaging.
@@ -264,7 +264,7 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
   if (is_stat) then
     if (present(mask)) then
       used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=mask)
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     else
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
@@ -273,7 +273,7 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
     if (present(mask)) then
       used = send_data(diag_field_id, field, diag%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, rmask=mask)
+                       weight=diag%time_int, mask=mask)
     else
       used = send_data(diag_field_id, field, diag%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
@@ -288,7 +288,7 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
   real,              intent(in) :: field(:,:,:)
   type(SIS_diag_ctrl),   intent(in) :: diag
   logical, optional, intent(in) :: is_static
-  real,    optional, intent(in) :: mask(:,:,:)
+  logical, optional, intent(in) :: mask(:,:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
 !                            previous call to register_diag_field.
 !  (in)      field - The 3-d array being offered for output or averaging.
@@ -342,7 +342,7 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
   if (is_stat) then
     if (present(mask)) then
       used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=mask)
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     else
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
@@ -351,7 +351,7 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
     if (present(mask)) then
       used = send_data(diag_field_id, field, diag%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, rmask=mask)
+                       weight=diag%time_int, mask=mask)
     else
       used = send_data(diag_field_id, field, diag%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
