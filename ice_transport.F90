@@ -30,7 +30,6 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
-!   use ice_grid_mod,     only: isc, iec, jsc, jec, isd, ied, jsd, jed
 use ice_grid_mod, only : sea_ice_grid_type
 use ice_thm_mod,  only : get_thermo_coefs
 
