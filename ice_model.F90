@@ -863,7 +863,7 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
     real, dimension(:,:,:),           intent(in), optional :: p_surf ! obsolete
 
     real, dimension(isd:ied,jsd:jed)      :: fx_wat, fy_wat
-    real, dimension(isc:iec,jsc:jec)      :: hi_change, h2o_change, bsnk, tmp2d
+    real, dimension(isc:iec,jsc:jec)      :: hi_change, h2o_change, bsnk, tmp2d, mass
     real, dimension(isc:iec,jsc:jec,2:km) :: snow_to_ice
     real, dimension(isc:iec,jsc:jec,km)   :: part_save, part_save_uv
     real, dimension(isc:iec,jsc:jec)      :: dum1, Obs_h_ice ! for qflux calculation
@@ -953,18 +953,20 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   call mpp_clock_begin(iceClock7)
   if (conservation_check) then
     ! Regroup for efficiency?
-    h2o(2) = h2o(2)+dt_slow*sum(cell_area*(Ice%runoff+Ice%calving                                  &
-            +all_avg(Ice%lprec_top+Ice%fprec_top-Ice%flux_q_top,Ice%part_size(isc:iec,jsc:jec,:))),&
+    h2o(2) = h2o(2)+dt_slow*sum(cell_area*(Ice%runoff(isc:iec,jsc:jec) &
+                                          +Ice%calving(isc:iec,jsc:jec)&
+            +all_avg(Ice%lprec_top(isc:iec,jsc:jec,:)+Ice%fprec_top(isc:iec,jsc:jec,:)&
+                    -Ice%flux_q_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))),&
              cell_area > 0 )
     heat(2) = heat(2)+dt_slow*sum(cell_area*(                              &
-              all_avg(Ice%flux_sw_vis_dir_top+Ice%flux_sw_vis_dif_top      &
-             +Ice%flux_sw_nir_dir_top+Ice%flux_sw_nir_dif_top,             &
+              all_avg(Ice%flux_sw_vis_dir_top(isc:iec,jsc:jec,:)+Ice%flux_sw_vis_dif_top(isc:iec,jsc:jec,:) &
+             +Ice%flux_sw_nir_dir_top(isc:iec,jsc:jec,:)+Ice%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
               Ice%part_size(isc:iec,jsc:jec,:))                            &
-             +all_avg(Ice%flux_lw_top, Ice%part_size(isc:iec,jsc:jec,:))   &
-             -all_avg(Ice%flux_t_top , Ice%part_size(isc:iec,jsc:jec,:))   &
-             -all_avg(Ice%flux_lh_top, Ice%part_size(isc:iec,jsc:jec,:))   &
+             +all_avg(Ice%flux_lw_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
+             -all_avg(Ice%flux_t_top(isc:iec,jsc:jec,:) , Ice%part_size(isc:iec,jsc:jec,:))   &
+             -all_avg(Ice%flux_lh_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
              -LI*(all_avg(Ice%fprec_top,Ice%part_size(isc:iec,jsc:jec,:))  &
-             +Ice%calving)), cell_area > 0 )
+             +Ice%calving(isc:iec,jsc:jec))), cell_area > 0 )
     tot_frazil = sum(cell_area*Ice%frazil)
     !Niki: Does runoff or calving bring in salt? Or is salt(2) = 0.0
   endif
@@ -1265,7 +1267,8 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   !
   ! Ice transport ... all ocean fluxes have been calculated by now
   !
-  h2o_change = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+  h2o_change(isc:iec,jsc:jec) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:) &
+                                       +DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
 
   ! Convert the velocities to C-grid points for transport.
   uc(:,:) = 0.0; vc(:,:) = 0.0
@@ -1285,16 +1288,22 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
   enddo ; enddo ; enddo
 
 
-  tmp2d(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
-  do j=jsc,jec ; do i=isc,iec
-    Ice%mi(i,j) = tmp2d(i,j) 
-  enddo ; enddo
-  if (id_mi>0) sent = send_data(id_mi, tmp2d(:,:), Ice%Time, mask = Ice%mask)
+!  tmp2d(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+!  do j=jsc,jec ; do i=isc,iec
+!    Ice%mi(i,j) = tmp2d(i,j) 
+!  enddo ; enddo
+  ! Convert thickness and concentration to mass.
+  Ice%mi(:,:) = 0.0 
+  do k=2,km ; do j=jsc,jec ; do i=isc,iec
+    Ice%mi(i,j) = Ice%mi(i,j) + (DS*Ice%h_snow(i,j,k) + DI*Ice%h_ice(i,j,k)) * Ice%part_size(i,j,k)
+  enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; mass(i,j) = Ice%mi(i,j) ; enddo ; enddo
+  if (id_mi>0) sent = send_data(id_mi, Ice%mi(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
   call disable_SIS_averaging(Ice%diag)
 
-  if (do_icebergs) call icebergs_incr_mass(Ice%icebergs, tmp2d) ! Add icebergs mass in kg/m^2
-  if (id_mib>0) sent = send_data(id_mib, tmp2d(:,:), Ice%Time, mask = Ice%mask) ! Diagnose total mass
+  if (do_icebergs) call icebergs_incr_mass(Ice%icebergs, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
+  if (id_mib>0) sent = send_data(id_mib, mass(:,:), Ice%Time, mask = Ice%mask) ! Diagnose total mass
   if (id_slp>0) sent = send_data(id_slp, Ice%p_surf(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   do j=jsc,jec ; do i=isc,iec
     if (slp2ocean) then
@@ -1302,9 +1311,9 @@ subroutine update_ice_model_slow (Ice, G, runoff, calving, &
     else
       Ice%p_surf(i,j) = 0.0
     endif
-    Ice%p_surf(i,j) = Ice%p_surf(i,j) + grav*tmp2d(i,j)
+    Ice%p_surf(i,j) = Ice%p_surf(i,j) + grav*mass(i,j)
   enddo ; enddo
-  h2o_change(:,:) = tmp2d(:,:)-h2o_change(:,:)
+  h2o_change(:,:) = mass(:,:)-h2o_change(:,:)
 
   if (spec_ice) then                  ! over-write changes with specifications
     call get_sea_surface(Ice%Time, Ice%t_surf(:,:,1), Ice%part_size(isc:iec,jsc:jec,:), Ice%h_ice (isc:iec,jsc:jec,2))
