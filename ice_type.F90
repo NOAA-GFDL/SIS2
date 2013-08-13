@@ -197,6 +197,7 @@ type ice_state_type
    real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
    real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
    real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
+  
    real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
    real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
    real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
@@ -288,20 +289,20 @@ type ice_data_type !  ice_public_type
      real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
      real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
      real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
-     real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
-     real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
-     real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
+!    real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
+!    real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
+!    real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
 
   ! These arrays will be used to set the forcing for the ocean.
   real,    pointer, dimension(:,:  ) :: flux_u              =>NULL()
@@ -559,21 +560,21 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
   allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
-  allocate(Ice%flux_u_top(isd:ied, jsd:jed, km)) ; Ice%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(Ice%flux_v_top(isd:ied, jsd:jed, km)) ; Ice%flux_v_top(:,:,:) = 0.0 !NR 
-  allocate(Ice%flux_t_top(isc:iec, jsc:jec, km)) ;  Ice%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_q_top(isc:iec, jsc:jec, km)) ;  Ice%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_sw_vis_dir_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_sw_vis_dif_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_sw_nir_dir_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_sw_nir_dif_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_lw_top(isc:iec, jsc:jec, km)) ; Ice%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(Ice%flux_lh_top(isc:iec, jsc:jec, km)) ; Ice%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(Ice%lprec_top(isc:iec, jsc:jec, km)) ;  Ice%lprec_top(:,:,:) = 0.0 !NI
-  allocate(Ice%fprec_top(isc:iec, jsc:jec, km)) ;  Ice%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top(isd:ied, jsd:jed, km)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(isd:ied, jsd:jed, km)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(IST%flux_t_top(isc:iec, jsc:jec, km)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(isc:iec, jsc:jec, km)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(isc:iec, jsc:jec, km)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(isc:iec, jsc:jec, km)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(isc:iec, jsc:jec, km)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(isc:iec, jsc:jec, km)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
 
-  allocate(Ice%flux_u_top_bgrid(isd:ied, jsd:jed, km)) ; Ice%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(Ice%flux_v_top_bgrid(isd:ied, jsd:jed, km)) ; Ice%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_u_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
   allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
   allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
@@ -790,10 +791,12 @@ subroutine ice_model_end (Ice)
 
   integer           :: unit
   character(len=22) :: restart='RESTART/ice_model.res'
+  type(ice_state_type), pointer :: IST => NULL()
 
   if (conservation_check) call ice_print_budget()
 
   call ice_model_restart()
+  IST => Ice%Ice_state
 
   !--- release memory ------------------------------------------------
   call ice_grid_end(Ice%G)
@@ -801,10 +804,10 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, Ice%sea_lev )
   deallocate(Ice%part_size, Ice%part_size_uv, Ice%u_surf, Ice%v_surf )
   deallocate(Ice%u_ocn, Ice%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
-  deallocate(Ice%rough_moist, Ice%albedo, Ice%flux_u_top, Ice%flux_v_top )
-  deallocate(Ice%flux_u_top_bgrid, Ice%flux_v_top_bgrid )
-  deallocate(Ice%flux_t_top, Ice%flux_q_top, Ice%flux_lw_top )
-  deallocate(Ice%flux_lh_top, Ice%lprec_top, Ice%fprec_top, Ice%flux_u )
+  deallocate(Ice%rough_moist, Ice%albedo, IST%flux_u_top, IST%flux_v_top )
+  deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid )
+  deallocate(IST%flux_t_top, IST%flux_q_top, IST%flux_lw_top )
+  deallocate(IST%flux_lh_top, IST%lprec_top, IST%fprec_top, Ice%flux_u )
   deallocate(Ice%flux_v, Ice%flux_t, Ice%flux_q, Ice%flux_lw )
   deallocate(Ice%flux_lh, Ice%lprec, Ice%fprec, Ice%p_surf, Ice%runoff ) 
   deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx )
@@ -824,6 +827,8 @@ subroutine ice_model_end (Ice)
 
   ! End icebergs
   if (do_icebergs) call icebergs_end(Ice%icebergs)
+  
+  deallocate(Ice%Ice_state)
 
   if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_end
 
@@ -1117,18 +1122,18 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf             )
   write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(Ice%u_ocn              )
   write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(Ice%v_ocn              )
-  write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(Ice%flux_u_top         )
-  write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(Ice%flux_v_top         )
-  write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(Ice%flux_t_top         )
-  write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(Ice%flux_q_top         )
-  write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(Ice%flux_lw_top        )
-  write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(Ice%flux_sw_vis_dir_top)
-  write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(Ice%flux_sw_vis_dif_top)
-  write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(Ice%flux_sw_nir_dir_top)
-  write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(Ice%flux_sw_nir_dif_top)
-  write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(Ice%flux_lh_top        )
-  write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(Ice%lprec_top          )
-  write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(Ice%fprec_top          )
+! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
+! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
+! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
+! write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(IST%flux_q_top         )
+! write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(IST%flux_lw_top        )
+! write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(IST%flux_sw_vis_dir_top)
+! write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(IST%flux_sw_vis_dif_top)
+! write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(IST%flux_sw_nir_dir_top)
+! write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(IST%flux_sw_nir_dif_top)
+! write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(IST%flux_lh_top        )
+! write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(IST%lprec_top          )
+! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
   write(outunit,100) 'ice_data_type%flux_u             ',mpp_chksum(Ice%flux_u             )
   write(outunit,100) 'ice_data_type%flux_v             ',mpp_chksum(Ice%flux_v             )
   write(outunit,100) 'ice_data_type%flux_t             ',mpp_chksum(Ice%flux_t             )

@@ -187,19 +187,19 @@ subroutine zero_top_quantities ( Ice, IST )
 
   Ice%avg_count = 0
 
-  Ice%flux_u_top(:,:,:) = 0.0
-  Ice%flux_v_top(:,:,:) = 0.0
+  IST%flux_u_top(:,:,:) = 0.0
+  IST%flux_v_top(:,:,:) = 0.0
 
-  Ice%flux_t_top(:,:,:)          = 0.0
-  Ice%flux_q_top(:,:,:)          = 0.0
-  Ice%flux_lw_top(:,:,:)         = 0.0
-  Ice%flux_lh_top(:,:,:)         = 0.0
-  Ice%flux_sw_nir_dir_top(:,:,:) = 0.0
-  Ice%flux_sw_nir_dif_top(:,:,:) = 0.0
-  Ice%flux_sw_vis_dir_top(:,:,:) = 0.0
-  Ice%flux_sw_vis_dif_top(:,:,:) = 0.0
-  Ice%lprec_top(:,:,:)           = 0.0
-  Ice%fprec_top(:,:,:)           = 0.0
+  IST%flux_t_top(:,:,:)          = 0.0
+  IST%flux_q_top(:,:,:)          = 0.0
+  IST%flux_lw_top(:,:,:)         = 0.0
+  IST%flux_lh_top(:,:,:)         = 0.0
+  IST%flux_sw_nir_dir_top(:,:,:) = 0.0
+  IST%flux_sw_nir_dif_top(:,:,:) = 0.0
+  IST%flux_sw_vis_dir_top(:,:,:) = 0.0
+  IST%flux_sw_vis_dif_top(:,:,:) = 0.0
+  IST%lprec_top(:,:,:)           = 0.0
+  IST%fprec_top(:,:,:)           = 0.0
   do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
     do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
       Ice%ocean_fluxes_top%bc(n)%field(m)%values(:,:,:) = 0.0
@@ -235,18 +235,18 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   if (Ice%avg_count == 0) call zero_top_quantities (Ice, Ice%Ice_state)
 
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
-    Ice%flux_u_top(i,j,k)  = Ice%flux_u_top(i,j,k)  + flux_u(i,j,k)
-    Ice%flux_v_top(i,j,k)  = Ice%flux_v_top(i,j,k)  + flux_v(i,j,k)
-    Ice%flux_t_top(i,j,k)  = Ice%flux_t_top(i,j,k)  + flux_t(i,j,k)
-    Ice%flux_q_top(i,j,k)  = Ice%flux_q_top(i,j,k)  + flux_q(i,j,k)
-    Ice%flux_sw_nir_dir_top(i,j,k) = Ice%flux_sw_nir_dir_top(i,j,k) + flux_sw_nir_dir(i,j,k)
-    Ice%flux_sw_nir_dif_top(i,j,k) = Ice%flux_sw_nir_dif_top(i,j,k) + flux_sw_nir_dif(i,j,k)
-    Ice%flux_sw_vis_dir_top(i,j,k) = Ice%flux_sw_vis_dir_top(i,j,k) + flux_sw_vis_dir(i,j,k)
-    Ice%flux_sw_vis_dif_top(i,j,k) = Ice%flux_sw_vis_dif_top(i,j,k) + flux_sw_vis_dif(i,j,k)
-    Ice%flux_lw_top(i,j,k) = Ice%flux_lw_top(i,j,k) + flux_lw(i,j,k)
-    Ice%lprec_top(i,j,k)   = Ice%lprec_top(i,j,k)   + lprec(i,j,k)
-    Ice%fprec_top(i,j,k)   = Ice%fprec_top(i,j,k)   + fprec(i,j,k)
-    Ice%flux_lh_top(i,j,k) = Ice%flux_lh_top(i,j,k) + flux_lh(i,j,k)
+    IST%flux_u_top(i,j,k)  = IST%flux_u_top(i,j,k)  + flux_u(i,j,k)
+    IST%flux_v_top(i,j,k)  = IST%flux_v_top(i,j,k)  + flux_v(i,j,k)
+    IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  + flux_t(i,j,k)
+    IST%flux_q_top(i,j,k)  = IST%flux_q_top(i,j,k)  + flux_q(i,j,k)
+    IST%flux_sw_nir_dir_top(i,j,k) = IST%flux_sw_nir_dir_top(i,j,k) + flux_sw_nir_dir(i,j,k)
+    IST%flux_sw_nir_dif_top(i,j,k) = IST%flux_sw_nir_dif_top(i,j,k) + flux_sw_nir_dif(i,j,k)
+    IST%flux_sw_vis_dir_top(i,j,k) = IST%flux_sw_vis_dir_top(i,j,k) + flux_sw_vis_dir(i,j,k)
+    IST%flux_sw_vis_dif_top(i,j,k) = IST%flux_sw_vis_dif_top(i,j,k) + flux_sw_vis_dif(i,j,k)
+    IST%flux_lw_top(i,j,k) = IST%flux_lw_top(i,j,k) + flux_lw(i,j,k)
+    IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   + lprec(i,j,k)
+    IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   + fprec(i,j,k)
+    IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
   do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
@@ -304,41 +304,41 @@ subroutine avg_top_quantities(Ice, IST, G)
   divid = 1.0/real(Ice%avg_count)
 
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
-     u = Ice%flux_u_top(i,j,k) * divid
-     v = Ice%flux_v_top(i,j,k) * divid
-     Ice%flux_u_top(i,j,k) = u*cos_rot(i,j)-v*sin_rot(i,j) ! rotate stress from lat/lon
-     Ice%flux_v_top(i,j,k) = v*cos_rot(i,j)+u*sin_rot(i,j) ! to ocean coordinates
+     u = IST%flux_u_top(i,j,k) * divid
+     v = IST%flux_v_top(i,j,k) * divid
+     IST%flux_u_top(i,j,k) = u*cos_rot(i,j)-v*sin_rot(i,j) ! rotate stress from lat/lon
+     IST%flux_v_top(i,j,k) = v*cos_rot(i,j)+u*sin_rot(i,j) ! to ocean coordinates
   enddo ; enddo ; enddo
 
   ! Put wind stress on u,v points and change sign to +down
-  call mpp_update_domains(Ice%flux_u_top, Ice%flux_v_top, Domain  )
+  call mpp_update_domains(IST%flux_u_top, IST%flux_v_top, Domain  )
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   sign = 1.0 ; if (atmos_winds) sign = -1.0
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
     if ( Ice%G%mask2dBu(i,j) > 0.5 ) then
-      Ice%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
-            Ice%flux_u_top(i+1,j+1,k) + Ice%flux_u_top(i+1,j,k) + &
-            Ice%flux_u_top(i,j+1,k) + Ice%flux_u_top(i,j,k) )
-      Ice%flux_v_top_bgrid(i,j,k) = sign*0.25*( &
-            Ice%flux_v_top(i+1,j+1,k) + Ice%flux_v_top(i+1,j,k) + &
-            Ice%flux_v_top(i,j+1,k) + Ice%flux_v_top(i,j,k) )
+      IST%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
+            IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i+1,j,k) + &
+            IST%flux_u_top(i,j+1,k) + IST%flux_u_top(i,j,k) )
+      IST%flux_v_top_bgrid(i,j,k) = sign*0.25*( &
+            IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i+1,j,k) + &
+            IST%flux_v_top(i,j+1,k) + IST%flux_v_top(i,j,k) )
     else
-      Ice%flux_u_top_bgrid(i,j,k) = 0.0
-      Ice%flux_v_top_bgrid(i,j,k) = 0.0
+      IST%flux_u_top_bgrid(i,j,k) = 0.0
+      IST%flux_v_top_bgrid(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
 
   do k = 1,km ; do j=jsc,jec ; do i=isc,iec
-    Ice%flux_t_top(i,j,k)  = Ice%flux_t_top(i,j,k)  * divid
-    Ice%flux_q_top(i,j,k)  = Ice%flux_q_top(i,j,k)  * divid
-    Ice%flux_sw_nir_dir_top(i,j,k) = Ice%flux_sw_nir_dir_top(i,j,k) * divid
-    Ice%flux_sw_nir_dif_top(i,j,k) = Ice%flux_sw_nir_dif_top(i,j,k) * divid
-    Ice%flux_sw_vis_dir_top(i,j,k) = Ice%flux_sw_vis_dir_top(i,j,k) * divid
-    Ice%flux_sw_vis_dif_top(i,j,k) = Ice%flux_sw_vis_dif_top(i,j,k) * divid
-    Ice%flux_lw_top(i,j,k) = Ice%flux_lw_top(i,j,k) * divid
-    Ice%fprec_top(i,j,k)   = Ice%fprec_top(i,j,k)   * divid
-    Ice%lprec_top(i,j,k)   = Ice%lprec_top(i,j,k)   * divid
-    Ice%flux_lh_top(i,j,k) = Ice%flux_lh_top(i,j,k) * divid
+    IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  * divid
+    IST%flux_q_top(i,j,k)  = IST%flux_q_top(i,j,k)  * divid
+    IST%flux_sw_nir_dir_top(i,j,k) = IST%flux_sw_nir_dir_top(i,j,k) * divid
+    IST%flux_sw_nir_dif_top(i,j,k) = IST%flux_sw_nir_dif_top(i,j,k) * divid
+    IST%flux_sw_vis_dir_top(i,j,k) = IST%flux_sw_vis_dir_top(i,j,k) * divid
+    IST%flux_sw_vis_dif_top(i,j,k) = IST%flux_sw_vis_dif_top(i,j,k) * divid
+    IST%flux_lw_top(i,j,k) = IST%flux_lw_top(i,j,k) * divid
+    IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   * divid
+    IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   * divid
+    IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) * divid
     do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
       do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
         Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) = Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) * divid
@@ -353,26 +353,26 @@ subroutine avg_top_quantities(Ice, IST, G)
   !
   ! Flux diagnostics
   !
-  if (id_sh>0) call post_avg(id_sh, Ice%flux_t_top(isc:iec,jsc:jec,:), &
+  if (id_sh>0) call post_avg(id_sh, IST%flux_t_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_lh>0) call post_avg(id_lh, Ice%flux_lh_top(isc:iec,jsc:jec,:), &
+  if (id_lh>0) call post_avg(id_lh, IST%flux_lh_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_evap>0) call post_avg(id_evap, Ice%flux_q_top(isc:iec,jsc:jec,:), &
+  if (id_evap>0) call post_avg(id_evap, IST%flux_q_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
   if (id_sw>0) then
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = tmp2d(i,j) + Ice%part_size(i,j,k) * ( &
-            Ice%flux_sw_vis_dir_top(i,j,k) + Ice%flux_sw_vis_dif_top(i,j,k) + &
-            Ice%flux_sw_nir_dir_top(i,j,k) + Ice%flux_sw_nir_dif_top(i,j,k) )
+            IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) + &
+            IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k) )
     enddo ; enddo ; enddo
     sent = send_data(id_sw, tmp2d(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   endif
-  if (id_lw>0) call post_avg(id_lw, Ice%flux_lw_top(isc:iec,jsc:jec,:), &
+  if (id_lw>0) call post_avg(id_lw, IST%flux_lw_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_snofl>0) call post_avg(id_snofl, Ice%fprec_top(isc:iec,jsc:jec,:), &
+  if (id_snofl>0) call post_avg(id_snofl, IST%fprec_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_rain>0) call post_avg(id_rain, Ice%lprec_top(isc:iec,jsc:jec,:), &
+  if (id_rain>0) call post_avg(id_rain, IST%lprec_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
   if (id_lwdn>0) sent = send_data(id_lwdn, Ice%lwdn(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   if (id_swdn>0) sent = send_data(id_swdn, Ice%swdn(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
@@ -380,20 +380,20 @@ subroutine avg_top_quantities(Ice, IST, G)
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = tmp2d(i,j) + Ice%part_size(i,j,k) * ( &
-            Ice%flux_sw_vis_dir_top(i,j,k) + Ice%flux_sw_vis_dif_top(i,j,k) )
+            IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) )
     enddo ; enddo ; enddo
     sent = send_data(id_sw_vis, tmp2d(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
-!    sent = send_data(id_sw_vis, all_avg(Ice%flux_sw_vis_dif_top(isc:iec,jsc:jec,:)+&
-!                          Ice%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
+!    sent = send_data(id_sw_vis, all_avg(IST%flux_sw_vis_dif_top(isc:iec,jsc:jec,:)+&
+!                          IST%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
 !                          Ice%part_size(isc:iec,jsc:jec,:)), Ice%Time, mask=Ice%mask)
   endif
-  if (id_sw_nir_dir>0) call post_avg(id_sw_nir_dir, Ice%flux_sw_nir_dir_top(isc:iec,jsc:jec,:), &
+  if (id_sw_nir_dir>0) call post_avg(id_sw_nir_dir, IST%flux_sw_nir_dir_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_sw_nir_dif>0) call post_avg(id_sw_nir_dif, Ice%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
+  if (id_sw_nir_dif>0) call post_avg(id_sw_nir_dif, IST%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_sw_vis_dir>0) call post_avg(id_sw_vis_dir, Ice%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
+  if (id_sw_vis_dir>0) call post_avg(id_sw_vis_dir, IST%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
-  if (id_sw_vis_dif>0) call post_avg(id_sw_vis_dif, Ice%flux_sw_vis_dif_top(isc:iec,jsc:jec,:), &
+  if (id_sw_vis_dif>0) call post_avg(id_sw_vis_dif, IST%flux_sw_vis_dif_top(isc:iec,jsc:jec,:), &
                              Ice%part_size(isc:iec,jsc:jec,:), Ice%diag, mask=Ice%mask)
   !
   ! set count to zero and fluxes will be zeroed before the next sum
@@ -413,21 +413,21 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   real, dimension (:,:,:), intent(in) :: part_size, part_size_uv
   integer                             :: m, n
 
-!    Ice%flux_u  = all_avg( Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
-!    Ice%flux_v  = all_avg( Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
+!    Ice%flux_u  = all_avg( IST%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
+!    Ice%flux_v  = all_avg( IST%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
 
-  Ice%flux_u  = all_avg( Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
-  Ice%flux_v  = all_avg( Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
-  Ice%flux_t  = all_avg( Ice%flux_t_top , part_size )
-  Ice%flux_q  = all_avg( Ice%flux_q_top , part_size )
-  Ice%flux_sw_nir_dir = all_avg( Ice%flux_sw_nir_dir_top, part_size )
-  Ice%flux_sw_nir_dif = all_avg( Ice%flux_sw_nir_dif_top, part_size )
-  Ice%flux_sw_vis_dir = all_avg( Ice%flux_sw_vis_dir_top, part_size )
-  Ice%flux_sw_vis_dif = all_avg( Ice%flux_sw_vis_dif_top, part_size )
-  Ice%flux_lw = all_avg( Ice%flux_lw_top, part_size )
-  Ice%fprec   = all_avg( Ice%fprec_top  , part_size )
-  Ice%lprec   = all_avg( Ice%lprec_top  , part_size )
-  Ice%flux_lh = all_avg( Ice%flux_lh_top, part_size )
+  Ice%flux_u  = all_avg( IST%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
+  Ice%flux_v  = all_avg( IST%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
+  Ice%flux_t  = all_avg( IST%flux_t_top , part_size )
+  Ice%flux_q  = all_avg( IST%flux_q_top , part_size )
+  Ice%flux_sw_nir_dir = all_avg( IST%flux_sw_nir_dir_top, part_size )
+  Ice%flux_sw_nir_dif = all_avg( IST%flux_sw_nir_dif_top, part_size )
+  Ice%flux_sw_vis_dir = all_avg( IST%flux_sw_vis_dir_top, part_size )
+  Ice%flux_sw_vis_dif = all_avg( IST%flux_sw_vis_dif_top, part_size )
+  Ice%flux_lw = all_avg( IST%flux_lw_top, part_size )
+  Ice%fprec   = all_avg( IST%fprec_top  , part_size )
+  Ice%lprec   = all_avg( IST%lprec_top  , part_size )
+  Ice%flux_lh = all_avg( IST%flux_lh_top, part_size )
   do n = 1, Ice%ocean_fluxes%num_bcs  !{
     do m = 1, Ice%ocean_fluxes%bc(n)%num_fields  !{
       Ice%ocean_fluxes%bc(n)%field(m)%values =                &
@@ -968,17 +968,17 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     ! Regroup for efficiency?
     h2o(2) = h2o(2)+dt_slow*sum(cell_area*(Ice%runoff(isc:iec,jsc:jec) &
                                           +Ice%calving(isc:iec,jsc:jec)&
-            +all_avg(Ice%lprec_top(isc:iec,jsc:jec,:)+Ice%fprec_top(isc:iec,jsc:jec,:)&
-                    -Ice%flux_q_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))),&
+            +all_avg(IST%lprec_top(isc:iec,jsc:jec,:)+IST%fprec_top(isc:iec,jsc:jec,:)&
+                    -IST%flux_q_top(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))),&
              cell_area > 0 )
     heat(2) = heat(2)+dt_slow*sum(cell_area*(                              &
-              all_avg(Ice%flux_sw_vis_dir_top(isc:iec,jsc:jec,:)+Ice%flux_sw_vis_dif_top(isc:iec,jsc:jec,:) &
-             +Ice%flux_sw_nir_dir_top(isc:iec,jsc:jec,:)+Ice%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
+              all_avg(IST%flux_sw_vis_dir_top(isc:iec,jsc:jec,:)+IST%flux_sw_vis_dif_top(isc:iec,jsc:jec,:) &
+             +IST%flux_sw_nir_dir_top(isc:iec,jsc:jec,:)+IST%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
               Ice%part_size(isc:iec,jsc:jec,:))                            &
-             +all_avg(Ice%flux_lw_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
-             -all_avg(Ice%flux_t_top(isc:iec,jsc:jec,:) , Ice%part_size(isc:iec,jsc:jec,:))   &
-             -all_avg(Ice%flux_lh_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
-             -LI*(all_avg(Ice%fprec_top,Ice%part_size(isc:iec,jsc:jec,:))  &
+             +all_avg(IST%flux_lw_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
+             -all_avg(IST%flux_t_top(isc:iec,jsc:jec,:) , Ice%part_size(isc:iec,jsc:jec,:))   &
+             -all_avg(IST%flux_lh_top(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))   &
+             -LI*(all_avg(IST%fprec_top,Ice%part_size(isc:iec,jsc:jec,:))  &
              +Ice%calving(isc:iec,jsc:jec))), cell_area > 0 )
     tot_frazil = sum(cell_area*Ice%frazil)
     !Niki: Does runoff or calving bring in salt? Or is salt(2) = 0.0
@@ -992,8 +992,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   tmp1(:,:) = ice_avg(Ice%h_snow,Ice%part_size)
   tmp2(:,:) = ice_avg(Ice%h_ice,Ice%part_size)
   wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
-  wind_stress_x(isc:iec,jsc:jec) = ice_avg(Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
-  wind_stress_y(isc:iec,jsc:jec) = ice_avg(Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
+  wind_stress_x(isc:iec,jsc:jec) = ice_avg(IST%flux_u_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
+  wind_stress_y(isc:iec,jsc:jec) = ice_avg(IST%flux_v_top_bgrid(isc:iec,jsc:jec,:), Ice%part_size_uv(isc:iec,jsc:jec,:))
 
   call enable_SIS_averaging(dt_slow, Ice%Time, Ice%diag)
   call mpp_clock_begin(iceClocka)
@@ -1011,16 +1011,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   ! Dynamics diagnostics
   !
-  if (id_fax>0) call post_avg(id_fax, Ice%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
+  if (id_fax>0) call post_avg(id_fax, IST%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
                               Ice%part_size_uv(isc:iec,jsc:jec,:), Ice%diag)
-  if (id_fay>0) call post_avg(id_fay, Ice%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
+  if (id_fay>0) call post_avg(id_fay, IST%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
                               Ice%part_size_uv(isc:iec,jsc:jec,:), Ice%diag)
   call disable_SIS_averaging(Ice%diag)
 
 
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
-    Ice%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
-    Ice%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
+    IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
+    IST%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
   enddo ; enddo ; enddo
   call mpp_clock_end(iceClockc)
   call mpp_clock_end(iceClock4)
@@ -1047,26 +1047,26 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),&
                           Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2),              &
                           Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4),              &
-                          Ice%fprec_top(i,j,k) *dt_slow, 0.0,                &
-                          Ice%flux_q_top(i,j,k)*dt_slow,                     &
+                          IST%fprec_top(i,j,k) *dt_slow, 0.0,                &
+                          IST%flux_q_top(i,j,k)*dt_slow,                     &
                           Ice%tmelt (i,j,k), Ice%bmelt(i,j,k),               &
                           -MU_TS*Ice%s_surf(i,j),                            &
                           heat_to_ocn, h2o_to_ocn, h2o_from_ocn,             &
                           snow_to_ice(i,j,k), bablt                          )
 
       ! modify above-ice to under-ice fluxes for passing to ocean
-      Ice%flux_q_top (i,j,k) = h2o_from_ocn/dt_slow ! no ice, evaporation left
-      Ice%flux_lh_top(i,j,k) = hlv*Ice%flux_q_top(i,j,k)
-      Ice%flux_lw_top(i,j,k) = 0.0
-      Ice%flux_t_top (i,j,k) = Ice%bheat(i,j)-heat_to_ocn/dt_slow
-      Ice%flux_sw_vis_dif_top(i,j,k) = (Ice%flux_sw_vis_dir_top(i,j,k)+      &
-            Ice%flux_sw_vis_dif_top(i,j,k)+Ice%flux_sw_nir_dir_top(i,j,k)+   &
-            Ice%flux_sw_nir_dif_top(i,j,k))*Ice%pen(i,j,k)*Ice%trn(i,j,k)
-      Ice%flux_sw_nir_dir_top(i,j,k) = 0.0
-      Ice%flux_sw_nir_dif_top(i,j,k) = 0.0
-      Ice%flux_sw_vis_dir_top(i,j,k) = 0.0
-      Ice%fprec_top  (i,j,k) = 0.0
-      Ice%lprec_top  (i,j,k) = Ice%lprec_top(i,j,k) + h2o_to_ocn/dt_slow
+      IST%flux_q_top (i,j,k) = h2o_from_ocn/dt_slow ! no ice, evaporation left
+      IST%flux_lh_top(i,j,k) = hlv*IST%flux_q_top(i,j,k)
+      IST%flux_lw_top(i,j,k) = 0.0
+      IST%flux_t_top (i,j,k) = Ice%bheat(i,j)-heat_to_ocn/dt_slow
+      IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
+            IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
+            IST%flux_sw_nir_dif_top(i,j,k))*Ice%pen(i,j,k)*Ice%trn(i,j,k)
+      IST%flux_sw_nir_dir_top(i,j,k) = 0.0
+      IST%flux_sw_nir_dif_top(i,j,k) = 0.0
+      IST%flux_sw_vis_dir_top(i,j,k) = 0.0
+      IST%fprec_top  (i,j,k) = 0.0
+      IST%lprec_top  (i,j,k) = IST%lprec_top(i,j,k) + h2o_to_ocn/dt_slow
 
       bsnk(i,j) = bsnk(i,j) - Ice%part_size(i,j,k)*bablt ! bot. melt. ablation
 
@@ -1099,7 +1099,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !
       ! spread frazil salinification over all partitions
       !
-      Ice%lprec_top  (i,j,:) = Ice%lprec_top(i,j,:) + h2o_to_ocn*Ice%part_size(i,j,k)/dt_slow
+      IST%lprec_top  (i,j,:) = IST%lprec_top(i,j,:) + h2o_to_ocn*Ice%part_size(i,j,k)/dt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops
