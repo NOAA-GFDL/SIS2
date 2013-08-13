@@ -45,7 +45,8 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
   use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN
   use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
   use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
-  use ice_type_mod,     only: ice_data_type, ice_model_init, ice_model_end, hlim,&
+use ice_type_mod,     only: ice_data_type, ice_state_type
+  use ice_type_mod,     only: ice_model_init, ice_model_end, hlim,&
                               mom_rough_ice, heat_rough_ice, atmos_winds, kmelt, &
                               slab_ice, spec_ice, ice_bulk_salin, id_cn, id_hi, id_hio,  &
                               id_hs, id_tsn, id_t1, id_t2, id_t3, id_t4, id_ts,  &
@@ -176,14 +177,14 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 end subroutine update_ice_model_slow_dn
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! zero_top_quantities - zero fluxes to begin summing in ice fast physics       !
+! zero_top_quantities - zero fluxes to begin summing in ice fast physics.      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine zero_top_quantities ( Ice )
   type (ice_data_type), intent(inout)  :: Ice
 
   integer :: n, m
 
-  Ice%avg_kount = 0
+  Ice%avg_count = 0
 
   Ice%flux_u_top(:,:,:) = 0.0
   Ice%flux_v_top(:,:,:) = 0.0
@@ -210,7 +211,8 @@ subroutine zero_top_quantities ( Ice )
 end subroutine zero_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics      !
+! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics.     !
+!   Nothing here will be exposed to other modules.                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flux_t,  flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
@@ -228,7 +230,7 @@ subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flu
   real,dimension(isc:iec,jsc:jec)                 :: tmp
   integer                                         :: i, j, k, m, n
 
-  if (Ice%avg_kount == 0) call zero_top_quantities (Ice)
+  if (Ice%avg_count == 0) call zero_top_quantities (Ice)
 
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
     Ice%flux_u_top(i,j,k)  = Ice%flux_u_top(i,j,k)  + flux_u(i,j,k)
@@ -275,7 +277,7 @@ subroutine sum_top_quantities ( Ice, Atmos_boundary_fluxes, flux_u,  flux_v, flu
     enddo ; enddo
   endif
 
-  Ice%avg_kount = Ice%avg_kount + 1
+  Ice%avg_count = Ice%avg_count + 1
 
 end subroutine sum_top_quantities
 
@@ -293,10 +295,10 @@ subroutine avg_top_quantities ( Ice, G )
   !
   ! compute average fluxes
   !
-  if (Ice%avg_kount == 0) call error_mesg ('avg_top_quantities', &
+  if (Ice%avg_count == 0) call error_mesg ('avg_top_quantities', &
        'no ocean model fluxes have been averaged', 3)
 
-  divid = 1.0/real(Ice%avg_kount)
+  divid = 1.0/real(Ice%avg_count)
 
   do k=1,km ; do j=jsc,jec ; do i=isc,iec
      u = Ice%flux_u_top(i,j,k) * divid
@@ -393,10 +395,14 @@ subroutine avg_top_quantities ( Ice, G )
   !
   ! set count to zero and fluxes will be zeroed before the next sum
   !
-  Ice%avg_kount = 0
+  Ice%avg_count = 0
 
 end subroutine avg_top_quantities
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_top_to_ice_bottom - Translate quantities from the ice model's internal   !
+!   state to the public ice data type for use by the ocean model.              !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_top_to_ice_bottom (Ice, part_size, part_size_uv, G)
   type (ice_data_type), intent(inout) :: Ice
   type(sea_ice_grid_type), intent(inout) :: G
@@ -550,7 +556,6 @@ enddo
 
 !       transfer the ocean state for extra tracer fluxes
 !
-
   do n = 1, Ocean_ice_boundary%fields%num_bcs  !{
     do m = 1, Ocean_ice_boundary%fields%bc(n)%num_fields  !{
       Ice%ocean_fields%bc(n)%field(m)%values(:,:,1) = Ocean_ice_boundary%fields%bc(n)%field(m)%values
@@ -588,7 +593,7 @@ enddo
     Ice%ice_mask(i,j,k) = (Ice%h_ice(i,j,k) > 0.0)
   enddo ; enddo ; enddo
 
-  do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (Ice%ice_mask(i,j,k)) then
+  do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (Ice%h_ice(i,j,k) > 0.0) then
     call ice_optics(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k), &
          Ice%t_surf(i,j,k)-Tfreeze, -MU_TS*Ice%s_surf(i,j), &
          Ice%albedo_vis_dir(i,j,k), Ice%albedo_vis_dif(i,j,k), &
@@ -764,7 +769,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, G )
   call get_time(Ice%Time_step_fast,sc,dy); dt_fast = 864e2*dy+sc
 
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
-    if (Ice%ice_mask(i,j,k)) then
+    if (Ice%h_ice(i,j,k) > 0.0) then
       if (slab_ice) then
         flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
         latent             = hlv+hlf
@@ -800,9 +805,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, G )
     endif
   enddo ; enddo ; enddo
 
+  ! This routine works on the boundary exchange state.
   call compute_ocean_roughness (Ice%mask, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
+  ! This routine works on the boundary exchange state.
   if (do_sun_angle_for_alb) then
     call diurnal_solar(Ice%G%geoLatT(isc:iec,jsc:jec)*rad, Ice%G%geoLonT(isc:iec,jsc:jec)*rad, &
                  Ice%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy

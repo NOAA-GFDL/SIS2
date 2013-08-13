@@ -40,8 +40,8 @@ use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
 
 implicit none ; private
 
-public :: ice_data_type, ice_model_init, ice_model_end, ice_stock_pe, kmelt,  &
-          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice,         &
+public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe,  &
+          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice, kmelt,  &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
           conservation_check, do_icebergs, ice_model_restart,       &
@@ -177,32 +177,112 @@ public  :: earth_area
                              ! 3 - h2o/heat flux down at bottom of ice
                              ! 4 - final ice h2o/heat content
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! This structure contains the ice model data (some used by calling routines);  !
-  ! the third index is partition (1 is open water; 2 is ice cover)               !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  type ice_data_type
-     type(domain2D)                     :: Domain
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! This structure contains the ice model state, and is intended to be private   !
+! to SIS2.  It is not to be shared with other components and modules, and may  !
+! use different indexing conventions to other modules..                        !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+type ice_state_type
+   type (time_type)                   :: Time_Init, Time
+   type (time_type)                   :: Time_step_fast, Time_step_slow
+   integer                            :: avg_count
+   logical                            :: pe
+
+   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
+   real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
+   real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
+   real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
+
+   real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
+   real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
+   real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
+   real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
+   real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
+   real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
+
+   real,    pointer, dimension(:,:)   :: lwdn                =>NULL() ! Accumulated diagnostics of
+   real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
+   real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
+   real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
+   real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
+   real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
+   real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
+   real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
+   real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
+   real,    pointer, dimension(:,:)   :: coszen              =>NULL()
+   real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
+   real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
+   real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
+   real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
+   real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
+   real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
+   real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
+   real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
+   real,    pointer, dimension(:,:)   :: frazil              =>NULL()
+   real,    pointer, dimension(:,:)   :: bheat               =>NULL()
+   real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
+   real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
+   real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
+                                                                      ! because flux_ice_to_ocean cannot handle 3D fields. This may be
+								! removed, if the information on ice thickness can be derived from 
+								! eventually from h_ice outside the ice module.
+   logical, pointer, dimension(:,:)   :: maskmap             =>NULL() ! A pointer to an array indicating which
+                                                                      ! logical processors are actually used for
+                                                                      ! the ocean code. The other logical
+                                                                      ! processors would be all land points and
+                                                                      ! are not assigned to actual processors.
+                                                                      ! This need not be assigned if all logical
+                                                                      ! processors are used
+   integer, dimension(3)              :: axes
+   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
+   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
+   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
+
+  type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
+  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_diag_ctrl)         :: diag
+  type(icebergs), pointer     :: icebergs
+  type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
+end type ice_state_type
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! This structure contains the ice model data (some used by calling routines);  !
+! the third index is partition (1 is open water; 2 is ice cover)               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+type ice_data_type !  ice_public_type
+  type(domain2D)                     :: Domain
      type (time_type)                   :: Time_Init, Time
      type (time_type)                   :: Time_step_fast, Time_step_slow
-     integer                            :: avg_kount
-     logical                            :: pe
-     integer, pointer, dimension(:)     :: pelist              =>NULL() ! Used for flux-exchange.
+     integer                            :: avg_count
+  logical                            :: pe
+  integer, pointer, dimension(:)     :: pelist              =>NULL() ! Used for flux-exchange.
      logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
-     logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is
-     real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
+  logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Size only?)
+  real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
      real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
-     real,    pointer, dimension(:,:,:) :: albedo              =>NULL()
-     real,    pointer, dimension(:,:,:) :: albedo_vis_dir      =>NULL()
-     real,    pointer, dimension(:,:,:) :: albedo_nir_dir      =>NULL()
-     real,    pointer, dimension(:,:,:) :: albedo_vis_dif      =>NULL()
-     real,    pointer, dimension(:,:,:) :: albedo_nir_dif      =>NULL()
-     real,    pointer, dimension(:,:,:) :: rough_mom           =>NULL()
-     real,    pointer, dimension(:,:,:) :: rough_heat          =>NULL()
-     real,    pointer, dimension(:,:,:) :: rough_moist         =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_surf              =>NULL()
-     real,    pointer, dimension(:,:,:) :: u_surf              =>NULL()
-     real,    pointer, dimension(:,:,:) :: v_surf              =>NULL()
+  real,    pointer, dimension(:,:,:) :: albedo              =>NULL()
+  real,    pointer, dimension(:,:,:) :: albedo_vis_dir      =>NULL()
+  real,    pointer, dimension(:,:,:) :: albedo_nir_dir      =>NULL()
+  real,    pointer, dimension(:,:,:) :: albedo_vis_dif      =>NULL()
+  real,    pointer, dimension(:,:,:) :: albedo_nir_dif      =>NULL()
+  real,    pointer, dimension(:,:,:) :: rough_mom           =>NULL()
+  real,    pointer, dimension(:,:,:) :: rough_heat          =>NULL()
+  real,    pointer, dimension(:,:,:) :: rough_moist         =>NULL()
+  real,    pointer, dimension(:,:,:) :: t_surf              =>NULL()
+  real,    pointer, dimension(:,:,:) :: u_surf              =>NULL()
+  real,    pointer, dimension(:,:,:) :: v_surf              =>NULL()
+
      real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
      real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
      real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
@@ -221,34 +301,39 @@ public  :: earth_area
      real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
      real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
      real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_u              =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_v              =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_t              =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_q              =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_lw             =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_sw_vis_dir     =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_sw_vis_dif     =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_sw_nir_dir     =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_sw_nir_dif     =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_lh             =>NULL()
-     real,    pointer, dimension(:,:  ) :: lprec               =>NULL()
-     real,    pointer, dimension(:,:  ) :: fprec               =>NULL()
-     real,    pointer, dimension(:,:  ) :: p_surf              =>NULL()
-     real,    pointer, dimension(:,:  ) :: runoff              =>NULL()
-     real,    pointer, dimension(:,:  ) :: calving             =>NULL()
-     real,    pointer, dimension(:,:  ) :: runoff_hflx         =>NULL()
-     real,    pointer, dimension(:,:  ) :: calving_hflx        =>NULL()
-     real,    pointer, dimension(:,:  ) :: flux_salt           =>NULL()
+
+  ! These arrays will be used to set the forcing for the ocean.
+  real,    pointer, dimension(:,:  ) :: flux_u              =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_v              =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_t              =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_q              =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_lw             =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_sw_vis_dir     =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_sw_vis_dif     =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_sw_nir_dir     =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_sw_nir_dif     =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_lh             =>NULL()
+  real,    pointer, dimension(:,:  ) :: lprec               =>NULL()
+  real,    pointer, dimension(:,:  ) :: fprec               =>NULL()
+  real,    pointer, dimension(:,:  ) :: p_surf              =>NULL()
+  real,    pointer, dimension(:,:  ) :: runoff              =>NULL()
+  real,    pointer, dimension(:,:  ) :: calving             =>NULL()
+  real,    pointer, dimension(:,:  ) :: runoff_hflx         =>NULL()
+  real,    pointer, dimension(:,:  ) :: calving_hflx        =>NULL()
+  real,    pointer, dimension(:,:  ) :: flux_salt           =>NULL()
+
      real,    pointer, dimension(:,:)   :: lwdn                =>NULL()
      real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
      real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
      real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
+
      real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
      real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
      real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
      real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
      real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
      real,    pointer, dimension(:,:)   :: coszen              =>NULL()
+
      real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
@@ -261,30 +346,31 @@ public  :: earth_area
      real,    pointer, dimension(:,:)   :: bheat               =>NULL()
      real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
      real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
-     real,    pointer, dimension(:,:)   :: area                =>NULL()
-     real,    pointer, dimension(:,:)   :: vmask               =>NULL() ! where ice vels can be non-zero
-     real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
-                                                                        ! because flux_ice_to_ocean cannot handle 3D fields. This may be
-									! removed, if the information on ice thickness can be derived from 
-									! eventually from h_ice outside the ice module.
-     logical, pointer, dimension(:,:)   :: maskmap             =>NULL() ! A pointer to an array indicating which
-                                                                        ! logical processors are actually used for
-                                                                        ! the ocean code. The other logical
-                                                                        ! processors would be all land points and
-                                                                        ! are not assigned to actual processors.
-                                                                        ! This need not be assigned if all logical
-                                                                        ! processors are used
-     integer, dimension(3)              :: axes
-     type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
-     type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
-     type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
+  real,    pointer, dimension(:,:)   :: area                =>NULL()
+  real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
+                                                                     ! because flux_ice_to_ocean cannot handle 3D fields. This may be
+								! removed, if the information on ice thickness can be derived from 
+								! eventually from h_ice outside the ice module.
+     logical, pointer, dimension(:,:)   :: maskmap           =>NULL() ! A pointer to an array indicating which
+                                                                      ! logical processors are actually used for
+                                                                      ! the ocean code. The other logical
+                                                                      ! processors would be all land points and
+                                                                      ! are not assigned to actual processors.
+                                                                      ! This need not be assigned if all logical
+                                                                      ! processors are used
+  integer, dimension(3)              :: axes
+  type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
+  type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
+  type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
-    type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
-    type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-    type(SIS_diag_ctrl)         :: diag
-    type(icebergs), pointer     :: icebergs
+      type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
+      type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+      type(SIS_diag_ctrl)         :: diag
+      type(icebergs), pointer     :: icebergs
     type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
-  end type ice_data_type
+    type(ice_state_type)    :: Ice_state ! A structure containing the internal
+                                 ! representation of the ice state.
+end type ice_data_type !  ice_public_type
 
   integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
              iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
@@ -359,14 +445,14 @@ public  :: earth_area
 
   end subroutine ice_stock_pe
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_model_init - initializes ice model data, parameters and diagnostics      !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_model_init - initializes ice model data, parameters and diagnostics      !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
-    type (ice_data_type), intent(inout) :: Ice
-    type (time_type)    , intent(in)    :: Time_Init      ! starting time of model integration
-    type (time_type)    , intent(in)    :: Time           ! current time
+  type (ice_data_type), intent(inout) :: Ice
+  type (time_type)    , intent(in)    :: Time_Init      ! starting time of model integration
+  type (time_type)    , intent(in)    :: Time           ! current time
     type (time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
@@ -446,7 +532,6 @@ public  :: earth_area
          Ice%ice_mask       (isc:iec, jsc:jec, km) , &
          Ice%t_surf         (isc:iec, jsc:jec, km) , &
          Ice%s_surf         (isc:iec, jsc:jec)     , &
-         Ice%vmask          (isd:ied, jsd:jed)     , &
          Ice%sea_lev        (isd:ied, jsd:jed)     , &
          Ice%part_size      (isd:ied, jsd:jed, km) , &
          Ice%part_size_uv   (isc:iec, jsc:jec, km) , &
@@ -477,8 +562,8 @@ public  :: earth_area
          Ice%lprec_top          (isc:iec, jsc:jec, km), &
          Ice%fprec_top          (isc:iec, jsc:jec, km)  )
 
-    allocate ( Ice%flux_u_top_bgrid(isc:iec, jsc:jec, km), &
-               Ice%flux_v_top_bgrid(isc:iec, jsc:jec, km)  )
+    allocate ( Ice%flux_u_top_bgrid(isd:ied, jsd:jed, km), &
+               Ice%flux_v_top_bgrid(isd:ied, jsd:jed, km)  )
 
     allocate ( Ice%flux_u    (isc:iec, jsc:jec), &
          Ice%flux_v          (isc:iec, jsc:jec), &
@@ -493,6 +578,7 @@ public  :: earth_area
          Ice%lprec           (isc:iec, jsc:jec), &
          Ice%fprec           (isc:iec, jsc:jec), &
          Ice%p_surf          (isc:iec, jsc:jec), &
+ 
          Ice%runoff          (isc:iec, jsc:jec), &
          Ice%calving         (isc:iec, jsc:jec), &
          Ice%runoff_hflx     (isc:iec, jsc:jec), &
@@ -500,17 +586,26 @@ public  :: earth_area
          Ice%flux_salt       (isc:iec, jsc:jec), &
          Ice%lwdn            (isc:iec, jsc:jec), &
          Ice%swdn            (isc:iec, jsc:jec)  )
-    allocate ( Ice%frazil (isc:iec, jsc:jec), Ice%bheat  (isc:iec, jsc:jec), &
-               Ice%u_ice  (isd:ied, jsd:jed), Ice%v_ice  (isd:ied, jsd:jed) )
-    allocate ( Ice%tmelt  (isc:iec, jsc:jec, 2:km), Ice%bmelt  (isc:iec, jsc:jec, 2:km) , &
-               Ice%pen    (isc:iec, jsc:jec, 2:km), Ice%trn    (isc:iec, jsc:jec, 2:km) , &
-               Ice%sw_abs_sfc  (isc:iec, jsc:jec, 2:km), Ice%sw_abs_snow (isc:iec, jsc:jec, 2:km) , &
+    allocate ( Ice%frazil (isc:iec, jsc:jec), &
+               Ice%bheat  (isc:iec, jsc:jec), &
+               Ice%u_ice  (isd:ied, jsd:jed), &
+               Ice%v_ice  (isd:ied, jsd:jed) )
+    allocate ( Ice%tmelt  (isc:iec, jsc:jec, 2:km), &
+               Ice%bmelt  (isc:iec, jsc:jec, 2:km), &
+               Ice%pen    (isc:iec, jsc:jec, 2:km), &
+               Ice%trn    (isc:iec, jsc:jec, 2:km), &
+               Ice%sw_abs_sfc  (isc:iec, jsc:jec, 2:km), &
+               Ice%sw_abs_snow (isc:iec, jsc:jec, 2:km) , &
                Ice%sw_abs_ice (isc:iec, jsc:jec, 2:km, Ice%G%NkIce), &
-               Ice%sw_abs_ocn  (isc:iec, jsc:jec, 2:km), Ice%sw_abs_int  (isc:iec, jsc:jec, 2:km), &
-               Ice%h_snow (isd:ied, jsd:jed, 2:km), Ice%t_snow (isd:ied, jsd:jed, 2:km) , &
+               Ice%sw_abs_ocn  (isc:iec, jsc:jec, 2:km), &
+               Ice%sw_abs_int  (isc:iec, jsc:jec, 2:km), &
+               Ice%h_snow (isd:ied, jsd:jed, 2:km), &
+               Ice%t_snow (isd:ied, jsd:jed, 2:km) , &
                Ice%h_ice  (isd:ied, jsd:jed, 2:km),                                         &
                Ice%t_ice  (isd:ied, jsd:jed, 2:km, Ice%G%NkIce) )
-    allocate ( Ice%qflx_lim_ice(isc:iec, jsc:jec) , Ice%qflx_res_ice(isc:iec, jsc:jec)   )
+    allocate ( Ice%qflx_lim_ice(isc:iec, jsc:jec) , &
+               Ice%qflx_res_ice(isc:iec, jsc:jec)   )
+
     allocate ( Ice%area        (isc:iec, jsc:jec) )
     allocate ( Ice%mi          (isc:iec, jsc:jec) )
 
@@ -551,21 +646,15 @@ public  :: earth_area
           else
              Ice%mask(i,j) = .false.
           end if
-          if( Ice%G%mask2dBu(i,j) > 0.5 ) then
-             Ice%vmask(i,j) = 1.
-          else
-             Ice%vmask(i,j) = 0.
-          end if
        enddo
     enddo
-    call mpp_update_domains(Ice%vmask, domain=domain, position=CORNER )
  
     Ice%Time           = Time
     Ice%Time_Init      = Time_Init
     Ice%Time_step_fast = Time_step_fast
     Ice%Time_step_slow = Time_step_slow
 
-    Ice%avg_kount      = 0
+    Ice%avg_count      = 0
     !
     ! read restart
     !
@@ -778,7 +867,6 @@ public  :: earth_area
     call ice_grid_end(Ice%G)
 
     deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, Ice%sea_lev )
-    deallocate(Ice%vmask)
     deallocate(Ice%part_size, Ice%part_size_uv, Ice%u_surf, Ice%v_surf )
     deallocate(Ice%u_ocn, Ice%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
     deallocate(Ice%rough_moist, Ice%albedo, Ice%flux_u_top, Ice%flux_v_top )
