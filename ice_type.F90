@@ -191,7 +191,7 @@ type ice_state_type
 
    logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
    real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
-   real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
+  real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
   real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
 
    real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
@@ -225,12 +225,12 @@ type ice_state_type
   real,    pointer, dimension(:,:)   :: coszen              =>NULL()
   real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
   real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
-   real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
-   real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
-   real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
-   real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
-   real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
-   real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
+  real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
+  real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
+  real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
+  real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
+  real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
+  real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
   real,    pointer, dimension(:,:)   :: frazil              =>NULL()
   real,    pointer, dimension(:,:)   :: bheat               =>NULL()
   real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
@@ -272,7 +272,7 @@ type ice_data_type !  ice_public_type
      logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
   logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Size only?)
   real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
-     real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
+!     real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
   real,    pointer, dimension(:,:,:) :: albedo              =>NULL()
   real,    pointer, dimension(:,:,:) :: albedo_vis_dir      =>NULL()
   real,    pointer, dimension(:,:,:) :: albedo_nir_dir      =>NULL()
@@ -338,12 +338,12 @@ type ice_data_type !  ice_public_type
 
 !     real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
 !     real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
-     real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
-     real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
-     real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
-     real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
-     real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
-     real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
+!     real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
+!     real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
+!     real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
+!     real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
+!     real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
+!     real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
 !     real,    pointer, dimension(:,:)   :: frazil              =>NULL()
 !     real,    pointer, dimension(:,:)   :: bheat               =>NULL()
 !     real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
@@ -380,72 +380,71 @@ end type ice_data_type !  ice_public_type
 
   contains
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_stock_pe(Ice, index, value)
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_stock_pe(Ice, index, value)
 
-    use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
+  use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
 
-    use ice_grid_mod, only : all_avg
+  use ice_grid_mod, only : all_avg
 
-    type(ice_data_type)    :: Ice
-    integer, intent(in) :: index
-    real, intent(out)   :: value
+  type(ice_data_type)    :: Ice
+  integer, intent(in) :: index
+  real, intent(out)   :: value
+  type(ice_state_type), pointer :: IST => NULL()
 
-    integer :: i, j, k
-    real :: icebergs_value
+  integer :: i, j, k
+  real :: icebergs_value
 
-    value = 0.0
-    if(.not.Ice%pe) return
+  value = 0.0
+  if(.not.Ice%pe) return
 
-    select case (index)
+  IST => Ice%Ice_state
+
+  select case (index)
 
     case (ISTOCK_WATER)
 
-       value = sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:)+   &
-            DS*Ice%h_snow(isc:iec,jsc:jec,:),  &
-            Ice%part_size(isc:iec,jsc:jec,:))) &
-            *4*pi*radius*radius 
-  
+      value = sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:)+   &
+          DS*IST%h_snow(isc:iec,jsc:jec,:),  &
+          Ice%part_size(isc:iec,jsc:jec,:))) &
+          *4*pi*radius*radius 
+
     case (ISTOCK_HEAT)
 
-       value = 0.0
-       do k=2,km
-          do j=jsc, jec
-             do i=isc, iec
-                if ((Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0)) then
-                   if (slab_ice) then
-                      value = value - cell_area(i,j) * Ice%part_size(i,j,k)*Ice%h_ice(i,j,2)*DI*LI
-                   else
-                      value = value - cell_area(i,j) * Ice%part_size(i,j,k)           &
-                                     *e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), &
-                                                Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1),  &
-                                                Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3), &
-                                                Ice%t_ice(i,j,k,4)                     )
-                   end if
-                end if
-             end do
-          end do
-       end do
-       value = value*4*pi*radius*radius
+      value = 0.0
+      do k=2,km ; do j=jsc,jec ; do i=isc,iec
+        if ((Ice%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
+          if (slab_ice) then
+            value = value - cell_area(i,j) * Ice%part_size(i,j,k)*IST%h_ice(i,j,2)*DI*LI
+          else
+            value = value - cell_area(i,j) * Ice%part_size(i,j,k)           &
+                           *e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
+                                      IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
+                                      IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
+                                      IST%t_ice(i,j,k,4) )
+          endif
+        endif
+      enddo ; enddo ; enddo
+      value = value*4*pi*radius*radius
 
     case (ISTOCK_SALT)
        !No salt in the h_snow component.
-       value =  sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) &
+      value =  sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) &
               *ice_bulk_salin*4*pi*radius*radius
     case default
 
-       value = 0.0
+      value = 0.0
 
-    end select
+  end select
 
-    if (do_icebergs) then
-      call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
-      value = value + icebergs_value
-    endif
+  if (do_icebergs) then
+    call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
+    value = value + icebergs_value
+  endif
 
-  end subroutine ice_stock_pe
+end subroutine ice_stock_pe
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_init - initializes ice model data, parameters and diagnostics      !
@@ -599,8 +598,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
   allocate(IST%frazil(isc:iec, jsc:jec)) ; IST%frazil(:,:) = 0.0 !NR
   allocate(IST%bheat(isc:iec, jsc:jec)) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(Ice%u_ice(isd:ied, jsd:jed)) ; Ice%u_ice(:,:) = 0.0
-  allocate(Ice%v_ice(isd:ied, jsd:jed)) ; Ice%v_ice(:,:) = 0.0
+  allocate(IST%u_ice(isd:ied, jsd:jed)) ; IST%u_ice(:,:) = 0.0
+  allocate(IST%v_ice(isd:ied, jsd:jed)) ; IST%v_ice(:,:) = 0.0
   allocate(IST%tmelt(isc:iec, jsc:jec, 2:km)) ; IST%tmelt(:,:,:) = 0.0 !NR
   allocate(IST%bmelt(isc:iec, jsc:jec, 2:km)) ; IST%bmelt(:,:,:) = 0.0 !NR
   allocate(IST%pen(isc:iec, jsc:jec, 2:km)) ; IST%pen(:,:,:) = 0.0 !NI
@@ -610,10 +609,10 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:km, Ice%G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ocn(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
-  allocate(Ice%h_snow(isd:ied, jsd:jed, 2:km)) ; Ice%h_snow(:,:,:) = 0.0
-  allocate(Ice%t_snow(isd:ied, jsd:jed, 2:km)) ; Ice%t_snow(:,:,:) = 0.0
-  allocate(Ice%h_ice(isd:ied, jsd:jed, 2:km)) ; Ice%h_ice(:,:,:) = 0.0
-  allocate(Ice%t_ice(isd:ied, jsd:jed, 2:km, Ice%G%NkIce)) ; Ice%t_ice(:,:,:,:) = 0.0
+  allocate(IST%h_snow(isd:ied, jsd:jed, 2:km)) ; IST%h_snow(:,:,:) = 0.0
+  allocate(IST%t_snow(isd:ied, jsd:jed, 2:km)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%h_ice(isd:ied, jsd:jed, 2:km)) ; IST%h_ice(:,:,:) = 0.0
+  allocate(IST%t_ice(isd:ied, jsd:jed, 2:km, Ice%G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%qflx_lim_ice(isc:iec, jsc:jec)) ; IST%qflx_lim_ice(:,:) = 0.0 !NR
   allocate(IST%qflx_res_ice(isc:iec, jsc:jec)) ; IST%qflx_res_ice(:,:) = 0.0 !NR
 
@@ -652,15 +651,15 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      Ice%t_surf,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      Ice%h_snow(:,:,2:km), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      Ice%t_snow(:,:,2:km), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       Ice%h_ice(:,:,2:km),  domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice(:,:,2:km,1), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice(:,:,2:km,2), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice(:,:,2:km,3), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice(:,:,2:km,4), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      IST%h_snow(:,:,2:km), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      IST%t_snow(:,:,2:km), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       IST%h_ice(:,:,2:km),  domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      IST%t_ice(:,:,2:km,1), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      IST%t_ice(:,:,2:km,2), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      IST%t_ice(:,:,2:km,3), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      IST%t_ice(:,:,2:km,4), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       IST%u_ice,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       IST%v_ice,            domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,           domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,           domain=domain)
@@ -710,15 +709,15 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
      !--- update to data domain
      call mpp_update_domains(Ice%part_size, Domain)
-     call mpp_update_domains(Ice%h_snow(:,:,2:km), Domain )
-     call mpp_update_domains(Ice%t_snow(:,:,2:km), Domain )
-     call mpp_update_domains(Ice%h_ice (:,:,2:km), Domain )
+     call mpp_update_domains(IST%h_snow(:,:,2:km), Domain )
+     call mpp_update_domains(IST%t_snow(:,:,2:km), Domain )
+     call mpp_update_domains(IST%h_ice (:,:,2:km), Domain )
 
      do l=1,Ice%G%NkIce
-       call mpp_update_domains(Ice%t_ice(:,:,2:km,l), Domain )
+       call mpp_update_domains(IST%t_ice(:,:,2:km,l), Domain )
      enddo
 
-    call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
+    call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE )
   else ! no restart => no ice
     Ice%part_size(:,:,:) = 0.0
     Ice%part_size(:,:,1) = 1.0
@@ -727,8 +726,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     Ice%rough_heat(:,:,:)  = heat_rough_ice
     Ice%rough_moist(:,:,:) = heat_rough_ice
     Ice%t_surf(:,:,:) = Tfreeze-5.0
-    Ice%t_snow(:,:,:) = -5.0
-    Ice%t_ice(:,:,:,:) = -5.0
+    IST%t_snow(:,:,:) = -5.0
+    IST%t_ice(:,:,:,:) = -5.0
 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
@@ -814,10 +813,10 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%flux_salt)
   deallocate(IST%lwdn, IST%swdn, IST%coszen)
   deallocate(IST%frazil )
-  deallocate(IST%bheat, Ice%u_ice, Ice%v_ice )
+  deallocate(IST%bheat, IST%u_ice, IST%v_ice )
   deallocate(IST%tmelt, IST%bmelt, IST%pen, IST%trn )
-  deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
-  deallocate(Ice%t_ice)
+  deallocate(IST%h_snow, IST%t_snow, IST%h_ice )
+  deallocate(IST%t_ice)
   deallocate(IST%qflx_lim_ice, IST%qflx_res_ice )
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
@@ -1157,15 +1156,15 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 !  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(IST%trn                )
 !  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(IST%tmelt              )
 !  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(IST%bmelt              )
-  write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(Ice%h_snow             )
-  write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(Ice%t_snow             )
-  write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(Ice%h_ice              )
-  write(outunit,100) 'ice_data_type%t_ice(1)           ',mpp_chksum(Ice%t_ice(:,:,:,1)     )
-  write(outunit,100) 'ice_data_type%t_ice(2)           ',mpp_chksum(Ice%t_ice(:,:,:,2)     )
-  write(outunit,100) 'ice_data_type%t_ice(3)           ',mpp_chksum(Ice%t_ice(:,:,:,3)     )
-  write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(Ice%t_ice(:,:,:,4)     )
-  write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(Ice%u_ice              )
-  write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(Ice%v_ice              )
+!  write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(IST%h_snow             )
+!  write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(IST%t_snow             )
+!  write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(IST%h_ice              )
+!  write(outunit,100) 'ice_data_type%t_ice(1)           ',mpp_chksum(IST%t_ice(:,:,:,1)     )
+!  write(outunit,100) 'ice_data_type%t_ice(2)           ',mpp_chksum(IST%t_ice(:,:,:,2)     )
+!  write(outunit,100) 'ice_data_type%t_ice(3)           ',mpp_chksum(IST%t_ice(:,:,:,3)     )
+!  write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(IST%t_ice(:,:,:,4)     )
+!  write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(IST%u_ice              )
+!  write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(IST%v_ice              )
 !  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(IST%frazil)
 !  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(IST%bheat)
 !  write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(IST%qflx_lim_ice)

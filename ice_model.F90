@@ -482,9 +482,9 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
 
   if (do_init) then
     call get_sea_surface(Ice%Time, Ice%t_surf(isc:iec,jsc:jec,1), Ice%part_size(isc:iec,jsc:jec,1:2), &
-                         Ice%h_ice(isc:iec,jsc:jec,2) )
+                         IST%h_ice(isc:iec,jsc:jec,2) )
     call mpp_update_domains(Ice%part_size(:,:,1:2), Domain ) ! these two updates cannot be combined
-    call mpp_update_domains(Ice%h_ice(:,:,2), Domain )       ! these two updates cannot be combined
+    call mpp_update_domains(IST%h_ice(:,:,2), Domain )       ! these two updates cannot be combined
     IST%part_size_uv(:,:,:) = 0.0
     IST%part_size_uv(:,:,1) = 1.0
     do k=2,km
@@ -498,24 +498,24 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
 
   if (first_time .and. conservation_check) then
     h2o    = 0.0
-    h2o(1) = sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:) +   &
-                                   DS*Ice%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)))
+    h2o(1) = sum(cell_area*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:) +   &
+                                   DS*IST%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)))
     heat   = 0.0
 
     do k=2,km ; do j=jsc,jec ; do i=isc,iec
-      if ((Ice%part_size(i,j,k)>0.0) .and. (Ice%h_ice(i,j,k)>0.0)) then
+      if ((Ice%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
         if (slab_ice) then
-          heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) * Ice%h_ice(i,j,2)*DI*LI
+          heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) * IST%h_ice(i,j,2)*DI*LI
         else
           heat(1) = heat(1) - cell_area(i,j) * Ice%part_size(i,j,k) *        &
-                    e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),         &
-                    Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4))
+                    e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),         &
+                    IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4))
         endif
       endif
     enddo ; enddo ; enddo
 
     salt = 0.0
-    salt(1) = sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) !*ice_bulk_salin 
+    salt(1) = sum(cell_area*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) !*ice_bulk_salin 
 
     first_time = .false.
   endif
@@ -538,7 +538,7 @@ do j=jsc,jec
                                         .or.Ice%t_surf(i,j,k)>Tfreeze+0.1)) &
          print '(a,f10.2,3i5,1PG12.6,2f10.2)','BAD ICE',Ice%t_surf(i,j,k),i,j,k,&
                                              Ice%part_size(i,j,k),&
-                                             Ice%h_ice(i,j,k),Ice%h_snow(i,j,k)
+                                             IST%h_ice(i,j,k),IST%h_snow(i,j,k)
       enddo
     endif
   enddo
@@ -584,7 +584,7 @@ enddo
     IST%bmelt(i,j,k) = 0.0
   enddo ; enddo ; enddo
 
-  tmp = ice_avg(Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) )
+  tmp = ice_avg(IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:) )
   do j=jsc,jec ; do i=isc,iec
     if ( tmp(i,j) > 0.0) then
        IST%bheat(i,j) = kmelt*(sst(i,j)-Tfreeze+MU_TS*Ice%s_surf(i,j))
@@ -595,11 +595,11 @@ enddo
 
   Ice%ice_mask(:,:,1) = .false.
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
-    Ice%ice_mask(i,j,k) = (Ice%h_ice(i,j,k) > 0.0)
+    Ice%ice_mask(i,j,k) = (IST%h_ice(i,j,k) > 0.0)
   enddo ; enddo ; enddo
 
-  do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (Ice%h_ice(i,j,k) > 0.0) then
-    call ice_optics(Ice%h_snow(i,j,k), Ice%h_ice(i,j,k), &
+  do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
+    call ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
          Ice%t_surf(i,j,k)-Tfreeze, -MU_TS*Ice%s_surf(i,j), &
          Ice%albedo_vis_dir(i,j,k), Ice%albedo_vis_dif(i,j,k), &
          Ice%albedo_nir_dir(i,j,k), Ice%albedo_nir_dif(i,j,k), &
@@ -627,8 +627,8 @@ enddo
   call uv_to_t(IST%u_ocn, Ice%u_surf(:,:,1), Ice%G)
   call uv_to_t(IST%v_ocn, Ice%v_surf(:,:,1), Ice%G)
 
-  call uv_to_t(Ice%u_ice, Ice%u_surf(:,:,2), Ice%G)
-  call uv_to_t(Ice%v_ice, Ice%v_surf(:,:,2), Ice%G)
+  call uv_to_t(IST%u_ice, Ice%u_surf(:,:,2), Ice%G)
+  call uv_to_t(IST%v_ice, Ice%v_surf(:,:,2), Ice%G)
 
   do k=1,2 ; do j=jsc,jec ; do i=isc,iec
     u = Ice%u_surf(i,j,k)
@@ -775,16 +775,16 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   call get_time(Ice%Time_step_fast,sc,dy); dt_fast = 864e2*dy+sc
 
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
-    if (Ice%h_ice(i,j,k) > 0.0) then
+    if (IST%h_ice(i,j,k) > 0.0) then
       if (slab_ice) then
         flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
         latent             = hlv+hlf
-      elseif (Ice%h_snow(i,j,k)>0.0) then
-        flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*Ice%t_snow(i,j,k))*flux_q(i,j,k)
-        latent             = hlv + (hlf-CI*Ice%t_snow(i,j,k))
+      elseif (IST%h_snow(i,j,k)>0.0) then
+        flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
+        latent             = hlv + (hlf-CI*IST%t_snow(i,j,k))
       else
-        flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/Ice%t_ice(i,j,k,1))
-        latent             = hlv + hlf*(1-TFI/Ice%t_ice(i,j,k,1))
+        flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
+        latent             = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
       endif
       !### ADD PARENTHESES.
       flux_sw = flux_sw_vis_dir(i,j,k)+flux_sw_vis_dif(i,j,k) &
@@ -792,9 +792,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
       hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
       hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
             - (1-IST%pen(i,j,k))*flux_sw - hfd*(Ice%t_surf(i,j,k)-Tfreeze)
-      call ice5lay_temp(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),    &
-                        Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3),   &
-                        Ice%t_ice(i,j,k,4), ts_new, hf, hfd,                        &
+      call ice5lay_temp(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),    &
+                        IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),   &
+                        IST%t_ice(i,j,k,4), ts_new, hf, hfd,                        &
                         IST%sw_abs_snow(i,j,k)*flux_sw, &
                         IST%sw_abs_ice(i,j,k,1)*flux_sw, &
                         IST%sw_abs_ice(i,j,k,2)*flux_sw, &
@@ -943,10 +943,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_end(iceClock)
   call mpp_clock_end(iceClock2)
   tmp1(:,:) = 1.-max(1.-sum(Ice%part_size(:,:,2:km),dim=3),0.0)
-  tmp2(:,:) = ice_avg(Ice%h_ice,Ice%part_size)
+  tmp2(:,:) = ice_avg(IST%h_ice,Ice%part_size)
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (do_icebergs) call icebergs_run( Ice%icebergs, Ice%Time,                &
-                    Ice%calving, IST%u_ocn, IST%v_ocn, Ice%u_ice, Ice%v_ice, &
+                    Ice%calving, IST%u_ocn, IST%v_ocn, IST%u_ice, IST%v_ice, &
                     Ice%flux_u, Ice%flux_v, IST%sea_lev, Ice%t_surf(:,:,1),  &
                     Ice%calving_hflx, tmp1, tmp2)
   call mpp_clock_begin(iceClock2)
@@ -989,22 +989,22 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
 
   call mpp_clock_begin(iceClock4)
-  tmp1(:,:) = ice_avg(Ice%h_snow,Ice%part_size)
-  tmp2(:,:) = ice_avg(Ice%h_ice,Ice%part_size)
+  tmp1(:,:) = ice_avg(IST%h_snow,Ice%part_size)
+  tmp2(:,:) = ice_avg(IST%h_ice,Ice%part_size)
   wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
   wind_stress_x(isc:iec,jsc:jec) = ice_avg(IST%flux_u_top_bgrid(isc:iec,jsc:jec,:), IST%part_size_uv(isc:iec,jsc:jec,:))
   wind_stress_y(isc:iec,jsc:jec) = ice_avg(IST%flux_v_top_bgrid(isc:iec,jsc:jec,:), IST%part_size_uv(isc:iec,jsc:jec,:))
 
   call enable_SIS_averaging(dt_slow, Ice%Time, IST%diag)
   call mpp_clock_begin(iceClocka)
-  call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, Ice%u_ice, Ice%v_ice, &
+  call ice_dynamics(1-Ice%part_size(:,:,1), tmp1, tmp2, IST%u_ice, IST%v_ice, &
                     IST%u_ocn, IST%v_ocn, &
                     wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
                     dt_slow, Ice%G, IST%ice_dyn_CSp)
   call mpp_clock_end(iceClocka)
 
   call mpp_clock_begin(iceClockb)
-  call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE)
+  call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE)
   call mpp_clock_end(iceClockb)
 
   call mpp_clock_begin(iceClockc)
@@ -1033,20 +1033,20 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   snow_to_ice(:,:,:) = 0.
   bsnk(:,:) = 0.
 
-  call get_avg(Ice%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,2:), hi_change(:,:))
-  h2o_change(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+  call get_avg(IST%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,2:), hi_change(:,:))
+  h2o_change(:,:) = all_avg(DS*IST%h_snow(isc:iec,jsc:jec,:)+DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
 
   ! get observed ice thickness for ice restoring, if calculating qflux
   if (do_ice_restore) &
        call get_sea_surface(Ice%Time, dum1, Obs_cn_ice, Obs_h_ice)
   do k=2,km ; do j=jsc,jec ; do i=isc,iec 
-    if (cell_area(i,j) > 0 .and.Ice%h_ice(i,j,k) > 0) then
+    if (cell_area(i,j) > 0 .and.IST%h_ice(i,j,k) > 0) then
       ! reshape the ice based on fluxes
 
       h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
-      call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k),&
-                          Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2),              &
-                          Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4),              &
+      call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),&
+                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),              &
+                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4),              &
                           IST%fprec_top(i,j,k) *dt_slow, 0.0,                &
                           IST%flux_q_top(i,j,k)*dt_slow,                     &
                           IST%tmelt (i,j,k), IST%bmelt(i,j,k),               &
@@ -1079,19 +1079,19 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !                                                           was ...>0.0
       ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
       !
-      Ice%h_snow(i,j,k) = Ice%h_snow(i,j,k) * Ice%part_size(i,j,k)
-      Ice%h_ice(i,j,k)  = Ice%h_ice(i,j,k)  * Ice%part_size(i,j,k)
+      IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * Ice%part_size(i,j,k)
+      IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * Ice%part_size(i,j,k)
       Ice%t_surf(i,j,k) = (Ice%t_surf(i,j,k) * Ice%part_size(i,j,k) &
                            +(Tfreeze - MU_TS*Ice%s_surf(i,j))*Ice%part_size(i,j,1))
       Ice%part_size(i,j,k) = Ice%part_size(i,j,k) + Ice%part_size(i,j,1)
       Ice%part_size(i,j,1) = 0.0
-      Ice%h_snow(i,j,k) = Ice%h_snow(i,j,k) / Ice%part_size(i,j,k)
-      Ice%h_ice(i,j,k)  = Ice%h_ice(i,j,k) / Ice%part_size(i,j,k)
+      IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / Ice%part_size(i,j,k)
+      IST%h_ice(i,j,k)  = IST%h_ice(i,j,k) / Ice%part_size(i,j,k)
       Ice%t_surf(i,j,k) = Ice%t_surf(i,j,k) / Ice%part_size(i,j,k)
 
-      call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), &
-                          Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2),                &
-                          Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4), 0.0,           &
+      call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),                &
+                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,           &
                           IST%frazil(i,j) / Ice%part_size(i,j,k), 0.0, 0.0, 0.0, &
                           -MU_TS*Ice%s_surf(i,j),                              &
                           heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
@@ -1122,13 +1122,13 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       ! calculate enthalpy
       !
       if (slab_ice) then
-        e2m(2) = Ice%h_ice(i,j,2)*DI*LI
+        e2m(2) = IST%h_ice(i,j,2)*DI*LI
       else
         do k=2,km
-          if ((Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0)) then
-             e2m(k) = e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), &
-                      Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3), &
-                      Ice%t_ice(i,j,k,4)) * Ice%part_size(i,j,k)
+          if ((Ice%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
+             e2m(k) = e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                      IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
+                      IST%t_ice(i,j,k,4)) * Ice%part_size(i,j,k)
           else
              e2m(k) = 0.0
           endif
@@ -1168,22 +1168,22 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       ! apply constraining heat to ice
       !
       tot_heat = heat_res_ice+heat_limit_ice
-      if (slab_ice) Ice%h_ice(i,j,2) = Ice%h_ice(i,j,2) - tot_heat/(DI*LI)
+      if (slab_ice) IST%h_ice(i,j,2) = IST%h_ice(i,j,2) - tot_heat/(DI*LI)
 
       if (.not. slab_ice .and. (tot_heat>0.0)) then  ! add like ocean-ice heat
         do k=2,km
           if (e2m(k) > 0.0) then
             heating = tot_heat/sum(Ice%part_size(i,j,k:km))
             if (heating*Ice%part_size(i,j,k) > e2m(k)) then ! cat. melts away
-              Ice%h_ice (i,j,k) = 0.0
-              Ice%h_snow(i,j,k) = 0.0
+              IST%h_ice (i,j,k) = 0.0
+              IST%h_snow(i,j,k) = 0.0
               tot_heat = tot_heat - e2m(k)
             else
               h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
-              call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k),  &
-                                  Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1),   &
-                                  Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3),  &
-                                  Ice%t_ice(i,j,k,4),  0.0, 0.0, 0.0, 0.0,&
+              call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
+                                  IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),   &
+                                  IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),  &
+                                  IST%t_ice(i,j,k,4),  0.0, 0.0, 0.0, 0.0,&
                                   heating, -MU_TS*Ice%s_surf(i,j),       &
                                   heat_to_ocn, h2o_to_ocn, h2o_from_ocn, &
                                   snow_to_ice(i,j,k), bablt              )
@@ -1199,19 +1199,19 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
           if (Ice%part_size(i,j,1)+Ice%part_size(i,j,k)>0) exit
         enddo
         ! k is thinnest ice partition that can recieve frazil
-        Ice%h_snow(i,j,k) = Ice%h_snow(i,j,k) * Ice%part_size(i,j,k)
-        Ice%h_ice(i,j,k)  = Ice%h_ice(i,j,k)  * Ice%part_size(i,j,k)
+        IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * Ice%part_size(i,j,k)
+        IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * Ice%part_size(i,j,k)
         Ice%t_surf(i,j,k) = Ice%t_surf(i,j,k) * Ice%part_size(i,j,k) &
                        + (Tfreeze - MU_TS*Ice%s_surf(i,j))*Ice%part_size(i,j,1)
         Ice%part_size(i,j,k) = Ice%part_size(i,j,k) + Ice%part_size(i,j,1)
         Ice%part_size(i,j,1) = 0.0
-        Ice%h_snow(i,j,k) = Ice%h_snow(i,j,k) / Ice%part_size(i,j,k)
-        Ice%h_ice(i,j,k) =  Ice%h_ice(i,j,k)  / Ice%part_size(i,j,k)
+        IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / Ice%part_size(i,j,k)
+        IST%h_ice(i,j,k) =  IST%h_ice(i,j,k)  / Ice%part_size(i,j,k)
         Ice%t_surf(i,j,k) = Ice%t_surf(i,j,k) / Ice%part_size(i,j,k)
 
-        call ice5lay_resize(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), &
-                            Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2),        &
-                            Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4), 0.0,   &
+        call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                            IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),        &
+                            IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,   &
                             -tot_heat/Ice%part_size(i,j,k), 0.0, 0.0, 0.0, &
                             -MU_TS*Ice%s_surf(i,j),                        &
                             heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
@@ -1224,19 +1224,19 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       ! Check for energy conservation
       !
       if (slab_ice) then
-        e2m(2) = e2m(2) - Ice%h_ice(i,j,2)*DI*LI
+        e2m(2) = e2m(2) - IST%h_ice(i,j,2)*DI*LI
       else
         do k=2,km
-          if (Ice%part_size(i,j,k)>0.0.and.Ice%h_ice(i,j,k)>0.0) &
-            e2m(k) = e2m(k)-e_to_melt(Ice%h_snow(i,j,k), Ice%t_snow(i,j,k),  &
-                     Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2), &
-                     Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4)) * Ice%part_size(i,j,k)
+          if (Ice%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0) &
+            e2m(k) = e2m(k)-e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
+                     IST%h_ice(i,j,k), IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), &
+                     IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)) * Ice%part_size(i,j,k)
         enddo
       endif
       ! if (abs(sum(e2m) - heat_res_ice - heat_limit_ice)>DI*LI*1e-3) &
       !       print *, 'QFLUX conservation error at', i, j, 'heat2ice=',  &
       !             tot_heat, 'melted=', sum(e2m), 'h*part_size=', &
-      !             Ice%h_ice(i,j,:)*Ice%part_size(i,j,:)
+      !             IST%h_ice(i,j,:)*Ice%part_size(i,j,:)
 
     enddo ; enddo
   endif
@@ -1246,11 +1246,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   call mpp_clock_begin(iceClock8)
   !### Inlining sensibly would change answers.
-  hi_change(:,:)  = all_avg(Ice%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))-hi_change(:,:)
+  hi_change(:,:)  = all_avg(IST%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))-hi_change(:,:)
   Ice%flux_salt(:,:) = ice_bulk_salin*DI*hi_change(:,:)/dt_slow
   if (id_saltf>0)  sent = send_data(id_saltf, Ice%flux_salt(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
-  h2o_change(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:), &
+  h2o_change(:,:) = all_avg(DS*IST%h_snow(isc:iec,jsc:jec,:)+DI*IST%h_ice(isc:iec,jsc:jec,:), &
                Ice%part_size(isc:iec,jsc:jec,:))-h2o_change(:,:)
 
   if (id_lsnk>0) then
@@ -1280,20 +1280,20 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   ! Ice transport ... all ocean fluxes have been calculated by now
   !
-  h2o_change(isc:iec,jsc:jec) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:) &
-                                       +DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+  h2o_change(isc:iec,jsc:jec) = all_avg(DS*IST%h_snow(isc:iec,jsc:jec,:) &
+                                       +DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
 
   ! Convert the velocities to C-grid points for transport.
   uc(:,:) = 0.0; vc(:,:) = 0.0
   do j=jsc,jec ; do I=isc-1,iec
-    uc(I,j) = 0.5 * ( Ice%u_ice(i,j-1) + Ice%u_ice(i,j) )
+    uc(I,j) = 0.5 * ( IST%u_ice(i,j-1) + IST%u_ice(i,j) )
   enddo ; enddo
   do J=jsc-1,jec ; do i = isc,iec
-    vc(i,J) = 0.5 * ( Ice%v_ice(i-1,j) + Ice%v_ice(i,j) )
+    vc(i,J) = 0.5 * ( IST%v_ice(i-1,j) + IST%v_ice(i,j) )
   enddo ; enddo
 
-  call ice_transport(Ice%part_size, Ice%h_ice, Ice%h_snow, uc, vc, &
-                     Ice%t_ice, Ice%t_snow, IST%sea_lev, hlim, dt_slow, &
+  call ice_transport(Ice%part_size, IST%h_ice, IST%h_snow, uc, vc, &
+                     IST%t_ice, IST%t_snow, IST%sea_lev, hlim, dt_slow, &
                      Ice%G, IST%ice_transport_CSp)
   ! Set appropriate surface quantities in categories with no ice.
   do k=2,km ; do j=jsc,jec ; do i=isc,iec ; if (Ice%part_size(i,j,k)<1e-10) &
@@ -1301,14 +1301,14 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   enddo ; enddo ; enddo
 
 
-!  tmp2d(:,:) = all_avg(DS*Ice%h_snow(isc:iec,jsc:jec,:)+DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
+!  tmp2d(:,:) = all_avg(DS*IST%h_snow(isc:iec,jsc:jec,:)+DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))
 !  do j=jsc,jec ; do i=isc,iec
 !    Ice%mi(i,j) = tmp2d(i,j) 
 !  enddo ; enddo
   ! Convert thickness and concentration to mass.
   Ice%mi(:,:) = 0.0 
   do k=2,km ; do j=jsc,jec ; do i=isc,iec
-    Ice%mi(i,j) = Ice%mi(i,j) + (DS*Ice%h_snow(i,j,k) + DI*Ice%h_ice(i,j,k)) * Ice%part_size(i,j,k)
+    Ice%mi(i,j) = Ice%mi(i,j) + (DS*IST%h_snow(i,j,k) + DI*IST%h_ice(i,j,k)) * Ice%part_size(i,j,k)
   enddo ; enddo ; enddo
   do j=jsc,jec ; do i=isc,iec ; mass(i,j) = Ice%mi(i,j) ; enddo ; enddo
   if (id_mi>0) sent = send_data(id_mi, Ice%mi(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
@@ -1329,7 +1329,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   h2o_change(:,:) = mass(:,:)-h2o_change(:,:)
 
   if (spec_ice) then                  ! over-write changes with specifications
-    call get_sea_surface(Ice%Time, Ice%t_surf(:,:,1), Ice%part_size(isc:iec,jsc:jec,:), Ice%h_ice (isc:iec,jsc:jec,2))
+    call get_sea_surface(Ice%Time, Ice%t_surf(:,:,1), Ice%part_size(isc:iec,jsc:jec,:), IST%h_ice (isc:iec,jsc:jec,2))
     call mpp_update_domains(Ice%part_size, Domain)
   endif
 
@@ -1360,12 +1360,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
     sent = send_data(id_ext, diagVar(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
   endif
-  if (id_hs>0) sent  = send_data(id_hs, ice_avg(Ice%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_hs>0) sent  = send_data(id_hs, ice_avg(IST%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
                        Ice%Time, mask=Ice%mask)
-  if (id_hi>0) sent  = send_data(id_hi, ice_avg(Ice%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_hi>0) sent  = send_data(id_hi, ice_avg(IST%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
                        Ice%Time, mask=Ice%mask)
 
-  if (id_hio>0) sent  = send_data(id_hio, ice_avg(Ice%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_hio>0) sent  = send_data(id_hio, ice_avg(IST%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
                        Ice%Time, mask=Ice%mask,is_in=isc, js_in=jsc, ie_in=iec, je_in=jec)
 
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later
@@ -1374,24 +1374,24 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !                     mask=Ice%mask)
 
   if (id_ts>0) sent = send_data(id_ts, ice_avg(Ice%t_surf-Tfreeze,Ice%part_size(isc:iec,jsc:jec,:)), Ice%Time, mask=Ice%mask)
-  if (id_tsn>0) sent = send_data(id_tsn, ice_avg(Ice%t_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_tsn>0) sent = send_data(id_tsn, ice_avg(IST%t_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
                Ice%Time, mask=Ice%mask)
-  if (id_t1>0) sent = send_data(id_t1, ice_avg(Ice%t_ice(isc:iec,jsc:jec,:,1),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_t1>0) sent = send_data(id_t1, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,1),Ice%part_size(isc:iec,jsc:jec,:)), &
                Ice%Time, mask=Ice%mask)
-  if (id_t2>0) sent = send_data(id_t2, ice_avg(Ice%t_ice(isc:iec,jsc:jec,:,2),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_t2>0) sent = send_data(id_t2, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,2),Ice%part_size(isc:iec,jsc:jec,:)), &
                Ice%Time, mask=Ice%mask)
-  if (id_t3>0) sent = send_data(id_t3, ice_avg(Ice%t_ice(isc:iec,jsc:jec,:,3),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_t3>0) sent = send_data(id_t3, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,3),Ice%part_size(isc:iec,jsc:jec,:)), &
                Ice%Time, mask=Ice%mask)
-  if (id_t4>0) sent = send_data(id_t4, ice_avg(Ice%t_ice(isc:iec,jsc:jec,:,4),Ice%part_size(isc:iec,jsc:jec,:)), &
+  if (id_t4>0) sent = send_data(id_t4, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,4),Ice%part_size(isc:iec,jsc:jec,:)), &
                Ice%Time, mask=Ice%mask)
   if (id_xprt>0) sent = send_data(id_xprt,  h2o_change(isc:iec,jsc:jec)*864e2*365/dt_slow, Ice%Time, mask=Ice%mask)
   if (id_e2m>0) then
     tmp2d(:,:) = 0.0
     do k=2,km ; do j=jsc,jec ; do i=isc,iec
-      if (Ice%h_ice(i,j,k)>0.0) &
-        tmp2d(i,j) = tmp2d(i,j) + Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k), &
-                     Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1),    &
-                     Ice%t_ice(i,j,k,2), Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4)    )
+      if (IST%h_ice(i,j,k)>0.0) &
+        tmp2d(i,j) = tmp2d(i,j) + Ice%part_size(i,j,k)*e_to_melt(IST%h_snow(i,j,k), &
+                     IST%t_snow(i,j,k), IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),    &
+                     IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)    )
     enddo ; enddo ; enddo
     sent = send_data(id_e2m,  tmp2d(:,:), Ice%Time, mask=Ice%mask)
   endif
@@ -1408,21 +1408,21 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
               Ice%flux_t-Ice%flux_lh -LI*(Ice%fprec+Ice%calving)), cell_area > 0 )
     salt(3)  = salt(3) + dt_slow*sum(cell_area*(Ice%flux_salt))/ice_bulk_salin !Kg salt added since start / earth_area
 
-    h2o(4)  = sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:)+ &
-              DS*Ice%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)))
+    h2o(4)  = sum(cell_area*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:)+ &
+              DS*IST%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)))
 
-    salt(4) = sum(cell_area*all_avg(DI*Ice%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) !*ice_bulk_salin
+    salt(4) = sum(cell_area*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) !*ice_bulk_salin
 
     heat(4) = 0.0
 
     do k=2,km ; do j=jsc,jec ;  do i=isc,iec
-      if ((Ice%part_size(i,j,k)>0.0) .and. (Ice%h_ice(i,j,k)>0.0)) then
+      if ((Ice%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
         if (slab_ice) then
-          heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*Ice%h_ice(i,j,2)*DI*LI
+          heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*IST%h_ice(i,j,2)*DI*LI
         else
-          heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*e_to_melt(Ice%h_snow(i,j,k), &
-                    Ice%t_snow(i,j,k), Ice%h_ice(i,j,k), Ice%t_ice(i,j,k,1), Ice%t_ice(i,j,k,2),   &
-                                                         Ice%t_ice(i,j,k,3), Ice%t_ice(i,j,k,4)    )
+          heat(4) = heat(4) - cell_area(i,j) * Ice%part_size(i,j,k)*e_to_melt(IST%h_snow(i,j,k), &
+                    IST%t_snow(i,j,k), IST%h_ice(i,j,k), IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),   &
+                                                         IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)    )
         endif
       endif
     enddo ;  enddo ; enddo
