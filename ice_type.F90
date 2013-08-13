@@ -186,7 +186,7 @@ public  :: earth_area
 type ice_state_type
    type (time_type)                   :: Time_Init, Time
    type (time_type)                   :: Time_step_fast, Time_step_slow
-   integer                            :: avg_count
+  integer                            :: avg_count
    logical                            :: pe
 
    logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
@@ -198,31 +198,31 @@ type ice_state_type
    real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
    real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
   
-   real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
-   real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
-   real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
-   real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
+  real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
+  real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
+  real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
 
-   real,    pointer, dimension(:,:)   :: lwdn                =>NULL() ! Accumulated diagnostics of
-   real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
-   real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
-   real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
-   real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
-   real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
-   real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
-   real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
-   real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
-   real,    pointer, dimension(:,:)   :: coszen              =>NULL()
+  real,    pointer, dimension(:,:)   :: lwdn                =>NULL() ! Accumulated diagnostics of
+  real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
+  real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
+  real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
+  real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
+  real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
+  real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
+  real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
+  real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
+  real,    pointer, dimension(:,:)   :: coszen              =>NULL()
    real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
    real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
    real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
@@ -233,8 +233,8 @@ type ice_state_type
    real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
    real,    pointer, dimension(:,:)   :: frazil              =>NULL()
    real,    pointer, dimension(:,:)   :: bheat               =>NULL()
-   real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
-   real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
+  real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
+  real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
    real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
                                                                       ! because flux_ice_to_ocean cannot handle 3D fields. This may be
 								! removed, if the information on ice thickness can be derived from 
@@ -266,7 +266,7 @@ type ice_data_type !  ice_public_type
   type(domain2D)                     :: Domain
      type (time_type)                   :: Time_Init, Time
      type (time_type)                   :: Time_step_fast, Time_step_slow
-     integer                            :: avg_count
+!     integer                            :: avg_count
   logical                            :: pe
   integer, pointer, dimension(:)     :: pelist              =>NULL() ! Used for flux-exchange.
      logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
@@ -324,17 +324,17 @@ type ice_data_type !  ice_public_type
   real,    pointer, dimension(:,:  ) :: calving_hflx        =>NULL()
   real,    pointer, dimension(:,:  ) :: flux_salt           =>NULL()
 
-     real,    pointer, dimension(:,:)   :: lwdn                =>NULL()
-     real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
-     real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
-     real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
+!     real,    pointer, dimension(:,:)   :: lwdn                =>NULL()
+!     real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
+!     real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
+!     real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
 
-     real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
-     real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
-     real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
-     real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
-     real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
-     real,    pointer, dimension(:,:)   :: coszen              =>NULL()
+!     real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
+!     real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
+!     real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
+!     real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
+!     real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
+!     real,    pointer, dimension(:,:)   :: coszen              =>NULL()
 
      real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
@@ -346,8 +346,8 @@ type ice_data_type !  ice_public_type
      real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: frazil              =>NULL()
      real,    pointer, dimension(:,:)   :: bheat               =>NULL()
-     real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
-     real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
+!     real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
+!     real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
   real,    pointer, dimension(:,:)   :: area                =>NULL()
   real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
                                                                      ! because flux_ice_to_ocean cannot handle 3D fields. This may be
@@ -465,7 +465,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     character(len=64) :: restart_file
     integer           :: stdlogunit, stdoutunit
     type(param_file_type) :: param_file
-    type(ice_state_type), pointer :: IST => NULL()
+  type(ice_state_type), pointer :: IST => NULL()
 
     stdlogunit=stdlog()
     stdoutunit = stdout()
@@ -553,7 +553,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
   allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
   allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
-  allocate(Ice%coszen(isc:iec, jsc:jec)) ; Ice%coszen(:,:) = 0.0 !NR
+  allocate(IST%coszen(isc:iec, jsc:jec)) ; IST%coszen(:,:) = 0.0 !NR
   allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0
   allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
   allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
@@ -595,33 +595,33 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
   allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
   allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
-  allocate(Ice%lwdn(isc:iec, jsc:jec)) ; Ice%lwdn(:,:) = 0.0 !NR
-  allocate(Ice%swdn(isc:iec, jsc:jec)) ; Ice%swdn(:,:) = 0.0 !NR
+  allocate(IST%lwdn(isc:iec, jsc:jec)) ; IST%lwdn(:,:) = 0.0 !NR
+  allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
   allocate(Ice%frazil(isc:iec, jsc:jec)) ; Ice%frazil(:,:) = 0.0 !NR
   allocate(Ice%bheat(isc:iec, jsc:jec)) ; Ice%bheat(:,:) = 0.0 !NI
   allocate(Ice%u_ice(isd:ied, jsd:jed)) ; Ice%u_ice(:,:) = 0.0
   allocate(Ice%v_ice(isd:ied, jsd:jed)) ; Ice%v_ice(:,:) = 0.0
   allocate(Ice%tmelt(isc:iec, jsc:jec, 2:km)) ; Ice%tmelt(:,:,:) = 0.0 !NR
   allocate(Ice%bmelt(isc:iec, jsc:jec, 2:km)) ; Ice%bmelt(:,:,:) = 0.0 !NR
-  allocate(Ice%pen(isc:iec, jsc:jec, 2:km)) ; Ice%pen(:,:,:) = 0.0 !NI
-  allocate(Ice%trn(isc:iec, jsc:jec, 2:km)) ; Ice%trn(:,:,:) = 0.0 !NI
-  allocate(Ice%sw_abs_sfc(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(Ice%sw_abs_snow(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(Ice%sw_abs_ice(isc:iec, jsc:jec, 2:km, Ice%G%NkIce)) ; Ice%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(Ice%sw_abs_ocn(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(Ice%sw_abs_int(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_int(:,:,:) = 0.0 !NR
+  allocate(IST%pen(isc:iec, jsc:jec, 2:km)) ; IST%pen(:,:,:) = 0.0 !NI
+  allocate(IST%trn(isc:iec, jsc:jec, 2:km)) ; IST%trn(:,:,:) = 0.0 !NI
+  allocate(IST%sw_abs_sfc(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_snow(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:km, Ice%G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ocn(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_int(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
   allocate(Ice%h_snow(isd:ied, jsd:jed, 2:km)) ; Ice%h_snow(:,:,:) = 0.0
   allocate(Ice%t_snow(isd:ied, jsd:jed, 2:km)) ; Ice%t_snow(:,:,:) = 0.0
   allocate(Ice%h_ice(isd:ied, jsd:jed, 2:km)) ; Ice%h_ice(:,:,:) = 0.0
   allocate(Ice%t_ice(isd:ied, jsd:jed, 2:km, Ice%G%NkIce)) ; Ice%t_ice(:,:,:,:) = 0.0
-  allocate(Ice%qflx_lim_ice(isc:iec, jsc:jec)) ; Ice%qflx_lim_ice(:,:) = 0.0 !NR
-  allocate(Ice%qflx_res_ice(isc:iec, jsc:jec)) ; Ice%qflx_res_ice(:,:) = 0.0 !NR
+  allocate(IST%qflx_lim_ice(isc:iec, jsc:jec)) ; IST%qflx_lim_ice(:,:) = 0.0 !NR
+  allocate(IST%qflx_res_ice(isc:iec, jsc:jec)) ; IST%qflx_res_ice(:,:) = 0.0 !NR
 
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
   Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
-  Ice%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
+  IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec
     Ice%mask(i,j) = ( Ice%G%mask2dT(i,j) > 0.5 )
@@ -632,7 +632,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   Ice%Time_step_fast = Time_step_fast
   Ice%Time_step_slow = Time_step_slow
 
-  Ice%avg_count      = 0
+  IST%avg_count      = 0
 
   !
   ! read restart
@@ -682,7 +682,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                                               domain=domain, mandatory=.false.)
   id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
                                               domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    Ice%coszen,    domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
 
   call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
 !    call ice_transport_register_restarts(Ice%G, param_file, Ice%ice_transport_CSp, Ice_restart, restart_file)
@@ -812,13 +812,13 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%flux_lh, Ice%lprec, Ice%fprec, Ice%p_surf, Ice%runoff ) 
   deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx )
   deallocate(Ice%flux_salt)
-  deallocate(Ice%lwdn, Ice%swdn, Ice%coszen)
+  deallocate(IST%lwdn, IST%swdn, IST%coszen)
   deallocate(Ice%frazil )
   deallocate(Ice%bheat, Ice%u_ice, Ice%v_ice )
-  deallocate(Ice%tmelt, Ice%bmelt, Ice%pen, Ice%trn )
+  deallocate(Ice%tmelt, Ice%bmelt, IST%pen, IST%trn )
   deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
   deallocate(Ice%t_ice)
-  deallocate(Ice%qflx_lim_ice, Ice%qflx_res_ice )
+  deallocate(IST%qflx_lim_ice, IST%qflx_res_ice )
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
 
@@ -1115,6 +1115,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%rough_mom          ',mpp_chksum(Ice%rough_mom          )
   write(outunit,100) 'ice_data_type%rough_heat         ',mpp_chksum(Ice%rough_heat         )
   write(outunit,100) 'ice_data_type%rough_moist        ',mpp_chksum(Ice%rough_moist        )
+
   write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf             )
   write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf             )
   write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf             )
@@ -1150,10 +1151,10 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
-  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(Ice%lwdn               )
-  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(Ice%swdn               )
-  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(Ice%pen                )
-  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(Ice%trn                )
+!  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(IST%lwdn               )
+!  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
+!  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(IST%pen                )
+!  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(IST%trn                )
   write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(Ice%tmelt              )
   write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(Ice%bmelt              )
   write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(Ice%h_snow             )
@@ -1167,8 +1168,8 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(Ice%v_ice              )
   write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(Ice%frazil)
   write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(Ice%bheat)
-  write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(Ice%qflx_lim_ice)
-  write(outunit,100) 'ice_data_type%qflx_res_ice       ',mpp_chksum(Ice%qflx_res_ice)
+!  write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(IST%qflx_lim_ice)
+!  write(outunit,100) 'ice_data_type%qflx_res_ice       ',mpp_chksum(IST%qflx_res_ice)
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
