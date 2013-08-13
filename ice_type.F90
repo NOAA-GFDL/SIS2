@@ -35,6 +35,7 @@ use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport
 
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
 use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
 
@@ -252,7 +253,7 @@ type ice_state_type
   type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_diag_ctrl)         :: diag
-  type(icebergs), pointer     :: icebergs
+  type(icebergs), pointer     :: icebergs => NULL()
   type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
 end type ice_state_type
 
@@ -366,9 +367,9 @@ type ice_data_type !  ice_public_type
       type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
       type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
       type(SIS_diag_ctrl)         :: diag
-      type(icebergs), pointer     :: icebergs
+      type(icebergs), pointer     :: icebergs => NULL()
     type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
-    type(ice_state_type)    :: Ice_state ! A structure containing the internal
+    type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                  ! representation of the ice state.
 end type ice_data_type !  ice_public_type
 
@@ -463,43 +464,52 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     character(len=64) :: restart_file
     integer           :: stdlogunit, stdoutunit
     type(param_file_type) :: param_file
+    type(ice_state_type), pointer :: IST => NULL()
 
     stdlogunit=stdlog()
     stdoutunit = stdout()
-    !
-    ! read namelist and write to logfile
-    !
+
+  if (associated(Ice%Ice_state)) then
+    call SIS_error(WARNING, "ice_model_init called with an associated "// &
+                    "Ice%Ice_state structure. Model is already initialized.")
+    return
+  endif
+  allocate(Ice%Ice_state)
+  IST => Ice%Ice_state
+  
+
+  ! read namelist and write to logfile
 #ifdef INTERNAL_FILE_NML
-    read (input_nml_file, nml=ice_model_nml, iostat=io)
+  read (input_nml_file, nml=ice_model_nml, iostat=io)
 #else
-    unit = open_namelist_file()
-    read  (unit, ice_model_nml,iostat=io)
-    call close_file (unit)
+  unit = open_namelist_file()
+  read  (unit, ice_model_nml,iostat=io)
+  call close_file (unit)
 #endif
-    ierr = check_nml_error(io,'ice_model_nml')
-    write (stdoutunit,'(/)')
-    write (stdoutunit, ice_model_nml)
-    write (stdlogunit, ice_model_nml)
+  ierr = check_nml_error(io,'ice_model_nml')
+  write (stdoutunit,'(/)')
+  write (stdoutunit, ice_model_nml)
+  write (stdlogunit, ice_model_nml)
 
-    call Get_SIS_Input(param_file)
+  call Get_SIS_Input(param_file)
 
-    call write_version_number( version, tagname )
+  call write_version_number( version, tagname )
 
-    ! Check for parameters that are still being set via the namelist but which
-    ! should be set via the param_file instead.  This has to be somewhere that
-    ! has all of the namelist variables in scope.
-    call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
-    call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
-    call archaic_nml_check(param_file, "ICE_STRENGTH_CSTAR", "c0", c0, missing)
-    call archaic_nml_check(param_file, "ICE_CDRAG_WATER", "cdw", cdw, missing)
-    ! call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
-    call archaic_nml_check(param_file, "AIR_WATER_STRESS_TURN_ANGLE", "wd_turn", wd_turn, missing)
-    ! call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
-    call archaic_nml_check(param_file, "NSTEPS_ADV", "nsteps_adv", nsteps_adv, miss_int, 1)
-    call archaic_nml_check(param_file, "ICE_CHANNEL_VISCOSITY", &
-                           "channel_viscosity", channel_viscosity, missing, 0.0)
-    call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
-    call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
+  ! Check for parameters that are still being set via the namelist but which
+  ! should be set via the param_file instead.  This has to be somewhere that
+  ! has all of the namelist variables in scope.
+  call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
+  call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
+  call archaic_nml_check(param_file, "ICE_STRENGTH_CSTAR", "c0", c0, missing)
+  call archaic_nml_check(param_file, "ICE_CDRAG_WATER", "cdw", cdw, missing)
+  ! call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
+  call archaic_nml_check(param_file, "AIR_WATER_STRESS_TURN_ANGLE", "wd_turn", wd_turn, missing)
+  ! call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
+  call archaic_nml_check(param_file, "NSTEPS_ADV", "nsteps_adv", nsteps_adv, miss_int, 1)
+  call archaic_nml_check(param_file, "ICE_CHANNEL_VISCOSITY", &
+                         "channel_viscosity", channel_viscosity, missing, 0.0)
+  call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
+  call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
 
     if (spec_ice) then
        slab_ice = .true.
@@ -512,390 +522,312 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
     call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
 
-    if(file_exist(mask_table)) then
-       write(stdoutunit, *) '==> NOTE from ice_model_init:  reading maskmap information from '//trim(mask_table)
-       if(layout(1) == 0 .OR. layout(2) == 0 ) call error_mesg('ice_model_init', &
-          'ice_model_nml layout should be set when file '//trim(mask_table)//' exists', FATAL)
+  if (file_exist(mask_table)) then
+     write(stdoutunit, *) '==> NOTE from ice_model_init:  reading maskmap information from '//trim(mask_table)
+     if(layout(1) == 0 .OR. layout(2) == 0 ) call error_mesg('ice_model_init', &
+        'ice_model_nml layout should be set when file '//trim(mask_table)//' exists', FATAL)
 
-       allocate(Ice%maskmap(layout(1), layout(2)))
-       call parse_mask_table(mask_table, Ice%maskmap, "Ice model")
-    endif
+     allocate(Ice%maskmap(layout(1), layout(2)))
+     call parse_mask_table(mask_table, Ice%maskmap, "Ice model")
+  endif
 
-    if( ASSOCIATED(Ice%maskmap) ) then
-       call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
-    else
-       call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
-    end if
-    call set_domain(domain)
+  if( ASSOCIATED(Ice%maskmap) ) then
+     call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
+  else
+     call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
+  end if
+  call set_domain(domain)
 
-    allocate ( Ice%mask     (isc:iec, jsc:jec)     , &
-         Ice%ice_mask       (isc:iec, jsc:jec, km) , &
-         Ice%t_surf         (isc:iec, jsc:jec, km) , &
-         Ice%s_surf         (isc:iec, jsc:jec)     , &
-         Ice%sea_lev        (isd:ied, jsd:jed)     , &
-         Ice%part_size      (isd:ied, jsd:jed, km) , &
-         Ice%part_size_uv   (isc:iec, jsc:jec, km) , &
-         Ice%u_surf         (isc:iec, jsc:jec, km) , &
-         Ice%v_surf         (isc:iec, jsc:jec, km) , &
-         Ice%u_ocn          (isd:ied, jsd:jed)     , &
-         Ice%v_ocn          (isd:ied, jsd:jed)     , &
-         Ice%rough_mom      (isc:iec, jsc:jec, km) , &
-         Ice%rough_heat     (isc:iec, jsc:jec, km) , &
-         Ice%rough_moist    (isc:iec, jsc:jec, km) , &
-         Ice%coszen         (isc:iec, jsc:jec)     , &
-         Ice%albedo         (isc:iec, jsc:jec, km) , &
-         Ice%albedo_vis_dir (isc:iec, jsc:jec, km) , &
-         Ice%albedo_nir_dir (isc:iec, jsc:jec, km) , &
-         Ice%albedo_vis_dif (isc:iec, jsc:jec, km) , &
-         Ice%albedo_nir_dif (isc:iec, jsc:jec, km) )
+  allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
+  allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
+  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+  allocate(Ice%sea_lev(isd:ied, jsd:jed)) ; Ice%sea_lev(:,:) = 0.0 !NR
+  allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
+  allocate(Ice%part_size_uv(isc:iec, jsc:jec, km)) ; Ice%part_size_uv(:,:,:) = 0.0 !NR
+  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%u_ocn(isd:ied, jsd:jed)) ; Ice%u_ocn(:,:) = 0.0 !NR
+  allocate(Ice%v_ocn(isd:ied, jsd:jed)) ; Ice%v_ocn(:,:) = 0.0 !NR
+  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
+  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
+  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
+  allocate(Ice%coszen(isc:iec, jsc:jec)) ; Ice%coszen(:,:) = 0.0 !NR
+  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0
+  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
-    allocate ( Ice%flux_u_top   (isd:ied, jsd:jed, km), &
-         Ice%flux_v_top         (isd:ied, jsd:jed, km), &
-         Ice%flux_t_top         (isc:iec, jsc:jec, km), &
-         Ice%flux_q_top         (isc:iec, jsc:jec, km), &
-         Ice%flux_sw_vis_dir_top(isc:iec, jsc:jec, km), &
-         Ice%flux_sw_vis_dif_top(isc:iec, jsc:jec, km), &
-         Ice%flux_sw_nir_dir_top(isc:iec, jsc:jec, km), &
-         Ice%flux_sw_nir_dif_top(isc:iec, jsc:jec, km), &
-         Ice%flux_lw_top        (isc:iec, jsc:jec, km), &
-         Ice%flux_lh_top        (isc:iec, jsc:jec, km), &
-         Ice%lprec_top          (isc:iec, jsc:jec, km), &
-         Ice%fprec_top          (isc:iec, jsc:jec, km)  )
+  allocate(Ice%flux_u_top(isd:ied, jsd:jed, km)) ; Ice%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(Ice%flux_v_top(isd:ied, jsd:jed, km)) ; Ice%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(Ice%flux_t_top(isc:iec, jsc:jec, km)) ;  Ice%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_q_top(isc:iec, jsc:jec, km)) ;  Ice%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_sw_vis_dir_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_sw_vis_dif_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_sw_nir_dir_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_sw_nir_dif_top(isc:iec, jsc:jec, km)) ; Ice%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_lw_top(isc:iec, jsc:jec, km)) ; Ice%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(Ice%flux_lh_top(isc:iec, jsc:jec, km)) ; Ice%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(Ice%lprec_top(isc:iec, jsc:jec, km)) ;  Ice%lprec_top(:,:,:) = 0.0 !NI
+  allocate(Ice%fprec_top(isc:iec, jsc:jec, km)) ;  Ice%fprec_top(:,:,:) = 0.0 !NI
 
-    allocate ( Ice%flux_u_top_bgrid(isd:ied, jsd:jed, km), &
-               Ice%flux_v_top_bgrid(isd:ied, jsd:jed, km)  )
+  allocate(Ice%flux_u_top_bgrid(isd:ied, jsd:jed, km)) ; Ice%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(Ice%flux_v_top_bgrid(isd:ied, jsd:jed, km)) ; Ice%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
-    allocate ( Ice%flux_u    (isc:iec, jsc:jec), &
-         Ice%flux_v          (isc:iec, jsc:jec), &
-         Ice%flux_t          (isc:iec, jsc:jec), &
-         Ice%flux_q          (isc:iec, jsc:jec), &
-         Ice%flux_sw_vis_dir (isc:iec, jsc:jec), &
-         Ice%flux_sw_vis_dif (isc:iec, jsc:jec), &
-         Ice%flux_sw_nir_dir (isc:iec, jsc:jec), &
-         Ice%flux_sw_nir_dif (isc:iec, jsc:jec), &
-         Ice%flux_lw         (isc:iec, jsc:jec), &
-         Ice%flux_lh         (isc:iec, jsc:jec), &
-         Ice%lprec           (isc:iec, jsc:jec), &
-         Ice%fprec           (isc:iec, jsc:jec), &
-         Ice%p_surf          (isc:iec, jsc:jec), &
+  allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
+  allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
+  allocate(Ice%flux_t(isc:iec, jsc:jec)) ; Ice%flux_t(:,:) = 0.0
+  allocate(Ice%flux_q(isc:iec, jsc:jec)) ; Ice%flux_q(:,:) = 0.0
+  allocate(Ice%flux_sw_vis_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dir(:,:) = 0.0
+  allocate(Ice%flux_sw_vis_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dif(:,:) = 0.0
+  allocate(Ice%flux_sw_nir_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dir(:,:) = 0.0
+  allocate(Ice%flux_sw_nir_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dif(:,:) = 0.0
+  allocate(Ice%flux_lw(isc:iec, jsc:jec)) ; Ice%flux_lw(:,:) = 0.0
+  allocate(Ice%flux_lh(isc:iec, jsc:jec)) ; Ice%flux_lh(:,:) = 0.0 !NI
+  allocate(Ice%lprec(isc:iec, jsc:jec)) ; Ice%lprec(:,:) = 0.0
+  allocate(Ice%fprec(isc:iec, jsc:jec)) ; Ice%fprec(:,:) = 0.0
+  allocate(Ice%p_surf(isc:iec, jsc:jec)) ; Ice%p_surf(:,:) = 0.0
+
+  allocate(Ice%runoff(isc:iec, jsc:jec)) ; Ice%runoff(:,:) = 0.0
+  allocate(Ice%calving(isc:iec, jsc:jec)) ; Ice%calving(:,:) = 0.0
+  allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
+  allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
+  allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
+  allocate(Ice%lwdn(isc:iec, jsc:jec)) ; Ice%lwdn(:,:) = 0.0 !NR
+  allocate(Ice%swdn(isc:iec, jsc:jec)) ; Ice%swdn(:,:) = 0.0 !NR
+  allocate(Ice%frazil(isc:iec, jsc:jec)) ; Ice%frazil(:,:) = 0.0 !NR
+  allocate(Ice%bheat(isc:iec, jsc:jec)) ; Ice%bheat(:,:) = 0.0 !NI
+  allocate(Ice%u_ice(isd:ied, jsd:jed)) ; Ice%u_ice(:,:) = 0.0
+  allocate(Ice%v_ice(isd:ied, jsd:jed)) ; Ice%v_ice(:,:) = 0.0
+  allocate(Ice%tmelt(isc:iec, jsc:jec, 2:km)) ; Ice%tmelt(:,:,:) = 0.0 !NR
+  allocate(Ice%bmelt(isc:iec, jsc:jec, 2:km)) ; Ice%bmelt(:,:,:) = 0.0 !NR
+  allocate(Ice%pen(isc:iec, jsc:jec, 2:km)) ; Ice%pen(:,:,:) = 0.0 !NI
+  allocate(Ice%trn(isc:iec, jsc:jec, 2:km)) ; Ice%trn(:,:,:) = 0.0 !NI
+  allocate(Ice%sw_abs_sfc(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(Ice%sw_abs_snow(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(Ice%sw_abs_ice(isc:iec, jsc:jec, 2:km, Ice%G%NkIce)) ; Ice%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(Ice%sw_abs_ocn(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(Ice%sw_abs_int(isc:iec, jsc:jec, 2:km)) ; Ice%sw_abs_int(:,:,:) = 0.0 !NR
+  allocate(Ice%h_snow(isd:ied, jsd:jed, 2:km)) ; Ice%h_snow(:,:,:) = 0.0
+  allocate(Ice%t_snow(isd:ied, jsd:jed, 2:km)) ; Ice%t_snow(:,:,:) = 0.0
+  allocate(Ice%h_ice(isd:ied, jsd:jed, 2:km)) ; Ice%h_ice(:,:,:) = 0.0
+  allocate(Ice%t_ice(isd:ied, jsd:jed, 2:km, Ice%G%NkIce)) ; Ice%t_ice(:,:,:,:) = 0.0
+  allocate(Ice%qflx_lim_ice(isc:iec, jsc:jec)) ; Ice%qflx_lim_ice(:,:) = 0.0 !NR
+  allocate(Ice%qflx_res_ice(isc:iec, jsc:jec)) ; Ice%qflx_res_ice(:,:) = 0.0 !NR
+
+  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
+  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+  Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
+  Ice%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
+
+  do j=jsc,jec ; do i=isc,iec
+    Ice%mask(i,j) = ( Ice%G%mask2dT(i,j) > 0.5 )
+  enddo ; enddo
  
-         Ice%runoff          (isc:iec, jsc:jec), &
-         Ice%calving         (isc:iec, jsc:jec), &
-         Ice%runoff_hflx     (isc:iec, jsc:jec), &
-         Ice%calving_hflx    (isc:iec, jsc:jec), &
-         Ice%flux_salt       (isc:iec, jsc:jec), &
-         Ice%lwdn            (isc:iec, jsc:jec), &
-         Ice%swdn            (isc:iec, jsc:jec)  )
-    allocate ( Ice%frazil (isc:iec, jsc:jec), &
-               Ice%bheat  (isc:iec, jsc:jec), &
-               Ice%u_ice  (isd:ied, jsd:jed), &
-               Ice%v_ice  (isd:ied, jsd:jed) )
-    allocate ( Ice%tmelt  (isc:iec, jsc:jec, 2:km), &
-               Ice%bmelt  (isc:iec, jsc:jec, 2:km), &
-               Ice%pen    (isc:iec, jsc:jec, 2:km), &
-               Ice%trn    (isc:iec, jsc:jec, 2:km), &
-               Ice%sw_abs_sfc  (isc:iec, jsc:jec, 2:km), &
-               Ice%sw_abs_snow (isc:iec, jsc:jec, 2:km) , &
-               Ice%sw_abs_ice (isc:iec, jsc:jec, 2:km, Ice%G%NkIce), &
-               Ice%sw_abs_ocn  (isc:iec, jsc:jec, 2:km), &
-               Ice%sw_abs_int  (isc:iec, jsc:jec, 2:km), &
-               Ice%h_snow (isd:ied, jsd:jed, 2:km), &
-               Ice%t_snow (isd:ied, jsd:jed, 2:km) , &
-               Ice%h_ice  (isd:ied, jsd:jed, 2:km),                                         &
-               Ice%t_ice  (isd:ied, jsd:jed, 2:km, Ice%G%NkIce) )
-    allocate ( Ice%qflx_lim_ice(isc:iec, jsc:jec) , &
-               Ice%qflx_res_ice(isc:iec, jsc:jec)   )
+  Ice%Time           = Time
+  Ice%Time_Init      = Time_Init
+  Ice%Time_step_fast = Time_step_fast
+  Ice%Time_step_slow = Time_step_slow
 
-    allocate ( Ice%area        (isc:iec, jsc:jec) )
-    allocate ( Ice%mi          (isc:iec, jsc:jec) )
+  Ice%avg_count      = 0
 
-    Ice%flux_sw_vis_dir(:,:) =0.
-    Ice%flux_sw_vis_dif(:,:) =0.
-    Ice%flux_sw_nir_dir(:,:) =0.
-    Ice%flux_sw_nir_dif(:,:) =0.
-    Ice%flux_lh(:,:)         =0. 
-    Ice%lwdn(:,:)            =0.
-    Ice%swdn(:,:)            =0.
-    Ice%flux_u_top(:,:,:)      =0. 
-    Ice%flux_v_top(:,:,:)      =0.
-    Ice%flux_u_top_bgrid(:,:,:)=0. 
-    Ice%flux_v_top_bgrid(:,:,:)=0.
-    Ice%sea_lev(:,:)         =0.
-    Ice%part_size(:,:,:)       =0.
-    Ice%u_ocn(:,:)           =0.
-    Ice%v_ocn(:,:)           =0.
-    Ice%u_ice(:,:)           =0.
-    Ice%v_ice(:,:)           =0.
-    Ice%h_snow(:,:,:)   =0.
-    Ice%t_snow(:,:,:)   =0.
-    Ice%h_ice(:,:,:)    =0.
-    Ice%t_ice(:,:,:,:) = 0.0
-    Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
-    Ice%mi(:,:)         =0.
-    Ice%sw_abs_sfc(:,:,:) = 0.
-    Ice%sw_abs_ocn(:,:,:) = 0.
-    Ice%sw_abs_int(:,:,:) = 0.
-    Ice%sw_abs_snow(:,:,:) = 0.
-    Ice%sw_abs_ice(:,:,:,:) = 0.
-    Ice%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
+  !
+  ! read restart
+  !
+  restart_file = 'ice_model.res.nc'
+  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', Ice%part_size, domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
+  id_restart_albedo = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
+                                             domain=domain, mandatory=.false.)
+  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
+                                             domain=domain, mandatory=.false.)
+  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
+                                             domain=domain, mandatory=.false.)
+  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
+                                             domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      Ice%t_surf,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      Ice%h_snow(:,:,2:km), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      Ice%t_snow(:,:,2:km), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       Ice%h_ice(:,:,2:km),  domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice(:,:,2:km,1), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice(:,:,2:km,2), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice(:,:,2:km,3), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice(:,:,2:km,4), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,          domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,          domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,      domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx,     domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,           domain=domain)
+  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
+                                              domain=domain, mandatory=.false.)    
+  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
+                                              domain=domain, mandatory=.false.)
+  id_restart_flux_sw = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
+                                              domain=domain, mandatory=.false.)
+  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
+                                              domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    Ice%coszen,    domain=domain, mandatory=.false.)
 
-    do j = jsc, jec
-       do i = isc, iec
-          if( Ice%G%mask2dT(i,j) > 0.5 ) then
-             Ice%mask(i,j) = .true.
-          else
-             Ice%mask(i,j) = .false.
-          end if
-       enddo
-    enddo
- 
-    Ice%Time           = Time
-    Ice%Time_Init      = Time_Init
-    Ice%Time_step_fast = Time_step_fast
-    Ice%Time_step_slow = Time_step_slow
-
-    Ice%avg_count      = 0
-    !
-    ! read restart
-    !
-    !! Need to create new restart version including the needed albedos
-    !  that have been added ??
-
-    !--- 
-    restart_file = 'ice_model.res.nc'
-    id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', Ice%part_size, domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
-    id_restart_albedo = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
-                                               domain=domain, mandatory=.false.)
-    id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
-                                               domain=domain, mandatory=.false.)
-    id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
-                                               domain=domain, mandatory=.false.)
-    id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
-                                               domain=domain, mandatory=.false.)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,        domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      Ice%t_surf,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      Ice%h_snow(:,:,2:km), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      Ice%t_snow(:,:,2:km), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       Ice%h_ice(:,:,2:km),  domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      Ice%t_ice(:,:,2:km,1), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      Ice%t_ice(:,:,2:km,2), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      Ice%t_ice(:,:,2:km,3), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      Ice%t_ice(:,:,2:km,4), domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       Ice%u_ice,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       Ice%v_ice,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,        domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,          domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,            domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,           domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,          domain=domain)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,      domain=domain, mandatory=.false.)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx,     domain=domain, mandatory=.false.)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,           domain=domain)
-    id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
-                                                domain=domain, mandatory=.false.)    
-    id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
-                                                domain=domain, mandatory=.false.)
-    id_restart_flux_sw = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
-                                                domain=domain, mandatory=.false.)
-    id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
-                                                domain=domain, mandatory=.false.)
-    id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    Ice%coszen,    domain=domain, mandatory=.false.)
-
-    call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
+  call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
 !    call ice_transport_register_restarts(Ice%G, param_file, Ice%ice_transport_CSp, Ice_restart, restart_file)
 
-!
-!        Total SW flux is broken into 4 components in Nalanda,
-!        it was a single component preNalanda.
-!
-    restart_file = 'INPUT/ice_model.res.nc'
-    if (file_exist(restart_file)) then
-       call restore_state(Ice_restart)
-       if( .NOT. query_initialized(Ice_restart, id_restart_albedo)) then
-          Ice%albedo_vis_dir    = 0.0         
-          Ice%albedo_nir_dir    = 0.0       
-          Ice%albedo_vis_dif    = 0.0       
-          Ice%albedo_nir_dif    = 0.0       
+  restart_file = 'INPUT/ice_model.res.nc'
+  if (file_exist(restart_file)) then
+    call restore_state(Ice_restart)
+
+    if ( .NOT.query_initialized(Ice_restart, id_restart_flux_sw) ) then
+       call error_mesg ('ice_model_init', &
+          'Restart file does not contain flux_sw_* subcomponents!', WARNING)
+       ! for compatibility with preN restarts, we should check for total SW flux 
+       if (field_exist(restart_file,'flux_sw')) then
+         call read_data( restart_file, 'flux_sw', Ice%flux_sw_vis_dir, domain) 
+         ! simplest way to break the total flux to 4 components
+         Ice%flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
+         Ice%flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
+         Ice%flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
+         Ice%flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
+       else
+         call error_mesg ('ice_model_init', &
+              'Restart file does not contain flux_sw total or its components!', FATAL)
        endif
+     endif
 
-       if(.NOT. query_initialized(Ice_restart, id_restart_flux_sw) ) then 
-          call error_mesg ('ice_model_init', &
-            'Restart file does not contain flux_sw_* subcomponents!', WARNING)
-          ! for compatibility with preN restarts, we should check for total SW flux 
-          if(field_exist(restart_file,'flux_sw')) then
-             call read_data( restart_file, 'flux_sw',Ice%flux_sw_vis_dir , domain ) 
-             ! simplest way to break the total flux to 4 components
-             Ice%flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
-             Ice%flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-             Ice%flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
-             Ice%flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-          else
-             call error_mesg ('ice_model_init', &
-                  'Restart file does not contain flux_sw total or its components!', FATAL)
-          endif
-       endif
+     !--- update to data domain
+     call mpp_update_domains(Ice%part_size, Domain)
+     call mpp_update_domains(Ice%h_snow(:,:,2:km), Domain )
+     call mpp_update_domains(Ice%t_snow(:,:,2:km), Domain )
+     call mpp_update_domains(Ice%h_ice (:,:,2:km), Domain )
 
-       !--- update to data domain
-       call mpp_update_domains(Ice%part_size, Domain)
-       call mpp_update_domains(Ice%h_snow(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%t_snow(:,:,2:km), Domain )
-       call mpp_update_domains(Ice%h_ice (:,:,2:km), Domain )
-       
-       do l=1,Ice%G%NkIce
-         call mpp_update_domains(Ice%t_ice(:,:,2:km,l), Domain )
-       enddo
+     do l=1,Ice%G%NkIce
+       call mpp_update_domains(Ice%t_ice(:,:,2:km,l), Domain )
+     enddo
 
-      call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
-    else ! no restart => no ice
-       Ice%part_size(:,:,:)  = 0.0
-       !   where (Ice%mask) Ice%part_size (:,:,1) = 1.0  - flux_exchange won't allow
-       Ice%part_size(:,:,1)  = 1.0
-       Ice%albedo(:,:,:) = 0.0
-       Ice%albedo_vis_dir(:,:,:) = 0.0         
-       Ice%albedo_nir_dir(:,:,:) = 0.0       
-       Ice%albedo_vis_dif(:,:,:) = 0.0       
-       Ice%albedo_nir_dif(:,:,:) = 0.0       
-       Ice%rough_mom(:,:,:)   = mom_rough_ice
-       Ice%rough_heat(:,:,:)  = heat_rough_ice
-       Ice%rough_moist(:,:,:) = heat_rough_ice
-       Ice%t_surf(:,:,:) = Tfreeze-5.0
-       Ice%h_snow(:,:,:) = 0.0
-       Ice%t_snow(:,:,:) = -5.0
-       Ice%h_ice(:,:,:) = 0.0
-       Ice%t_ice(:,:,:,:) = -5.0
-       Ice%u_ice(:,:) = 0.0
-       Ice%v_ice(:,:) = 0.0
-       Ice%flux_u(:,:) = 0.0 
-       Ice%flux_v(:,:) = 0.0
-       Ice%flux_t(:,:) = 0.0 
-       Ice%flux_q(:,:) = 0.0
-       Ice%flux_lw(:,:) = 0.0
-       Ice%flux_salt(:,:) = 0.0 
-       Ice%lprec(:,:) = 0.0
-       Ice%fprec(:,:) = 0.0
-       Ice%p_surf(:,:) = 0.0
-       Ice%runoff(:,:) = 0.0
-       Ice%calving(:,:) = 0.0
-       Ice%runoff_hflx(:,:) = 0.0
-       Ice%calving_hflx(:,:) = 0.0
-       Ice%frazil(:,:) = 0.0
-       Ice%flux_sw_vis_dir(:,:) = 0.0 
-       Ice%flux_sw_vis_dif(:,:) = 0.0 
-       Ice%flux_sw_nir_dir(:,:) = 0.0 
-       Ice%flux_sw_nir_dif(:,:) = 0.0 
-       do_init = .true. ! done in ice_model
-    end if
+    call mpp_update_domains(Ice%u_ice, Ice%v_ice, Domain, gridtype=BGRID_NE )
+  else ! no restart => no ice
+    Ice%part_size(:,:,:) = 0.0
+    Ice%part_size(:,:,1) = 1.0
 
-    Ice%tmelt(:,:,:)       = 0.0
-    Ice%bmelt(:,:,:)       = 0.0
+    Ice%rough_mom(:,:,:)   = mom_rough_ice
+    Ice%rough_heat(:,:,:)  = heat_rough_ice
+    Ice%rough_moist(:,:,:) = heat_rough_ice
+    Ice%t_surf(:,:,:) = Tfreeze-5.0
+    Ice%t_snow(:,:,:) = -5.0
+    Ice%t_ice(:,:,:,:) = -5.0
 
-    Ice%qflx_lim_ice(:,:) = 0.0
-    Ice%qflx_res_ice(:,:) = 0.0
+    do_init = .true. ! done in ice_model
+  endif ! file_exist(restart_file)
 
-    Ice%part_size_uv(:,:,1) = 1.0
-    do k=2,km
-      Ice%part_size_uv(:,:,k) = 0.0
-      call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
-      Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
-    enddo
+  Ice%part_size_uv(:,:,1) = 1.0
+  do k=2,km
+    Ice%part_size_uv(:,:,k) = 0.0
+    call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
+    Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
+  enddo
 
     
-    call SIS_diag_mediator_init(Ice%G, param_file, Ice%diag, component="SIS")
-    call set_SIS_axes_info(Ice%G, param_file, Ice%diag)
+  call SIS_diag_mediator_init(Ice%G, param_file, Ice%diag, component="SIS")
+  call set_SIS_axes_info(Ice%G, param_file, Ice%diag)
 
-    call ice_diagnostics_init(Ice, Ice%G)
+  call ice_diagnostics_init(Ice, Ice%G)
 
-    call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp)
-    call ice_transport_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_transport_CSp)
-    call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
-                       t_range_melt, ks, h_lo_lim,do_deltaEdd)
+  call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp)
+  call ice_transport_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_transport_CSp)
+  call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
+                     t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
-    call close_param_file(param_file)
+  call close_param_file(param_file)
 
-    !Balaji
-    iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
-    iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-    iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-    iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClockb = mpp_clock_id( '       slow: comm/cut check ', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClockc = mpp_clock_id( '       slow: diags', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock8 = mpp_clock_id( '  Ice: slow: salt to ocean', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock9 = mpp_clock_id( '  Ice: slow: thermodyn diags', flags=clock_flag_default, grain=CLOCK_LOOP )
-    iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
- 
-    ! Initialize icebergs
-    if (do_icebergs) call icebergs_init(Ice%icebergs, &
-             im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
-             dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
-             Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, cos_rot, sin_rot )
+  !Balaji
+  iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+  iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
+  iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
+  iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClockb = mpp_clock_id( '       slow: comm/cut check ', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClockc = mpp_clock_id( '       slow: diags', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock8 = mpp_clock_id( '  Ice: slow: salt to ocean', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock9 = mpp_clock_id( '  Ice: slow: thermodyn diags', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
-   if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
+  ! Initialize icebergs
+  if (do_icebergs) call icebergs_init(Ice%icebergs, &
+           im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
+           dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
+           Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, cos_rot, sin_rot )
 
-   call shortwave_dEdd0_set_params(R_ice,R_snw,R_pnd)
+  if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 
-   call nullify_domain()
+  call shortwave_dEdd0_set_params(R_ice,R_snw,R_pnd)
 
-  end subroutine ice_model_init
+  call nullify_domain()
 
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_model_end - writes the restart file and deallocates memory               !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_model_end (Ice)
-    type (ice_data_type), intent(inout) :: Ice
-    integer           :: k
+end subroutine ice_model_init
 
-    integer           :: unit
-    character(len=22) :: restart='RESTART/ice_model.res'
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_model_end - writes the restart file and deallocates memory               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_model_end (Ice)
+  type (ice_data_type), intent(inout) :: Ice
+  integer           :: k
 
-    if (conservation_check) call ice_print_budget()
+  integer           :: unit
+  character(len=22) :: restart='RESTART/ice_model.res'
 
-    call ice_model_restart()
+  if (conservation_check) call ice_print_budget()
 
-    !--- release memory ------------------------------------------------
-    call ice_grid_end(Ice%G)
+  call ice_model_restart()
 
-    deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, Ice%sea_lev )
-    deallocate(Ice%part_size, Ice%part_size_uv, Ice%u_surf, Ice%v_surf )
-    deallocate(Ice%u_ocn, Ice%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
-    deallocate(Ice%rough_moist, Ice%albedo, Ice%flux_u_top, Ice%flux_v_top )
-    deallocate(Ice%flux_u_top_bgrid, Ice%flux_v_top_bgrid )
-    deallocate(Ice%flux_t_top, Ice%flux_q_top, Ice%flux_lw_top )
-    deallocate(Ice%flux_lh_top, Ice%lprec_top, Ice%fprec_top, Ice%flux_u )
-    deallocate(Ice%flux_v, Ice%flux_t, Ice%flux_q, Ice%flux_lw )
-    deallocate(Ice%flux_lh, Ice%lprec, Ice%fprec, Ice%p_surf, Ice%runoff ) 
-    deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx )
-    deallocate(Ice%flux_salt)
-    deallocate(Ice%lwdn, Ice%swdn, Ice%coszen)
-    deallocate(Ice%frazil )
-    deallocate(Ice%bheat, Ice%u_ice, Ice%v_ice )
-    deallocate(Ice%tmelt, Ice%bmelt, Ice%pen, Ice%trn )
-    deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
-    deallocate(Ice%t_ice)
-    deallocate(Ice%qflx_lim_ice, Ice%qflx_res_ice )
-    deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
-    deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
+  !--- release memory ------------------------------------------------
+  call ice_grid_end(Ice%G)
 
-    call ice_dyn_end(Ice%ice_dyn_CSp)
-    call ice_transport_end(Ice%ice_transport_CSp)
+  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, Ice%sea_lev )
+  deallocate(Ice%part_size, Ice%part_size_uv, Ice%u_surf, Ice%v_surf )
+  deallocate(Ice%u_ocn, Ice%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
+  deallocate(Ice%rough_moist, Ice%albedo, Ice%flux_u_top, Ice%flux_v_top )
+  deallocate(Ice%flux_u_top_bgrid, Ice%flux_v_top_bgrid )
+  deallocate(Ice%flux_t_top, Ice%flux_q_top, Ice%flux_lw_top )
+  deallocate(Ice%flux_lh_top, Ice%lprec_top, Ice%fprec_top, Ice%flux_u )
+  deallocate(Ice%flux_v, Ice%flux_t, Ice%flux_q, Ice%flux_lw )
+  deallocate(Ice%flux_lh, Ice%lprec, Ice%fprec, Ice%p_surf, Ice%runoff ) 
+  deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx )
+  deallocate(Ice%flux_salt)
+  deallocate(Ice%lwdn, Ice%swdn, Ice%coszen)
+  deallocate(Ice%frazil )
+  deallocate(Ice%bheat, Ice%u_ice, Ice%v_ice )
+  deallocate(Ice%tmelt, Ice%bmelt, Ice%pen, Ice%trn )
+  deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
+  deallocate(Ice%t_ice)
+  deallocate(Ice%qflx_lim_ice, Ice%qflx_res_ice )
+  deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
+  deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
 
-    ! End icebergs
-    if (do_icebergs) call icebergs_end(Ice%icebergs)
+  call ice_dyn_end(Ice%ice_dyn_CSp)
+  call ice_transport_end(Ice%ice_transport_CSp)
 
-    if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_end
+  ! End icebergs
+  if (do_icebergs) call icebergs_end(Ice%icebergs)
 
-  end subroutine ice_model_end
+  if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_end
+
+end subroutine ice_model_end
 
     subroutine ice_print_budget
       integer :: k
@@ -925,22 +857,22 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
      end subroutine ice_print_budget
 
 
-  !#######################################################################
-  ! <SUBROUTINE NAME="ice_model_restart">
-  ! <DESCRIPTION>
-  !  Write out restart files registered through register_restart_file
-  ! </DESCRIPTION>
-  subroutine ice_model_restart(time_stamp)
-    character(len=*),         intent(in), optional :: time_stamp
+!#######################################################################
+! <SUBROUTINE NAME="ice_model_restart">
+! <DESCRIPTION>
+!  Write out restart files registered through register_restart_file
+! </DESCRIPTION>
+subroutine ice_model_restart(time_stamp)
+  character(len=*),         intent(in), optional :: time_stamp
 
-    call save_restart(Ice_restart, time_stamp)
-   !call icebergs_save_restart(Ice%icebergs)
-   ! This should go here but since "Ice" is not available we have to
-   ! rely on the restart written via ice_model_end() -AJA
+  call save_restart(Ice_restart, time_stamp)
+ !call icebergs_save_restart(Ice%icebergs)
+ ! This should go here but since "Ice" is not available we have to
+ ! rely on the restart written via ice_model_end() -AJA
 
-  end subroutine ice_model_restart
-  ! </SUBROUTINE>
-  !#######################################################################
+end subroutine ice_model_restart
+! </SUBROUTINE>
+!#######################################################################
 
   subroutine ice_diagnostics_init(Ice, G)
     type (ice_data_type), intent(inout)    :: Ice
