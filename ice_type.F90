@@ -192,11 +192,11 @@ type ice_state_type
    logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
    real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
    real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
-   real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
+  real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
 
    real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
-   real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
-   real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
+  real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
+  real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
   
   real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
   real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
@@ -223,16 +223,16 @@ type ice_state_type
   real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
   real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
   real,    pointer, dimension(:,:)   :: coszen              =>NULL()
-   real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
-   real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
+  real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
+  real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
    real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
    real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
    real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
    real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
    real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
    real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
-   real,    pointer, dimension(:,:)   :: frazil              =>NULL()
-   real,    pointer, dimension(:,:)   :: bheat               =>NULL()
+  real,    pointer, dimension(:,:)   :: frazil              =>NULL()
+  real,    pointer, dimension(:,:)   :: bheat               =>NULL()
   real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
   real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
    real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
@@ -246,7 +246,7 @@ type ice_state_type
                                                                       ! are not assigned to actual processors.
                                                                       ! This need not be assigned if all logical
                                                                       ! processors are used
-   integer, dimension(3)              :: axes
+!   integer, dimension(3)              :: axes
    type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
    type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
    type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
@@ -285,10 +285,10 @@ type ice_data_type !  ice_public_type
   real,    pointer, dimension(:,:,:) :: u_surf              =>NULL()
   real,    pointer, dimension(:,:,:) :: v_surf              =>NULL()
 
-     real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
+!    real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
      real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
-     real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
-     real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
+!    real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
+!    real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
 !    real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
 !    real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
 !    real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
@@ -336,16 +336,16 @@ type ice_data_type !  ice_public_type
 !     real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
 !     real,    pointer, dimension(:,:)   :: coszen              =>NULL()
 
-     real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
-     real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
+!     real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
+!     real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
      real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
      real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
      real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
      real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
      real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
      real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
-     real,    pointer, dimension(:,:)   :: frazil              =>NULL()
-     real,    pointer, dimension(:,:)   :: bheat               =>NULL()
+!     real,    pointer, dimension(:,:)   :: frazil              =>NULL()
+!     real,    pointer, dimension(:,:)   :: bheat               =>NULL()
 !     real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
 !     real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
   real,    pointer, dimension(:,:)   :: area                =>NULL()
@@ -365,9 +365,9 @@ type ice_data_type !  ice_public_type
   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
-      type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
-      type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-      type(SIS_diag_ctrl)         :: diag
+!      type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
+!      type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+!      type(SIS_diag_ctrl)         :: diag
       type(icebergs), pointer     :: icebergs => NULL()
     type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
     type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
@@ -543,13 +543,13 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  allocate(Ice%sea_lev(isd:ied, jsd:jed)) ; Ice%sea_lev(:,:) = 0.0 !NR
+  allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
   allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
-  allocate(Ice%part_size_uv(isc:iec, jsc:jec, km)) ; Ice%part_size_uv(:,:,:) = 0.0 !NR
+  allocate(IST%part_size_uv(isc:iec, jsc:jec, km)) ; IST%part_size_uv(:,:,:) = 0.0 !NR
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
   allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%u_ocn(isd:ied, jsd:jed)) ; Ice%u_ocn(:,:) = 0.0 !NR
-  allocate(Ice%v_ocn(isd:ied, jsd:jed)) ; Ice%v_ocn(:,:) = 0.0 !NR
+  allocate(IST%u_ocn(isd:ied, jsd:jed)) ; IST%u_ocn(:,:) = 0.0 !NR
+  allocate(IST%v_ocn(isd:ied, jsd:jed)) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
   allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
   allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
@@ -597,12 +597,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
   allocate(IST%lwdn(isc:iec, jsc:jec)) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
-  allocate(Ice%frazil(isc:iec, jsc:jec)) ; Ice%frazil(:,:) = 0.0 !NR
-  allocate(Ice%bheat(isc:iec, jsc:jec)) ; Ice%bheat(:,:) = 0.0 !NI
+  allocate(IST%frazil(isc:iec, jsc:jec)) ; IST%frazil(:,:) = 0.0 !NR
+  allocate(IST%bheat(isc:iec, jsc:jec)) ; IST%bheat(:,:) = 0.0 !NI
   allocate(Ice%u_ice(isd:ied, jsd:jed)) ; Ice%u_ice(:,:) = 0.0
   allocate(Ice%v_ice(isd:ied, jsd:jed)) ; Ice%v_ice(:,:) = 0.0
-  allocate(Ice%tmelt(isc:iec, jsc:jec, 2:km)) ; Ice%tmelt(:,:,:) = 0.0 !NR
-  allocate(Ice%bmelt(isc:iec, jsc:jec, 2:km)) ; Ice%bmelt(:,:,:) = 0.0 !NR
+  allocate(IST%tmelt(isc:iec, jsc:jec, 2:km)) ; IST%tmelt(:,:,:) = 0.0 !NR
+  allocate(IST%bmelt(isc:iec, jsc:jec, 2:km)) ; IST%bmelt(:,:,:) = 0.0 !NR
   allocate(IST%pen(isc:iec, jsc:jec, 2:km)) ; IST%pen(:,:,:) = 0.0 !NI
   allocate(IST%trn(isc:iec, jsc:jec, 2:km)) ; IST%trn(:,:,:) = 0.0 !NI
   allocate(IST%sw_abs_sfc(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
@@ -684,8 +684,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                                               domain=domain, mandatory=.false.)
   id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
 
-  call ice_dyn_register_restarts(Ice%G, param_file, Ice%ice_dyn_CSp, Ice_restart, restart_file)
-!    call ice_transport_register_restarts(Ice%G, param_file, Ice%ice_transport_CSp, Ice_restart, restart_file)
+  call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
+!    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
 
   restart_file = 'INPUT/ice_model.res.nc'
   if (file_exist(restart_file)) then
@@ -733,21 +733,21 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
 
-  Ice%part_size_uv(:,:,1) = 1.0
+  IST%part_size_uv(:,:,1) = 1.0
   do k=2,km
-    Ice%part_size_uv(:,:,k) = 0.0
-    call t_to_uv(Ice%part_size(:,:,k), Ice%part_size_uv(:,:,k), Ice%G)
-    Ice%part_size_uv (:,:,1) = Ice%part_size_uv(:,:,1)-Ice%part_size_uv (:,:,k)
+    IST%part_size_uv(:,:,k) = 0.0
+    call t_to_uv(Ice%part_size(:,:,k), IST%part_size_uv(:,:,k), Ice%G)
+    IST%part_size_uv (:,:,1) = IST%part_size_uv(:,:,1)-IST%part_size_uv (:,:,k)
   enddo
 
     
-  call SIS_diag_mediator_init(Ice%G, param_file, Ice%diag, component="SIS")
-  call set_SIS_axes_info(Ice%G, param_file, Ice%diag)
+  call SIS_diag_mediator_init(Ice%G, param_file, IST%diag, component="SIS")
+  call set_SIS_axes_info(Ice%G, param_file, IST%diag)
 
   call ice_diagnostics_init(Ice, Ice%G)
 
-  call ice_dyn_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_dyn_CSp)
-  call ice_transport_init(Ice%Time, Ice%G, param_file, Ice%diag, Ice%ice_transport_CSp)
+  call ice_dyn_init(Ice%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
+  call ice_transport_init(Ice%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
                      t_range_melt, ks, h_lo_lim,do_deltaEdd)
 
@@ -801,9 +801,9 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
   call ice_grid_end(Ice%G)
 
-  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, Ice%sea_lev )
-  deallocate(Ice%part_size, Ice%part_size_uv, Ice%u_surf, Ice%v_surf )
-  deallocate(Ice%u_ocn, Ice%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
+  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, IST%sea_lev )
+  deallocate(Ice%part_size, IST%part_size_uv, Ice%u_surf, Ice%v_surf )
+  deallocate(IST%u_ocn, IST%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
   deallocate(Ice%rough_moist, Ice%albedo, IST%flux_u_top, IST%flux_v_top )
   deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid )
   deallocate(IST%flux_t_top, IST%flux_q_top, IST%flux_lw_top )
@@ -813,17 +813,17 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx )
   deallocate(Ice%flux_salt)
   deallocate(IST%lwdn, IST%swdn, IST%coszen)
-  deallocate(Ice%frazil )
-  deallocate(Ice%bheat, Ice%u_ice, Ice%v_ice )
-  deallocate(Ice%tmelt, Ice%bmelt, IST%pen, IST%trn )
+  deallocate(IST%frazil )
+  deallocate(IST%bheat, Ice%u_ice, Ice%v_ice )
+  deallocate(IST%tmelt, IST%bmelt, IST%pen, IST%trn )
   deallocate(Ice%h_snow, Ice%t_snow, Ice%h_ice )
   deallocate(Ice%t_ice)
   deallocate(IST%qflx_lim_ice, IST%qflx_res_ice )
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
 
-  call ice_dyn_end(Ice%ice_dyn_CSp)
-  call ice_transport_end(Ice%ice_transport_CSp)
+  call ice_dyn_end(IST%ice_dyn_CSp)
+  call ice_transport_end(IST%ice_transport_CSp)
 
   ! End icebergs
   if (do_icebergs) call icebergs_end(Ice%icebergs)
@@ -1106,7 +1106,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   outunit = stdout()
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", id, timestep
   write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size          )
-  write(outunit,100) 'ice_data_type%part_size_uv       ',mpp_chksum(Ice%part_size_uv       )
+! write(outunit,100) 'ice_data_type%part_size_uv       ',mpp_chksum(IST%part_size_uv       )
   write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo             )
   write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir     )
   write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir     )
@@ -1119,10 +1119,10 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf             )
   write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf             )
   write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf             )
-  write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(Ice%sea_lev            )
+! write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(IST%sea_lev            )
   write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf             )
-  write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(Ice%u_ocn              )
-  write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(Ice%v_ocn              )
+! write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(IST%u_ocn              )
+! write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(IST%v_ocn              )
 ! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
 ! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
 ! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
@@ -1155,8 +1155,8 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 !  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
 !  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(IST%pen                )
 !  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(IST%trn                )
-  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(Ice%tmelt              )
-  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(Ice%bmelt              )
+!  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(IST%tmelt              )
+!  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(IST%bmelt              )
   write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(Ice%h_snow             )
   write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(Ice%t_snow             )
   write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(Ice%h_ice              )
@@ -1166,8 +1166,8 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(Ice%t_ice(:,:,:,4)     )
   write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(Ice%u_ice              )
   write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(Ice%v_ice              )
-  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(Ice%frazil)
-  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(Ice%bheat)
+!  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(IST%frazil)
+!  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(IST%bheat)
 !  write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(IST%qflx_lim_ice)
 !  write(outunit,100) 'ice_data_type%qflx_res_ice       ',mpp_chksum(IST%qflx_res_ice)
 
