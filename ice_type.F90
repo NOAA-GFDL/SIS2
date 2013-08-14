@@ -190,11 +190,12 @@ type ice_state_type
    logical                            :: pe
 
    logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
-   real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
+  real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
   real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
   real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
 
-   real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
+  real,    pointer, dimension(:,:,:)   :: t_surf            =>NULL()
+  real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
   real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
   real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
   
@@ -281,8 +282,7 @@ type ice_data_type !  ice_public_type
   real,    pointer, dimension(:,:,:) :: t_surf              =>NULL()
   real,    pointer, dimension(:,:,:) :: u_surf              =>NULL()
   real,    pointer, dimension(:,:,:) :: v_surf              =>NULL()
-
-     real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
+  real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
 
   ! These arrays will be used to set the forcing for the ocean.
   real,    pointer, dimension(:,:  ) :: flux_u              =>NULL()
@@ -364,18 +364,18 @@ subroutine ice_stock_pe(Ice, index, value)
 
       value = sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:)+   &
           DS*IST%h_snow(isc:iec,jsc:jec,:),  &
-          Ice%part_size(isc:iec,jsc:jec,:))) &
+          IST%part_size(isc:iec,jsc:jec,:))) &
           *4*pi*radius*radius 
 
     case (ISTOCK_HEAT)
 
       value = 0.0
       do k=2,km ; do j=jsc,jec ; do i=isc,iec
-        if ((Ice%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
+        if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (slab_ice) then
-            value = value - cell_area(i,j) * Ice%part_size(i,j,k)*IST%h_ice(i,j,2)*DI*LI
+            value = value - cell_area(i,j) * IST%part_size(i,j,k)*IST%h_ice(i,j,2)*DI*LI
           else
-            value = value - cell_area(i,j) * Ice%part_size(i,j,k)           &
+            value = value - cell_area(i,j) * IST%part_size(i,j,k)           &
                            *e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
                                       IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
                                       IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
@@ -387,7 +387,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
     case (ISTOCK_SALT)
        !No salt in the h_snow component.
-      value =  sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:))) &
+      value =  sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),IST%part_size(isc:iec,jsc:jec,:))) &
               *ice_bulk_salin*4*pi*radius*radius
     case default
 
@@ -498,8 +498,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+  allocate(IST%t_surf(isc:iec, jsc:jec, km)) ; IST%t_surf(:,:,:) = 0.0
+  allocate(IST%s_surf(isc:iec, jsc:jec)) ; IST%s_surf(:,:) = 0.0 !NI
   allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
   allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
+  allocate(IST%part_size(isd:ied, jsd:jed, km)) ; IST%part_size(:,:,:) = 0.0
   allocate(IST%part_size_uv(isc:iec, jsc:jec, km)) ; IST%part_size_uv(:,:,:) = 0.0 !NR
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
   allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
@@ -594,7 +597,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   ! read restart
   !
   restart_file = 'ice_model.res.nc'
-  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', Ice%part_size, domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
   id_restart_albedo = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
                                              domain=domain, mandatory=.false.)
@@ -607,7 +610,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,        domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      Ice%t_surf,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      IST%t_surf,           domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      IST%h_snow(:,:,2:km), domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      IST%t_snow(:,:,2:km), domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       IST%h_ice(:,:,2:km),  domain=domain)
@@ -665,7 +668,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
      endif
 
      !--- update to data domain
-     call mpp_update_domains(Ice%part_size, Domain)
+     call mpp_update_domains(IST%part_size, Domain)
      call mpp_update_domains(IST%h_snow(:,:,2:km), Domain )
      call mpp_update_domains(IST%t_snow(:,:,2:km), Domain )
      call mpp_update_domains(IST%h_ice (:,:,2:km), Domain )
@@ -676,23 +679,26 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
     call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE )
   else ! no restart => no ice
-    Ice%part_size(:,:,:) = 0.0
-    Ice%part_size(:,:,1) = 1.0
+    IST%part_size(:,:,:) = 0.0
+    IST%part_size(:,:,1) = 1.0
 
     Ice%rough_mom(:,:,:)   = mom_rough_ice
     Ice%rough_heat(:,:,:)  = heat_rough_ice
     Ice%rough_moist(:,:,:) = heat_rough_ice
-    Ice%t_surf(:,:,:) = Tfreeze-5.0
+    IST%t_surf(:,:,:) = Tfreeze-5.0
     IST%t_snow(:,:,:) = -5.0
     IST%t_ice(:,:,:,:) = -5.0
 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
 
+  Ice%part_size(:,:,:) = IST%part_size(:,:,:)
+  Ice%t_surf(:,:,:) = IST%t_surf(:,:,:)
+
   IST%part_size_uv(:,:,1) = 1.0
   do k=2,km
     IST%part_size_uv(:,:,k) = 0.0
-    call t_to_uv(Ice%part_size(:,:,k), IST%part_size_uv(:,:,k), Ice%G)
+    call t_to_uv(IST%part_size(:,:,k), IST%part_size_uv(:,:,k), Ice%G)
     IST%part_size_uv (:,:,1) = IST%part_size_uv(:,:,1)-IST%part_size_uv (:,:,k)
   enddo
 
@@ -757,8 +763,8 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
   call ice_grid_end(Ice%G)
 
-  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, IST%sea_lev )
-  deallocate(Ice%part_size, IST%part_size_uv, Ice%u_surf, Ice%v_surf )
+  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf, IST%t_surf, IST%s_surf, IST%sea_lev )
+  deallocate(Ice%part_size, IST%part_size, IST%part_size_uv, Ice%u_surf, Ice%v_surf )
   deallocate(IST%u_ocn, IST%v_ocn ,  Ice%rough_mom, Ice%rough_heat )
   deallocate(Ice%rough_moist, Ice%albedo, IST%flux_u_top, IST%flux_v_top )
   deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid )

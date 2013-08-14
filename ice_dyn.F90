@@ -486,15 +486,15 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
     if (CS%id_sigi>0) then
       diag_val(:,:) =  sigI(hi, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
-      call post_SIS_data(CS%id_sigi, diag_val, CS%diag) !### , mask=CS%mask)
+      call post_SIS_data(CS%id_sigi, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
     if (CS%id_sigii>0) then
       diag_val(:,:) = sigII(hi, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
-      call post_SIS_data(CS%id_sigii, diag_val, CS%diag) !### , mask=Ice%mask)
+      call post_SIS_data(CS%id_sigii, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
     if (CS%id_stren>0) then
       call find_ice_strength(hi, ci, diag_val, G, CS)
-      call post_SIS_data(CS%id_stren, diag_val, CS%diag) !, mask=Ice%mask)
+      call post_SIS_data(CS%id_stren, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
 
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
