@@ -407,30 +407,44 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   type (ice_data_type), intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension (:,:,:), intent(in) :: part_size, part_size_uv
-  integer                             :: m, n
+  real, dimension (G%isc:G%iec,G%jsc:G%jec,G%CatIce+1), intent(in) :: part_size, part_size_uv
+  integer :: i, j, k, isc, iec, jsc, jec, m, n, i2, j2, k2
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-!    Ice%flux_u  = all_avg( IST%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
-!    Ice%flux_v  = all_avg( IST%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv(isc:iec,jsc:jec,:) )
+  Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
+  Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
+  Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
+  Ice%flux_sw_vis_dir(:,:) = 0.0 ; Ice%flux_sw_vis_dif(:,:) = 0.0
+  Ice%flux_lw(:,:) = 0.0 ; Ice%flux_lh(:,:) = 0.0
+  Ice%fprec(:,:) = 0.0 ; Ice%lprec(:,:) = 0.0
+  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+    Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
+  enddo ; enddo
 
-  Ice%flux_u(:,:)  = all_avg( IST%flux_u_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
-  Ice%flux_v(:,:)  = all_avg( IST%flux_v_top_bgrid(isc:iec,jsc:jec,:) , part_size_uv )
-  Ice%flux_t(:,:)  = all_avg( IST%flux_t_top , part_size )
-  Ice%flux_q(:,:)  = all_avg( IST%flux_q_top , part_size )
-  Ice%flux_sw_nir_dir(:,:) = all_avg( IST%flux_sw_nir_dir_top, part_size )
-  Ice%flux_sw_nir_dif(:,:) = all_avg( IST%flux_sw_nir_dif_top, part_size )
-  Ice%flux_sw_vis_dir(:,:) = all_avg( IST%flux_sw_vis_dir_top, part_size )
-  Ice%flux_sw_vis_dif(:,:) = all_avg( IST%flux_sw_vis_dif_top, part_size )
-  Ice%flux_lw(:,:) = all_avg( IST%flux_lw_top, part_size )
-  Ice%fprec(:,:)   = all_avg( IST%fprec_top  , part_size )
-  Ice%lprec(:,:)   = all_avg( IST%lprec_top  , part_size )
-  Ice%flux_lh(:,:) = all_avg( IST%flux_lh_top, part_size )
-  do n = 1, Ice%ocean_fluxes%num_bcs  !{
-    do m = 1, Ice%ocean_fluxes%bc(n)%num_fields  !{
-      Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) =                &
-           all_avg(Ice%ocean_fluxes_top%bc(n)%field(m)%values(:,:,:), part_size)
-    enddo  !} m
-  enddo  !} n
+  do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
+    i2 = i ; j2 = j ; k2 = k  ! Use these to correct for indexing differences.
+    Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(i,j,k) * part_size_uv(i,j,k)
+    Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(i,j,k) * part_size_uv(i,j,k)
+    Ice%flux_t(i2,j2) = Ice%flux_t(i2,j2) + IST%flux_t_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_q(i2,j2) = Ice%flux_q(i2,j2) + IST%flux_q_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_sw_nir_dir(i2,j2) = Ice%flux_sw_nir_dir(i2,j2) + &
+            IST%flux_sw_nir_dir_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_sw_nir_dif(i2,j2) = Ice%flux_sw_nir_dif(i2,j2) + &
+            IST%flux_sw_nir_dif_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_sw_vis_dir(i2,j2) = Ice%flux_sw_vis_dir(i2,j2) + &
+            IST%flux_sw_vis_dir_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_sw_vis_dif(i2,j2) = Ice%flux_sw_vis_dif(i2,j2) + &
+            IST%flux_sw_vis_dif_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_lw(i2,j2) = Ice%flux_lw(i2,j2) + IST%flux_lw_top(i,j,k) * part_size(i,j,k)
+    Ice%flux_lh(i2,j2) = Ice%flux_lh(i2,j2) + IST%flux_lh_top(i,j,k) * part_size(i,j,k)
+    Ice%fprec(i2,j2) = Ice%fprec(i2,j2) + IST%fprec_top(i,j,k) * part_size(i,j,k)
+    Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IST%lprec_top(i,j,k) * part_size(i,j,k)
+
+    do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+      Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) + &
+            Ice%ocean_fluxes_top%bc(n)%field(m)%values(i,j,k) * part_size(i,j,k)
+    enddo ; enddo
+  enddo ; enddo ; enddo
 
 end subroutine ice_top_to_ice_bottom
 
