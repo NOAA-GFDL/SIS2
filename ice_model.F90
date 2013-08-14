@@ -354,11 +354,11 @@ subroutine avg_top_quantities(Ice, IST, G)
   ! Flux diagnostics
   !
   if (id_sh>0) call post_avg(id_sh, IST%flux_t_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_lh>0) call post_avg(id_lh, IST%flux_lh_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_evap>0) call post_avg(id_evap, IST%flux_q_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw>0) then
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
@@ -366,35 +366,32 @@ subroutine avg_top_quantities(Ice, IST, G)
             IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) + &
             IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k) )
     enddo ; enddo ; enddo
-    sent = send_data(id_sw, tmp2d(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+    sent = send_data(id_sw, tmp2d(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (id_lw>0) call post_avg(id_lw, IST%flux_lw_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_snofl>0) call post_avg(id_snofl, IST%fprec_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_rain>0) call post_avg(id_rain, IST%lprec_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
-  if (id_lwdn>0) sent = send_data(id_lwdn, IST%lwdn(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
-  if (id_swdn>0) sent = send_data(id_swdn, IST%swdn(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_lwdn>0) sent = send_data(id_lwdn, IST%lwdn(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_swdn>0) sent = send_data(id_swdn, IST%swdn(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_vis>0) then
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
     do k=1,km ; do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = tmp2d(i,j) + Ice%part_size(i,j,k) * ( &
             IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) )
     enddo ; enddo ; enddo
-    sent = send_data(id_sw_vis, tmp2d(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
-!    sent = send_data(id_sw_vis, all_avg(IST%flux_sw_vis_dif_top(isc:iec,jsc:jec,:)+&
-!                          IST%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
-!                          Ice%part_size(isc:iec,jsc:jec,:)), IST%Time, mask=Ice%mask)
+    sent = send_data(id_sw_vis, tmp2d(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (id_sw_nir_dir>0) call post_avg(id_sw_nir_dir, IST%flux_sw_nir_dir_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_nir_dif>0) call post_avg(id_sw_nir_dif, IST%flux_sw_nir_dif_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_vis_dir>0) call post_avg(id_sw_vis_dir, IST%flux_sw_vis_dir_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_vis_dif>0) call post_avg(id_sw_vis_dif, IST%flux_sw_vis_dif_top(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   !
   ! set count to zero and fluxes will be zeroed before the next sum
   !
@@ -644,12 +641,12 @@ enddo
   !
   ! Pre-timestep diagnostics
   !
-  if (id_sst>0) sent = send_data(id_sst, sst(isc:iec,jsc:jec)-Tfreeze, IST%Time, mask=Ice%mask)
+  if (id_sst>0) sent = send_data(id_sst, sst(isc:iec,jsc:jec)-Tfreeze, IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sss>0) sent = send_data(id_sss, Ice%s_surf(isc:iec,jsc:jec) , IST%Time, mask=Ice%mask)
-  if (id_ssh>0) sent = send_data(id_ssh, IST%sea_lev(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
-  if (id_uo >0) sent = send_data(id_uo , IST%u_ocn(isc:iec,jsc:jec)  , IST%Time, mask=Ice%mask)
-  if (id_vo >0) sent = send_data(id_vo , IST%v_ocn(isc:iec,jsc:jec)  , IST%Time, mask=Ice%mask)
-  if (id_bheat>0) sent = send_data(id_bheat, IST%bheat(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+  if (id_ssh>0) sent = send_data(id_ssh, IST%sea_lev(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_uo >0) sent = send_data(id_uo , IST%u_ocn(isc:iec,jsc:jec)  , IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_vo >0) sent = send_data(id_vo , IST%v_ocn(isc:iec,jsc:jec)  , IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_bheat>0) sent = send_data(id_bheat, IST%bheat(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
 end subroutine ice_bottom_to_ice_top
 
@@ -845,22 +842,22 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                              Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
 
   if (id_sw_abs_snow>0) call post_avg(id_sw_abs_snow, IST%sw_abs_snow(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_abs_ice1>0) call post_avg(id_sw_abs_ice1, IST%sw_abs_ice(isc:iec,jsc:jec,:,1), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_abs_ice2>0) call post_avg(id_sw_abs_ice4, IST%sw_abs_ice(isc:iec,jsc:jec,:,2), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_abs_ice3>0) call post_avg(id_sw_abs_ice4, IST%sw_abs_ice(isc:iec,jsc:jec,:,3), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_abs_ice4>0) call post_avg(id_sw_abs_ice4, IST%sw_abs_ice(isc:iec,jsc:jec,:,4), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   if (id_sw_pen>0) call post_avg(id_sw_pen, IST%pen(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_sw_trn>0) call post_avg(id_sw_trn, IST%trn(isc:iec,jsc:jec,:), &
-                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+                             Ice%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
-  if (id_coszen>0) sent = send_data(id_coszen, IST%coszen(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+  if (id_coszen>0) sent = send_data(id_coszen, IST%coszen(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
 end subroutine do_update_ice_model_fast
 
@@ -1030,7 +1027,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Thermodynamics
   !
   call mpp_clock_begin(iceClock5)
-  if (id_frazil>0) sent = send_data(id_frazil, IST%frazil(isc:iec,jsc:jec)/dt_slow,  IST%Time, mask=Ice%mask)
+  if (id_frazil>0) sent = send_data(id_frazil, IST%frazil(isc:iec,jsc:jec)/dt_slow, &
+                                    IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   snow_to_ice(:,:,:) = 0.
   bsnk(:,:) = 0.
 
@@ -1249,7 +1247,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !### Inlining sensibly would change answers.
   hi_change(:,:)  = all_avg(IST%h_ice(isc:iec,jsc:jec,:), Ice%part_size(isc:iec,jsc:jec,:))-hi_change(:,:)
   Ice%flux_salt(:,:) = ice_bulk_salin*DI*hi_change(:,:)/dt_slow
-  if (id_saltf>0)  sent = send_data(id_saltf, Ice%flux_salt(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
+  if (id_saltf>0)  sent = send_data(id_saltf, Ice%flux_salt(isc:iec,jsc:jec), Ice%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   h2o_change(:,:) = all_avg(DS*IST%h_snow(isc:iec,jsc:jec,:)+DI*IST%h_ice(isc:iec,jsc:jec,:), &
                Ice%part_size(isc:iec,jsc:jec,:))-h2o_change(:,:)
@@ -1259,25 +1257,29 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     do j=jsc,jec ; do i=isc,iec
       if (tmp2d(i,j)>0.0) tmp2d(i,j) = 0.0
     enddo ; enddo
-    sent = send_data(id_lsnk, tmp2d(:,:), IST%Time, mask=Ice%mask)
+    sent = send_data(id_lsnk, tmp2d(:,:), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (id_lsrc>0) then
     tmp2d(:,:) = h2o_change(:,:)*864e2*365/dt_slow
     do j=jsc,jec ; do i=isc,iec
       if (tmp2d(i,j)<0.0) tmp2d(i,j) = 0.0
     enddo ; enddo
-    sent = send_data(id_lsrc, tmp2d(:,:), IST%Time, mask=Ice%mask)
+    sent = send_data(id_lsrc, tmp2d(:,:), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-  if (id_bsnk>0)  sent = send_data(id_bsnk, bsnk(isc:iec,jsc:jec)*864e2*365/dt_slow, IST%Time, mask=Ice%mask)
+  if (id_bsnk>0)  sent = send_data(id_bsnk, bsnk(isc:iec,jsc:jec)*864e2*365/dt_slow, &
+                              IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_tmelt>0) call post_avg(id_tmelt, IST%tmelt, Ice%part_size(isc:iec,jsc:jec,2:), IST%diag, &
-                                scale=1.0/dt_slow, mask=Ice%mask, wtd=.true.)
+                                scale=1.0/dt_slow, mask=G%Lmask2dT(isc:iec,jsc:jec), wtd=.true.)
   if (id_bmelt>0) call post_avg(id_bmelt, IST%bmelt, Ice%part_size(isc:iec,jsc:jec,2:), IST%diag, &
-                                scale=1.0/dt_slow, mask=Ice%mask, wtd=.true.)
-  if (id_sn2ic>0) call post_avg(id_sn2ic, snow_to_ice, Ice%part_size(isc:iec,jsc:jec,2:), IST%diag, scale=1.0/dt_slow, mask=Ice%mask)
-  if (id_qflim>0) sent = send_data(id_qflim, IST%qflx_lim_ice(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
-  if (id_qfres>0) sent = send_data(id_qfres, IST%qflx_res_ice(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+                                scale=1.0/dt_slow, mask=G%Lmask2dT(isc:iec,jsc:jec), wtd=.true.)
+  if (id_sn2ic>0) call post_avg(id_sn2ic, snow_to_ice, Ice%part_size(isc:iec,jsc:jec,2:), IST%diag, &
+                               scale=1.0/dt_slow, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_qflim>0) sent = send_data(id_qflim, IST%qflx_lim_ice(isc:iec,jsc:jec), &
+                              IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_qfres>0) sent = send_data(id_qfres, IST%qflx_res_ice(isc:iec,jsc:jec), &
+                              IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   !
   ! Ice transport ... all ocean fluxes have been calculated by now
   !
@@ -1359,33 +1361,35 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     do j=jsc,jec ; do i=isc,iec
       diagVar(i,j) = 0.0 ; if (Ice%part_size(i,j,1) < 0.85) diagVar(i,j) = 1.0
     enddo ; enddo
-    sent = send_data(id_ext, diagVar(isc:iec,jsc:jec), IST%Time, mask=Ice%mask)
+    sent = send_data(id_ext, diagVar(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (id_hs>0) sent  = send_data(id_hs, ice_avg(IST%h_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
-                       IST%Time, mask=Ice%mask)
+                       IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_hi>0) sent  = send_data(id_hi, ice_avg(IST%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
-                       IST%Time, mask=Ice%mask)
+                       IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   if (id_hio>0) sent  = send_data(id_hio, ice_avg(IST%h_ice(isc:iec,jsc:jec,:) ,Ice%part_size(isc:iec,jsc:jec,:)), &
-                       IST%Time, mask=Ice%mask,is_in=isc, js_in=jsc, ie_in=iec, je_in=jec)
+                       IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec),is_in=isc, js_in=jsc, ie_in=iec, je_in=jec)
 
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later
   !  if (id_obs_hi>0) &
        !    sent = send_data(id_obs_hi, ice_avg(Obs_h_ice,Ice%part_size), IST%Time, &
   !                     mask=Ice%mask)
 
-  if (id_ts>0) sent = send_data(id_ts, ice_avg(Ice%t_surf-Tfreeze,Ice%part_size(isc:iec,jsc:jec,:)), Ice%Time, mask=Ice%mask)
+  if (id_ts>0) sent = send_data(id_ts, ice_avg(Ice%t_surf-Tfreeze,Ice%part_size(isc:iec,jsc:jec,:)), &
+               Ice%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_tsn>0) sent = send_data(id_tsn, ice_avg(IST%t_snow(isc:iec,jsc:jec,:),Ice%part_size(isc:iec,jsc:jec,:)), &
-               IST%Time, mask=Ice%mask)
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_t1>0) sent = send_data(id_t1, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,1),Ice%part_size(isc:iec,jsc:jec,:)), &
-               IST%Time, mask=Ice%mask)
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_t2>0) sent = send_data(id_t2, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,2),Ice%part_size(isc:iec,jsc:jec,:)), &
-               IST%Time, mask=Ice%mask)
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_t3>0) sent = send_data(id_t3, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,3),Ice%part_size(isc:iec,jsc:jec,:)), &
-               IST%Time, mask=Ice%mask)
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_t4>0) sent = send_data(id_t4, ice_avg(IST%t_ice(isc:iec,jsc:jec,:,4),Ice%part_size(isc:iec,jsc:jec,:)), &
-               IST%Time, mask=Ice%mask)
-  if (id_xprt>0) sent = send_data(id_xprt,  h2o_change(isc:iec,jsc:jec)*864e2*365/dt_slow, IST%Time, mask=Ice%mask)
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (id_xprt>0) sent = send_data(id_xprt,  h2o_change(isc:iec,jsc:jec)*864e2*365/dt_slow, &
+               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (id_e2m>0) then
     tmp2d(:,:) = 0.0
     do k=2,km ; do j=jsc,jec ; do i=isc,iec
@@ -1394,7 +1398,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                      IST%t_snow(i,j,k), IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),    &
                      IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)    )
     enddo ; enddo ; enddo
-    sent = send_data(id_e2m,  tmp2d(:,:), IST%Time, mask=Ice%mask)
+    sent = send_data(id_e2m,  tmp2d(:,:), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
 
   call ice_top_to_ice_bottom(Ice, Ice%Ice_state, part_save, part_save_uv, G)
