@@ -61,7 +61,8 @@ use ice_type_mod,     only: ice_data_type, ice_state_type
   use ice_type_mod,     only: do_sun_angle_for_alb
 
   use ice_grid_mod,     only: uv_to_t, cut_check, tripolar_grid
-  use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+!   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+  use ice_grid_mod,     only: Domain, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: ice_avg, all_avg, get_avg, ice_line
   use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
   use ice_grid_mod,     only: sea_ice_grid_type
@@ -153,7 +154,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock2)
   call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Land_boundary%runoff, Land_boundary%calving, &
-               Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
+                             Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
   call mpp_clock_end(iceClock2)
   call mpp_clock_end(iceClock)
 
@@ -205,19 +206,19 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   type(ice_state_type),             intent(inout) :: IST
   type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
   type(sea_ice_grid_type),          intent(inout) :: G
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_u,  flux_v, flux_t, flux_q
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_lw, lprec, fprec, flux_lh
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dir
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_nir_dif
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dir
-  real, dimension(isc:iec,jsc:jec,km), intent(in) :: flux_sw_vis_dif
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,G%CatIce+1), intent(in) :: &
+    flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,G%CatIce+1), intent(in) :: &
+    flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
 
-  real,dimension(isc:iec,jsc:jec)                 :: tmp
-  integer                                         :: i, j, k, m, n, i2, j2, k2
+  real,dimension(G%isc:G%iec,G%jsc:G%jec)                 :: tmp
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   if (IST%avg_count == 0) call zero_top_quantities (Ice, IST)
 
-  do k=1,km ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     IST%flux_u_top(i,j,k)  = IST%flux_u_top(i,j,k)  + flux_u(i,j,k)
     IST%flux_v_top(i,j,k)  = IST%flux_v_top(i,j,k)  + flux_v(i,j,k)
     IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  + flux_t(i,j,k)
@@ -234,7 +235,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
 
   do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
     do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
-      do k2=1,km ; do j2=jsc,jec ; do i2=isc,iec
+      do k2=1,ncat+1 ; do j2=jsc,jec ; do i2=isc,iec
         Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
               Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) + &
              Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
@@ -276,8 +277,10 @@ subroutine avg_top_quantities(Ice, IST, G)
 
   real    :: u, v, divid, sign
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
-  integer :: i, j, k, m, n, i2, j2, k2
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
   logical :: sent
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   !
   ! compute average fluxes
   !
@@ -286,7 +289,7 @@ subroutine avg_top_quantities(Ice, IST, G)
 
   divid = 1.0/real(IST%avg_count)
 
-  do k=1,km ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
      u = IST%flux_u_top(i,j,k) * divid
      v = IST%flux_v_top(i,j,k) * divid
      IST%flux_u_top(i,j,k) = u*cos_rot(i,j)-v*sin_rot(i,j) ! rotate stress from lat/lon
@@ -297,7 +300,7 @@ subroutine avg_top_quantities(Ice, IST, G)
   call mpp_update_domains(IST%flux_u_top, IST%flux_v_top, Domain  )
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   sign = 1.0 ; if (atmos_winds) sign = -1.0
-  do k=1,km ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     if ( G%mask2dBu(i,j) > 0.5 ) then
       IST%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
             IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i+1,j,k) + &
@@ -311,7 +314,7 @@ subroutine avg_top_quantities(Ice, IST, G)
     endif
   enddo ; enddo ; enddo
 
-  do k = 1,km ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  * divid
     IST%flux_q_top(i,j,k)  = IST%flux_q_top(i,j,k)  * divid
     IST%flux_sw_nir_dir_top(i,j,k) = IST%flux_sw_nir_dir_top(i,j,k) * divid
@@ -344,7 +347,7 @@ subroutine avg_top_quantities(Ice, IST, G)
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_sw>0) then
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
-    do k=1,km ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
             IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) + &
             IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k) )
@@ -361,7 +364,7 @@ subroutine avg_top_quantities(Ice, IST, G)
   if (IST%id_swdn>0) sent = send_data(IST%id_swdn, IST%swdn(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_sw_vis>0) then
     do j=jsc,jec ; do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo ; enddo
-    do k=1,km ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
             IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) )
     enddo ; enddo ; enddo
@@ -391,8 +394,8 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension (G%isc:G%iec,G%jsc:G%jec,G%CatIce+1), intent(in) :: part_size, part_size_uv
-  integer :: i, j, k, isc, iec, jsc, jec, m, n, i2, j2, k2
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
@@ -404,7 +407,7 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
     Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
   enddo ; enddo
 
-  do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     i2 = i ; j2 = j ; k2 = k  ! Use these to correct for indexing differences.
     Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(i,j,k) * part_size_uv(i,j,k)
     Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(i,j,k) * part_size_uv(i,j,k)
@@ -452,8 +455,7 @@ end subroutine update_ice_model_slow_up
 ! ice_bottom_to_ice_top - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
-                                  frazil_ice_bot, OIB, G, &
-                                  s_surf_ice_bot, sea_lev_ice_bot )
+                                  frazil_ice_bot, OIB, G, s_surf_ice_bot, sea_lev_ice_bot )
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
   type(sea_ice_grid_type),                 intent(inout) :: G
@@ -462,12 +464,12 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
   type(ocean_ice_boundary_type),           intent(inout) :: OIB
   real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
 
-  real, dimension(isc:iec,jsc:jec) :: sst, tmp
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: sst, tmp
   real                             :: u, v
-  integer                          :: i, j, k, m, n, i2, j2, k2
-  logical                          :: sent
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
+  logical :: sent
   real, parameter                  :: LI = hlf
-
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   !
   ! pass ocean state through ice on first partition
   !
@@ -485,7 +487,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
     IST%part_size_uv(:,:,1) = 1.0
    
    !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do k=2,km ; do j=jsc,jec ; do i=isc,iec
+    do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
       if(G%mask2dBu(i,j) > 0.5 ) then
          IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
                                          IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
@@ -668,25 +670,28 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   type(ice_state_type),          intent(inout) :: IST
   type(sea_ice_grid_type),       intent(inout) :: G
   
-  real, dimension(isc:iec,jsc:jec,km) :: flux_t, flux_q, flux_lh, flux_lw
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dir
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_nir_dif
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dir
-  real, dimension(isc:iec,jsc:jec,km) :: flux_sw_vis_dif
-  real, dimension(isc:iec,jsc:jec,km) :: flux_u, flux_v, lprec, fprec
-  real, dimension(isc:iec,jsc:jec,km) :: dhdt, dedt, drdt ! d(flux)/d(surf_temp) (+ up)
-  integer                             :: i, j, k, i2, j2, k2
-  real                                :: dt_fast, ts_new, dts, hf, hfd, latent
-  logical                             :: sent
-  real                                :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
-  real, dimension(isc:iec,jsc:jec)    :: diurnal_factor
-  real                                :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
-  type (time_type)                    :: Dt_ice
-  real, dimension(isc:iec,jsc:jec)    :: cosz_alb
-  real                                :: flux_sw ! sum over dir/dif vis/nir components
-
-  real, dimension(isc:iec,jsc:jec,km) :: albedo_vis_dir,albedo_vis_dif,albedo_nir_dir,albedo_nir_dif
-  real, dimension(isc:iec,jsc:jec,km) :: sw_abs_sfc,sw_abs_snow,sw_abs_ice1,sw_abs_ice2,sw_abs_ice3,sw_abs_ice4,sw_abs_ocn,sw_abs_int,pen,trn
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,G%CatIce+1) :: &
+    flux_t, flux_q, flux_lh, flux_lw, &
+    flux_sw_nir_dir, flux_sw_nir_dif, &
+    flux_sw_vis_dir, flux_sw_vis_dif, &
+    flux_u, flux_v, lprec, fprec, &
+    dhdt, dedt, drdt, & ! d(flux)/d(surf_temp) (+ up)
+    albedo_vis_dir, albedo_vis_dif, &
+    albedo_nir_dir, albedo_nir_dif, &
+    sw_abs_sfc,sw_abs_snow, &
+    sw_abs_ocn, sw_abs_int, pen, trn
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,G%CatIce+1) :: &
+    sw_abs_ice1, sw_abs_ice2,sw_abs_ice3,sw_abs_ice4
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
+    diurnal_factor, cosz_alb
+  real :: dt_fast, ts_new, dts, hf, hfd, latent
+  real :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
+  real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
+  real :: flux_sw ! sum over dir/dif vis/nir components
+  type(time_type) :: Dt_ice
+  logical :: sent
+  integer :: i, j, k, i2, j2, k2, isc, iec, jsc, jec, ncat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i ; j2 = j
@@ -861,15 +866,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(sea_ice_grid_type),            intent(inout) :: G
-    real, dimension(isc:iec,jsc:jec), intent(in), optional :: runoff, calving
-    real, dimension(isc:iec,jsc:jec), intent(in), optional :: runoff_hflx, calving_hflx
+    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff, calving
+    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff_hflx, calving_hflx
 
     real, dimension(isd:ied,jsd:jed)      :: fx_wat, fy_wat
-    real, dimension(isc:iec,jsc:jec)      :: hi_change, h2o_change, bsnk, tmp2d, mass
-    real, dimension(isc:iec,jsc:jec,2:km) :: snow_to_ice
-    real, dimension(isc:iec,jsc:jec,km)   :: part_save, part_save_uv
-    real, dimension(isc:iec,jsc:jec)      :: dum1, Obs_h_ice ! for qflux calculation
-    real, dimension(isc:iec,jsc:jec,2)    :: Obs_cn_ice      ! partition 2 = ice concentration
+    real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: hi_change, h2o_change, bsnk, tmp2d, mass
+    real, dimension(G%isc:G%iec,G%jsc:G%jec,2:G%CatIce+1) :: snow_to_ice
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,G%CatIce+1) :: &
+    part_save, part_save_uv
+    real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: dum1, Obs_h_ice ! for qflux calculation
+    real, dimension(G%isc:G%iec,G%jsc:G%jec,2)    :: Obs_cn_ice      ! partition 2 = ice concentration
     real, dimension(isd:ied,jsd:jed)      :: tmp1, tmp2
     real, dimension(isd:ied,jsd:jed)      :: wind_stress_x, wind_stress_y
     real, dimension(2:km)                 :: e2m
@@ -877,7 +883,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                              ! a C-grid, in m s-1.
   real, dimension(isd:ied,jsd:jed) :: diagVar ! An temporary array for diagnostics.
 
-  integer :: i, j, k, l, i2, j2
+  integer :: i, j, k, l, i2, j2, isc, iec, jsc, jec, ncat
   integer ::iyr, imon, iday, ihr, imin, isec
     real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
     real                                  :: heat_limit_ice, heat_res_ice
@@ -885,49 +891,29 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     logical                               :: sent
     real, parameter                       :: LI = hlf
 
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   dt_slow = time_type_to_real(IST%Time_step_slow)
+
   !
   ! Set up fluxes
   !
-  if (present(runoff)) then ! save liquid runoff for ocean
-    do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
-      Ice%runoff(i2,j2)  = runoff(i,j)
-    enddo ; enddo
-    if (IST%id_runoff>0) &
-      sent = send_data(IST%id_runoff, Ice%runoff(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
-  else
-    Ice%runoff(:,:) = 0.0
-  endif
 
-  if (present(calving)) then ! save frozen runoff for ocean
-    do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
-      Ice%calving(i2,j2) = calving(i,j)
-    enddo ; enddo
-    if (IST%id_calving>0) &
-      sent = send_data(IST%id_calving, Ice%calving(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
-  else
-    Ice%calving(:,:) = 0.0
-  endif
+  ! save liquid runoff for ocean
+  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+    Ice%runoff(i2,j2)  = runoff(i,j)
+    Ice%calving(i2,j2) = calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = calving_hflx(i,j)
+  enddo ; enddo
 
-  if (present(runoff_hflx)) then ! save liquid runoff hflx for ocean
-    do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
-      Ice%runoff_hflx(i2,j2)  = runoff_hflx(i,j)
-    enddo ; enddo
-    if (IST%id_runoff_hflx>0) &
-      sent = send_data(IST%id_runoff_hflx, Ice%runoff_hflx(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
-  else
-    Ice%runoff_hflx(:,:) = 0.0
-  endif
-
-  if (present(calving_hflx)) then ! save frozen runoff hflx for ocean
-    do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
-      Ice%calving_hflx(i2,j2) = calving_hflx(i,j)
-    enddo ; enddo
-    if (IST%id_calving_hflx>0) &
-      sent = send_data(IST%id_calving_hflx, Ice%calving_hflx(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
-  else
-    Ice%calving_hflx(:,:) = 0.0
-  endif
+  if (IST%id_runoff>0) &
+    sent = send_data(IST%id_runoff, runoff(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
+  if (IST%id_calving>0) &
+    sent = send_data(IST%id_calving, calving(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
+  if (IST%id_runoff_hflx>0) &
+    sent = send_data(IST%id_runoff_hflx, runoff_hflx(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
+  if (IST%id_calving_hflx>0) &
+    sent = send_data(IST%id_calving_hflx, calving_hflx(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask )
 
   !TOM> assume that open water area is not up to date:
   call mpp_clock_end(iceClock)
