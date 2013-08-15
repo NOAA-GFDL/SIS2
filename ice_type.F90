@@ -414,7 +414,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
-    integer           :: sc, dy, i, j, l
+    integer           :: sc, dy, i, j, l, i2, j2
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
     character(len=64) :: restart_file
@@ -498,41 +498,18 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  allocate(IST%t_surf(isc:iec, jsc:jec, km)) ; IST%t_surf(:,:,:) = 0.0
-  allocate(IST%s_surf(isc:iec, jsc:jec)) ; IST%s_surf(:,:) = 0.0 !NI
-  allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
-  allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
-  allocate(IST%part_size(isd:ied, jsd:jed, km)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%part_size_uv(isc:iec, jsc:jec, km)) ; IST%part_size_uv(:,:,:) = 0.0 !NR
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
   allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
-  allocate(IST%u_ocn(isd:ied, jsd:jed)) ; IST%u_ocn(:,:) = 0.0 !NR
-  allocate(IST%v_ocn(isd:ied, jsd:jed)) ; IST%v_ocn(:,:) = 0.0 !NR
+  allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
   allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
   allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
   allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
-  allocate(IST%coszen(isc:iec, jsc:jec)) ; IST%coszen(:,:) = 0.0 !NR
+
   allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0
   allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
   allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
   allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
   allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
-
-  allocate(IST%flux_u_top(isd:ied, jsd:jed, km)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top(isd:ied, jsd:jed, km)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
-  allocate(IST%flux_t_top(isc:iec, jsc:jec, km)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_q_top(isc:iec, jsc:jec, km)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lw_top(isc:iec, jsc:jec, km)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lh_top(isc:iec, jsc:jec, km)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(IST%lprec_top(isc:iec, jsc:jec, km)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%fprec_top(isc:iec, jsc:jec, km)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-
-  allocate(IST%flux_u_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
   allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
   allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
@@ -547,12 +524,39 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%lprec(isc:iec, jsc:jec)) ; Ice%lprec(:,:) = 0.0
   allocate(Ice%fprec(isc:iec, jsc:jec)) ; Ice%fprec(:,:) = 0.0
   allocate(Ice%p_surf(isc:iec, jsc:jec)) ; Ice%p_surf(:,:) = 0.0
-
   allocate(Ice%runoff(isc:iec, jsc:jec)) ; Ice%runoff(:,:) = 0.0
   allocate(Ice%calving(isc:iec, jsc:jec)) ; Ice%calving(:,:) = 0.0
   allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
   allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
   allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
+
+  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
+  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+  allocate(IST%t_surf(isc:iec, jsc:jec, km)) ; IST%t_surf(:,:,:) = 0.0
+  allocate(IST%s_surf(isc:iec, jsc:jec)) ; IST%s_surf(:,:) = 0.0 !NI
+  allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
+  allocate(IST%part_size(isd:ied, jsd:jed, km)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%part_size_uv(isc:iec, jsc:jec, km)) ; IST%part_size_uv(:,:,:) = 0.0 !NR
+  allocate(IST%u_ocn(isd:ied, jsd:jed)) ; IST%u_ocn(:,:) = 0.0 !NR
+  allocate(IST%v_ocn(isd:ied, jsd:jed)) ; IST%v_ocn(:,:) = 0.0 !NR
+  allocate(IST%coszen(isc:iec, jsc:jec)) ; IST%coszen(:,:) = 0.0 !NR
+
+  allocate(IST%flux_u_top(isd:ied, jsd:jed, km)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(isd:ied, jsd:jed, km)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(IST%flux_t_top(isc:iec, jsc:jec, km)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(isc:iec, jsc:jec, km)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(isc:iec, jsc:jec, km)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(isc:iec, jsc:jec, km)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(isc:iec, jsc:jec, km)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(isc:iec, jsc:jec, km)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(isc:iec, jsc:jec, km)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top_bgrid(isd:ied, jsd:jed, km)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+
   allocate(IST%lwdn(isc:iec, jsc:jec)) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
   allocate(IST%frazil(isc:iec, jsc:jec)) ; IST%frazil(:,:) = 0.0 !NR
@@ -568,6 +572,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:km, Ice%G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ocn(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(isc:iec, jsc:jec, 2:km)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
+
   allocate(IST%h_snow(isd:ied, jsd:jed, 2:km)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(isd:ied, jsd:jed, 2:km)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%h_ice(isd:ied, jsd:jed, 2:km)) ; IST%h_ice(:,:,:) = 0.0
@@ -575,14 +580,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%qflx_lim_ice(isc:iec, jsc:jec)) ; IST%qflx_lim_ice(:,:) = 0.0 !NR
   allocate(IST%qflx_res_ice(isc:iec, jsc:jec)) ; IST%qflx_res_ice(:,:) = 0.0 !NR
 
-  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
-  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
-
   Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
-  do j=jsc,jec ; do i=isc,iec
-    Ice%mask(i,j) = ( Ice%G%mask2dT(i,j) > 0.5 )
+  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+    Ice%mask(i2,j2) = ( Ice%G%mask2dT(i,j) > 0.5 )
   enddo ; enddo
  
   Ice%Time           = Time
