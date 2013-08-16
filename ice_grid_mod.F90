@@ -245,12 +245,17 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_avg - take area weighted average over all partitions                     !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_avg(x, cn, avg)
+subroutine get_avg(x, cn, avg, wtd)
   real, dimension(:,:,:), intent(in)  :: x
   real, dimension(:,:,:), intent(in)  :: cn
   real, dimension(:,:),   intent(out) :: avg
+  logical,      optional, intent(in)  :: wtd
 
+  real, dimension(size(x,1),size(x,2)) :: wts
+  logical :: do_wt
   integer :: i, j, k, ni, nj, nk
+
+  do_wt = .false. ; if (present(wtd)) do_wt = wtd
 
   ni = size(x,1) ; nj = size(x,2); nk = size(x,3)
   if ((size(cn,1) /= ni) .or. (size(cn,2) /= nj) .or. (size(cn,3) /= nk)) &
@@ -260,10 +265,25 @@ subroutine get_avg(x, cn, avg)
   if (size(cn,3) /= nk) &
     call SIS_error(FATAL, "Mismatched category sizes of x and cn in get_avg.")
 
-  avg(:,:) = 0.0
-   do k=1,nk ; do j=1,nj ; do i=1,ni
-     avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-   enddo ; enddo ; enddo
+  if (do_wt) then
+    avg(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
+      wts(i,j) = wts(i,j) + cn(i,j,k)
+    enddo ; enddo ; enddo
+     do j=1,nj ; do i=1,ni
+      if (wts(i,j) > 0.) then
+        avg(i,j) = avg(i,j) / wts(i,j)
+      else
+        avg(i,j) = 0.0
+      endif
+    enddo ; enddo
+  else
+    avg(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
+    enddo ; enddo ; enddo
+  endif
 
 end subroutine get_avg
 
