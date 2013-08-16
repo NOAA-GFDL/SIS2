@@ -827,6 +827,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   IST%Time = IST%Time + IST%Time_step_fast ! advance time
   Ice%Time = IST%Time
 
+  ! Copy the surface temperatures into the externally visible data type.
+  Ice%t_surf(:,:,:) = IST%t_surf(:,:,:)
+  Ice%s_surf(:,:) = IST%s_surf(:,:)
+  Ice%part_size(:,:,:) = IST%part_size(:,:,:)
+
   call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
   if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir(isc:iec,jsc:jec,:), &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
