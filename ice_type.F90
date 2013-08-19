@@ -331,14 +331,12 @@ subroutine ice_stock_pe(Ice, index, value)
 
   use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
 
-  use ice_grid_mod, only : all_avg
-
-  type(ice_data_type)    :: Ice
+  type(ice_data_type) :: Ice
   integer, intent(in) :: index
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
 
-  integer :: i, j, k
+  integer :: i, j, k, isc, iec, jsc, jec, ncat
   real :: icebergs_value
 
   value = 0.0
@@ -346,14 +344,18 @@ subroutine ice_stock_pe(Ice, index, value)
 
   IST => Ice%Ice_state
 
+  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
+  ncat = Ice%G%CatIce
+
   select case (index)
 
     case (ISTOCK_WATER)
 
-      value = sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:)+   &
-          DS*IST%h_snow(isc:iec,jsc:jec,:),  &
-          IST%part_size(isc:iec,jsc:jec,:))) &
-          *4*pi*radius*radius 
+      value = 0.0
+      do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * &
+               IST%part_size(i,j,k) * (cell_area(i,j)*4*pi*radius*radius)
+      enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
 
@@ -374,9 +376,13 @@ subroutine ice_stock_pe(Ice, index, value)
       value = value*4*pi*radius*radius
 
     case (ISTOCK_SALT)
-       !No salt in the h_snow component.
-      value =  sum(cell_area(:,:)*all_avg(DI*IST%h_ice(isc:iec,jsc:jec,:),IST%part_size(isc:iec,jsc:jec,:))) &
-              *ice_bulk_salin*4*pi*radius*radius
+      !No salt in the h_snow component.
+      value = 0.0
+      do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (DI*IST%h_ice(i,j,k)) * ice_bulk_salin * &
+               IST%part_size(i,j,k) * (cell_area(i,j)*4*pi*radius*radius)
+      enddo ; enddo ; enddo
+
     case default
 
       value = 0.0
@@ -809,11 +815,11 @@ end subroutine ice_model_end
                ' BOT FLUX DN.', &
                '   AT END    ', &
                '   ERROR     '
-          print '(a10,5es22.14)','WATER(Kg) ', h2o * earth_area , &
+          print '(a10,5es22.14)','WATER(Kg) ', h2o(:) * earth_area , &
                                              -(h2o(4) -h2o(1) -h2o(2) +h2o(3))/(h2o(4) +1.0/earth_area) 
-          print '(a10,5es22.14)','HEAT(J)   ', heat* earth_area , &
+          print '(a10,5es22.14)','HEAT(J)   ', heat(:) * earth_area , &
                                              -(heat(4)-heat(1)-heat(2)+heat(3))/(heat(4)+1.0/earth_area)
-          print '(a10,5es22.14)','SALT(sal) ', salt * earth_area, &
+          print '(a10,5es22.14)','SALT(sal) ', salt(:) * earth_area, &
                                              -(salt(4)-salt(1)-salt(2)+salt(3))/(salt(4)+1.0/earth_area)
 !          print '(a10,5es22.14)','TRACER      ', tracer * earth_area, &
 !                                             -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0/earth_area)

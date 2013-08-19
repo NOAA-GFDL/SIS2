@@ -26,7 +26,7 @@ module ice_grid_mod
   include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-  public :: set_ice_grid, ice_grid_end, g_sum, ice_avg, all_avg, get_avg
+  public :: set_ice_grid, ice_grid_end, g_sum, get_avg ! , ice_avg, all_avg
   public :: t_on_uv, t_to_uv, uv_to_t
   public :: ice_line, cut_check
 
