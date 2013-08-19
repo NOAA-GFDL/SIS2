@@ -276,10 +276,15 @@ subroutine avg_top_quantities(Ice, IST, G)
 
   real    :: u, v, divid, sign
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   logical :: sent
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = 0 ; j_off = 0
+  if (Ice%ocean_fluxes_top%num_bcs>=1) then ; if (Ice%ocean_fluxes_top%bc(1)%num_fields>=1) then
+    i_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,1) - G%isc
+    j_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,2) - G%jsc
+  endif ; endif
   !
   ! compute average fluxes
   !
@@ -324,7 +329,7 @@ subroutine avg_top_quantities(Ice, IST, G)
     IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   * divid
     IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   * divid
     IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) * divid
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     do n=1,Ice%ocean_fluxes_top%num_bcs ; do m=1,Ice%ocean_fluxes_top%bc(n)%num_fields
       Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
           Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) * divid
@@ -393,8 +398,9 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension (G%isc:G%iec,G%jsc:G%jec,G%CatIce+1), intent(in) :: part_size, part_size_uv
-  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
@@ -407,7 +413,7 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   enddo ; enddo
 
   do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j ; k2 = k  ! Use these to correct for indexing differences.
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k  ! Use these to correct for indexing differences.
     Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(i,j,k) * part_size_uv(i,j,k)
     Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(i,j,k) * part_size_uv(i,j,k)
     Ice%flux_t(i2,j2) = Ice%flux_t(i2,j2) + IST%flux_t_top(i,j,k) * part_size(i,j,k)
@@ -465,10 +471,11 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: sst, tmp
   real                             :: u, v
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   logical :: sent
   real, parameter                  :: LI = hlf
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   !
   ! pass ocean state through ice on first partition
   !
@@ -557,12 +564,12 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
 
   Ice%ice_mask(:,:,1) = .false.
   do k=2,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     Ice%ice_mask(i2,j2,k2) = (IST%h_ice(i,j,k) > 0.0)
   enddo ; enddo ; enddo
 
   do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     call ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
          IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), &
          Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
@@ -588,18 +595,18 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
   call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
 
   ! Copy the surface temperatures into the externally visible data type.
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%s_surf(i2,j2) = IST%s_surf(i,j)
   enddo ; enddo
   do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
   ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     if (G%mask2dT(i,j) > 0.5 ) then
       Ice%u_surf(i2,j2,1) = 0.25*(IST%u_ocn(i,j) + IST%u_ocn(i,j-1) + &
                                   IST%u_ocn(i-1,j) + IST%u_ocn(i-1,j-1) )   
@@ -619,7 +626,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
 
   ! Rotate the velocities from the ocean coordinates to lat/lon coordiantes.
   do k=1,2 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     u = Ice%u_surf(i2,j2,k2) ; v = Ice%v_surf(i2,j2,k2)
     Ice%u_surf(i2,j2,k2) =  u*cos_rot(i,j)+v*sin_rot(i,j)
     Ice%v_surf(i2,j2,k2) =  v*cos_rot(i,j)-u*sin_rot(i,j)
@@ -691,11 +698,13 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: flux_sw ! sum over dir/dif vis/nir components
   type(time_type) :: Dt_ice
   logical :: sent
-  integer :: i, j, k, i2, j2, k2, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
+  j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
 
   do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j
+    i2 = i+i_off ; j2 = j+j_off
     IST%coszen(i,j) = Atmos_boundary%coszen(i2,j2,1)
     Ice%p_surf(i2,j2) = Atmos_boundary%p(i2,j2,1)
   enddo ; enddo
@@ -703,7 +712,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
   ! different index conventions than are used internally in this component.
   do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i ; j2 = j ; k2 = k
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
     flux_u(i,j,k)  = Atmos_boundary%u_flux(i2,j2,k2)
     flux_v(i,j,k)  = Atmos_boundary%v_flux(i2,j2,k2)
     flux_t(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
@@ -828,9 +837,14 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   Ice%Time = IST%Time
 
   ! Copy the surface temperatures into the externally visible data type.
-  Ice%t_surf(:,:,:) = IST%t_surf(:,:,:)
-  Ice%s_surf(:,:) = IST%s_surf(:,:)
-  Ice%part_size(:,:,:) = IST%part_size(:,:,:)
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    Ice%s_surf(i2,j2) = IST%s_surf(i,j)
+  enddo ; enddo
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
+    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
   call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
   if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir(isc:iec,jsc:jec,:), &
@@ -889,7 +903,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJB_(G)) :: vc ! a C-grid, in m s-1.
   real, dimension(SZI_(G),SZJ_(G))  :: diagVar ! An temporary array for diagnostics.
 
-  integer :: i, j, k, l, i2, j2, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
     real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
     real                                  :: heat_limit_ice, heat_res_ice
@@ -898,6 +912,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     real, parameter                       :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow)
 
   !
@@ -905,7 +920,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
 
   ! save liquid runoff for ocean
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%runoff(i2,j2)  = runoff(i,j)
     Ice%calving(i2,j2) = calving(i,j)
     Ice%runoff_hflx(i2,j2)  = runoff_hflx(i,j)
@@ -1310,7 +1325,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     mass(i,j) = mass(i,j) + (DS*IST%h_snow(i,j,k) + DI*IST%h_ice(i,j,k)) * IST%part_size(i,j,k)
   enddo ; enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j ; Ice%mi(i2,j2) = mass(i,j) ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    Ice%mi(i2,j2) = mass(i,j)
+  enddo ; enddo
   if (IST%id_mi>0) sent = send_data(IST%id_mi, mass(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   if (do_icebergs) call icebergs_incr_mass(Ice%icebergs, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
@@ -1318,7 +1335,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_mib>0) sent = send_data(IST%id_mib, mass(isc:iec,jsc:jec), Ice%Time, mask=G%Lmask2dT(isc:iec,jsc:jec)) ! Diagnose total mass
   if (IST%id_slp>0) sent = send_data(IST%id_slp, Ice%p_surf(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     if (slp2ocean) then
       Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
     else
@@ -1352,7 +1369,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       IST%part_size_uv(i,j,1) = IST%part_size_uv(i,j,1) - IST%part_size_uv(i,j,k)
     enddo ; enddo
   enddo
-  Ice%part_size(:,:,:) = IST%part_size(:,:,:)
+  do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
+    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
   call mpp_clock_end(iceClock8)
   !
