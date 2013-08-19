@@ -32,7 +32,7 @@ module ice_grid_mod
 
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: xb1d, yb1d
-  public :: sin_rot, cos_rot, cell_area, latitude
+  public :: cell_area, latitude
   public :: grid_x_t,grid_y_t
   public :: tripolar_grid, x_cyclic
 
@@ -72,7 +72,9 @@ type, public :: sea_ice_grid_type
     dxT, IdxT, & ! dxT is delta x at h points, in m, and IdxT is 1/dxT in m-1.
     dyT, IdyT, & ! dyT is delta y at h points, in m, and IdyT is 1/dyT in m-1.
     areaT, &     ! areaT is the area of an h-cell, in m2.
-    IareaT       ! IareaT = 1/areaT, in m-2.
+    IareaT, &    ! IareaT = 1/areaT, in m-2.
+    sin_rot, &   ! The sine and cosine of the angular rotation between the local
+    cos_rot      ! model grid's northward and the true northward directions.
   logical ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     Lmask2dT     ! .true. for ocean points, .false. for land on the h-grid.
 
@@ -166,7 +168,6 @@ end type SIS2_domain_type
   real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
-  real, allocatable, dimension(:,:) ::  sin_rot, cos_rot   ! sin/cos of vector rotation angle
   real, allocatable, dimension(:,:) ::  cell_area          ! grid cell area; sphere frac.
   
   integer            :: comm_pe                      ! pe to be communicated with
@@ -548,8 +549,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   call allocate_metrics(G)
 
-    allocate ( sin_rot (isd:ied,jsd:jed),  &
-               cos_rot(isd:ied,jsd:jed), latitude(isc:iec,jsc:jec) )
+  allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
+  allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
+  allocate(latitude(isc:iec,jsc:jec))
 
   !--- read data from grid_spec.nc
   allocate(depth(isc:iec,jsc:jec))
@@ -707,9 +709,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     endif
 
 
-  cos_rot(:,:) = 0.0
-  sin_rot(:,:) = 0.0
-
   G%gridLatB(jsg-1:jeg) = yb1d(1:jm+1)
   G%gridLonB(isg-1:ieg) = xb1d(1:im+1)
   do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
@@ -730,15 +729,15 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
                           G%geoLonBu(I-1,J-1) - G%geoLonBu(I,J-1))*lon_scale, &
                           G%geoLatBu(I-1,J) + G%geoLatBu(I,J) - &
                           G%geoLatBu(I-1,J-1) - G%geoLatBu(I,J-1) )
-    sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
-    cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
+    G%sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
+    G%cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
   call mpp_update_domains(G%dyCu, G%dxCv, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
 
   ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
-    call mpp_update_domains(cos_rot, Domain)
-    call mpp_update_domains(sin_rot, Domain)
+    call mpp_update_domains(G%cos_rot, Domain)
+    call mpp_update_domains(G%sin_rot, Domain)
 
     do j = jsc, jec
        do i = isc, iec
@@ -838,12 +837,13 @@ subroutine ice_grid_end(G)
   DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
 
   DEALLOC_(G%CoriolisBu)
+  DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
+
   deallocate(G%gridLatT) ; deallocate(G%gridLatB)
   deallocate(G%gridLonT) ; deallocate(G%gridLonB)
 
   deallocate( latitude )
-  deallocate( xb1d, yb1d, sin_rot, cos_rot, cell_area )
-
+  deallocate( xb1d, yb1d, cell_area )
 
 end subroutine ice_grid_end
 

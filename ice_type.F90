@@ -21,7 +21,7 @@ module ice_type_mod
   use ice_grid_mod,     only: set_ice_grid, ice_grid_end
   use ice_grid_mod,     only: sea_ice_grid_type
   use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
-  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, xb1d, yb1d
+  use ice_grid_mod,     only: cell_area, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
@@ -732,7 +732,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   if (do_icebergs) call icebergs_init(Ice%icebergs, &
            im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
-           Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, cos_rot, sin_rot )
+           Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
 
   if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
 
@@ -1043,8 +1043,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, Time)
   IST%id_obi   = register_diag_field('ice_model', 'OBI', axt, Time,       &
        'ice observed', '0 or 1', missing_value=missing)
 
-  if (id_sin_rot>0)   sent=send_data(id_sin_rot, sin_rot(isc:iec,jsc:jec), Time);
-  if (id_cos_rot>0)   sent=send_data(id_cos_rot, cos_rot(isc:iec,jsc:jec), Time);
+  if (id_sin_rot>0)   sent=send_data(id_sin_rot, G%sin_rot(isc:iec,jsc:jec), Time);
+  if (id_cos_rot>0)   sent=send_data(id_cos_rot, G%cos_rot(isc:iec,jsc:jec), Time);
   if (id_geo_lon>0)   sent=send_data(id_geo_lon, G%geoLonT(isc:iec,jsc:jec), Time);
   if (id_geo_lat>0)   sent=send_data(id_geo_lat, G%geoLatT(isc:iec,jsc:jec), Time);
   if (id_cell_area>0) sent=send_data(id_cell_area, cell_area, Time);

@@ -33,7 +33,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_domains,     only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
+use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 
   use mpp_mod,          only: mpp_clock_begin, mpp_clock_end
   use diag_manager_mod, only: send_data
@@ -61,7 +61,7 @@ use ice_type_mod,     only: ice_data_type, ice_state_type
 
   use ice_grid_mod,     only: cut_check
   use ice_grid_mod,     only: all_avg, get_avg, ice_line
-  use ice_grid_mod,     only: cell_area, sin_rot, cos_rot, latitude
+  use ice_grid_mod,     only: cell_area, latitude
 use ice_grid_mod,     only: sea_ice_grid_type
 use ice_spec_mod,     only: get_sea_surface
 
@@ -294,10 +294,10 @@ subroutine avg_top_quantities(Ice, IST, G)
   divid = 1.0/real(IST%avg_count)
 
   do k=1,ncat+1 ; do j=jsc,jec ; do i=isc,iec
-     u = IST%flux_u_top(i,j,k) * divid
-     v = IST%flux_v_top(i,j,k) * divid
-     IST%flux_u_top(i,j,k) = u*cos_rot(i,j)-v*sin_rot(i,j) ! rotate stress from lat/lon
-     IST%flux_v_top(i,j,k) = v*cos_rot(i,j)+u*sin_rot(i,j) ! to ocean coordinates
+    u = IST%flux_u_top(i,j,k) * divid
+    v = IST%flux_v_top(i,j,k) * divid
+    IST%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
+    IST%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
   enddo ; enddo ; enddo
 
   ! Put wind stress on u,v points and change sign to +down
@@ -628,8 +628,8 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
   do k=1,2 ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k
     u = Ice%u_surf(i2,j2,k2) ; v = Ice%v_surf(i2,j2,k2)
-    Ice%u_surf(i2,j2,k2) =  u*cos_rot(i,j)+v*sin_rot(i,j)
-    Ice%v_surf(i2,j2,k2) =  v*cos_rot(i,j)-u*sin_rot(i,j)
+    Ice%u_surf(i2,j2,k2) =  u*G%cos_rot(i,j)+v*G%sin_rot(i,j)
+    Ice%v_surf(i2,j2,k2) =  v*G%cos_rot(i,j)-u*G%sin_rot(i,j)
   enddo ; enddo ; enddo
 
   do k2=3,ncat+1
