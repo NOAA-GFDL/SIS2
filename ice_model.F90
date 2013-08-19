@@ -61,7 +61,7 @@ use ice_type_mod,     only: ice_data_type, ice_state_type
 
   use ice_grid_mod,     only: cut_check
   use ice_grid_mod,     only: all_avg, get_avg, ice_line
-  use ice_grid_mod,     only: cell_area, latitude
+  use ice_grid_mod,     only: cell_area
 use ice_grid_mod,     only: sea_ice_grid_type
 use ice_spec_mod,     only: get_sea_surface
 
@@ -703,6 +703,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
 
+  rad = acos(-1.)/180.
+
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
     IST%coszen(i,j) = Atmos_boundary%coszen(i2,j2,1)
@@ -750,7 +752,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
 !      call diurnal_solar with dtime=Dt_ice to get cosz over Dt_ice
 !      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice/cosz_day*fracday_day*rrsun_day
 !--------------------------------------------------------------------
-    rad = acos(-1.)/180.
     Dt_ice = IST%Time_step_fast
   endif
   if (add_diurnal_sw) then
@@ -822,11 +823,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                  IST%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
     call compute_ocean_albedo(Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                               Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), latitude )
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
   else
     call compute_ocean_albedo(Ice%mask, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
                               Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), latitude )
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
   endif
 
   call sum_top_quantities(Ice, IST, Atmos_boundary%fluxes, flux_u, flux_v, flux_t, &

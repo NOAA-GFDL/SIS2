@@ -32,7 +32,7 @@ module ice_grid_mod
 
   public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   public :: xb1d, yb1d
-  public :: cell_area, latitude
+  public :: cell_area
   public :: grid_x_t,grid_y_t
   public :: tripolar_grid, x_cyclic
 
@@ -165,7 +165,6 @@ end type SIS2_domain_type
   !
   logical                           ::  x_cyclic           ! x boundary condition
   logical                           ::  tripolar_grid      ! y boundary condition
-  real, allocatable, dimension(:,:) ::  latitude           ! latitude of t cells
   real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  cell_area          ! grid cell area; sphere frac.
@@ -551,7 +550,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
   allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
-  allocate(latitude(isc:iec,jsc:jec))
 
   !--- read data from grid_spec.nc
   allocate(depth(isc:iec,jsc:jec))
@@ -776,7 +774,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
   do J=jsc-1,jec ; do I=isc-1,iec
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
   enddo ; enddo
-  latitude(:,:) = G%geoLatT(isc:iec,jsc:jec)*pi/180
 
   G%g_Earth = grav
 
@@ -842,7 +839,6 @@ subroutine ice_grid_end(G)
   deallocate(G%gridLatT) ; deallocate(G%gridLatB)
   deallocate(G%gridLonT) ; deallocate(G%gridLonB)
 
-  deallocate( latitude )
   deallocate( xb1d, yb1d, cell_area )
 
 end subroutine ice_grid_end
