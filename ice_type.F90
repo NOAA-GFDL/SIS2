@@ -410,7 +410,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
-    integer           :: sc, dy, i, j, l, i2, j2
+    integer           :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
   integer :: CatIce
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
@@ -534,14 +534,14 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
 
-  allocate(IST%t_surf(isc:iec, jsc:jec, CatIce+1)) ; IST%t_surf(:,:,:) = 0.0
-  allocate(IST%s_surf(isc:iec, jsc:jec)) ; IST%s_surf(:,:) = 0.0 !NI
-  allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
-  allocate(IST%part_size(isd:ied, jsd:jed, CatIce+1)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%part_size_uv(isc:iec, jsc:jec, CatIce+1)) ; IST%part_size_uv(:,:,:) = 0.0 !NR
-  allocate(IST%u_ocn(isd:ied, jsd:jed)) ; IST%u_ocn(:,:) = 0.0 !NR
-  allocate(IST%v_ocn(isd:ied, jsd:jed)) ; IST%v_ocn(:,:) = 0.0 !NR
-  allocate(IST%coszen(isc:iec, jsc:jec)) ; IST%coszen(:,:) = 0.0 !NR
+  allocate(IST%t_surf(SZI_(G), SZJ_(G), CatIce+1)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
+  allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
+  allocate(IST%part_size(SZI_(G), SZJ_(G), CatIce+1)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
+  allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
+  allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+  allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
 
   allocate(IST%flux_u_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
   allocate(IST%flux_v_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
@@ -696,8 +696,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
 
-  Ice%part_size(:,:,:) = IST%part_size(:,:,:)
-  Ice%t_surf(:,:,:) = IST%t_surf(:,:,:)
+  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+  do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
+    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
   IST%part_size_uv(:,:,:) = 0.0
   IST%part_size_uv(:,:,1) = 1.0

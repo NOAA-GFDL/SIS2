@@ -241,7 +241,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   enddo  !} n
 
   if (IST%id_lwdn > 0) then
-    call get_avg(flux_lw(:,:,:) + STEFAN*IST%t_surf(:,:,:)**4, &
+    call get_avg(flux_lw(:,:,:) + STEFAN*IST%t_surf(isc:iec,jsc:jec,:)**4, &
                        IST%part_size(isc:iec,jsc:jec,:), tmp(:,:))
     do j=jsc,jec ; do i=isc,iec
       if (G%Lmask2dT(i,j)) IST%lwdn(i,j) = IST%lwdn(i,j) + tmp(i,j)
@@ -943,10 +943,13 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   tmp1(:,:) = 1.-max(1.-sum(IST%part_size(:,:,2:ncat+1),dim=3),0.0)
   call get_avg(IST%h_ice, IST%part_size(:,:,2:), tmp2, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
-  if (do_icebergs) call icebergs_run( Ice%icebergs, IST%Time,                &
-                    Ice%calving, IST%u_ocn, IST%v_ocn, IST%u_ice, IST%v_ice, &
-                    Ice%flux_u, Ice%flux_v, IST%sea_lev, IST%t_surf(:,:,1),  &
-                    Ice%calving_hflx, tmp1, tmp2)
+  if (do_icebergs) &
+    call icebergs_run( Ice%icebergs, IST%Time, &
+            Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
+            IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
+            Ice%flux_u(:,:), Ice%flux_v(:,:), &
+            IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,1),  &
+            Ice%calving_hflx(:,:), tmp1, tmp2)
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
@@ -1475,7 +1478,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   ! Copy the surface properties to the externally visible structure Ice.
   ! These may use different indexing conventions.  This may not be needed here.
-  Ice%t_surf(:,:,:) = IST%t_surf(:,:,:)
+  do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k
+    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+  enddo ; enddo ; enddo
 
   ! ### ADD BETTER ERROR HANDLING.
   do j=jsc,jec ; do i=isc,iec 
