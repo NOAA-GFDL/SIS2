@@ -354,7 +354,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
         value = value + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (cell_area(i,j)*4*pi*radius*radius)
+               IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -363,24 +363,24 @@ subroutine ice_stock_pe(Ice, index, value)
       do k=2,km ; do j=jsc,jec ; do i=isc,iec
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (slab_ice) then
-            value = value - cell_area(i,j) * IST%part_size(i,j,k)*IST%h_ice(i,j,2)*DI*LI
+            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+                           IST%h_ice(i,j,2)*DI*LI
           else
-            value = value - cell_area(i,j) * IST%part_size(i,j,k)           &
-                           *e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
+            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+                            e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
                                       IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
                                       IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
                                       IST%t_ice(i,j,k,4) )
           endif
         endif
       enddo ; enddo ; enddo
-      value = value*4*pi*radius*radius
 
     case (ISTOCK_SALT)
       !No salt in the h_snow component.
       value = 0.0
       do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
         value = value + (DI*IST%h_ice(i,j,k)) * ice_bulk_salin * &
-               IST%part_size(i,j,k) * (cell_area(i,j)*4*pi*radius*radius)
+               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case default
@@ -577,6 +577,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%qflx_res_ice(isc:iec, jsc:jec)) ; IST%qflx_res_ice(:,:) = 0.0 !NR
 
   Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
+!   Ice%area(:,:) = G%areaT(isc:iec,jsc:jec) * G%mask2dT(isc:iec,jsc:jec)
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
@@ -800,32 +801,33 @@ subroutine ice_model_end (Ice)
 
 end subroutine ice_model_end
 
-    subroutine ice_print_budget
-      integer :: k
-       do k=1,4
-          call mpp_sum(h2o(k))
-          call mpp_sum(heat(k))
-          call mpp_sum(salt(k))
+subroutine ice_print_budget
+  integer :: k
+ 
+  do k=1,4
+    call mpp_sum(h2o(k))
+    call mpp_sum(heat(k))
+    call mpp_sum(salt(k))
 !          call mpp_sum(tracer(k))
-       end do
-       if (mpp_pe()==mpp_root_pe()) then
-          print *, 'ICE MODEL BUDGET' ! PER EARTH AREA'
-          print '(a10,5a22)',   'ICE MODEL ','   AT START  ', &
-               ' TOP FLUX DN.', &
-               ' BOT FLUX DN.', &
-               '   AT END    ', &
-               '   ERROR     '
-          print '(a10,5es22.14)','WATER(Kg) ', h2o(:) * earth_area , &
-                                             -(h2o(4) -h2o(1) -h2o(2) +h2o(3))/(h2o(4) +1.0/earth_area) 
-          print '(a10,5es22.14)','HEAT(J)   ', heat(:) * earth_area , &
-                                             -(heat(4)-heat(1)-heat(2)+heat(3))/(heat(4)+1.0/earth_area)
-          print '(a10,5es22.14)','SALT(sal) ', salt(:) * earth_area, &
-                                             -(salt(4)-salt(1)-salt(2)+salt(3))/(salt(4)+1.0/earth_area)
-!          print '(a10,5es22.14)','TRACER      ', tracer * earth_area, &
-!                                             -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0/earth_area)
-          print *
-       end if
-     end subroutine ice_print_budget
+  end do
+  if (mpp_pe()==mpp_root_pe()) then
+    print *, 'ICE MODEL BUDGET' ! PER EARTH AREA'
+    print '(a10,5a22)',   'ICE MODEL ','   AT START  ', &
+         ' TOP FLUX DN.', &
+         ' BOT FLUX DN.', &
+         '   AT END    ', &
+         '   ERROR     '
+    print '(a10,5es22.14)','WATER(Kg) ', h2o(:), &
+                                       -(h2o(4) -h2o(1) -h2o(2) +h2o(3))/(h2o(4) +1.0) 
+    print '(a10,5es22.14)','HEAT(J)   ', heat(:), &
+                                       -(heat(4)-heat(1)-heat(2)+heat(3))/(heat(4)+1.0)
+    print '(a10,5es22.14)','SALT(sal) ', salt(:), &
+                                       -(salt(4)-salt(1)-salt(2)+salt(3))/(salt(4)+1.0)
+!          print '(a10,5es22.14)','TRACER      ', tracer, &
+!                            -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0)
+    print *
+  endif
+end subroutine ice_print_budget
 
 
 !#######################################################################

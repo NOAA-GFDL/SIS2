@@ -658,12 +658,11 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     G%geoLonBu(I,J) = tmpx(2*i+1,2*j+1)
     G%geoLatBu(I,J) = tmpy(2*i+1,2*j+1)
   enddo ; enddo
-  call calc_mosaic_grid_area(G%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
-                             G%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, cell_area)
-  cell_area = cell_area/(4*PI*RADIUS*RADIUS)
   deallocate(tmpx, tmpy)
+  call calc_mosaic_grid_area(G%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
+                             G%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, G%areaT(isc:iec,jsc:jec))
   do j=jsc,jec ; do i=isc,iec
-    if (G%mask2dT(i,j) == 0.) cell_area(i,j) = 0.0
+    cell_area(i,j) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
   enddo ; enddo       
   call mpp_deallocate_domain(domain2)
 
@@ -740,10 +739,11 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     do j = jsc, jec
        do i = isc, iec
           G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
-          if(cell_area(i,j) > 0.0) then
-             G%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/G%dxT(i,j)
+          if (G%mask2dT(i,j) > 0.0) then
+!             G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
+            G%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/G%dxT(i,j)
           else
-             G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
+            G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
           endif
        enddo
     enddo
@@ -843,57 +843,64 @@ subroutine ice_grid_end(G)
 
 end subroutine ice_grid_end
 
-  !#####################################################################
+!#####################################################################
 
-  real function lon_avg(lons)
-    real, dimension(:), intent(in) :: lons
+real function lon_avg(lons)
+  real, dimension(:), intent(in) :: lons
 
-    real, dimension(size(lons(:))) :: lons2 ! lons relative to lon(1)
-    integer                        :: i
+  real, dimension(size(lons(:))) :: lons2 ! lons relative to lon(1)
+  integer                        :: i
 
-    lons2(1) = 0.0
-    do i=2,size(lons(:))
-       lons2(i) = lons(i)-lons(1)
-       if (lons2(i) >  180) lons2(i) = lons2(i) - 360;
-       if (lons2(i) < -180) lons2(i) = lons2(i) + 360;
-    end do
-    lon_avg = lons(1)+sum(lons2)/size(lons(:))
-  end function lon_avg
+  lons2(1) = 0.0
+  do i=2,size(lons(:))
+    lons2(i) = lons(i)-lons(1)
+    if (lons2(i) >  180) lons2(i) = lons2(i) - 360;
+    if (lons2(i) < -180) lons2(i) = lons2(i) + 360;
+  end do
+  lon_avg = lons(1)+sum(lons2)/size(lons(:))
+end function lon_avg
 
-  !#####################################################################
-  function edge_length(x1, y1, x2, y2)
-    real, intent(in) :: x1, x2, y1, y2 ! end-point coordinates in degrees
-    real             :: edge_length
-    real             :: dx, dy
+!#####################################################################
+function edge_length(x1, y1, x2, y2)
+  real, intent(in) :: x1, x2, y1, y2 ! end-point coordinates in degrees
+  real             :: edge_length
+  real             :: dx, dy
 
-    dx = (x2-x1)*cos((atan(1.0)/45)*(y2+y1)/2)
-    dy = y2-y1
-    edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
-  end function edge_length
+  dx = (x2-x1)*cos((atan(1.0)/45)*(y2+y1)/2)
+  dy = y2-y1
+  edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
+end function edge_length
 
-  !#####################################################################
-  subroutine ice_line(year, day, second, cn, sst, G)
-    integer,                         intent(in) :: year, day, second
-    real, dimension(isc:,jsc:,1:),   intent(in) :: cn
-    real, dimension(isc:,jsc:),      intent(in) :: sst
-    type(sea_ice_grid_type),         intent(in) :: G
+!#####################################################################
+subroutine ice_line(year, day, second, cn_ocn, sst, G)
+  integer,                         intent(in) :: year, day, second
+  type(sea_ice_grid_type),         intent(in) :: G
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: cn_ocn
+  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: sst
 
-    real, dimension(isc:iec,jsc:jec) :: x
-    real                             :: gx(3)
-    integer                          :: i
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
+  real :: gx(3)
+  integer :: n, i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-    do i=-1,1,2
-       x(:,:) = 0.0
-       where (cn(:,:,1)<0.85 .and. i*G%geoLatT(isc:iec,jsc:jec)>0.0) x(:,:)=cell_area(:,:)
-       gx((i+3)/2) = g_sum(x(:,:))*4*pi*radius*radius/1e12
-    end do
-    gx(3) = g_sum(sst(:,:)*cell_area(:,:))/(g_sum(cell_area(:,:))+1e-10)
-    !
-    ! print info every 5 days
-    !
-    if ( mpp_pe()==0 .and. second==0 .and. mod(day,5)==0 ) &
-       print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
-  end subroutine ice_line
+!    if (.not.(second==0 .and. mod(day,5)==0) ) return  ! safe?
+
+  do n=-1,1,2
+    do j=jsc,jec ; do i=isc,iec
+      x(i,j) = 0.0
+      if (cn_ocn(i,j)<0.85 .and. n*G%geoLatT(i,j)>0.0) &
+        x(i,j) = G%mask2dT(i,j)*G%areaT(i,j)
+    enddo ; enddo
+    gx((n+3)/2) = g_sum(x(isc:iec,jsc:jec))/1e12
+  enddo
+  gx(3) = g_sum(sst(isc:iec,jsc:jec)*G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) / &
+         (g_sum(G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) + 1e-10)
+  !
+  ! print info every 5 days
+  !
+  if ( mpp_pe()==0 .and. second==0 .and. mod(day,5)==0 ) &
+    print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
+end subroutine ice_line
 
   !#####################################################################
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
