@@ -41,6 +41,8 @@ use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
 
 implicit none ; private
 
+#include <SIS2_memory.h>
+
 public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe,  &
           mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice, kmelt,  &
           spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
@@ -244,7 +246,7 @@ type ice_state_type
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_diag_ctrl)         :: diag
   type(icebergs), pointer     :: icebergs => NULL()
-  type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
+!  type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
 end type ice_state_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -313,9 +315,9 @@ type ice_data_type !  ice_public_type
 !      type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
 !      type(SIS_diag_ctrl)         :: diag
       type(icebergs), pointer     :: icebergs => NULL()
-    type(sea_ice_grid_type) :: G ! A structure containing metrics and grid info.
-    type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
-                                 ! representation of the ice state.
+  type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
+  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
+                               ! representation of the ice state.
 end type ice_data_type !  ice_public_type
 
   integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
@@ -415,7 +417,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     character(len=64) :: restart_file
     integer           :: stdlogunit, stdoutunit
     type(param_file_type) :: param_file
-  type(ice_state_type), pointer :: IST => NULL()
+  type(ice_state_type),    pointer :: IST => NULL()
+  type(sea_ice_grid_type), pointer :: G => NULL()
 
     stdlogunit=stdlog()
     stdoutunit = stdout()
@@ -427,7 +430,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   endif
   allocate(Ice%Ice_state)
   IST => Ice%Ice_state
-  
+  allocate(Ice%G)
+  G => Ice%G
 
   ! read namelist and write to logfile
 #ifdef INTERNAL_FILE_NML
@@ -488,7 +492,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
   endif
   call set_domain(domain)
-  CatIce = Ice%G%CatIce
+  CatIce = G%CatIce
 
   allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
@@ -529,6 +533,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
+
   allocate(IST%t_surf(isc:iec, jsc:jec, CatIce+1)) ; IST%t_surf(:,:,:) = 0.0
   allocate(IST%s_surf(isc:iec, jsc:jec)) ; IST%s_surf(:,:) = 0.0 !NI
   allocate(IST%sea_lev(isd:ied, jsd:jed)) ; IST%sea_lev(:,:) = 0.0 !NR
@@ -538,20 +543,20 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%v_ocn(isd:ied, jsd:jed)) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(IST%coszen(isc:iec, jsc:jec)) ; IST%coszen(:,:) = 0.0 !NR
 
-  allocate(IST%flux_u_top(isd:ied, jsd:jed, CatIce+1)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top(isd:ied, jsd:jed, CatIce+1)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
-  allocate(IST%flux_t_top(isc:iec, jsc:jec, CatIce+1)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_q_top(isc:iec, jsc:jec, CatIce+1)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lw_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lh_top(isc:iec, jsc:jec, CatIce+1)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(IST%lprec_top(isc:iec, jsc:jec, CatIce+1)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%fprec_top(isc:iec, jsc:jec, CatIce+1)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_u_top_bgrid(isd:ied, jsd:jed, CatIce+1)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top_bgrid(isd:ied, jsd:jed, CatIce+1)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
   allocate(IST%lwdn(isc:iec, jsc:jec)) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
