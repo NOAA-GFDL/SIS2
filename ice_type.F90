@@ -19,10 +19,8 @@ module ice_type_mod
   use time_manager_mod, only: time_type, get_time
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: Tfreeze, radius, pi
-  use ice_grid_mod,     only: set_ice_grid, ice_grid_end
-  use ice_grid_mod,     only: sea_ice_grid_type
+use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
   use ice_grid_mod,     only: Domain, im, jm
-!  use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: cell_area, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
@@ -354,7 +352,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_WATER)
 
       value = 0.0
-      do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
+      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * &
                IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
@@ -362,7 +360,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_HEAT)
 
       value = 0.0
-      do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (slab_ice) then
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
@@ -380,7 +378,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_SALT)
       !No salt in the h_snow component.
       value = 0.0
-      do k=2,ncat+1 ; do j=jsc,jec ;  do i=isc,iec
+      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (DI*IST%h_ice(i,j,k)) * ice_bulk_salin * &
                IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
@@ -543,51 +541,51 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   ! Allocate the internally visible ice_state_type's arrays.
-  allocate(IST%t_surf(SZI_(G), SZJ_(G), CatIce+1)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
-  allocate(IST%part_size(SZI_(G), SZJ_(G), CatIce+1)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
+  allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
   allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
   allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
 
-  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
-  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), CatIce+1)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(IST%lprec_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%fprec_top(SZI_(G), SZJ_(G), CatIce+1)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
   allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
   allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
   allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(IST%tmelt(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%tmelt(:,:,:) = 0.0 !NR
-  allocate(IST%bmelt(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%bmelt(:,:,:) = 0.0 !NR
+  allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
+  allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
-  allocate(IST%pen(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%pen(:,:,:) = 0.0 !NI
-  allocate(IST%trn(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%trn(:,:,:) = 0.0 !NI
-  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), 2:CatIce+1, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
+  allocate(IST%pen(SZI_(G), SZJ_(G), CatIce)) ; IST%pen(:,:,:) = 0.0 !NI
+  allocate(IST%trn(SZI_(G), SZJ_(G), CatIce)) ; IST%trn(:,:,:) = 0.0 !NI
+  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
   allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
   allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
-  allocate(IST%h_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%h_snow(:,:,:) = 0.0
-  allocate(IST%t_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%t_snow(:,:,:) = 0.0
-  allocate(IST%h_ice(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%h_ice(:,:,:) = 0.0
-  allocate(IST%t_ice(SZI_(G), SZJ_(G), 2:CatIce+1, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+  allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
+  allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
+  allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
 
   Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
@@ -681,9 +679,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
      !--- update to data domain
      call mpp_update_domains(IST%part_size, Domain)
-     call mpp_update_domains(IST%h_snow(:,:,:), Domain )
-     call mpp_update_domains(IST%t_snow(:,:,:), Domain )
-     call mpp_update_domains(IST%h_ice (:,:,:), Domain )
+     call mpp_update_domains(IST%h_snow, Domain )
+     call mpp_update_domains(IST%t_snow, Domain )
+     call mpp_update_domains(IST%h_ice, Domain )
 
      do l=1,G%NkIce
        call mpp_update_domains(IST%t_ice(:,:,:,l), Domain )
@@ -692,7 +690,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE )
   else ! no restart => no ice
     IST%part_size(:,:,:) = 0.0
-    IST%part_size(:,:,1) = 1.0
+    IST%part_size(:,:,0) = 1.0
 
     Ice%rough_mom(:,:,:)   = mom_rough_ice
     Ice%rough_heat(:,:,:)  = heat_rough_ice
@@ -704,16 +702,16 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
 
-  do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k
+  do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
   IST%part_size_uv(:,:,:) = 0.0
-  IST%part_size_uv(:,:,1) = 1.0
+  IST%part_size_uv(:,:,0) = 1.0
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do k=2,CatIce+1 ; do j=jsc,jec ; do i=isc,iec
+  do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
     if(Ice%G%mask2dBu(i,j) > 0.5 ) then
        IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
                                        IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
