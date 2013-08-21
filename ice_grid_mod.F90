@@ -26,7 +26,7 @@ module ice_grid_mod
   include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-  public :: set_ice_grid, ice_grid_end, g_sum, get_avg ! , ice_avg, all_avg
+  public :: set_ice_grid, ice_grid_end, g_sum, get_avg
   public :: t_on_uv, t_to_uv, uv_to_t
   public :: ice_line, cut_check
 
@@ -172,75 +172,6 @@ end type SIS2_domain_type
   integer            :: comm_pe                      ! pe to be communicated with
 
 contains
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_avg - take area weighted average over ice partitions                     !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function ice_avg(x,part)
-    real, dimension(:,:,:),    intent(in) :: x
-    real, dimension(:,:,:),    intent(in) :: part
-    real, dimension(size(x,1),size(x,2) ) :: ice_avg, ice_part
-
-    integer :: i, j, k
-
-    ice_part = 0.0
-    ice_avg  = 0.0
-    if (size(x,3)==km) then
-       do k=2,km
-          do j = 1, size(x,2)
-             do i = 1, size(x,1)
-                ice_avg(i,j) = ice_avg(i,j) + part(i,j,k)*x(i,j,k)
-             enddo
-          enddo
-       enddo
-    else if (size(x,3)==km-1) then
-       do k=2,km
-          do j = 1, size(x,2)
-             do i = 1, size(x,1)
-                ice_avg(i,j) = ice_avg(i,j) + part(i,j,k)*x(i,j,k-1)
-             enddo
-          enddo
-       enddo
-    end if
-
-    do k=2,km
-       ice_part = ice_part + part(:,:,k)
-    enddo
-
-    do j = 1, size(x,2)
-       do i = 1, size(x,1)
-          if(ice_part(i,j) > 0 ) then
-             ice_avg(i,j) = ice_avg(i,j)/ice_part(i,j)
-          else
-             ice_avg(i,j) = 0
-          endif
-       enddo
-    enddo
-    return
-  end function ice_avg
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! all_avg - take area weighted average over all partitions                     !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function all_avg(x,part)
-    real, dimension(:,:, :),             intent(in) :: x
-    real, dimension(isc:,jsc:,:), intent(in) :: part
-    real, dimension(isc:iec,jsc:jec)         :: all_avg
-
-    integer :: k
-
-    all_avg = 0.0
-    if (size(x,3)==km) then
-       do k=1,km
-          all_avg = all_avg + part(:,:,k)*x(:,:,k)
-       end do
-    else
-       do k=2,km
-          all_avg = all_avg + part(:,:,k)*x(:,:,k-1)
-       end do
-    end if
-    return
-  end function all_avg
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_avg - take area weighted average over all partitions                     !

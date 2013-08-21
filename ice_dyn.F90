@@ -468,14 +468,6 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   enddo ; enddo
 
   ! Write out diagnostics associated with the ice dynamics.
-!  The diagnistics of fxat and fyat are supposed to be taken over all partitions
-!  (ocean & ice), whereas fxat and fyat here are only averaged over ice.
-!## if (CS%id_fax>0) &
-!##      sent = send_data(CS%id_fax, all_avg(CS%flux_u_top_bgrid(isc:iec,jsc:jec,:), &
-!##                                          CS%part_size_uv(isc:iec,jsc:jec)), CS%Time)
-!## if (CS%id_fay>0) &
-!##      sent = send_data(CS%id_fay, all_avg(CS%flux_v_top_bgrid(isc:iec,jsc:jec,:), &
-!##                                          CS%part_size_uv(isc:iec,jsc:jec)), CS%Time)
   if (query_SIS_averaging_enabled(CS%diag)) then
     if (CS%id_fix>0) call post_SIS_data(CS%id_fix, fxic, CS%diag)
     if (CS%id_fiy>0) call post_SIS_data(CS%id_fiy, fyic, CS%diag)
@@ -483,6 +475,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, fyco, CS%diag)
     if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
+!  The diagnistics of fxat and fyat are supposed to be taken over all partitions
+!  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
 
     if (CS%id_sigi>0) then
       diag_val(:,:) =  sigI(hi, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)

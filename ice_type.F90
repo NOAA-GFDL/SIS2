@@ -7,6 +7,7 @@ module ice_type_mod
   use mpp_mod,          only: mpp_pe, mpp_root_pe, mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
                               CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
   use mpp_domains_mod,  only: domain2D, mpp_update_domains, CORNER, BGRID_NE
+  use mpp_domains_mod,  only: mpp_get_compute_domain
   use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, write_version_number,&
                               read_data, close_file, field_exist, &
                               stderr, stdlog, error_mesg, FATAL, WARNING, NOTE, clock_flag_default
@@ -20,7 +21,8 @@ module ice_type_mod
   use constants_mod,    only: Tfreeze, radius, pi
   use ice_grid_mod,     only: set_ice_grid, ice_grid_end
   use ice_grid_mod,     only: sea_ice_grid_type
-  use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+  use ice_grid_mod,     only: Domain, im, jm
+!  use ice_grid_mod,     only: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
   use ice_grid_mod,     only: cell_area, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
   use ice_grid_mod,     only: x_cyclic, tripolar_grid
@@ -360,7 +362,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_HEAT)
 
       value = 0.0
-      do k=2,km ; do j=jsc,jec ; do i=isc,iec
+      do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (slab_ice) then
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
@@ -408,7 +410,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
-    integer           :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
+  integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
+  integer :: isc, iec, jsc, jec, km
   integer :: CatIce
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
@@ -493,6 +496,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   CatIce = G%CatIce
 
   ! Allocate the externally visible ice_data_type's arrays.
+  call mpp_get_compute_domain(G%Domain%mpp_domain, isc, iec, jsc, jec )
+  km = G%CatIce + 1
+
   allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
@@ -531,6 +537,10 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+  ! Redefine the computational domain sizes to use the ice model's indexing convention.
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   ! Allocate the internally visible ice_state_type's arrays.
   allocate(IST%t_surf(SZI_(G), SZJ_(G), CatIce+1)) ; IST%t_surf(:,:,:) = 0.0 !X
@@ -579,12 +589,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%h_ice(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), 2:CatIce+1, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
 
-  Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
-!   Ice%area(:,:) = G%areaT(isc:iec,jsc:jec) * G%mask2dT(isc:iec,jsc:jec)
+  Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
-  do j=jsc,jec ; do i=isc,iec ; i2 = i ; j2 = j
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%mask(i2,j2) = ( Ice%G%mask2dT(i,j) > 0.5 )
+!###   Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
  
   Ice%Time           = Time
@@ -613,13 +623,13 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      IST%t_surf,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      IST%h_snow(:,:,2:km), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      IST%t_snow(:,:,2:km), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       IST%h_ice(:,:,2:km),  domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      IST%t_ice(:,:,2:km,1), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      IST%t_ice(:,:,2:km,2), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      IST%t_ice(:,:,2:km,3), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      IST%t_ice(:,:,2:km,4), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      IST%h_snow,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      IST%t_snow,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       IST%h_ice,            domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      IST%t_ice(:,:,:,1),   domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      IST%t_ice(:,:,:,2),   domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      IST%t_ice(:,:,:,3),   domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      IST%t_ice(:,:,:,4),   domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       IST%u_ice,            domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       IST%v_ice,            domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
@@ -671,12 +681,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
      !--- update to data domain
      call mpp_update_domains(IST%part_size, Domain)
-     call mpp_update_domains(IST%h_snow(:,:,2:km), Domain )
-     call mpp_update_domains(IST%t_snow(:,:,2:km), Domain )
-     call mpp_update_domains(IST%h_ice (:,:,2:km), Domain )
+     call mpp_update_domains(IST%h_snow(:,:,:), Domain )
+     call mpp_update_domains(IST%t_snow(:,:,:), Domain )
+     call mpp_update_domains(IST%h_ice (:,:,:), Domain )
 
-     do l=1,Ice%G%NkIce
-       call mpp_update_domains(IST%t_ice(:,:,2:km,l), Domain )
+     do l=1,G%NkIce
+       call mpp_update_domains(IST%t_ice(:,:,:,l), Domain )
      enddo
 
     call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE )
@@ -694,7 +704,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     do_init = .true. ! done in ice_model
   endif ! file_exist(restart_file)
 
-  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   do k=1,G%CatIce+1 ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
@@ -704,7 +713,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   IST%part_size_uv(:,:,:) = 0.0
   IST%part_size_uv(:,:,1) = 1.0
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do k=2,km ; do j=jsc,jec ; do i=isc,iec
+  do k=2,CatIce+1 ; do j=jsc,jec ; do i=isc,iec
     if(Ice%G%mask2dBu(i,j) > 0.5 ) then
        IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
                                        IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
@@ -866,6 +875,9 @@ subroutine ice_diagnostics_init(Ice, IST, G, Time)
   logical               :: sent
   integer               :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
   integer               :: id_xto,id_yto
+  integer :: i, j, k, isc, iec, jsc, jec
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   !
   ! diagnostics MUST use a domain without halos otherwise same as the

@@ -1389,7 +1389,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !                                       mask=G%Lmask2dT(isc:iec,jsc:jec)       )
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later
   !  if (IST%id_obs_hi>0) &
-  !    sent = send_data(IST%id_obs_hi, ice_avg(Obs_h_ice,IST%part_size), IST%Time, &
+  !    call post_avg(IST%id_obs_hi, Obs_h_ice(isc:iec,jsc:jec,:), IST%part_size(isc:iec,jsc:jec,2:), IST%diag, &
   !                     mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   if (IST%id_ext>0) then
