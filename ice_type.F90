@@ -414,7 +414,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     real              :: dt_slow
     character(len=64) :: restart_file
     integer           :: stdlogunit, stdoutunit
-    type(param_file_type) :: param_file
+  type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
   type(sea_ice_grid_type), pointer :: G => NULL()
 
@@ -499,7 +499,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
   allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%part_size(isd:ied, jsd:jed, km)) ; Ice%part_size(:,:,:) = 0.0
+  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
   allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
   allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
   allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
@@ -557,20 +557,20 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
   allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), CatIce+1)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
-  allocate(IST%lwdn(isc:iec, jsc:jec)) ; IST%lwdn(:,:) = 0.0 !NR
-  allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
-  allocate(IST%frazil(isc:iec, jsc:jec)) ; IST%frazil(:,:) = 0.0 !NR
-  allocate(IST%bheat(isc:iec, jsc:jec)) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(IST%tmelt(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%tmelt(:,:,:) = 0.0 !NR
-  allocate(IST%bmelt(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%bmelt(:,:,:) = 0.0 !NR
+  allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
+  allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
+  allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
+  allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
+  allocate(IST%tmelt(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%tmelt(:,:,:) = 0.0 !NR
+  allocate(IST%bmelt(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
-  allocate(IST%pen(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%pen(:,:,:) = 0.0 !NI
-  allocate(IST%trn(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%trn(:,:,:) = 0.0 !NI
-  allocate(IST%sw_abs_sfc(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_snow(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:CatIce+1, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ocn(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_int(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
+  allocate(IST%pen(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%pen(:,:,:) = 0.0 !NI
+  allocate(IST%trn(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%trn(:,:,:) = 0.0 !NI
+  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), 2:CatIce+1, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
   allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
   allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
