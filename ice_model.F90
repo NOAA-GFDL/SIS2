@@ -897,6 +897,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: dum1, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: tmp1, tmp2
+  real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
   real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
   real, dimension(2:G%CatIce+1)              :: e2m
   real, dimension(SZIB_(G),SZJ_(G)) :: uc ! Ice velocities interpolated onto
@@ -1122,10 +1123,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   call mpp_clock_begin(iceClock6)
   if (do_ice_restore .or. do_ice_limit) then
-    do j=jsc,jec ; do i=isc,iec
-      IST%qflx_lim_ice(i,j) = 0.0
-      IST%qflx_res_ice(i,j) = 0.0
-    enddo ; enddo
+    qflx_lim_ice(:,:) = 0.0
+    qflx_res_ice(:,:) = 0.0
 
     do j=jsc,jec ; do i=isc,iec
       heat_res_ice   = 0.0
@@ -1230,8 +1229,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       endif
 
       ! Convert constraining heat from energy (J/m^2) to flux (W/m^2)
-      IST%qflx_lim_ice(i,j) = heat_limit_ice / dt_slow
-      IST%qflx_res_ice(i,j) = heat_res_ice / dt_slow
+      qflx_lim_ice(i,j) = heat_limit_ice / dt_slow
+      qflx_res_ice(i,j) = heat_res_ice / dt_slow
       !
       ! Check for energy conservation
       !
@@ -1292,9 +1291,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                 scale=1.0/dt_slow, mask=G%Lmask2dT(isc:iec,jsc:jec), wtd=.true.)
   if (IST%id_sn2ic>0) call post_avg(IST%id_sn2ic, snow_to_ice, IST%part_size(isc:iec,jsc:jec,2:), IST%diag, &
                                scale=1.0/dt_slow, mask=G%Lmask2dT(isc:iec,jsc:jec))
-  if (IST%id_qflim>0) sent = send_data(IST%id_qflim, IST%qflx_lim_ice(isc:iec,jsc:jec), &
+  if (IST%id_qflim>0) sent = send_data(IST%id_qflim, qflx_lim_ice(isc:iec,jsc:jec), &
                               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
-  if (IST%id_qfres>0) sent = send_data(IST%id_qfres, IST%qflx_res_ice(isc:iec,jsc:jec), &
+  if (IST%id_qfres>0) sent = send_data(IST%id_qfres, qflx_res_ice(isc:iec,jsc:jec), &
                               IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   !
   ! Ice transport ... all ocean fluxes have been calculated by now
@@ -1399,23 +1398,23 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     sent = send_data(IST%id_ext, diagVar(isc:iec,jsc:jec), IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (IST%id_hs>0) call post_avg(IST%id_hs, G, IST%h_snow, IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_hi>0) call post_avg(IST%id_hi, G, IST%h_ice, IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_hio>0) call post_avg(IST%id_hio, G, IST%h_ice, IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_ts>0) call post_avg(IST%id_ts, G, IST%t_surf, IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, offset=-Tfreeze, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, offset=-Tfreeze, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, G, IST%t_snow, IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_t1>0) call post_avg(IST%id_t1, G, IST%t_ice(:,:,:,1), IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_t2>0) call post_avg(IST%id_t2, G, IST%t_ice(:,:,:,2), IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_t3>0) call post_avg(IST%id_t3, G, IST%t_ice(:,:,:,3), IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_t4>0) call post_avg(IST%id_t4, G, IST%t_ice(:,:,:,4), IST%part_size(:,:,2:), &
-                                 IST%diag, mask=G%Lmask2dT, wtd=.true.)
+                                 IST%diag, ncat, mask=G%Lmask2dT, wtd=.true.)
 
   if (IST%id_xprt>0) sent = send_data(IST%id_xprt,  h2o_change(isc:iec,jsc:jec)*864e2*365/dt_slow, &
                IST%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
@@ -1546,10 +1545,11 @@ subroutine post_avg_all(id, val, part, diag, mask, scale, offset, wtd)
 
 end subroutine post_avg_all
 
-subroutine post_avg_G(id, G, val, part, diag, mask, scale, offset, wtd)
+subroutine post_avg_G(id, G, val, part, diag, ncat, mask, scale, offset, wtd)
   integer, intent(in) :: id
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:G%CatIce), intent(in) :: val, part
+  integer, intent(in) :: ncat
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,ncat), intent(in) :: val, part
   type(SIS_diag_ctrl),  intent(in) :: diag
   logical, dimension(:,:), optional, intent(in) :: mask
   real,                    optional, intent(in) :: scale, offset
@@ -1560,9 +1560,9 @@ subroutine post_avg_G(id, G, val, part, diag, mask, scale, offset, wtd)
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: avg, wts
   real :: scl, off
   logical :: do_wt
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, isc, iec, jsc, jec
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   scl = 1.0 ; if (present(scale)) scl = scale
   off = 0.0 ; if (present(offset)) off = offset
@@ -1570,7 +1570,7 @@ subroutine post_avg_G(id, G, val, part, diag, mask, scale, offset, wtd)
 
   if (do_wt) then
     avg(:,:) = 0.0 ; wts(:,:) = 0.0
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k) + off)
       wts(i,j) = wts(i,j) + part(i,j,k)
     enddo ; enddo ; enddo
@@ -1583,7 +1583,7 @@ subroutine post_avg_G(id, G, val, part, diag, mask, scale, offset, wtd)
     enddo ; enddo
   else
     avg(:,:) = 0.0
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k) + off)
     enddo ; enddo ; enddo
   endif

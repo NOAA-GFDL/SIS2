@@ -208,8 +208,6 @@ type ice_state_type
   real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
   real,    pointer, dimension(:,:)   :: frazil              =>NULL()
   real,    pointer, dimension(:,:)   :: bheat               =>NULL()
-  real,    pointer, dimension(:,:)   :: qflx_lim_ice        =>NULL()
-  real,    pointer, dimension(:,:)   :: qflx_res_ice        =>NULL()
    real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
                                                                       ! because flux_ice_to_ocean cannot handle 3D fields. This may be
 								! removed, if the information on ice thickness can be derived from 
@@ -494,6 +492,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call set_domain(domain)
   CatIce = G%CatIce
 
+  ! Allocate the externally visible ice_data_type's arrays.
   allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
@@ -533,7 +532,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
-
+  ! Allocate the internally visible ice_state_type's arrays.
   allocate(IST%t_surf(SZI_(G), SZJ_(G), CatIce+1)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
@@ -562,24 +561,23 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%swdn(isc:iec, jsc:jec)) ; IST%swdn(:,:) = 0.0 !NR
   allocate(IST%frazil(isc:iec, jsc:jec)) ; IST%frazil(:,:) = 0.0 !NR
   allocate(IST%bheat(isc:iec, jsc:jec)) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(IST%u_ice(isd:ied, jsd:jed)) ; IST%u_ice(:,:) = 0.0
-  allocate(IST%v_ice(isd:ied, jsd:jed)) ; IST%v_ice(:,:) = 0.0
   allocate(IST%tmelt(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%tmelt(:,:,:) = 0.0 !NR
   allocate(IST%bmelt(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%bmelt(:,:,:) = 0.0 !NR
+
   allocate(IST%pen(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%pen(:,:,:) = 0.0 !NI
   allocate(IST%trn(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%trn(:,:,:) = 0.0 !NI
   allocate(IST%sw_abs_sfc(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:CatIce+1, Ice%G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(isc:iec, jsc:jec, 2:CatIce+1, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ocn(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(isc:iec, jsc:jec, 2:CatIce+1)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
-  allocate(IST%h_snow(isd:ied, jsd:jed, 2:CatIce+1)) ; IST%h_snow(:,:,:) = 0.0
-  allocate(IST%t_snow(isd:ied, jsd:jed, 2:CatIce+1)) ; IST%t_snow(:,:,:) = 0.0
-  allocate(IST%h_ice(isd:ied, jsd:jed, 2:CatIce+1)) ; IST%h_ice(:,:,:) = 0.0
-  allocate(IST%t_ice(isd:ied, jsd:jed, 2:CatIce+1, Ice%G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
-  allocate(IST%qflx_lim_ice(isc:iec, jsc:jec)) ; IST%qflx_lim_ice(:,:) = 0.0 !NR
-  allocate(IST%qflx_res_ice(isc:iec, jsc:jec)) ; IST%qflx_res_ice(:,:) = 0.0 !NR
+  allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
+  allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
+  allocate(IST%h_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%h_snow(:,:,:) = 0.0
+  allocate(IST%t_snow(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%h_ice(SZI_(G), SZJ_(G), 2:CatIce+1)) ; IST%h_ice(:,:,:) = 0.0
+  allocate(IST%t_ice(SZI_(G), SZJ_(G), 2:CatIce+1, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
 
   Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS
 !   Ice%area(:,:) = G%areaT(isc:iec,jsc:jec) * G%mask2dT(isc:iec,jsc:jec)
@@ -794,7 +792,6 @@ subroutine ice_model_end (Ice)
   deallocate(IST%tmelt, IST%bmelt, IST%pen, IST%trn )
   deallocate(IST%h_snow, IST%t_snow, IST%h_ice )
   deallocate(IST%t_ice)
-  deallocate(IST%qflx_lim_ice, IST%qflx_res_ice )
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif )
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif )
 
@@ -1142,8 +1139,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 !  write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(IST%v_ice              )
 !  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(IST%frazil)
 !  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(IST%bheat)
-!  write(outunit,100) 'ice_data_type%qflx_lim_ice       ',mpp_chksum(IST%qflx_lim_ice)
-!  write(outunit,100) 'ice_data_type%qflx_res_ice       ',mpp_chksum(IST%qflx_res_ice)
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
