@@ -1262,6 +1262,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   Ice%flux_salt(:,:) = ice_bulk_salin*DI*hi_change(:,:) / dt_slow
   if (IST%id_saltf>0)  sent = send_data(IST%id_saltf, Ice%flux_salt(isc:iec,jsc:jec), Ice%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
+  ! Note that at this point h2o_change is the negative of the mass.
   do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
     h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
                         (DS*IST%h_snow(i,j,k)+DI*IST%h_ice(i,j,k))
@@ -1300,7 +1301,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   h2o_change(:,:) = 0.0
   do k=2,ncat+1 ; do j=jsc,jec ; do i=isc,iec
-    h2o_change(i,j) = h2o_change(i,j) - IST%part_size(i,j,k) * &
+    h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
                         (DS*IST%h_snow(i,j,k)+DI*IST%h_ice(i,j,k))
   enddo ; enddo ; enddo
 
