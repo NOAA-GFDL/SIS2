@@ -43,13 +43,15 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe,  &
-          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, kmelt,  &
+public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe, &
+!          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, kmelt,  &
 !          slab_ice, spec_ice, &
-          verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
-          max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
-          conservation_check, do_icebergs, ice_model_restart,       &
-          add_diurnal_sw, ice_data_type_chksum
+!          verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
+!          max_ice_limit, ice_restore_timescale, slp2ocean, &
+          do_init, h2o, heat, salt, hlim, &
+          ice_bulk_salin,  do_icebergs, &
+!          conservation_check, do_icebergs, add_diurnal_sw, &
+          ice_model_restart, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
 public  :: iceClock,iceClock1,iceClock2,iceClock3,iceClock4,iceClock5,iceClock6,iceClock7,iceClock8,iceClock9
@@ -254,23 +256,39 @@ type ice_state_type
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
-  logical :: conservation_check ! check for heat, salt and h2o conservation.
+  logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
+
                   !### FIX THESE COMMENTS.
-  real :: mom_rough_ice  = 1.0e-4     ! momentum same, cd10=(von_k/ln(10/z0))^2
-  real :: heat_rough_ice = 1.0e-4     ! heat roughness length
-  real :: kmelt          = 6e-5*4e6   ! ocean/ice heat flux constant
-  real :: k_snow         = 0.31       ! snow conductivity (W/mK)
-!  real :: alb_snow       = 0.85       ! snow albedo (less if melting)
-!  real :: alb_ice        = 0.5826     ! ice albedo (less if melting)
-  real :: pen_ice        = 0.3        ! part unreflected solar penetrates ice
-  real :: opt_dep_ice    = 0.67       ! ice optical depth
-  real :: t_range_melt   = 1.0        ! melt albedos scaled in over T range
+  logical :: atmos_winds ! wind stress from atmosphere model over t points and has wrong sign
+  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
+  real :: heat_rough_ice ! heat roughness length, in m.
+  real :: kmelt          ! ocean/ice heat flux constant, W m-2 K-1.
+  real :: k_snow         ! snow conductivity (W/mK)
+!  real :: alb_snow       ! snow albedo (less if melting), nondim.
+!  real :: alb_ice        ! ice albedo (less if melting), nondim.
+  real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
+  real :: opt_dep_ice  ! ice optical depth, in m-1.
+  real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
+  logical :: do_ice_restore   ! restore sea-ice toward climatology
+  real    :: ice_restore_timescale ! time scale for restoring ice (days)
+  logical :: do_ice_limit   ! limit sea ice to max_ice_limit
+  real    :: max_ice_limit  ! The maximum sea ice height, in m,
+                            ! if do_ice_limit is true
+  logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
+  real    :: h_lo_lim   ! The min ice thickness for temp. calc, in m.
+  logical :: verbose    ! control printing message, will slow model down when turn true
+  logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
+  logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
+                                  ! the ocean albedo in the frame of the ice model.
+  logical :: do_deltaEdd  ! If true, a delta-Eddington radiative transfer calculation
+                          ! for the shortwave radiation within the sea-ice.
+  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
 
-
-
-!   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
-!   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
-!   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
+!   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
+!   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
+!   type(coupler_3d_bc_type)   :: ocean_fluxes_top   ! array of fluxes for averaging
 
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_t1=-1
   integer :: id_t2=-1, id_t3=-1, id_t4=-1, id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
@@ -522,7 +540,19 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, 0.67)
   call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, 1.0)
   call archaic_nml_check(param_file, "ICE_CONSERVATION_CHECK", "conservation_check", conservation_check, .true.)
-
+  call archaic_nml_check(param_file, "ICE_SEES_ATMOS_WINDS", "atmos_winds", atmos_winds, .true.)
+  call archaic_nml_check(param_file, "DO_ICE_RESTORE", "do_ice_restore", do_ice_restore, .false.)
+  call archaic_nml_check(param_file, "APPLY_ICE_LIMIT", "do_ice_limit", do_ice_limit, .false.)
+  call archaic_nml_check(param_file, "MAX_ICE_THICK_LIMIT", "max_ice_limit", max_ice_limit, 4.0)
+  call archaic_nml_check(param_file, "ICE_RESTORE_TIMESCALE", "ice_restore_timescale", ice_restore_timescale, 5.0)
+  call archaic_nml_check(param_file, "APPLY_SLP_TO_OCEAN", "slp2ocean", slp2ocean, .false.)
+  call archaic_nml_check(param_file, "MIN_H_FOR_TEMP_CALC", "h_lo_lim", h_lo_lim, 0.0)
+  call archaic_nml_check(param_file, "ADD_DIURNAL_SW", "add_diurnal_sw", add_diurnal_sw, .false.)
+  call archaic_nml_check(param_file, "DO_SUN_ANGLE_FOR_ALB", "do_sun_angle_for_alb", do_sun_angle_for_alb, .false.)
+  call archaic_nml_check(param_file, "DO_DELTA_EDDINGTON_SW", "do_deltaEdd", do_deltaEdd, .true.)
+  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_ICE", "R_ice", R_ice, 0.0)
+  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_SNOW", "R_snw", R_snw, 0.0)
+  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_POND", "R_pnd", R_pnd, 0.0)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
@@ -576,9 +606,62 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "internal conservation of heat, salt, and water mass in \n"//&
                  "the sea ice model.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.true.)
-                  
-  
-  
+  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%atmos_winds, &
+                 "If true, the sea ice is being given wind stresses with \n"//&
+                 "the atmospheric sign convention, and need to have their \n"//&
+                 "sign changed.", default=.true.)
+!  call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
+!                 "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.005)
+!  call get_param(param_file, mod, "ICE_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
+!  call get_param(param_file, mod, "ICE_IO_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
+!  call get_param(param_file, mod, "ICE_MASK_TABLE?",  ###HANDLE THIS LIKE MOM6?
+  call get_param(param_file, mod, "DO_ICE_RESTORE", IST%do_ice_restore, &
+                 "If true, restore the sea ice state toward climatology.", &
+                 default=.false.)
+  if (IST%do_ice_restore) &
+    call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", IST%ice_restore_timescale, &
+                 "The restoring timescale when DO_ICE_RESTORE is true.", &
+                 units="days", default=5.0)
+  call get_param(param_file, mod, "APPLY_ICE_LIMIT", IST%do_ice_limit, &
+                 "If true, restore the sea ice state toward climatology.", &
+                 default=.false.)
+  if (IST%do_ice_limit) &
+    call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", IST%max_ice_limit, &
+                 "The maximum permitted sea ice thickness when \n"//&
+                 "APPLY_ICE_LIMIT is true.", units="m", default=4.0)
+  call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
+                 "If true, apply the atmospheric sea level pressure to \n"//&
+                 "the ocean.", default=.false.)
+  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", IST%h_lo_lim, &
+                 "The minimum ice thickness at which to do temperature \n"//&
+                 "calculations.", units="m", default=0.0)
+  call get_param(param_file, mod, "VERBOSE", IST%verbose, &
+                 "If true, write out verbose diagnostics.", default=.false.)
+!  call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
+!                 "If true, call the iceberg module.", default=.false.)
+  call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
+                 "If true, add a synthetic diurnal cycle to the shortwave \n"//&
+                 "radiation.", default=.false.)
+  call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", IST%do_sun_angle_for_alb, &
+                 "If true, find the sun angle for calculating the ocean \n"//&
+                 "albedo within the sea ice model.", default=.false.)
+  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", IST%do_deltaEdd, &
+                 "If true, a delta-Eddington radiative transfer calculation \n"//&
+                 "for the shortwave radiation within the sea-ice.", default=.true.)
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", IST%deltaEdd_R_ice, &
+                 "A dreadfully documented tuning parameter for the radiative \n"//&
+                 "propeties of sea ice with the delta-Eddington radiative \n"//&
+                 "transfer calculation.", units="perhaps nondimensional?", default=0.0)
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", IST%deltaEdd_R_snow, &
+                 "A dreadfully documented tuning parameter for the radiative \n"//&
+                 "propeties of snow on sea ice with the delta-Eddington \n"//&
+                 "radiative transfer calculation.", &
+                 units="perhaps nondimensional?", default=0.0)
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", IST%deltaEdd_R_pond, &
+                 "A dreadfully documented tuning parameter for the radiative \n"//&
+                 "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
+                 "radiative transfer calculation.", units="perhaps nondimensional?", &
+                 default=0.0)
 
   if (IST%specified_ice) then
     IST%slab_ice = .true.
@@ -846,7 +929,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
   call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_sno, alb_ice, IST%pen_ice, IST%opt_dep_ice, IST%slab_ice, &
-                     IST%t_range_melt, IST%k_snow, h_lo_lim, do_deltaEdd)
+                     IST%t_range_melt, IST%k_snow, IST%h_lo_lim, IST%do_deltaEdd)
 
   call close_param_file(param_file)
 
@@ -870,9 +953,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
            Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
 
-  if (add_diurnal_sw .or. do_sun_angle_for_alb) call astronomy_init
+  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 
-  call shortwave_dEdd0_set_params(R_ice,R_snw,R_pnd)
+  call shortwave_dEdd0_set_params(IST%deltaEdd_R_ice,IST%deltaEdd_R_snow,IST%deltaEdd_R_pond)
 
   call nullify_domain()
 

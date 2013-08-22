@@ -45,18 +45,19 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
   use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
   use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 use ice_type_mod,     only: ice_data_type, ice_state_type
-  use ice_type_mod,     only: ice_model_init, ice_model_end, hlim,&
-                              atmos_winds, ice_bulk_salin, &
-                              do_ice_restore, do_ice_limit, max_ice_limit,       &
-                              ice_restore_timescale, do_init, h2o, heat, salt,   &
-                              slp2ocean, iceClock, verbose,  &
+  use ice_type_mod,     only: ice_model_init, ice_model_end, hlim, &
+                              ice_bulk_salin, & ! atmos_winds, 
+!                              do_ice_restore, do_ice_limit, max_ice_limit,       &
+!                              ice_restore_timescale, 
+                              do_init, h2o, heat, salt,   &
+                              iceClock, &  !slp2ocean, verbose,  &
                               iceClock1, iceClock2, iceClock3, &
                               iceClock4, iceClock5, iceClock6, &
                               iceClock7, iceClock8, iceClock9, &
                               iceClocka, iceClockb, iceClockc, &
                               ice_stock_pe, do_icebergs, ice_model_restart, &
-                              add_diurnal_sw, ice_data_type_chksum
-  use ice_type_mod,     only: do_sun_angle_for_alb
+                              ice_data_type_chksum ! , add_diurnal_sw 
+!  use ice_type_mod,     only: do_sun_angle_for_alb
 
 use ice_grid_mod,     only: get_avg, ice_line, cut_check, cell_area
 use ice_grid_mod,     only: sea_ice_grid_type
@@ -300,7 +301,7 @@ subroutine avg_top_quantities(Ice, IST, G)
   ! Put wind stress on u,v points and change sign to +down
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  sign = 1.0 ; if (atmos_winds) sign = -1.0
+  sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     if ( G%mask2dBu(i,j) > 0.5 ) then
       IST%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
@@ -730,7 +731,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
   enddo ; enddo ; enddo
 
-  if (add_diurnal_sw .or. do_sun_angle_for_alb) then
+  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
 !---------------------------------------------------------------------
 !    extract time of day (gmt) from time_type variable time with
 !    function universal_time.
@@ -752,7 +753,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
 !--------------------------------------------------------------------
     Dt_ice = IST%Time_step_fast
   endif
-  if (add_diurnal_sw) then
+  if (IST%add_diurnal_sw) then
     do j=jsc,jec ; do i=isc,iec
       call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, IST%Time, cosz=cosz_dt_ice, &
                          fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
@@ -816,7 +817,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! This routine works on the boundary exchange state.
-  if (do_sun_angle_for_alb) then
+  if (IST%do_sun_angle_for_alb) then
     call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
                  IST%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
     call compute_ocean_albedo(Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
@@ -1049,7 +1050,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   enddo ; enddo ; enddo
 
   ! get observed ice thickness for ice restoring, if calculating qflux
-  if (do_ice_restore) &
+  if (IST%do_ice_restore) &
     call get_sea_surface(IST%Time, dum1, Obs_cn_ice, Obs_h_ice)
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec 
     if (G%mask2dT(i,j) > 0 .and.IST%h_ice(i,j,k) > 0) then
@@ -1121,7 +1122,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Calculate QFLUX's from (1) restoring to obs and (2) limiting total ice.
   !
   call mpp_clock_begin(iceClock6)
-  if (do_ice_restore .or. do_ice_limit) then
+  if (IST%do_ice_restore .or. IST%do_ice_limit) then
     qflx_lim_ice(:,:) = 0.0
     qflx_res_ice(:,:) = 0.0
 
@@ -1147,7 +1148,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !
       ! calculate heat needed to constrain ice enthalpy
       !
-      if (do_ice_restore) then
+      if (IST%do_ice_restore) then
         ! TK Mod: restore to observed enthalpy (no change for slab, but for
         !         sis ice, results in restoring toward thickness * concentration      
 
@@ -1158,19 +1159,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
         if (IST%slab_ice) then
           heat_res_ice = -(LI*DI*Obs_h_ice(i,j)-sum(e2m)) &
-                         *dt_slow/(86400*ice_restore_timescale)
+                         *dt_slow/(86400*IST%ice_restore_timescale)
         else                   
           heat_res_ice = -(LI*DI*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m)) &
-                         *dt_slow/(86400*ice_restore_timescale)
+                         *dt_slow/(86400*IST%ice_restore_timescale)
         endif
-
-        !        heat_res_ice = -(LI*DI*Obs_h_ice(i,j)-sum(e2m)) &
-        !                        *dt_slow/(86400*ice_restore_timescale)
-
       endif
 
-      if (do_ice_limit .and. (sum(e2m) > max_ice_limit*DI*LI)) then
-        heat_limit_ice = sum(e2m)-LI*DI*max_ice_limit
+      if (IST%do_ice_limit .and. (sum(e2m) > IST%max_ice_limit*DI*LI)) then
+        heat_limit_ice = sum(e2m)-LI*DI*IST%max_ice_limit
         ! should we "heat_ice_res = 0.0" ?
       endif
 
@@ -1338,7 +1335,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_slp>0) sent = send_data(IST%id_slp, Ice%p_surf(isc:iec,jsc:jec), Ice%Time, mask=Ice%mask)
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    if (slp2ocean) then
+    if (IST%slp2ocean) then
       Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
     else
       Ice%p_surf(i2,j2) = 0.0
@@ -1472,7 +1469,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
   call get_time(IST%Time-set_date(iyr,1,1,0,0,0),isec,iday)
-  if(verbose) call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
+  if (IST%verbose) call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
                             IST%t_surf(:,:,0)-Tfreeze, G) 
 
   ! Copy the surface properties to the externally visible structure Ice.
