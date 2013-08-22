@@ -66,16 +66,6 @@ public  :: earth_area
   character(len=128) :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
 
   !--- namelist interface --------------
-  real    :: mom_rough_ice  = 1.0e-4     ! momentum same, cd10=(von_k/ln(10/z0))^2
-  real    :: heat_rough_ice = 1.0e-4     ! heat roughness length
-  real    :: kmelt          = 6e-5*4e6   ! ocean/ice heat flux constant
-  real    :: ks             = 0.31       ! snow conductivity (W/mK)
-  real    :: alb_sno        = 0.85       ! snow albedo (less if melting)
-  real    :: alb_ice        = 0.5826     ! ice albedo (less if melting)
-  real    :: pen_ice        = 0.3        ! part unreflected solar penetrates ice
-  real    :: opt_dep_ice    = 0.67       ! ice optical depth
-  real    :: t_range_melt   = 1.0        ! melt albedos scaled in over T range
-  real    :: ice_bulk_salin = 0.004      ! ice bulk salinity (for ocean salt flux)!CICE value
   real    :: h_lo_lim       = 0.0        ! min ice thickness for temp. calc.
   integer :: num_part       = 6          ! number of ice grid partitions
                                          ! partition 1 is open water
@@ -116,6 +106,16 @@ public  :: earth_area
   real    :: chan_cfl_limit    = missing ! CFL limit for channel viscosity parameterization (dimensionless)
   integer :: nsteps_dyn     = miss_int   ! dynamics steps per slow timestep
   integer :: nsteps_adv     = miss_int   ! advection steps per slow timestep
+  real    :: mom_rough_ice  = missing    ! momentum same, cd10=(von_k/ln(10/z0))^2
+  real    :: heat_rough_ice = missing    ! heat roughness length
+  real    :: kmelt          = missing    ! ocean/ice heat flux constant
+  real    :: ks             = missing    ! snow conductivity (W/mK)
+  real    :: alb_sno        = missing    ! snow albedo (less if melting)
+  real    :: alb_ice        = missing    ! ice albedo (less if melting)
+  real    :: pen_ice        = missing    ! part unreflected solar penetrates ice
+  real    :: opt_dep_ice    = missing    ! ice optical depth
+  real    :: t_range_melt   = missing    ! melt albedos scaled in over T range
+  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)!CICE value
 
   ! mask_table contains information for masking domain ( n_mask, layout and mask_list).
   !   A text file to specify n_mask, layout and mask_list to reduce number of processor
@@ -264,8 +264,9 @@ type ice_state_type
   real :: heat_rough_ice ! heat roughness length, in m.
   real :: kmelt          ! ocean/ice heat flux constant, W m-2 K-1.
   real :: k_snow         ! snow conductivity (W/mK)
-!  real :: alb_snow       ! snow albedo (less if melting), nondim.
-!  real :: alb_ice        ! ice albedo (less if melting), nondim.
+  real :: ice_bulk_salin ! ice bulk salinity (for ocean salt flux), in kg/kg.
+  real :: alb_snow       ! snow albedo (less if melting), nondim.
+  real :: alb_ice        ! ice albedo (less if melting), nondim.
   real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
   real :: opt_dep_ice  ! ice optical depth, in m-1.
   real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
@@ -445,7 +446,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !No salt in the h_snow component.
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (DI*IST%h_ice(i,j,k)) * ice_bulk_salin * &
+        value = value + (DI*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
                IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
@@ -532,13 +533,16 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
   call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
 
-  call archaic_nml_check(param_file, "MOMENTUM_ROUGH_ICE", "mom_rough_ice", mom_rough_ice, 1.0e-4)
-  call archaic_nml_check(param_file, "HEAT_ROUGH_ICE", "heat_rough_ice", heat_rough_ice, 1.0e-4)
-  call archaic_nml_check(param_file, "ICE_KMELT", "kmelt", kmelt, 6e-5*4e6)
-  call archaic_nml_check(param_file, "SNOW_CONDUCT", "ks", ks, 0.31)
-  call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, 0.3)
-  call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, 0.67)
-  call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, 1.0)
+  call archaic_nml_check(param_file, "ICE_BULK_SALINITY", "ice_bulk_salin", ice_bulk_salin, missing)
+  call archaic_nml_check(param_file, "SNOW_ALBEDO", "alb_snow", alb_sno, missing)
+  call archaic_nml_check(param_file, "ICE_ALBEDO", "alb_ice", alb_ice, missing)
+  call archaic_nml_check(param_file, "MOMENTUM_ROUGH_ICE", "mom_rough_ice", mom_rough_ice, missing)
+  call archaic_nml_check(param_file, "HEAT_ROUGH_ICE", "heat_rough_ice", heat_rough_ice, missing)
+  call archaic_nml_check(param_file, "ICE_KMELT", "kmelt", kmelt, missing)
+  call archaic_nml_check(param_file, "SNOW_CONDUCT", "ks", ks, missing)
+  call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, missing)
+  call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, missing)
+  call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, missing)
   call archaic_nml_check(param_file, "ICE_CONSERVATION_CHECK", "conservation_check", conservation_check, .true.)
   call archaic_nml_check(param_file, "ICE_SEES_ATMOS_WINDS", "atmos_winds", atmos_winds, .true.)
   call archaic_nml_check(param_file, "DO_ICE_RESTORE", "do_ice_restore", do_ice_restore, .false.)
@@ -585,12 +589,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call get_param(param_file, mod, "SNOW_CONDUCT", IST%k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-!  call get_param(param_file, mod, "SNOW_ALBEDO", IST%alb_snow, &
-!                 "The albedo of dry snow atop sea ice.", units="nondim", &
-!                 default=0.85)
-!  call get_param(param_file, mod, "ICE_ALBEDO", IST%alb_ice, &
-!                 "The albedo of dry bare sea ice.", units="nondim", &
-!                 default=0.5826)
+  call get_param(param_file, mod, "SNOW_ALBEDO", IST%alb_snow, &
+                 "The albedo of dry snow atop sea ice.", units="nondim", &
+                 default=0.85)
+  call get_param(param_file, mod, "ICE_ALBEDO", IST%alb_ice, &
+                 "The albedo of dry bare sea ice.", units="nondim", &
+                 default=0.5826)
   call get_param(param_file, mod, "ICE_SW_PEN_FRAC", IST%pen_ice, &
                  "The fraction of the unreflected shortwave radiation that \n"//&
                  "penetrates into the ice.", units="Nondimensional", default=0.3)
@@ -610,8 +614,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
-!  call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
-!                 "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.005)
+  call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
+                 "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.004)
 !  call get_param(param_file, mod, "ICE_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
 !  call get_param(param_file, mod, "ICE_IO_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
 !  call get_param(param_file, mod, "ICE_MASK_TABLE?",  ###HANDLE THIS LIKE MOM6?
@@ -928,7 +932,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
   call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
-  call ice_thm_param(alb_sno, alb_ice, IST%pen_ice, IST%opt_dep_ice, IST%slab_ice, &
+  call ice_thm_param(IST%alb_snow, IST%alb_ice, IST%pen_ice, IST%opt_dep_ice, IST%slab_ice, &
                      IST%t_range_melt, IST%k_snow, IST%h_lo_lim, IST%do_deltaEdd)
 
   call close_param_file(param_file)

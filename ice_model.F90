@@ -39,27 +39,22 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
   use diag_manager_mod, only: send_data
   use time_manager_mod, only: time_type, operator(+), get_date, get_time, time_type_to_real
   use time_manager_mod, only: operator(-), set_date
-  use astronomy_mod,    only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
+use astronomy_mod,    only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN
-  use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
-  use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
+use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
+use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 use ice_type_mod,     only: ice_data_type, ice_state_type
   use ice_type_mod,     only: ice_model_init, ice_model_end, hlim, &
-                              ice_bulk_salin, & ! atmos_winds, 
-!                              do_ice_restore, do_ice_limit, max_ice_limit,       &
-!                              ice_restore_timescale, 
                               do_init, h2o, heat, salt,   &
-                              iceClock, &  !slp2ocean, verbose,  &
+                              iceClock, &
                               iceClock1, iceClock2, iceClock3, &
                               iceClock4, iceClock5, iceClock6, &
                               iceClock7, iceClock8, iceClock9, &
                               iceClocka, iceClockb, iceClockc, &
                               ice_stock_pe, do_icebergs, ice_model_restart, &
-                              ice_data_type_chksum ! , add_diurnal_sw 
-!  use ice_type_mod,     only: do_sun_angle_for_alb
-
-use ice_grid_mod,     only: get_avg, ice_line, cut_check, cell_area
+                              ice_data_type_chksum
+use ice_grid_mod,     only: get_avg, ice_line, cell_area
 use ice_grid_mod,     only: sea_ice_grid_type
 use ice_spec_mod,     only: get_sea_surface
 
@@ -76,12 +71,12 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-  public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-  public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe, cell_area
-  public :: update_ice_model_slow_up, update_ice_model_slow_dn
-  public :: ice_model_restart  ! for intermediate restart
-  public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum, &
-            lnd_ice_bnd_type_chksum, ice_data_type_chksum
+public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
+public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe, cell_area
+public :: update_ice_model_slow_up, update_ice_model_slow_dn
+public :: ice_model_restart  ! for intermediate restart
+public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
+public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 
   !
   ! the following three types are for data exchange with the new coupler
@@ -513,7 +508,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
       h2o(1) = h2o(1) + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * area_pt
-      salt(1) = salt(1) + (DI*ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
+      salt(1) = salt(1) + (DI*IST%ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
 
       if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
         if (IST%slab_ice) then
@@ -1255,7 +1250,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !### Inlining sensibly would change answers.
   call get_avg(IST%h_ice(isc:iec,jsc:jec,:), IST%part_size(isc:iec,jsc:jec,1:), tmp2d)
   hi_change(:,:)  = tmp2d(:,:) - hi_change(:,:)
-  Ice%flux_salt(:,:) = ice_bulk_salin*DI*hi_change(:,:) / dt_slow
+  Ice%flux_salt(:,:) = IST%ice_bulk_salin*DI*hi_change(:,:) / dt_slow
   if (IST%id_saltf>0)  sent = send_data(IST%id_saltf, Ice%flux_salt(isc:iec,jsc:jec), Ice%Time, mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   ! Note that at this point h2o_change is the negative of the mass.
@@ -1453,7 +1448,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
       area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
       h2o(4) = h2o(4) + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * area_pt
-      salt(4) = salt(4) + (DI*ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
+      salt(4) = salt(4) + (DI*IST%ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
 
       if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
         if (IST%slab_ice) then

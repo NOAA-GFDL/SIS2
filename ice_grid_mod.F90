@@ -27,10 +27,9 @@ module ice_grid_mod
 #include <SIS2_memory.h>
 
   public :: set_ice_grid, ice_grid_end, g_sum, get_avg
-  public :: t_on_uv, t_to_uv, uv_to_t
-  public :: ice_line, cut_check
+  public :: ice_line
 
-  public :: Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, im, jm, km
+  public :: Domain, im, jm
   public :: xb1d, yb1d
   public :: cell_area
   public :: grid_x_t,grid_y_t
@@ -156,10 +155,8 @@ type, public :: SIS2_domain_type
   logical, pointer :: maskmap(:,:)=> NULL() !option to mpp_define_domains
 end type SIS2_domain_type
 
-  integer                           :: isc, iec, jsc, jec ! compute domain
-  integer                           :: isd, ied, jsd, jed ! data domain
-  integer                           :: im, jm, km         ! global domain and vertical size
 
+  integer                           :: im, jm ! , km         ! global domain and vertical size
   !
   ! grid geometry
   !
@@ -233,66 +230,6 @@ end subroutine get_avg
     return
   end function g_sum
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! uv_to_t - average v-values to t-points and apply mask                        !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine uv_to_t(uv, t, G)
-  real,    intent(in   ), dimension(isd:,jsd:) :: uv
-  real,    intent(  out), dimension(isc:,jsc:) :: t
-  type(sea_ice_grid_type), intent(in) :: G
-
-  integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do j=jsc,jec ; do i=isc,iec
-    if(G%mask2dT(i,j) > 0.5 ) then
-       t(i,j) = 0.25*(uv(i,j) + uv(i,j-1) + uv(i-1,j) + uv(i-1,j-1) )   
-    else
-       t(i,j) = 0.0
-    endif
-  enddo ; enddo
-
-end subroutine uv_to_t
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! t_on_uv - average tracer to uv cells                                      !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  function t_on_uv(T)
-    real, intent(in   ), dimension(isd:,jsd:) :: T 
-    real, dimension(isc:iec,jsc:jec)          :: t_on_uv
-
-    integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do j = jsc, jec
-       do i = isc, iec
-          t_on_uv(i,j) = 0.25*(T(i+1,j+1)+T(i+1,j)+T(i,j+1)+T(i,j) )
-       enddo
-    enddo
-
-    return
-  end function t_on_uv
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! t_to_uv - average t-values to v-points and apply mask                        !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine t_to_uv(t, uv, G)
-  real,    intent(in ), dimension(isd:,jsd:) :: t
-  real,    intent(out), dimension(isc:,jsc:) :: uv
-  type(sea_ice_grid_type), intent(in) :: G
-
-  integer :: i, j
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do j=jsc,jec ; do i=isc,iec
-    if(G%mask2dBu(i,j) > 0.5 ) then
-       uv(i,j) = 0.25*( t(i+1,j+1) + t(i+1,j) + t(i,j+1) + t(i,j) )
-    else
-       uv(i,j) = 0.0
-    endif
-  enddo ; enddo
-
-end subroutine t_to_uv
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
@@ -330,6 +267,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
     integer                             :: npes, p
     logical                             :: symmetrize, ndivx_is_even, im_is_even
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, km
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
@@ -686,10 +624,13 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
     G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
 
-    G%dxBu(isc:iec,jsc:jec) = t_on_uv(G%dxT)
-    G%IdxBu(isc:iec,jsc:jec) = 1.0 / G%IdxBu(isc:iec,jsc:jec)
-    G%dyBu(isc:iec,jsc:jec) = t_on_uv(G%dyT)
-    G%IdyBu(isc:iec,jsc:jec) = 1.0 / G%dyBu(isc:iec,jsc:jec)
+  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+  do J=jsc-1,jec ; do I=isc-1,iec
+    G%dxBu(I,J) = 0.25*(G%dxT(i+1,j+1)+G%dxT(i+1,j)+G%dxT(i,j+1)+G%dxT(i,j) )
+    G%IdxBu(I,J) = 1.0 / G%dxBu(I,j)
+    G%dyBu(I,J) = 0.25*(G%dyT(i+1,j+1)+G%dyT(i+1,j)+G%dyT(i,j+1)+G%dyT(i,j) )
+    G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
+  enddo ; enddo
 
   call mpp_update_domains(G%dxBu, G%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
   call mpp_update_domains(G%IdxBu, G%IdyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
@@ -833,65 +774,6 @@ subroutine ice_line(year, day, second, cn_ocn, sst, G)
     print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
 end subroutine ice_line
 
-  !#####################################################################
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! cut_check - check for mirror symmetry of uv field along bipolar grid cut     !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine cut_check(mesg, uv)
-    character(len=*), intent(in) :: mesg
-    real, intent(inout), dimension(isd:,jsd:) :: uv
-
-!    real, dimension(1:im, 1:jm)  :: global_uv
-
-    integer :: i, l
-    real, dimension(iec-isc+1) :: send_buffer, recv_buffer
-
-    if(comm_pe == NULL_PE) return
-
-    call mpp_recv(recv_buffer(1), glen=(iec-isc+1), from_pe=comm_pe, block=.false., tag=COMM_TAG_1)
-
-    l = 0
-    do i = iec-1, isd, -1
-       l = l+1
-       send_buffer(l) = uv(i,jec)
-    enddo
-
-    call mpp_send(send_buffer(1), plen=(iec-isc+1), to_pe=comm_pe, tag=COMM_TAG_1)
-    call mpp_sync_self(check=EVENT_RECV)
-
-    ! cut_check only at the north pole.
-    if( jec == jm) then
-       l = 0
-       do i = isc, iec
-          l=l+1
-          ! excludes the point at im/2, and im.
-          if(i == im/2 .or. i == im) cycle
-          uv(i,jec) = (uv(i,jec) - recv_buffer(l))/2
-       enddo
-    endif
-
-    call mpp_sync_self()
-
-
-    !    call mpp_global_field ( Domain, uv, global_uv )
-
-    !    do i=1,im/2-1
-    !       if (global_uv(i,jm)/=-global_uv(im-i,jm)) then
-    !      cut_error =.true.
-    !     if (mpp_pe()==0) &
-         !       print *, mesg, i, im-i, global_uv(i,jm), global_uv(im-i,jm)
-    !          fix = (global_uv(i,jm)-global_uv(im-i,jm))/2
-    !          global_uv(i   ,jm) =  fix
-    !          global_uv(im-i,jm) = -fix
-    !       end if
-    !    end do
-
-    !    uv(isc:iec,jsc:jec) = global_uv(isc:iec,jsc:jec)
-
-    ! if (cut_error) call SIS_error(FATAL, &
-    !             'ice_model_mod: cut check of mirror anti-symmetry failed', .true.)
-  end subroutine cut_check
-  !#####################################################################
 
 subroutine allocate_metrics(G)
   type(sea_ice_grid_type), intent(inout) :: G
