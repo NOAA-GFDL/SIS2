@@ -46,11 +46,10 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
   use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 use ice_type_mod,     only: ice_data_type, ice_state_type
   use ice_type_mod,     only: ice_model_init, ice_model_end, hlim,&
-                              mom_rough_ice, heat_rough_ice, atmos_winds, kmelt, &
-                              slab_ice, spec_ice, ice_bulk_salin, &
+                              atmos_winds, ice_bulk_salin, &
                               do_ice_restore, do_ice_limit, max_ice_limit,       &
                               ice_restore_timescale, do_init, h2o, heat, salt,   &
-                              conservation_check, slp2ocean, iceClock, verbose,  &
+                              slp2ocean, iceClock, verbose,  &
                               iceClock1, iceClock2, iceClock3, &
                               iceClock4, iceClock5, iceClock6, &
                               iceClock7, iceClock8, iceClock9, &
@@ -478,7 +477,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
   !
   ! pass ocean state through ice on first partition
   !
-  if (.not. spec_ice) then ! otherwise, already set by update_ice_model_slow
+  if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
@@ -505,7 +504,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
     do_init = .false.
   endif
 
-  if (first_time .and. conservation_check) then
+  if (first_time .and. IST%conservation_check) then
     h2o(:) = 0.0
     salt(:) = 0.0
     heat(:) = 0.0
@@ -516,7 +515,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
       salt(1) = salt(1) + (DI*ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
 
       if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
-        if (slab_ice) then
+        if (IST%slab_ice) then
           heat(1) = heat(1) - area_pt * IST%h_ice(i,j,1)*DI*LI
         else
           heat(1) = heat(1) - area_pt * &
@@ -555,7 +554,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
                tmp(isc:iec,jsc:jec), wtd=.true.)
   do j=jsc,jec ; do i=isc,iec
     if ( tmp(i,j) > 0.0) then
-       IST%bheat(i,j) = kmelt*(sst(i,j) + MU_TS*IST%s_surf(i,j))
+       IST%bheat(i,j) = IST%kmelt*(sst(i,j) + MU_TS*IST%s_surf(i,j))
     else
        IST%bheat(i,j) = 0.0
     endif
@@ -777,7 +776,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (IST%h_ice(i,j,k) > 0.0) then
-      if (slab_ice) then
+      if (IST%slab_ice) then
         flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
         latent             = hlv+hlf
       elseif (IST%h_snow(i,j,k)>0.0) then
@@ -966,7 +965,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-  if (conservation_check) then
+  if (IST%conservation_check) then
     tot_frazil = 0.0
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       area_h = G%areaT(i,j) * G%mask2dT(i,j)
@@ -1132,7 +1131,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !
       ! calculate enthalpy
       !
-      if (slab_ice) then
+      if (IST%slab_ice) then
         e2m(1) = IST%h_ice(i,j,1)*DI*LI
       else
         do k=1,ncat
@@ -1157,7 +1156,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         !   The input field Obs_cn_ice may have values less than 1,
         !     so put in if test...
 
-        if (slab_ice) then
+        if (IST%slab_ice) then
           heat_res_ice = -(LI*DI*Obs_h_ice(i,j)-sum(e2m)) &
                          *dt_slow/(86400*ice_restore_timescale)
         else                   
@@ -1179,9 +1178,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       ! apply constraining heat to ice
       !
       tot_heat = heat_res_ice+heat_limit_ice
-      if (slab_ice) IST%h_ice(i,j,1) = IST%h_ice(i,j,1) - tot_heat/(DI*LI)
+      if (IST%slab_ice) IST%h_ice(i,j,1) = IST%h_ice(i,j,1) - tot_heat/(DI*LI)
 
-      if (.not. slab_ice .and. (tot_heat>0.0)) then  ! add like ocean-ice heat
+      if (.not. IST%slab_ice .and. (tot_heat>0.0)) then  ! add like ocean-ice heat
         do k=0,ncat-1
           if (e2m(k) > 0.0) then
             heating = tot_heat/sum(IST%part_size(i,j,k:ncat))
@@ -1205,7 +1204,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       endif
 
       tot_heat = heat_res_ice+heat_limit_ice
-      if (.not. slab_ice .and. (tot_heat<0.0)) then ! add like frazil
+      if (.not. IST%slab_ice .and. (tot_heat<0.0)) then ! add like frazil
         do k=1,ncat
           if (IST%part_size(i,j,0)+IST%part_size(i,j,k)>0) exit
         enddo
@@ -1234,7 +1233,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !
       ! Check for energy conservation
       !
-      if (slab_ice) then
+      if (IST%slab_ice) then
         e2m(1) = e2m(1) - IST%h_ice(i,j,1)*DI*LI
       else
         do k=1,ncat
@@ -1349,7 +1348,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     h2o_change(i,j) = mass(i,j) - h2o_change(i,j)
   enddo ; enddo
 
-  if (spec_ice) then                  ! over-write changes with specifications
+  if (IST%specified_ice) then                  ! over-write changes with specifications
     call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,:), &
                          IST%h_ice(isc:iec,jsc:jec,1))
     call pass_var(IST%part_size, G%Domain)
@@ -1435,7 +1434,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   ! conservation checks:  bottom fluxes and final
   !
-  if (conservation_check) then
+  if (IST%conservation_check) then
     heat(3) = heat(3) + tot_frazil
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       area_h = G%areaT(i,j) * G%mask2dT(i,j)
@@ -1460,7 +1459,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       salt(4) = salt(4) + (DI*ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
 
       if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
-        if (slab_ice) then
+        if (IST%slab_ice) then
           heat(4) = heat(4) - area_pt * IST%h_ice(i,j,1)*DI*LI
         else
           heat(4) = heat(4) - area_pt * e_to_melt(IST%h_snow(i,j,k), &

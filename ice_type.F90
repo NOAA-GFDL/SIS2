@@ -44,8 +44,9 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe,  &
-          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, slab_ice, kmelt,  &
-          spec_ice, verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
+          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, kmelt,  &
+!          slab_ice, spec_ice, &
+          verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
           max_ice_limit, ice_restore_timescale, do_init, h2o, heat, salt, slp2ocean,&
           conservation_check, do_icebergs, ice_model_restart,       &
           add_diurnal_sw, ice_data_type_chksum
@@ -164,29 +165,61 @@ type ice_state_type
    logical                            :: pe
 
    logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
-  real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
-  real,    pointer, dimension(:,:,:) :: part_size_uv        =>NULL()
-  real,    pointer, dimension(:,:)   :: sea_lev             =>NULL()
+  real, pointer, dimension(:,:,:) :: &
+    part_size =>NULL(), &  ! The fractional coverage of a grid cell by each ice
+                           ! thickness category, nondim, 0 to 1.  Category 0 is
+                           ! open ocean.  The sum of part_size is 1.
+    part_size_uv =>NULL()  ! The equivalent of part_size for B-grid velocity
+                           ! cells.  Nondim., and 0 to 1, sums to 1 on a cell.
 
-  real,    pointer, dimension(:,:,:)   :: t_surf            =>NULL()
-  real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
-  real,    pointer, dimension(:,:)   :: u_ocn               =>NULL()
-  real,    pointer, dimension(:,:)   :: v_ocn               =>NULL()
+  ! The following are the 6 variables that constitute the sea-ice state.
+  real, pointer, dimension(:,:) :: &
+    u_ice =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
+    v_ice =>NULL()    ! along the model's grid directions, in m s-1.  All
+                      ! thickness categories are assumed to have the same
+                      ! velocity.
+  real, pointer, dimension(:,:,:) :: &
+    h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
+    h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
+    t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
+  real, pointer, dimension(:,:,:,:) :: &
+    t_ice =>NULL()      ! The temperature of the sea ice in each category and
+                        ! fractional thickness layer, in degC.
   
-  real,    pointer, dimension(:,:,:) :: flux_u_top          =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_v_top          =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_u_top_bgrid    =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_v_top_bgrid    =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_t_top          =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_q_top          =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_lw_top         =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_sw_vis_dir_top =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_sw_vis_dif_top =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_sw_nir_dir_top =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_sw_nir_dif_top =>NULL()
-  real,    pointer, dimension(:,:,:) :: flux_lh_top         =>NULL()
-  real,    pointer, dimension(:,:,:) :: lprec_top           =>NULL()
-  real,    pointer, dimension(:,:,:) :: fprec_top           =>NULL()
+  real,    pointer, dimension(:,:) :: &
+    s_surf  =>NULL(), &    ! The ocean surface salinity in g/kg.
+    u_ocn   =>NULL(), &    ! The ocean's zonal velocity in m s-1.
+    v_ocn   =>NULL(), &    ! The ocean's meridional velocity in m s-1.
+    sea_lev =>NULL()       ! The equivalent sea-level, after any non-levitating
+                           ! ice has been converted to sea-water, as determined
+                           ! by the ocean, in m.  Sea-ice only contributes by
+                           ! applying pressure to the ocean that is then
+                           ! (partially) converted back to its equivalent by the
+                           ! ocean. 
+  
+  real,    pointer, dimension(:,:,:) :: &
+    ! The 3rd dimension in each of the following is ice thickness category.
+    t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
+    flux_u_top          =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
+    flux_u_top_bgrid    =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_v_top_bgrid    =>NULL(), & ! momentum on a B-grid velocity point in ???.
+    flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
+                                    ! in W m-2.
+    flux_q_top          =>NULL(), & ! The upward evaporative moisture flux at
+                                    ! top of the ice, in kg m-2 s-1.
+    flux_lw_top         =>NULL(), & ! The downward flux of longwave radiation at
+                                    ! the top of the ice, in W m-2.
+    flux_sw_vis_dir_top =>NULL(), & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif_top =>NULL(), & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir_top =>NULL(), & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif_top =>NULL(), & ! bands at the top of the ice, in W m-2.
+    flux_lh_top         =>NULL(), & ! The upward flux of latent heat at the top
+                                    ! of the ice, in W m-2.
+    lprec_top           =>NULL(), & ! The downward flux of liquid precipitation
+                                    ! at the top of the ice, in kg m-2 s-1.
+    fprec_top           =>NULL()    ! The downward flux of frozen precipitation
+                                    ! at the top of the ice, in kg m-2 s-1.
 
   real,    pointer, dimension(:,:)   :: lwdn                =>NULL() ! Accumulated diagnostics of
   real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
@@ -200,12 +233,7 @@ type ice_state_type
   real,    pointer, dimension(:,:)   :: coszen              =>NULL()
   real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
   real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
-  real,    pointer, dimension(:,:,:) :: h_snow              =>NULL()
-  real,    pointer, dimension(:,:,:) :: t_snow              =>NULL()
-  real,    pointer, dimension(:,:,:) :: h_ice               =>NULL()
-  real,    pointer, dimension(:,:,:,:) :: t_ice             =>NULL()
-  real,    pointer, dimension(:,:)   :: u_ice               =>NULL()
-  real,    pointer, dimension(:,:)   :: v_ice               =>NULL()
+
   real,    pointer, dimension(:,:)   :: frazil              =>NULL()
   real,    pointer, dimension(:,:)   :: bheat               =>NULL()
    real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
@@ -219,10 +247,30 @@ type ice_state_type
                                                                       ! are not assigned to actual processors.
                                                                       ! This need not be assigned if all logical
                                                                       ! processors are used
-!   integer, dimension(3)              :: axes
-   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
-   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
-   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
+
+  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+  real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
+  real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
+  real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
+  logical :: specified_ice  ! If true, the sea ice is specified and there is
+                            ! no need for ice dynamics.
+  logical :: conservation_check ! check for heat, salt and h2o conservation.
+                  !### FIX THESE COMMENTS.
+  real :: mom_rough_ice  = 1.0e-4     ! momentum same, cd10=(von_k/ln(10/z0))^2
+  real :: heat_rough_ice = 1.0e-4     ! heat roughness length
+  real :: kmelt          = 6e-5*4e6   ! ocean/ice heat flux constant
+  real :: k_snow         = 0.31       ! snow conductivity (W/mK)
+!  real :: alb_snow       = 0.85       ! snow albedo (less if melting)
+!  real :: alb_ice        = 0.5826     ! ice albedo (less if melting)
+  real :: pen_ice        = 0.3        ! part unreflected solar penetrates ice
+  real :: opt_dep_ice    = 0.67       ! ice optical depth
+  real :: t_range_melt   = 1.0        ! melt albedos scaled in over T range
+
+
+
+!   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
+!   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
+!   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_t1=-1
   integer :: id_t2=-1, id_t3=-1, id_t4=-1, id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
@@ -414,6 +462,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
     real              :: dt_slow
     character(len=64) :: restart_file
+  character(len=40)  :: mod = "ice_model" ! This module's name.
     integer           :: stdlogunit, stdoutunit
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
@@ -452,25 +501,92 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   ! Check for parameters that are still being set via the namelist but which
   ! should be set via the param_file instead.  This has to be somewhere that
   ! has all of the namelist variables in scope.
+  call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
+  call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
   call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
   call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
   call archaic_nml_check(param_file, "ICE_STRENGTH_CSTAR", "c0", c0, missing)
   call archaic_nml_check(param_file, "ICE_CDRAG_WATER", "cdw", cdw, missing)
-  ! call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
   call archaic_nml_check(param_file, "AIR_WATER_STRESS_TURN_ANGLE", "wd_turn", wd_turn, missing)
-  ! call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
   call archaic_nml_check(param_file, "NSTEPS_ADV", "nsteps_adv", nsteps_adv, miss_int, 1)
   call archaic_nml_check(param_file, "ICE_CHANNEL_VISCOSITY", &
                          "channel_viscosity", channel_viscosity, missing, 0.0)
   call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
   call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
 
-    if (spec_ice) then
-       slab_ice = .true.
+  call archaic_nml_check(param_file, "MOMENTUM_ROUGH_ICE", "mom_rough_ice", mom_rough_ice, 1.0e-4)
+  call archaic_nml_check(param_file, "HEAT_ROUGH_ICE", "heat_rough_ice", heat_rough_ice, 1.0e-4)
+  call archaic_nml_check(param_file, "ICE_KMELT", "kmelt", kmelt, 6e-5*4e6)
+  call archaic_nml_check(param_file, "SNOW_CONDUCT", "ks", ks, 0.31)
+  call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, 0.3)
+  call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, 0.67)
+  call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, 1.0)
+  call archaic_nml_check(param_file, "ICE_CONSERVATION_CHECK", "conservation_check", conservation_check, .true.)
+
+
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod, version)
+  call get_param(param_file, mod, "SPECIFIED_ICE", IST%specified_ice, &
+                 "If true, the ice is specified and there is no dynamics.", &
+                 default=.false.)
+  call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
+                 "The nominal density of sea water as used by SIS.", &
+                 units="kg m-3", default=1030.0)
+  call get_param(param_file, mod, "RHO_ICE", IST%Rho_ice, &
+                 "The nominal density of sea ice as used by SIS.", &
+                 units="kg m-3", default=905.0)
+  call get_param(param_file, mod, "RHO_SNOW", IST%Rho_snow, &
+                 "The nominal density of snow as used by SIS.", &
+                 units="kg m-3", default=330.0)
+  call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
+                 "If true, use the very old slab-style ice.", default=.false.)
+  call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", IST%mom_rough_ice, &
+                 "The default momentum roughness length scale for the ocean.", &
+                 units="m", default=1.0e-4)
+  call get_param(param_file, mod, "HEAT_ROUGH_ICE", IST%heat_rough_ice, &
+                 "The default roughness length scale for the turbulent \n"//&
+                 "transfer of heat into the ocean.", units="m", default=1.0e-4)
+  call get_param(param_file, mod, "ICE_KMELT", IST%kmelt, &
+                 "A constant giving the proportionality of the ocean/ice \n"//&
+                 "base heat flux to the tempature difference, given by \n"//&
+                 "the product of the heat capacity per unit volume of sea \n"//&
+                 "water times a molecular diffusive piston velocity.", &
+                 units="W m-2 K-1", default=6e-5*4e6)
+  call get_param(param_file, mod, "SNOW_CONDUCT", IST%k_snow, &
+                 "The conductivity of heat in snow.", units="W m-1 K-1", &
+                 default=0.31)
+!  call get_param(param_file, mod, "SNOW_ALBEDO", IST%alb_snow, &
+!                 "The albedo of dry snow atop sea ice.", units="nondim", &
+!                 default=0.85)
+!  call get_param(param_file, mod, "ICE_ALBEDO", IST%alb_ice, &
+!                 "The albedo of dry bare sea ice.", units="nondim", &
+!                 default=0.5826)
+  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", IST%pen_ice, &
+                 "The fraction of the unreflected shortwave radiation that \n"//&
+                 "penetrates into the ice.", units="Nondimensional", default=0.3)
+  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", IST%opt_dep_ice, &
+                 "The optical depth of shortwave radiation in sea ice.", &
+                 units="m", default=0.67)
+  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", IST%t_range_melt, &
+                 "The temperature range below freezing over which the \n"//&
+                 "albedos are changed by partial melting.", units="degC", &
+                 default=1.0)
+  call get_param(param_file, mod, "ICE_CONSERVATION_CHECK", IST%conservation_check, &
+                 "If true, do additional calculations to check for \n"//&
+                 "internal conservation of heat, salt, and water mass in \n"//&
+                 "the sea ice model.  This does not change answers, but \n"//&
+                 "can increase model run time.", default=.true.)
+                  
+  
+  
+
+  if (IST%specified_ice) then
+    IST%slab_ice = .true.
        nsteps_dyn = 0
        nsteps_adv = 0
-    end if
-    if (slab_ice) num_part = 2 ! open water and ice ... but never in same place
+  end if
+  if (IST%slab_ice) num_part = 2 ! open water and ice ... but never in same place
+
     if (num_part>size(hlim(:))+1) &
          call error_mesg ('ice_model_init', 'not enough thickness limits', FATAL)
 
@@ -692,9 +808,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
 
-    Ice%rough_mom(:,:,:)   = mom_rough_ice
-    Ice%rough_heat(:,:,:)  = heat_rough_ice
-    Ice%rough_moist(:,:,:) = heat_rough_ice
+    Ice%rough_mom(:,:,:)   = IST%mom_rough_ice
+    Ice%rough_heat(:,:,:)  = IST%heat_rough_ice
+    Ice%rough_moist(:,:,:) = IST%heat_rough_ice
     IST%t_surf(:,:,:) = Tfreeze-5.0
     IST%t_snow(:,:,:) = -5.0
     IST%t_ice(:,:,:,:) = -5.0
@@ -729,12 +845,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
   call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
-  call ice_thm_param(alb_sno, alb_ice, pen_ice, opt_dep_ice, slab_ice, &
-                     t_range_melt, ks, h_lo_lim,do_deltaEdd)
+  call ice_thm_param(alb_sno, alb_ice, IST%pen_ice, IST%opt_dep_ice, IST%slab_ice, &
+                     IST%t_range_melt, IST%k_snow, h_lo_lim, do_deltaEdd)
 
   call close_param_file(param_file)
 
-  !Balaji
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
   iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
@@ -774,10 +889,10 @@ subroutine ice_model_end (Ice)
   character(len=22) :: restart='RESTART/ice_model.res'
   type(ice_state_type), pointer :: IST => NULL()
 
-  if (conservation_check) call ice_print_budget()
+  IST => Ice%Ice_state
+  if (IST%conservation_check) call ice_print_budget()
 
   call ice_model_restart()
-  IST => Ice%Ice_state
 
   !--- release memory ------------------------------------------------
   call ice_grid_end(Ice%G)
