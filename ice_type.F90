@@ -4,7 +4,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_type_mod
 
-  use mpp_mod,          only: mpp_pe, mpp_root_pe, mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
+  use mpp_mod,          only: mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
                               CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
   use mpp_domains_mod,  only: domain2D, mpp_update_domains, CORNER, BGRID_NE
   use mpp_domains_mod,  only: mpp_get_compute_domain
@@ -35,7 +35,7 @@ use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport
 
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use SIS_diag_mediator, only: SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
 use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
 
@@ -44,13 +44,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe, &
-!          mom_rough_ice, heat_rough_ice, atmos_winds, hlim, kmelt,  &
-!          slab_ice, spec_ice, &
-!          verbose, ice_bulk_salin, do_ice_restore, do_ice_limit,    &
-!          max_ice_limit, ice_restore_timescale, slp2ocean, &
-          do_init, h2o, heat, salt, hlim, &
-          ice_bulk_salin,  do_icebergs, &
-!          conservation_check, do_icebergs, add_diurnal_sw, &
+          do_init, hlim, &
           ice_model_restart, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
@@ -149,11 +143,6 @@ public  :: earth_area
 
   logical :: do_init = .false.
   real    :: hlim(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
-  real    :: h2o(4), heat(4), salt(4) ! for conservation analysis
-                             ! 1 - initial ice h2o/heat content
-                             ! 2 - h2o/heat flux down at top of ice
-                             ! 3 - h2o/heat flux down at bottom of ice
-                             ! 4 - final ice h2o/heat content
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -254,6 +243,8 @@ type ice_state_type
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
+  logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
+                            ! modifies the calving field among other things.
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
@@ -286,6 +277,12 @@ type ice_state_type
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
+
+  real    :: h2o(4), heat(4), salt(4) ! for conservation analysis
+                             ! 1 - initial ice h2o/heat content
+                             ! 2 - h2o/heat flux down at top of ice
+                             ! 3 - h2o/heat flux down at bottom of ice
+                             ! 4 - final ice h2o/heat content
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -456,7 +453,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   end select
 
-  if (do_icebergs) then
+  if (IST%do_icebergs) then
     call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
     value = value + icebergs_value
   endif
@@ -521,6 +518,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   ! should be set via the param_file instead.  This has to be somewhere that
   ! has all of the namelist variables in scope.
   call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
+  call archaic_nml_check(param_file, "DO_ICEBERGS", "do_icebergs", do_icebergs, .false.)
   call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
   call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
   call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
@@ -641,8 +639,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "calculations.", units="m", default=0.0)
   call get_param(param_file, mod, "VERBOSE", IST%verbose, &
                  "If true, write out verbose diagnostics.", default=.false.)
-!  call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
-!                 "If true, call the iceberg module.", default=.false.)
+  call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
+                 "If true, call the iceberg module.", default=.false.)
   call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
                  "radiation.", default=.false.)
@@ -680,7 +678,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
 
   if (file_exist(mask_table)) then
-     write(stdoutunit, *) '==> NOTE from ice_model_init:  reading maskmap information from '//trim(mask_table)
+     call SIS_mesg(' ice_model_init:  reading maskmap information from '//trim(mask_table))
      if(layout(1) == 0 .OR. layout(2) == 0 ) call error_mesg('ice_model_init', &
         'ice_model_nml layout should be set when file '//trim(mask_table)//' exists', FATAL)
 
@@ -952,7 +950,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
   ! Initialize icebergs
-  if (do_icebergs) call icebergs_init(Ice%icebergs, &
+  if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
            im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
            Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
@@ -977,7 +975,7 @@ subroutine ice_model_end (Ice)
   type(ice_state_type), pointer :: IST => NULL()
 
   IST => Ice%Ice_state
-  if (IST%conservation_check) call ice_print_budget()
+  if (IST%conservation_check) call ice_print_budget(IST)
 
   call ice_model_restart()
 
@@ -1008,7 +1006,7 @@ subroutine ice_model_end (Ice)
   call ice_transport_end(IST%ice_transport_CSp)
 
   ! End icebergs
-  if (do_icebergs) call icebergs_end(Ice%icebergs)
+  if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
   
   deallocate(Ice%Ice_state)
 
@@ -1016,28 +1014,26 @@ subroutine ice_model_end (Ice)
 
 end subroutine ice_model_end
 
-subroutine ice_print_budget
+subroutine ice_print_budget(IST)
+  type(ice_state_type), intent(inout) :: IST
   integer :: k
  
   do k=1,4
-    call mpp_sum(h2o(k))
-    call mpp_sum(heat(k))
-    call mpp_sum(salt(k))
+    call mpp_sum(IST%h2o(k))
+    call mpp_sum(IST%heat(k))
+    call mpp_sum(IST%salt(k))
 !          call mpp_sum(tracer(k))
   end do
-  if (mpp_pe()==mpp_root_pe()) then
+  if (is_root_pe()) then
     print *, 'ICE MODEL BUDGET' ! PER EARTH AREA'
     print '(a10,5a22)',   'ICE MODEL ','   AT START  ', &
-         ' TOP FLUX DN.', &
-         ' BOT FLUX DN.', &
-         '   AT END    ', &
-         '   ERROR     '
-    print '(a10,5es22.14)','WATER(Kg) ', h2o(:), &
-                                       -(h2o(4) -h2o(1) -h2o(2) +h2o(3))/(h2o(4) +1.0) 
-    print '(a10,5es22.14)','HEAT(J)   ', heat(:), &
-                                       -(heat(4)-heat(1)-heat(2)+heat(3))/(heat(4)+1.0)
-    print '(a10,5es22.14)','SALT(sal) ', salt(:), &
-                                       -(salt(4)-salt(1)-salt(2)+salt(3))/(salt(4)+1.0)
+         ' TOP FLUX DN.', ' BOT FLUX DN.', '   AT END    ', '   ERROR     '
+    print '(a10,5es22.14)','WATER(Kg) ', IST%h2o(:), &
+                 -(IST%h2o(4) -IST%h2o(1) -IST%h2o(2) +IST%h2o(3))/(IST%h2o(4) +1.0) 
+    print '(a10,5es22.14)','HEAT(J)   ', IST%heat(:), &
+                                       -(IST%heat(4)-IST%heat(1)-IST%heat(2)+IST%heat(3))/(IST%heat(4)+1.0)
+    print '(a10,5es22.14)','SALT(sal) ', IST%salt(:), &
+                                       -(IST%salt(4)-IST%salt(1)-IST%salt(2)+IST%salt(3))/(IST%salt(4)+1.0)
 !          print '(a10,5es22.14)','TRACER      ', tracer, &
 !                            -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0)
     print *
