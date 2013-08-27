@@ -137,13 +137,6 @@ type, public :: sea_ice_grid_type
   real, allocatable, dimension(:) :: &
     H_cat_lim     ! The lower thickness limits for each ice category, in m.
     
-
-  ! The following are axis types defined for output.
-  integer, dimension(3) :: axesBL, axesTL, axesCuL, axesCvL
-  integer, dimension(3) :: axesBi, axesTi, axesCui, axesCvi
-  integer, dimension(2) :: axesB1, axesT1, axesCu1, axesCv1
-  integer, dimension(1) :: axeszi, axeszL
-
 end type sea_ice_grid_type
 
 type, public :: SIS2_domain_type
@@ -257,39 +250,42 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
     integer                             :: npes, p
     logical                             :: symmetrize, ndivx_is_even, im_is_even
+  character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed !###, km
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
 
 
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod_nm, version)
 #ifdef STATIC_MEMORY_
-  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+  call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=km_in-1)
   if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
        "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
        "param_file or the input namelist file.")
-  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+  call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=NK_ICE_)
   if (G%NkIce /= NK_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
        "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
 
-  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+  call get_param(param_file, mod_nm, "NK_SNOW", G%NkSnow, &
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=NK_SNOW_)
   if (G%NkSnow /= NK_SNOW_) call MOM_error(FATAL, "MOM_grid_init: " // &
        "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
 
 #else
-  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+  call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=km_in-1)
-  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+  call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
-  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+  call get_param(param_file, mod_nm, "NK_SNOW", G%NkSnow, &
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif

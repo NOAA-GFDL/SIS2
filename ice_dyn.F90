@@ -153,27 +153,27 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS)
                  default=0.0)
 
 
-  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,G%axesT1, Time,         &
+  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,         &
             'first stress invariant', 'none', missing_value=missing)
-  CS%id_sigii = register_diag_field('ice_model','SIGII' ,G%axesT1, Time,        &
+  CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,        &
             'second stress invariant', 'none', missing_value=missing)
-  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,G%axesT1, Time,     &
+  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time,     &
             'ice strength', 'Pa*m', missing_value=missing)
-  CS%id_fix   = register_diag_field('ice_model', 'FI_X', G%axesB1, Time,        &
+  CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,        &
             'ice internal stress - x component', 'Pa', missing_value=missing)
-  CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', G%axesB1, Time,        &
+  CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesB1, Time,        &
             'ice internal stress - y component', 'Pa', missing_value=missing)
-  CS%id_fcx   = register_diag_field('ice_model', 'FC_X', G%axesB1, Time,        &
+  CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesB1, Time,        &
             'coriolis force - x component', 'Pa', missing_value=missing)
-  CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', G%axesB1, Time,        &
+  CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesB1, Time,        &
             'coriolis force - y component', 'Pa', missing_value=missing)
-  CS%id_fwx   = register_diag_field('ice_model', 'FW_X', G%axesB1, Time,        &
+  CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesB1, Time,        &
             'water stress on ice - x component', 'Pa', missing_value=missing)
-  CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', G%axesB1, Time,        &
+  CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesB1, Time,        &
             'water stress on ice - y component', 'Pa', missing_value=missing)
-  CS%id_ui    = register_diag_field('ice_model', 'UI', G%axesB1, Time,          &
+  CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesB1, Time,          &
             'ice velocity - x component', 'm/s', missing_value=missing)
-  CS%id_vi    = register_diag_field('ice_model', 'VI', G%axesB1, Time,          &
+  CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesB1, Time,          &
             'ice velocity - y component', 'm/s', missing_value=missing)
 
 end subroutine ice_dyn_init

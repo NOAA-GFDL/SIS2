@@ -73,6 +73,7 @@ type, public :: SIS_diag_ctrl
   ! The following are axis types defined for output.
   integer, dimension(3) :: axesBL, axesTL, axesCuL, axesCvL
   integer, dimension(3) :: axesBi, axesTi, axesCui, axesCvi
+  integer, dimension(3) :: axesBc, axesTc, axesCuc, axesCvc
   integer, dimension(2) :: axesB1, axesT1, axesCu1, axesCv1
   integer, dimension(1) :: axeszi, axeszL
 
@@ -92,13 +93,13 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
-  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, k, nz
+  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, k, nz
   real :: zlev(G%ks:G%ke), zinter(G%ks:G%ke+1)
   logical :: set_vert, Cartesian_grid
   character(len=80) :: grid_config, units_temp
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod  = "MOM_diag_mediator" ! This module's name.
+  character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
   nz = G%ke
 
   set_vert = .true. ; if (present(set_vertical)) set_vert = set_vertical
@@ -165,13 +166,21 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
               Domain2=G%Domain%mpp_domain)
 
   if (set_vert) then
-    id_zl = diag_axis_init('zl', zlev, 'layer', 'z', 'cell depth', &
+    id_zl = diag_axis_init('zl', zlev, 'layer', 'z', 'Cell depth', &
                            set_name='ice')
     id_zi = diag_axis_init('zi', zinter, 'interface', 'z', &
-                           'cell interface depth', set_name='ice')
+                           'Cell interface depth', set_name='ice')
   else
     id_zl = -1 ; id_zi = -1
   endif
+
+  id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters', 'n', & ! 'z',?
+                         'Ice thickness category', set_name='ice')
+
+  ! Note that there are no 4-d spatial axis groupings yet.  Ferret only started
+  ! allowing for 5-d data with version 6.8, which is later than the default for
+  ! GFDL.  Once more recent versions come into widespread use, 4-d spatial grids
+  ! should be reconsidered.  (R. Hallberg, 8/27/2013)
 
   ! Vertical axes for the interfaces and layers.
   diag%axeszi(1) = id_zi ; diag%axeszL(1) = id_zL
@@ -187,6 +196,12 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
   diag%axesCui(:) = (/ id_xq, id_yh, id_zi /)
   diag%axesCvi(:) = (/ id_xh, id_yq, id_zi /)
   diag%axesBi(:) = (/ id_xq, id_yq, id_zi /)
+
+  ! Axis groupings for the ice thickness categories.
+  diag%axesTc(:) = (/ id_xh, id_yh, id_ct /)
+  diag%axesCuc(:) = (/ id_xq, id_yh, id_ct /)
+  diag%axesCvc(:) = (/ id_xh, id_yq, id_ct /)
+  diag%axesBc(:) = (/ id_xq, id_yq, id_ct /)
 
   ! Axis groupings for 2-D arrays.
   diag%axesT1(:) = (/ id_xh, id_yh /)

@@ -1085,11 +1085,11 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   type(time_type),         intent(inout) :: Time
 
   real, parameter       :: missing = -1e34
-  integer, dimension(2) :: axt, axv, axtv, axvt
-  integer, dimension(3) :: axt2
+!  integer, dimension(2) :: axt, axv, axtv, axvt
+!  integer, dimension(3) :: axt2
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
-  integer               :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
+!  integer               :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
   integer :: i, j, k, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1098,185 +1098,185 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   ! diagnostics MUST use a domain without halos otherwise same as the
   ! regular domain:  Domain (see ice_grid.f90)
   !
-  id_xv = diag_axis_init('xv', G%gridLonB(G%isg:G%ieg), 'degrees_E', 'X','longitude', set_name='ice', Domain2=Domain )
-  id_yv = diag_axis_init('yv', G%gridLatB(G%jsg:G%jeg), 'degrees_N', 'Y','latitude',  set_name='ice', Domain2=Domain )
-  id_xb = diag_axis_init('xb', G%gridLonB, 'degrees_E', 'X', 'longitude', set_name='ice', Domain2=Domain )
-  id_yb = diag_axis_init('yb', G%gridLatB, 'degrees_N', 'Y', 'latitude', set_name='ice', Domain2=Domain )
-  id_xt = diag_axis_init('xt', G%gridLonT, 'degrees_E', 'X', &
-          'longitude',set_name='ice',edges=id_xb,Domain2=Domain)
-  id_yt = diag_axis_init('yt', G%gridLatT, 'degrees_N', 'Y', &
-          'latitude',set_name='ice', edges=id_yb,Domain2=Domain)
-  id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters','Z', 'thickness')
+! id_xv = diag_axis_init('xv', G%gridLonB(G%isg:G%ieg), 'degrees_E', 'X','longitude', set_name='ice', Domain2=Domain )
+! id_yv = diag_axis_init('yv', G%gridLatB(G%jsg:G%jeg), 'degrees_N', 'Y','latitude',  set_name='ice', Domain2=Domain )
+! id_xb = diag_axis_init('xb', G%gridLonB, 'degrees_E', 'X', 'longitude', set_name='ice', Domain2=Domain )
+! id_yb = diag_axis_init('yb', G%gridLatB, 'degrees_N', 'Y', 'latitude', set_name='ice', Domain2=Domain )
+! id_xt = diag_axis_init('xt', G%gridLonT, 'degrees_E', 'X', &
+!         'longitude',set_name='ice',edges=id_xb,Domain2=Domain)
+! id_yt = diag_axis_init('yt', G%gridLatT, 'degrees_N', 'Y', &
+!         'latitude',set_name='ice', edges=id_yb,Domain2=Domain)
+! id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters','Z', 'thickness')
 
-  axv  = (/ id_xv, id_yv  /)
-  axt  = (/ id_xt, id_yt  /)
-  axt2 = (/ id_xt, id_yt, id_ct/)
-  Ice%axes(:) = axt2(:)
-  axtv = (/ id_xt, id_yv /); ! for north faces of t-cells
-  axvt = (/ id_xv, id_yt /); ! for east  faces of t-cells
+!  axv  = (/ id_xv, id_yv  /)
+!  axt  = (/ id_xt, id_yt  /)
+!  axt2 = (/ id_xt, id_yt, id_ct/)
+  Ice%axes(:) = diag%axesTc(:)
+!  axtv = (/ id_xt, id_yv /); ! for north faces of t-cells
+!  axvt = (/ id_xv, id_yt /); ! for east  faces of t-cells
 
-  G%axesT1(:) = (/ id_xt, id_yt  /)
-  G%axesB1(:) = (/ id_xv, id_yv  /)
-  G%axesCv1(:) = (/ id_xt, id_yv /)
-  G%axesCu1(:) = (/ id_xv, id_yt /)
+!  G%axesT1(:) = (/ id_xt, id_yt  /)
+!  G%axesB1(:) = (/ id_xv, id_yv  /)
+!  G%axesCv1(:) = (/ id_xt, id_yv /)
+!  G%axesCu1(:) = (/ id_xv, id_yt /)
 
-  id_sin_rot   = register_static_field('ice_model', 'SINROT', axt,              &
+  id_sin_rot   = register_static_field('ice_model', 'SINROT', diag%axesT1,              &
                  '-SINROT,COSROT points north', 'none')
-  id_cos_rot   = register_static_field('ice_model', 'COSROT', axt,              &
+  id_cos_rot   = register_static_field('ice_model', 'COSROT', diag%axesT1,              &
                  'COSROT,SINROT points east','none')
-  id_geo_lon   = register_static_field('ice_model', 'GEOLON', axt, 'longitude', &
+  id_geo_lon   = register_static_field('ice_model', 'GEOLON', diag%axesT1, 'longitude', &
                  'degrees')
-  id_geo_lat   = register_static_field('ice_model', 'GEOLAT', axt, 'latitude',  &
+  id_geo_lat   = register_static_field('ice_model', 'GEOLAT', diag%axesT1, 'latitude',  &
                  'degrees')
-  id_cell_area = register_static_field('ice_model', 'CELL_AREA', axt,           &
+  id_cell_area = register_static_field('ice_model', 'CELL_AREA', diag%axesT1,           &
                  'cell area', 'sphere')
 
-  IST%id_ext = register_diag_field('ice_model', 'EXT', axt, Time, &
+  IST%id_ext = register_diag_field('ice_model', 'EXT', diag%axesT1, Time, &
                'ice modeled', '0 or 1', missing_value=missing)
-  IST%id_mi       = register_diag_field('ice_model', 'MI', axt, Time,                  &
+  IST%id_mi       = register_diag_field('ice_model', 'MI', diag%axesT1, Time,                  &
                'ice mass', 'kg/m^2', missing_value=missing)
-  IST%id_mib      = register_diag_field('ice_model', 'MIB', axt, Time,                 &
+  IST%id_mib      = register_diag_field('ice_model', 'MIB', diag%axesT1, Time,                 &
                'ice + bergs mass', 'kg/m^2', missing_value=missing)
-  IST%id_cn       = register_diag_field('ice_model', 'CN', axt2, Time,                 &
+  IST%id_cn       = register_diag_field('ice_model', 'CN', diag%axesTc, Time,  &
                'ice concentration', '0-1', missing_value=missing)
-  IST%id_hs       = register_diag_field('ice_model', 'HS', axt, Time,                  &
+  IST%id_hs       = register_diag_field('ice_model', 'HS', diag%axesT1, Time,                  &
                'snow thickness', 'm-snow', missing_value=missing)
-  IST%id_tsn      = register_diag_field('ice_model', 'TSN', axt, Time,                 &
+  IST%id_tsn      = register_diag_field('ice_model', 'TSN', diag%axesT1, Time,                 &
                'snow layer temperature', 'C',  missing_value=missing)
-  IST%id_hi       = register_diag_field('ice_model', 'HI', axt, Time,                  &
+  IST%id_hi       = register_diag_field('ice_model', 'HI', diag%axesT1, Time,                  &
                'ice thickness', 'm-ice', missing_value=missing)
   IST%id_hio      = register_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
-  IST%id_t1       = register_diag_field('ice_model', 'T1', axt, Time,                  &
+  IST%id_t1       = register_diag_field('ice_model', 'T1', diag%axesT1, Time,                  &
                'top ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t2       = register_diag_field('ice_model', 'T2', axt, Time,                  &
+  IST%id_t2       = register_diag_field('ice_model', 'T2', diag%axesT1, Time,                  &
                'second ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t3       = register_diag_field('ice_model', 'T3', axt, Time,                  &
+  IST%id_t3       = register_diag_field('ice_model', 'T3', diag%axesT1, Time,                  &
                'third ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t4       = register_diag_field('ice_model', 'T4', axt, Time,                  &
+  IST%id_t4       = register_diag_field('ice_model', 'T4', diag%axesT1, Time,                  &
                'bottom ice layer temperature', 'C',  missing_value=missing)
-  IST%id_ts       = register_diag_field('ice_model', 'TS', axt, Time,                  &
+  IST%id_ts       = register_diag_field('ice_model', 'TS', diag%axesT1, Time,                  &
                'surface temperature', 'C', missing_value=missing)
-  IST%id_sh       = register_diag_field('ice_model','SH' ,axt, Time,                   &
+  IST%id_sh       = register_diag_field('ice_model','SH' ,diag%axesT1, Time,                   &
                'sensible heat flux', 'W/m^2',  missing_value=missing)
-  IST%id_lh       = register_diag_field('ice_model','LH' ,axt, Time,                   &
+  IST%id_lh       = register_diag_field('ice_model','LH' ,diag%axesT1, Time,                   &
                'latent heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw       = register_diag_field('ice_model','SW' ,axt, Time,                   &
+  IST%id_sw       = register_diag_field('ice_model','SW' ,diag%axesT1, Time,                   &
                'short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_lw       = register_diag_field('ice_model','LW' ,axt, Time,                   &
+  IST%id_lw       = register_diag_field('ice_model','LW' ,diag%axesT1, Time,                   &
                'long wave heat flux over ice', 'W/m^2', missing_value=missing)
-  IST%id_snofl    = register_diag_field('ice_model','SNOWFL' ,axt, Time,               &
+  IST%id_snofl    = register_diag_field('ice_model','SNOWFL' ,diag%axesT1, Time,               &
                'rate of snow fall', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_rain     = register_diag_field('ice_model','RAIN' ,axt, Time,                 &
+  IST%id_rain     = register_diag_field('ice_model','RAIN' ,diag%axesT1, Time,                 &
                'rate of rain fall', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_runoff   = register_diag_field('ice_model','RUNOFF' ,axt, Time,               &
+  IST%id_runoff   = register_diag_field('ice_model','RUNOFF' ,diag%axesT1, Time,               &
                'liquid runoff', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_calving  = register_diag_field('ice_model','CALVING',axt, Time,               &
+  IST%id_calving  = register_diag_field('ice_model','CALVING',diag%axesT1, Time,               &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_runoff_hflx   = register_diag_field('ice_model','RUNOFF_HFLX' ,axt, Time,               &
+  IST%id_runoff_hflx   = register_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time,               &
                'liquid runoff sensible heat flux', 'W/m^2', missing_value=missing)
-  IST%id_calving_hflx  = register_diag_field('ice_model','CALVING_HFLX',axt, Time,               &
+  IST%id_calving_hflx  = register_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time,               &
                'frozen runoff sensible heat flux', 'W/m^2', missing_value=missing)
-  IST%id_evap     = register_diag_field('ice_model','EVAP',axt, Time,                  &
+  IST%id_evap     = register_diag_field('ice_model','EVAP',diag%axesT1, Time,                  &
                'evaporation', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_saltf    = register_diag_field('ice_model','SALTF' ,axt, Time,                &
+  IST%id_saltf    = register_diag_field('ice_model','SALTF' ,diag%axesT1, Time,                &
                'ice to ocean salt flux', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_sn2ic    = register_diag_field('ice_model','SN2IC'  ,axt,Time,                &
+  IST%id_sn2ic    = register_diag_field('ice_model','SN2IC'  ,diag%axesT1,Time,                &
                'rate of snow to ice conversion', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_tmelt    = register_diag_field('ice_model','TMELT'  ,axt, Time,               &
+  IST%id_tmelt    = register_diag_field('ice_model','TMELT'  ,diag%axesT1, Time,               &
                'upper surface melting energy flux', 'W/m^2', missing_value=missing)
-  IST%id_bmelt    = register_diag_field('ice_model','BMELT'  ,axt, Time,               &
+  IST%id_bmelt    = register_diag_field('ice_model','BMELT'  ,diag%axesT1, Time,               &
                'bottom surface melting energy flux', 'W/m^2', missing_value=missing)
-  IST%id_bheat    = register_diag_field('ice_model','BHEAT'  ,axt, Time,               &
+  IST%id_bheat    = register_diag_field('ice_model','BHEAT'  ,diag%axesT1, Time,               &
                'ocean to ice heat flux', 'W/m^2', missing_value=missing)
-  IST%id_e2m      = register_diag_field('ice_model','E2MELT' ,axt, Time,               &
+  IST%id_e2m      = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time,               &
                'heat needed to melt ice', 'J/m^2', missing_value=missing)
-  IST%id_frazil   = register_diag_field('ice_model','FRAZIL' ,axt, Time,               &
+  IST%id_frazil   = register_diag_field('ice_model','FRAZIL' ,diag%axesT1, Time,               &
                'energy flux of frazil formation', 'W/m^2', missing_value=missing)
-  IST%id_alb      = register_diag_field('ice_model','ALB',axt, Time,                   &
+  IST%id_alb      = register_diag_field('ice_model','ALB',diag%axesT1, Time,                   &
                'surface albedo','0-1', missing_value=missing )
-  IST%id_coszen   = register_diag_field('ice_model','coszen',axt, Time,                   &
+  IST%id_coszen   = register_diag_field('ice_model','coszen',diag%axesT1, Time,                   &
                'cosine of zenith','-1:1', missing_value=missing )
-  IST%id_sw_abs_snow= register_diag_field('ice_model','sw_abs_snow',axt, Time,&
+  IST%id_sw_abs_snow= register_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time,&
                'SW frac. abs. in snow','0:1', missing_value=missing )
-  IST%id_sw_abs_ice1= register_diag_field('ice_model','sw_abs_ice1',axt, Time,&
+  IST%id_sw_abs_ice1= register_diag_field('ice_model','sw_abs_ice1',diag%axesT1, Time,&
                'SW frac. abs. in ice1','0:1', missing_value=missing )
-  IST%id_sw_abs_ice2= register_diag_field('ice_model','sw_abs_ice2',axt, Time,&
+  IST%id_sw_abs_ice2= register_diag_field('ice_model','sw_abs_ice2',diag%axesT1, Time,&
                'SW frac. abs. in ice2','0:1', missing_value=missing )
-  IST%id_sw_abs_ice3= register_diag_field('ice_model','sw_abs_ice3',axt, Time,&
+  IST%id_sw_abs_ice3= register_diag_field('ice_model','sw_abs_ice3',diag%axesT1, Time,&
                'SW frac. abs. in ice3','0:1', missing_value=missing )
-  IST%id_sw_abs_ice4= register_diag_field('ice_model','sw_abs_ice4',axt, Time,&
+  IST%id_sw_abs_ice4= register_diag_field('ice_model','sw_abs_ice4',diag%axesT1, Time,&
                'SW frac. abs. in ice4','0:1', missing_value=missing )
-  IST%id_sw_pen= register_diag_field('ice_model','sw_pen',axt, Time,&
+  IST%id_sw_pen= register_diag_field('ice_model','sw_pen',diag%axesT1, Time,&
                'SW frac. pen. surf.','0:1', missing_value=missing )
-  IST%id_sw_trn= register_diag_field('ice_model','sw_trn',axt, Time,&
+  IST%id_sw_trn= register_diag_field('ice_model','sw_trn',diag%axesT1, Time,&
                'SW frac. trans. to ice bot.','0:1', missing_value=missing )
 
 
 
-  IST%id_alb_vis_dir = register_diag_field('ice_model','alb_vis_dir',axt, Time,                &
+  IST%id_alb_vis_dir = register_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time,                &
                'ice surface albedo vis_dir','0-1', missing_value=missing )
-  IST%id_alb_vis_dif = register_diag_field('ice_model','alb_vis_dif',axt, Time,                &
+  IST%id_alb_vis_dif = register_diag_field('ice_model','alb_vis_dif',diag%axesT1, Time,                &
                'ice surface albedo vis_dif','0-1', missing_value=missing )
-  IST%id_alb_nir_dir = register_diag_field('ice_model','alb_nir_dir',axt, Time,                &
+  IST%id_alb_nir_dir = register_diag_field('ice_model','alb_nir_dir',diag%axesT1, Time,                &
                'ice surface albedo nir_dir','0-1', missing_value=missing )
-  IST%id_alb_nir_dif = register_diag_field('ice_model','alb_nir_dif',axt, Time,                &
+  IST%id_alb_nir_dif = register_diag_field('ice_model','alb_nir_dif',diag%axesT1, Time,                &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
-  IST%id_xprt     = register_diag_field('ice_model','XPRT',axt, Time,                  &
+  IST%id_xprt     = register_diag_field('ice_model','XPRT',diag%axesT1, Time,                  &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_lsrc     = register_diag_field('ice_model','LSRC', axt, Time,                 &
+  IST%id_lsrc     = register_diag_field('ice_model','LSRC', diag%axesT1, Time,                 &
                'frozen water local source', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_lsnk     = register_diag_field('ice_model','LSNK',axt, Time,                  &
+  IST%id_lsnk     = register_diag_field('ice_model','LSNK',diag%axesT1, Time,                  &
                'frozen water local sink', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_bsnk     = register_diag_field('ice_model','BSNK',axt, Time,                  &
+  IST%id_bsnk     = register_diag_field('ice_model','BSNK',diag%axesT1, Time,                  &
                'frozen water local bottom sink', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_qfres    = register_diag_field('ice_model', 'QFLX_RESTORE_ICE', axt, Time,    &
+  IST%id_qfres    = register_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time,    &
                'Ice Restoring heat flux', 'W/m^2', missing_value=missing)
-  IST%id_qflim    = register_diag_field('ice_model', 'QFLX_LIMIT_ICE', axt, Time,      &
+  IST%id_qflim    = register_diag_field('ice_model', 'QFLX_LIMIT_ICE', diag%axesT1, Time,      &
                'Ice Limit heat flux', 'W/m^2', missing_value=missing)
-  IST%id_strna    = register_diag_field('ice_model','STRAIN_ANGLE', axt,Time,          &
+  IST%id_strna    = register_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time,          &
                'strain angle', 'none', missing_value=missing)
-  IST%id_fax      = register_diag_field('ice_model', 'FA_X', axv, Time,                &
+  IST%id_fax      = register_diag_field('ice_model', 'FA_X', diag%axesB1, Time,                &
                'air stress on ice - x component', 'Pa', missing_value=missing)
-  IST%id_fay      = register_diag_field('ice_model', 'FA_Y', axv, Time,                &
+  IST%id_fay      = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time,                &
                'air stress on ice - y component', 'Pa', missing_value=missing)
-  IST%id_uo       = register_diag_field('ice_model', 'UO', axv, Time,                  &
+  IST%id_uo       = register_diag_field('ice_model', 'UO', diag%axesB1, Time,                  &
                'surface current - x component', 'm/s', missing_value=missing)
-  IST%id_vo       = register_diag_field('ice_model', 'VO', axv, Time,                  &
+  IST%id_vo       = register_diag_field('ice_model', 'VO', diag%axesB1, Time,                  &
                'surface current - y component', 'm/s', missing_value=missing)
-  IST%id_sw_vis   = register_diag_field('ice_model','SW_VIS' ,axt, Time,               &
+  IST%id_sw_vis   = register_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time,               &
                'visible short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_dir   = register_diag_field('ice_model','SW_DIR' ,axt, Time,               &
+  IST%id_sw_dir   = register_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time,               &
                'direct short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_dif   = register_diag_field('ice_model','SW_DIF' ,axt, Time,               &
+  IST%id_sw_dif   = register_diag_field('ice_model','SW_DIF' ,diag%axesT1, Time,               &
                'diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_vis_dir = register_diag_field('ice_model','SW_VIS_DIR' ,axt, Time,         &
+  IST%id_sw_vis_dir = register_diag_field('ice_model','SW_VIS_DIR' ,diag%axesT1, Time,         &
                'visible direct short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_vis_dif = register_diag_field('ice_model','SW_VIS_DIF' ,axt, Time,         &
+  IST%id_sw_vis_dif = register_diag_field('ice_model','SW_VIS_DIF' ,diag%axesT1, Time,         &
                'visible diffuse short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_nir_dir = register_diag_field('ice_model','SW_NIR_DIR' ,axt, Time,         &
+  IST%id_sw_nir_dir = register_diag_field('ice_model','SW_NIR_DIR' ,diag%axesT1, Time,         &
                'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
-  IST%id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,axt, Time,         &
+  IST%id_sw_nir_dif = register_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time,         &
                'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
 
   !
   ! diagnostics for quantities produced outside the ice model
   !
-  IST%id_swdn  = register_diag_field('ice_model','SWDN' ,axt, Time,       &
+  IST%id_swdn  = register_diag_field('ice_model','SWDN' ,diag%axesT1, Time,       &
              'downward shortwave flux', 'W/m^2', missing_value=missing)
-  IST%id_lwdn  = register_diag_field('ice_model','LWDN' ,axt, Time,       &
+  IST%id_lwdn  = register_diag_field('ice_model','LWDN' ,diag%axesT1, Time,       &
              'downward longwave flux', 'W/m^2', missing_value=missing)
-  IST%id_ta    = register_diag_field('ice_model', 'TA', axt, Time,        &
+  IST%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time,        &
              'surface air temperature', 'C', missing_value=missing)
-  IST%id_slp   = register_diag_field('ice_model', 'SLP', axt, Time,       &
+  IST%id_slp   = register_diag_field('ice_model', 'SLP', diag%axesT1, Time,       &
              'sea level pressure', 'Pa', missing_value=missing)
-  IST%id_sst   = register_diag_field('ice_model', 'SST', axt, Time,       &
+  IST%id_sst   = register_diag_field('ice_model', 'SST', diag%axesT1, Time,       &
              'sea surface temperature', 'deg-C', missing_value=missing)
-  IST%id_sss   = register_diag_field('ice_model', 'SSS', axt, Time,       &
+  IST%id_sss   = register_diag_field('ice_model', 'SSS', diag%axesT1, Time,       &
              'sea surface salinity', 'psu', missing_value=missing)
-  IST%id_ssh   = register_diag_field('ice_model', 'SSH', axt, Time,       &
+  IST%id_ssh   = register_diag_field('ice_model', 'SSH', diag%axesT1, Time,       &
              'sea surface height', 'm', missing_value=missing)
-  IST%id_obi   = register_diag_field('ice_model', 'OBI', axt, Time,       &
+  IST%id_obi   = register_diag_field('ice_model', 'OBI', diag%axesT1, Time,       &
        'ice observed', '0 or 1', missing_value=missing)
 
   if (id_sin_rot>0)   sent=send_data(id_sin_rot, G%sin_rot(isc:iec,jsc:jec), Time);
