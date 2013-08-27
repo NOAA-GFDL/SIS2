@@ -4,8 +4,8 @@
 module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi, grav
-  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe, mpp_chksum
-  use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
+  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe !, mpp_chksum
+!  use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
   use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
   use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
@@ -13,26 +13,28 @@ module ice_grid_mod
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
   use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
   use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
-  use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-  use MOM_file_parser, only : get_param, log_version, param_file_type
-  use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use MOM_coms, only : g_sum=>reproducing_sum
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_file_parser, only : get_param, log_version, param_file_type
+use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
   use fms_mod,         only: field_exist, field_size, read_data
   use fms_mod,         only: get_global_att_value, stderr
   use mosaic_mod,      only: get_mosaic_ntiles, get_mosaic_ncontacts
   use mosaic_mod,      only: calc_mosaic_grid_area, get_mosaic_contact
   use grid_mod,        only: get_grid_cell_vertices
 
-  implicit none ; private
-  include 'netcdf.inc'
+implicit none ; private
+
+include 'netcdf.inc'
 #include <SIS2_memory.h>
 
   public :: set_ice_grid, ice_grid_end, g_sum, get_avg
   public :: ice_line
 
   public :: Domain, im, jm
-  public :: xb1d, yb1d
+!  public :: xb1d, yb1d
   public :: cell_area
-  public :: grid_x_t,grid_y_t
+!  public :: grid_x_t,grid_y_t
   public :: tripolar_grid, x_cyclic
 
   type(domain2D), target, save :: Domain
@@ -160,7 +162,7 @@ type, public :: SIS2_domain_type
 end type SIS2_domain_type
 
 
-  integer                           :: im, jm ! , km         ! global domain and vertical size
+  integer                           :: im, jm   ! global domain and vertical size
   !
   ! grid geometry
   !
@@ -170,7 +172,7 @@ end type SIS2_domain_type
   real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
   real, allocatable, dimension(:,:) ::  cell_area          ! grid cell area; sphere frac.
   
-  integer            :: comm_pe                      ! pe to be communicated with
+!  integer            :: comm_pe                      ! pe to be communicated with
 
 contains
 
@@ -219,22 +221,6 @@ subroutine get_avg(x, cn, avg, wtd)
 
 end subroutine get_avg
 
-
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! g_sum - returns the global sum of a real array                               !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  real function g_sum(x)
-    real, dimension(:,:) :: x
-
-    real, dimension(1 :im, 1 :jm) :: g_x
-
-    call mpp_global_field(Domain, x, g_x)
-    g_sum = sum(g_x)
-
-    return
-  end function g_sum
-
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -271,7 +257,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
     integer                             :: npes, p
     logical                             :: symmetrize, ndivx_is_even, im_is_even
-  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, km
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed !###, km
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
@@ -508,8 +494,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
-    km = km_in
-    km = G%CatIce + 1  ! Add 1 for the ice-free category.
+!###    km = km_in
+!###    km = G%CatIce + 1  ! Add 1 for the ice-free category.
 
     allocate ( cell_area(isc:iec,jsc:jec) )
     
@@ -663,7 +649,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
        call mpp_get_pelist(Domain, pelist)
        call mpp_get_compute_domains(Domain, xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
 
-       comm_pe = NULL_PE
+!       comm_pe = NULL_PE
  
        do p = 1, npes
           if( jslist(p) == jsc .AND. islist(p) + iec == im+1 ) then
@@ -673,7 +659,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
              if( ielist(p) + isc .NE. im+1) then
                 call SIS_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
              endif
-             comm_pe = pelist(p)
+!             comm_pe = pelist(p)
              exit 
           endif
        enddo

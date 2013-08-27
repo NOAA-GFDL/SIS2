@@ -6,7 +6,7 @@ module ice_type_mod
 
   use mpp_mod,          only: mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
                               CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
-  use mpp_domains_mod,  only: domain2D, mpp_update_domains, CORNER, BGRID_NE
+  use mpp_domains_mod,  only: domain2D, CORNER
   use mpp_domains_mod,  only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod,  only: mpp_get_compute_domain
   use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, write_version_number,&
@@ -22,9 +22,8 @@ module ice_type_mod
   use constants_mod,    only: Tfreeze, radius, pi
 
 use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
-  use ice_grid_mod,     only: Domain, im, jm
-  use ice_grid_mod,     only: cell_area, xb1d, yb1d
-  use ice_grid_mod,     only: grid_x_t,grid_y_t
+  use ice_grid_mod,     only: Domain! , im, jm
+  use ice_grid_mod,     only: cell_area! , xb1d, yb1d
 
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
 use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
@@ -35,6 +34,7 @@ use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport
   use astronomy_mod,    only: astronomy_init, astronomy_end
   use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 
+use MOM_domains,     only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -804,7 +804,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
 
-  Ice%area(:,:)       = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
+  Ice%area(:,:)   = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
@@ -824,7 +824,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   ! read restart
   !
   restart_file = 'ice_model.res.nc'
-  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
   id_restart_albedo = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
                                              domain=domain, mandatory=.false.)
@@ -834,32 +833,23 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                                              domain=domain, mandatory=.false.)
   id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
                                              domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',      IST%t_surf,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',      IST%h_snow,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',      IST%t_snow,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',       IST%h_ice,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',      IST%t_ice(:,:,:,1),   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',      IST%t_ice(:,:,:,2),   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',      IST%t_ice(:,:,:,3),   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',      IST%t_ice(:,:,:,4),   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',       IST%u_ice,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',       IST%v_ice,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,          domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,            domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,           domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,          domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,      domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx,     domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,           domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
+
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
   id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
                                               domain=domain, mandatory=.false.)    
   id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
@@ -868,6 +858,18 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                                               domain=domain, mandatory=.false.)
   id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
                                               domain=domain, mandatory=.false.)
+
+  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
   id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
 
   call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
@@ -894,18 +896,17 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
        endif
      endif
 
-     !--- update to data domain
-     call mpp_update_domains(IST%part_size, Domain)
-     call mpp_update_domains(IST%h_snow, Domain )
-     call mpp_update_domains(IST%t_snow, Domain )
-     call mpp_update_domains(IST%h_ice, Domain )
+    !--- update the halo values.
+    call pass_var(IST%part_size, Ice%G%Domain, complete=.false.)
+    call pass_var(IST%h_ice, Ice%G%Domain, complete=.false.)
+    call pass_var(IST%h_snow, Ice%G%Domain, complete=.false.)
+    do l=1,G%NkIce
+      call pass_var(IST%t_ice(:,:,:,l), Ice%G%Domain, complete=.false.)
+    enddo
+    call pass_var(IST%t_snow, Ice%G%Domain, complete=.true.)
 
-     do l=1,G%NkIce
-       call mpp_update_domains(IST%t_ice(:,:,:,l), Domain )
-     enddo
-
-    call mpp_update_domains(IST%u_ice, IST%v_ice, Domain, gridtype=BGRID_NE )
-  else ! no restart => no ice
+    call pass_vector(IST%u_ice, IST%v_ice, Ice%G%Domain, stagger=BGRID_NE)
+  else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
 
@@ -942,7 +943,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call SIS_diag_mediator_init(Ice%G, param_file, IST%diag, component="SIS")
   call set_SIS_axes_info(Ice%G, param_file, IST%diag)
 
-  call ice_diagnostics_init(Ice, IST, Ice%G, IST%Time)
+  call ice_diagnostics_init(Ice, IST, Ice%G, IST%diag, IST%Time)
 
   call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
   call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
@@ -969,7 +970,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
   tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
+           Ice%G%Domain%niglobal, Ice%G%Domain%niglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
            Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
 
@@ -1076,19 +1077,19 @@ end subroutine ice_model_restart
 ! </SUBROUTINE>
 !#######################################################################
 
-subroutine ice_diagnostics_init(Ice, IST, G, Time)
+subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   type(ice_data_type),     intent(inout)    :: Ice
   type(ice_state_type),    intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_diag_ctrl),     intent(in)    :: diag
   type(time_type),         intent(inout) :: Time
 
   real, parameter       :: missing = -1e34
-  integer, dimension(2) :: axt, axv, axtv, axvt, axto
+  integer, dimension(2) :: axt, axv, axtv, axvt
   integer, dimension(3) :: axt2
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
   integer               :: id_xb, id_xt, id_yb, id_yt, id_ct, id_xv, id_yv
-  integer               :: id_xto,id_yto
   integer :: i, j, k, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1097,21 +1098,16 @@ subroutine ice_diagnostics_init(Ice, IST, G, Time)
   ! diagnostics MUST use a domain without halos otherwise same as the
   ! regular domain:  Domain (see ice_grid.f90)
   !
-  id_xv = diag_axis_init('xv', xb1d(2:im+1), 'degrees_E', 'X','longitude', set_name='ice', Domain2=Domain )
-  id_yv = diag_axis_init('yv', yb1d(2:jm+1), 'degrees_N', 'Y','latitude',  set_name='ice', Domain2=Domain )
-  id_xb = diag_axis_init('xb', xb1d, 'degrees_E', 'X', 'longitude', set_name='ice', Domain2=Domain )
-  id_yb = diag_axis_init('yb', yb1d, 'degrees_N', 'Y', 'latitude', set_name='ice', Domain2=Domain )
-  id_xt = diag_axis_init('xt', (xb1d(1:im)+xb1d(2:im+1))/2, 'degrees_E', 'X', &
+  id_xv = diag_axis_init('xv', G%gridLonB(G%isg:G%ieg), 'degrees_E', 'X','longitude', set_name='ice', Domain2=Domain )
+  id_yv = diag_axis_init('yv', G%gridLatB(G%jsg:G%jeg), 'degrees_N', 'Y','latitude',  set_name='ice', Domain2=Domain )
+  id_xb = diag_axis_init('xb', G%gridLonB, 'degrees_E', 'X', 'longitude', set_name='ice', Domain2=Domain )
+  id_yb = diag_axis_init('yb', G%gridLatB, 'degrees_N', 'Y', 'latitude', set_name='ice', Domain2=Domain )
+  id_xt = diag_axis_init('xt', G%gridLonT, 'degrees_E', 'X', &
           'longitude',set_name='ice',edges=id_xb,Domain2=Domain)
-  id_yt = diag_axis_init('yt', (yb1d(1:jm)+yb1d(2:jm+1))/2, 'degrees_N', 'Y', &
+  id_yt = diag_axis_init('yt', G%gridLatT, 'degrees_N', 'Y', &
           'latitude',set_name='ice', edges=id_yb,Domain2=Domain)
   id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters','Z', 'thickness')
 
-  id_xto = diag_axis_init ('xt_ocean',grid_x_t,'degrees_E','x','tcell longitude',&
-           set_name='ice', Domain2=Domain, aux='geolon_t')
-  id_yto = diag_axis_init ('yt_ocean',grid_y_t,'degrees_N','y','tcell latitude',&
-           set_name='ice', Domain2=Domain, aux='geolat_t')
-  axto = (/ id_xto, id_yto /)
   axv  = (/ id_xv, id_yv  /)
   axt  = (/ id_xt, id_yt  /)
   axt2 = (/ id_xt, id_yt, id_ct/)
@@ -1149,7 +1145,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, Time)
                'snow layer temperature', 'C',  missing_value=missing)
   IST%id_hi       = register_diag_field('ice_model', 'HI', axt, Time,                  &
                'ice thickness', 'm-ice', missing_value=missing)
-  IST%id_hio      = register_diag_field('ice_model', 'HIO', axto, Time,                &
+  IST%id_hio      = register_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
   IST%id_t1       = register_diag_field('ice_model', 'T1', axt, Time,                  &
                'top ice layer temperature', 'C',  missing_value=missing)
