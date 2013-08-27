@@ -970,7 +970,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
   tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           Ice%G%Domain%niglobal, Ice%G%Domain%niglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
+           Ice%G%Domain%niglobal, Ice%G%Domain%njglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
            Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
 
