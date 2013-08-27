@@ -132,6 +132,10 @@ type, public :: sea_ice_grid_type
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
+  real, allocatable, dimension(:) :: &
+    H_cat_lim     ! The lower thickness limits for each ice category, in m.
+    
+
   ! The following are axis types defined for output.
   integer, dimension(3) :: axesBL, axesTL, axesCuL, axesCvL
   integer, dimension(3) :: axesBi, axesTi, axesCui, axesCvi
@@ -271,6 +275,38 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
+
+
+#ifdef STATIC_MEMORY_
+  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=km_in-1)
+  if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
+       "param_file or the input namelist file.")
+  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=NK_ICE_)
+  if (G%NkIce /= NK_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
+
+  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=NK_SNOW_)
+  if (G%NkSnow /= NK_SNOW_) call MOM_error(FATAL, "MOM_grid_init: " // &
+       "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
+
+#else
+  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=km_in-1)
+  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
+  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
+#endif
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
@@ -472,37 +508,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
-#ifdef STATIC_MEMORY_
-  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
-                 "The number of sea ice thickness categories.", units="nondim", &
-                 default=km_in-1)
-  if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
-       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file "//&
-       "or the input namelist file.")
-  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
-                 "The number of layers within the sea ice.", units="nondim", &
-                 default=NK_ICE_)
-  if (G%NkIce /= NK_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
-       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
-
-  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
-                 "The number of layers within the snow atop the sea ice.", &
-                 units="nondim", default=NK_SNOW_)
-  if (G%NkSnow /= NK_SNOW_) call MOM_error(FATAL, "MOM_grid_init: " // &
-       "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
-
-#else
-  call get_param(param_file, "SIS_grid", "NCAT_ICE", G%CatIce, &
-                 "The number of sea ice thickness categories.", units="nondim", &
-                 default=km_in-1)
-  call get_param(param_file, "SIS_grid", "NK_ICE", G%NkIce, &
-                 "The number of layers within the sea ice.", units="nondim", &
-                 default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
-  call get_param(param_file, "SIS_grid", "NK_SNOW", G%NkSnow, &
-                 "The number of layers within the snow atop the sea ice.", &
-                 units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
-#endif
-
     km = km_in
     km = G%CatIce + 1  ! Add 1 for the ice-free category.
 
@@ -617,7 +622,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
        enddo
     enddo
 
-  ! ### THIS SHOULD BE A SCALAR PAIR FOR CUBED SPHERE, ETC. -RWH
+  ! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
     call mpp_update_domains(G%dxT, Domain )
     call mpp_update_domains(G%dyT, Domain )
 
@@ -652,7 +657,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     !--- z1l: loop through the pelist to find the symmetry processor.
     !--- This is needed to address the possibility that some of the all-land processor 
     !--- regions are masked out. This is only needed for tripolar grid.
-    if(tripolar_grid) then
+    if (tripolar_grid) then
        npes = mpp_npes()
        allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
        call mpp_get_pelist(Domain, pelist)
@@ -837,6 +842,8 @@ subroutine allocate_metrics(G)
   ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0
 
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
+
+  allocate(G%H_cat_lim(1:G%CatIce+1)) ; G%H_cat_lim(:) = 0.0
 
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0

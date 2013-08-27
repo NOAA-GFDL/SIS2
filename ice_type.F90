@@ -7,6 +7,7 @@ module ice_type_mod
   use mpp_mod,          only: mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
                               CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
   use mpp_domains_mod,  only: domain2D, mpp_update_domains, CORNER, BGRID_NE
+  use mpp_domains_mod,  only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod,  only: mpp_get_compute_domain
   use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, write_version_number,&
                               read_data, close_file, field_exist, &
@@ -16,14 +17,15 @@ module ice_type_mod
                               parse_mask_table
   use diag_manager_mod, only: diag_axis_init, register_diag_field, &
                               register_static_field, send_data
-  use time_manager_mod, only: time_type, get_time
+  use time_manager_mod, only: time_type, time_type_to_real
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: Tfreeze, radius, pi
+
 use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
   use ice_grid_mod,     only: Domain, im, jm
   use ice_grid_mod,     only: cell_area, xb1d, yb1d
   use ice_grid_mod,     only: grid_x_t,grid_y_t
-  use ice_grid_mod,     only: x_cyclic, tripolar_grid
+
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
 use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
 use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport_end ! , ice_transport_register_restarts
@@ -31,7 +33,7 @@ use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport
   use ice_bergs,        only: icebergs_init, icebergs_end, icebergs, icebergs_stock_pe
   use ice_bergs,        only: icebergs_save_restart
   use astronomy_mod,    only: astronomy_init, astronomy_end
-  use ice_shortwave_dEdd,only: shortwave_dEdd0_set_params
+  use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
@@ -44,7 +46,6 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe, &
-          do_init, hlim, &
           ice_model_restart, ice_data_type_chksum
 public :: do_sun_angle_for_alb
 
@@ -141,8 +142,7 @@ public  :: earth_area
                            smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
                            mask_table, do_deltaEdd,R_ice,R_snw,R_pnd
 
-  logical :: do_init = .false.
-  real    :: hlim(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
+  real    :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -283,6 +283,9 @@ type ice_state_type
                              ! 2 - h2o/heat flux down at top of ice
                              ! 3 - h2o/heat flux down at bottom of ice
                              ! 4 - final ice h2o/heat content
+
+  logical :: do_init = .false. ! If true, there is still some initialization
+                               ! that needs to be done.
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -471,6 +474,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     type (time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
+  logical :: x_cyclic, tripolar_grid
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
   integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
   integer :: isc, iec, jsc, jec, km
@@ -672,10 +676,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   end if
   if (IST%slab_ice) num_part = 2 ! open water and ice ... but never in same place
 
-    if (num_part>size(hlim(:))+1) &
-         call error_mesg ('ice_model_init', 'not enough thickness limits', FATAL)
-
-    call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
+  dt_slow = time_type_to_real(Time_step_slow)
+!    call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
 
   if (file_exist(mask_table)) then
      call SIS_mesg(' ice_model_init:  reading maskmap information from '//trim(mask_table))
@@ -691,6 +693,20 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   else
     call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
   endif
+  if (IST%slab_ice) then
+    G%CatIce = 1 ! open water and ice ... but never in same place
+  endif
+
+  ! Initialize G%H_cat_lim here.  ###This needs to be extended.
+  do k=1,min(G%CatIce+1,size(hlim_dflt(:)))
+    G%H_cat_lim(k) = hlim_dflt(k)
+  enddo
+  if ((G%CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
+    do k=min(G%CatIce+1,size(hlim_dflt(:))) + 1, G%CatIce+1
+      G%H_cat_lim(k) =  2.0*G%H_cat_lim(k-1) - G%H_cat_lim(k-2)
+    enddo
+  endif
+
   call set_domain(domain)
   CatIce = G%CatIce
 
@@ -900,7 +916,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     IST%t_snow(:,:,:) = -5.0
     IST%t_ice(:,:,:,:) = -5.0
 
-    do_init = .true. ! done in ice_model
+    IST%do_init = .true. ! Some more initilization needs to be done in ice_model.
   endif ! file_exist(restart_file)
 
   do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -950,6 +966,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
   ! Initialize icebergs
+  x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
+  tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
            im, jm, layout, io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
            dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
@@ -1087,7 +1105,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, Time)
           'longitude',set_name='ice',edges=id_xb,Domain2=Domain)
   id_yt = diag_axis_init('yt', (yb1d(1:jm)+yb1d(2:jm+1))/2, 'degrees_N', 'Y', &
           'latitude',set_name='ice', edges=id_yb,Domain2=Domain)
-  id_ct = diag_axis_init('ct', hlim(1:num_part-1), 'meters','Z', 'thickness')
+  id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters','Z', 'thickness')
 
   id_xto = diag_axis_init ('xt_ocean',grid_x_t,'degrees_E','x','tcell longitude',&
            set_name='ice', Domain2=Domain, aux='geolon_t')

@@ -45,8 +45,7 @@ use astronomy_mod,    only: universal_time, orbital_time, diurnal_solar, daily_m
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 use ice_type_mod,     only: ice_data_type, ice_state_type
-  use ice_type_mod,     only: ice_model_init, ice_model_end, hlim, &
-                              do_init, &
+  use ice_type_mod,     only: ice_model_init, ice_model_end, &
                               iceClock, &
                               iceClock1, iceClock2, iceClock3, &
                               iceClock4, iceClock5, iceClock6, &
@@ -477,7 +476,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
-  if (do_init) then
+  if (IST%do_init) then
     call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
                          IST%h_ice(isc:iec,jsc:jec,1) )
     call pass_var(IST%part_size(:,:,0), G%Domain, complete=.false. )
@@ -497,7 +496,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
       endif
       IST%part_size_uv(i,j,0) = IST%part_size_uv(i,j,0) - IST%part_size_uv(i,j,k)
     enddo ; enddo ; enddo
-    do_init = .false.
+    IST%do_init = .false.
   endif
 
   if (first_time .and. IST%conservation_check) then
@@ -1306,7 +1305,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   enddo ; enddo
 
   call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                     IST%t_ice, IST%t_snow, IST%sea_lev, hlim, dt_slow, &
+                     IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
                      G, IST%ice_transport_CSp)
 
   ! Set appropriate surface quantities in categories with no ice.
