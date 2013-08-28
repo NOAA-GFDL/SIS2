@@ -23,7 +23,7 @@ use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
   use ice_grid_mod,     only: Domain
   use ice_grid_mod,     only: cell_area
 
-  use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
+  use ice_thm_mod,      only: ice_thm_param, e_to_melt
 use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
 use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport_end ! , ice_transport_register_restarts
   use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -116,11 +116,11 @@ public  :: earth_area
   !   A text file to specify n_mask, layout and mask_list to reduce number of processor
   !   usage by masking out some domain regions which contain all land points. 
   !   The default file name of mask_table is "INPUT/ice_mask_table". Please note that 
-  !   the file name must begin with "INPUT/". The first 
+  !   this is the full path to this file. The first 
   !   line of mask_table will be number of region to be masked out. The second line 
-  !   of the mask_table will be the layout of the model. User need to set ice_model_nml
+  !   of the mask_table will be the layout of the model. Users need to set ice_model_nml
   !   variable layout to be the same as the second line of the mask table.
-  !   The following n_mask line will be the position of the processor to be masked out.
+  !   The following n_mask line will be the position of the processors to be masked out.
   !   The mask_table could be created by tools check_mask. 
   !   For example the mask_table will be as following if n_mask=2, layout=4,6 and 
   !   the processor (1,2) and (3,6) will be masked out. 
@@ -142,12 +142,16 @@ public  :: earth_area
                            smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
                            mask_table, do_deltaEdd,R_ice,R_snw,R_pnd
 
-  real    :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
+!  namelist /ice_model_nml/  &
+!                           num_part,         &
+!                           layout,           &
+!                           io_layout, &
+!                           mask_table
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
 ! to SIS2.  It is not to be shared with other components and modules, and may  !
-! use different indexing conventions to other modules..                        !
+! use different indexing conventions than other components.                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_state_type
   type (time_type)                   :: Time_Init, Time
@@ -389,7 +393,7 @@ end type ice_data_type !  ice_public_type
              iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
   type(restart_file_type), save :: Ice_restart
 
-  contains
+contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
@@ -420,7 +424,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (DI*IST%h_ice(i,j,k) + DS*IST%h_snow(i,j,k)) * &
+        value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
                IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
@@ -431,7 +435,7 @@ subroutine ice_stock_pe(Ice, index, value)
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (slab_ice) then
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                           IST%h_ice(i,j,2)*DI*LI
+                           IST%h_ice(i,j,2)*IST%Rho_ice*LI
           else
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                             e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
@@ -446,7 +450,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !No salt in the h_snow component.
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (DI*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
+        value = value + (IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
                IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
@@ -475,13 +479,14 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     type (time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
   logical :: x_cyclic, tripolar_grid
-    integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
+  integer :: io, ierr, nlon, nlat, npart, unit, log_unit, k
   integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
   integer :: isc, iec, jsc, jec
   integer :: CatIce
-    integer           :: id_restart, id_restart_flux_sw
     real              :: dt_slow
-    character(len=64) :: restart_file
+
+  character(len=64) :: restart_file
+  real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
   character(len=40)  :: mod = "ice_model" ! This module's name.
     integer           :: stdlogunit, stdoutunit
   type(param_file_type) :: param_file
