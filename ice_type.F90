@@ -15,14 +15,13 @@ module ice_type_mod
   use fms_io_mod,       only: save_restart, restore_state, query_initialized, &
                               register_restart_field, restart_file_type, set_domain, nullify_domain, &
                               parse_mask_table
-!  use diag_manager_mod, only: register_diag_field
   use time_manager_mod, only: time_type, time_type_to_real
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: Tfreeze, radius, pi
 
 use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
-  use ice_grid_mod,     only: Domain! , im, jm
-  use ice_grid_mod,     only: cell_area! , xb1d, yb1d
+  use ice_grid_mod,     only: Domain
+  use ice_grid_mod,     only: cell_area
 
   use ice_thm_mod,      only: ice_thm_param, DI, DS, e_to_melt
 use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
@@ -478,9 +477,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   logical :: x_cyclic, tripolar_grid
     integer           :: io, ierr, nlon, nlat, npart, unit, log_unit, k
   integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
-  integer :: isc, iec, jsc, jec, km
+  integer :: isc, iec, jsc, jec
   integer :: CatIce
-    integer           :: id_restart, id_restart_albedo, id_restart_flux_sw
+    integer           :: id_restart, id_restart_flux_sw
     real              :: dt_slow
     character(len=64) :: restart_file
   character(len=40)  :: mod = "ice_model" ! This module's name.
@@ -698,7 +697,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     G%CatIce = 1 ! open water and ice ... but never in same place
   endif
 
-  ! Initialize G%H_cat_lim here.  ###This needs to be extended.
+  ! Initialize G%H_cat_lim here.  ###This needs to be extended to add more options.
   do k=1,min(G%CatIce+1,size(hlim_dflt(:)))
     G%H_cat_lim(k) = hlim_dflt(k)
   enddo
@@ -708,102 +707,28 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     enddo
   endif
 
-  call set_domain(domain)
+  call set_domain(G%Domain%mpp_domain)
   CatIce = G%CatIce
 
-  ! Allocate the externally visible ice_data_type's arrays.
-  call mpp_get_compute_domain(G%Domain%mpp_domain, isc, iec, jsc, jec )
-  km = G%CatIce + 1
+!  call allocate_ice_data_type_arrays(Ice, G%Domain%mpp_domain, G%CatIce)
 
-  allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
-  allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
-  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
-  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
-  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
-  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
+  ! Allocate the internally visible ice_state_type's arrays.
+!  call allocate_state_data_type_arrays(IST, G)
 
-  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0
-  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
+  ! Allocate and register fields for restarts.
+  restart_file = 'ice_model.res.nc'
+  call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, param_file, Ice, Ice_restart, restart_file)
 
-  allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
-  allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
-  allocate(Ice%flux_t(isc:iec, jsc:jec)) ; Ice%flux_t(:,:) = 0.0
-  allocate(Ice%flux_q(isc:iec, jsc:jec)) ; Ice%flux_q(:,:) = 0.0
-  allocate(Ice%flux_sw_vis_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dir(:,:) = 0.0
-  allocate(Ice%flux_sw_vis_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dif(:,:) = 0.0
-  allocate(Ice%flux_sw_nir_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dir(:,:) = 0.0
-  allocate(Ice%flux_sw_nir_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dif(:,:) = 0.0
-  allocate(Ice%flux_lw(isc:iec, jsc:jec)) ; Ice%flux_lw(:,:) = 0.0
-  allocate(Ice%flux_lh(isc:iec, jsc:jec)) ; Ice%flux_lh(:,:) = 0.0 !NI
-  allocate(Ice%lprec(isc:iec, jsc:jec)) ; Ice%lprec(:,:) = 0.0
-  allocate(Ice%fprec(isc:iec, jsc:jec)) ; Ice%fprec(:,:) = 0.0
-  allocate(Ice%p_surf(isc:iec, jsc:jec)) ; Ice%p_surf(:,:) = 0.0
-  allocate(Ice%runoff(isc:iec, jsc:jec)) ; Ice%runoff(:,:) = 0.0
-  allocate(Ice%calving(isc:iec, jsc:jec)) ; Ice%calving(:,:) = 0.0
-  allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
-  allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
-  allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
+  call ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
 
-  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
-  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+  call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
+!    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
+
+
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-
-  ! Allocate the internally visible ice_state_type's arrays.
-  allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
-  allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
-  allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
-  allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
-  allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
-  allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
-  allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
-
-  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
-  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
-
-  allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
-  allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
-  allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
-  allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
-  allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
-
-  allocate(IST%pen(SZI_(G), SZJ_(G), CatIce)) ; IST%pen(:,:,:) = 0.0 !NI
-  allocate(IST%trn(SZI_(G), SZJ_(G), CatIce)) ; IST%trn(:,:,:) = 0.0 !NI
-  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
-
-  allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
-  allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
-  allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
-  allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
-  allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
-  allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
 
   Ice%area(:,:)   = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
@@ -824,78 +749,26 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   !
   ! read restart
   !
-  restart_file = 'ice_model.res.nc'
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
-  id_restart_albedo = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
-                                             domain=domain, mandatory=.false.)
-  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
-                                             domain=domain, mandatory=.false.)
-  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
-                                             domain=domain, mandatory=.false.)
-  id_restart        = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
-                                             domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
-
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
-  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
-                                              domain=domain, mandatory=.false.)    
-  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
-                                              domain=domain, mandatory=.false.)
-  id_restart_flux_sw = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
-                                              domain=domain, mandatory=.false.)
-  id_restart         = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
-                                              domain=domain, mandatory=.false.)
-
-  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
-
-  call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
-!    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
-
   restart_file = 'INPUT/ice_model.res.nc'
   if (file_exist(restart_file)) then
     call restore_state(Ice_restart)
 
-    if ( .NOT.query_initialized(Ice_restart, id_restart_flux_sw) ) then
-       call error_mesg ('ice_model_init', &
-          'Restart file does not contain flux_sw_* subcomponents!', WARNING)
-       ! for compatibility with preN restarts, we should check for total SW flux 
-       if (field_exist(restart_file,'flux_sw')) then
-         call read_data( restart_file, 'flux_sw', Ice%flux_sw_vis_dir, domain) 
-         ! simplest way to break the total flux to 4 components
-         Ice%flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
-         Ice%flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-         Ice%flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
-         Ice%flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-       else
-         call error_mesg ('ice_model_init', &
-              'Restart file does not contain flux_sw total or its components!', FATAL)
-       endif
-     endif
+!    if ( .NOT.query_initialized(Ice_restart, id_restart_flux_sw) ) then
+!      call error_mesg ('ice_model_init', &
+!         'Restart file does not contain flux_sw_* subcomponents!', WARNING)
+!      ! for compatibility with preN restarts, we should check for total SW flux 
+!      if (field_exist(restart_file,'flux_sw')) then
+!        call read_data( restart_file, 'flux_sw', Ice%flux_sw_vis_dir, domain) 
+!        ! simplest way to break the total flux to 4 components
+!        Ice%flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
+!        Ice%flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
+!        Ice%flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
+!        Ice%flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
+!      else
+!        call error_mesg ('ice_model_init', &
+!             'Restart file does not contain flux_sw total or its components!', FATAL)
+!      endif
+!    endif
 
     !--- update the halo values.
     call pass_var(IST%part_size, Ice%G%Domain, complete=.false.)
@@ -982,6 +855,185 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call nullify_domain()
 
 end subroutine ice_model_init
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_data_type_register_restarts - allocate the arrays in the ice_data_type   !
+!     and register any variables in the ice data type that need to be included !
+!     in the restart files.                                                    !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
+                                           Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: domain
+  integer,                 intent(in)    :: CatIce
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_data_type),     intent(inout) :: Ice
+  type(restart_file_type), intent(inout) :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
+
+  ! This subroutine allocates the externally visible ice_data_type's arrays and
+  ! registers the appopriate ones for inclusion in the restart file.
+  integer :: isc, iec, jsc, jec, km, id_restart
+
+  call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
+  km = CatIce + 1
+
+  allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
+  allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
+  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
+  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
+  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
+  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
+
+  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0  ! Derived?
+  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
+
+  allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
+  allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
+  allocate(Ice%flux_t(isc:iec, jsc:jec)) ; Ice%flux_t(:,:) = 0.0
+  allocate(Ice%flux_q(isc:iec, jsc:jec)) ; Ice%flux_q(:,:) = 0.0
+  allocate(Ice%flux_sw_vis_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dir(:,:) = 0.0
+  allocate(Ice%flux_sw_vis_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dif(:,:) = 0.0
+  allocate(Ice%flux_sw_nir_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dir(:,:) = 0.0
+  allocate(Ice%flux_sw_nir_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dif(:,:) = 0.0
+  allocate(Ice%flux_lw(isc:iec, jsc:jec)) ; Ice%flux_lw(:,:) = 0.0
+  allocate(Ice%flux_lh(isc:iec, jsc:jec)) ; Ice%flux_lh(:,:) = 0.0 !NI
+  allocate(Ice%lprec(isc:iec, jsc:jec)) ; Ice%lprec(:,:) = 0.0
+  allocate(Ice%fprec(isc:iec, jsc:jec)) ; Ice%fprec(:,:) = 0.0
+  allocate(Ice%p_surf(isc:iec, jsc:jec)) ; Ice%p_surf(:,:) = 0.0
+  allocate(Ice%runoff(isc:iec, jsc:jec)) ; Ice%runoff(:,:) = 0.0
+  allocate(Ice%calving(isc:iec, jsc:jec)) ; Ice%calving(:,:) = 0.0
+  allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
+  allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
+  allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
+
+  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
+  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+
+  ! Now register some of these arrays to be read from the restart files.
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
+                                      domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
+                                      domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
+                                      domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
+                                      domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
+
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
+                                      domain=domain)    
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
+                                      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
+                                      domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
+                                      domain=domain)
+end subroutine ice_data_type_register_restarts
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_state_register_restarts - allocate the arrays in the ice_state_type      !
+!     and register any variables in the ice data type that need to be included !
+!     in the restart files.                                                    !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
+  type(sea_ice_grid_type), intent(in)    :: G
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_state_type),    intent(inout) :: IST
+  type(restart_file_type), intent(inout) :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
+  
+  type(domain2d), pointer :: domain
+  integer :: CatIce, id_restart
+
+  CatIce = G%CatIce
+  allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
+  allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
+  allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
+  allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
+  allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+  allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
+
+  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR 
+  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+
+  allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
+  allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
+  allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
+  allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
+  allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
+  allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
+
+  allocate(IST%pen(SZI_(G), SZJ_(G), CatIce)) ; IST%pen(:,:,:) = 0.0 !NI
+  allocate(IST%trn(SZI_(G), SZJ_(G), CatIce)) ; IST%trn(:,:,:) = 0.0 !NI
+  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
+
+  allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
+  allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
+  allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
+  allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
+  allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+  
+
+  ! Now register some of these arrays to be read from the restart files.
+  domain => G%domain%mpp_domain
+  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
+  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
+
+end subroutine ice_state_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_end - writes the restart file and deallocates memory               !
