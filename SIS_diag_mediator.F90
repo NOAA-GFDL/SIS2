@@ -88,12 +88,15 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl),     intent(inout) :: diag
   logical, optional,       intent(in)    :: set_vertical
+!   This subroutine sets up the grid and axis information for use by SIS.
+!
 ! Arguments: G - The ocean's grid structure.
 !  (inout)   diag - A structure that is used to regulate diagnostic output.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
-  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, k, nz
+  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
+  integer :: k, nz
   real :: zlev(G%ks:G%ke), zinter(G%ks:G%ke+1)
   logical :: set_vert, Cartesian_grid
   character(len=80) :: grid_config, units_temp
@@ -136,33 +139,24 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
     Cartesian_grid = .false.
   endif
   
-!  do k=1,nz ; zlev(k) = G%Rlay(k) ; enddo
-!  zinter(1) = 1.5*G%Rlay(1) - 0.5*G%Rlay(2)
-!  do k=2,nz ; zinter(k) = 0.5*(G%Rlay(k) + G%Rlay(k-1)) ; enddo
-!  zinter(nz+1) = 1.5*G%Rlay(nz) - 0.5*G%Rlay(nz-1)
+  id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
+            'Boundary point nominal longitude',set_name='ice', &
+             Domain2=G%Domain%mpp_domain)
+  id_yq = diag_axis_init('yB', G%gridLatB(G%jsgB:G%jegB), G%y_axis_units, 'y', &
+            'Boundary point nominal latitude', set_name='ice', &
+             Domain2=G%Domain%mpp_domain)
 
-!  do i=1,nz ; zlev(i) = real(i) ; enddo
-!  do i=1,nz+1 ; zinter(i) = real(i) - 0.5 ; enddo
-  if(G%symmetric) then 
-    id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
-              'Boundary point nominal longitude',set_name='ice', &
-               Domain2=G%Domain%mpp_domain)
-    id_yq = diag_axis_init('yB', G%gridLatB(G%jsgB:G%jegB), G%y_axis_units, 'y', &
-              'Boundary point nominal latitude', set_name='ice', &
-               Domain2=G%Domain%mpp_domain)
-  else
-    id_xq = diag_axis_init('xB', G%gridLonB(G%isg:G%ieg), G%x_axis_units, 'x', &
-              'Boundary point nominal longitude', set_name='ice', &
-               Domain2=G%Domain%mpp_domain)
-    id_yq = diag_axis_init('yB', G%gridLatB(G%jsg:G%jeg), G%y_axis_units, 'y', &
-              'Boundary point nominal latitude', set_name='ice', &
-              Domain2=G%Domain%mpp_domain)
-  endif           
+  id_xhe = diag_axis_init('xTe', G%gridLonB(G%isg-1:G%ieg), G%x_axis_units, 'x', &
+            'T-cell edge nominal longitude', set_name='ice', &
+             Domain2=G%Domain%mpp_domain)
+  id_yhe = diag_axis_init('yTe', G%gridLatB(G%jsg-1:G%jeg), G%y_axis_units, 'y', &
+            'T-cell edge nominal latitude', set_name='ice', &
+            Domain2=G%Domain%mpp_domain)
   id_xh = diag_axis_init('xT', G%gridLonT(G%isg:G%ieg), G%x_axis_units, 'x', &
-              'T point nominal longitude', set_name='ice', &
+              'T point nominal longitude', set_name='ice', edges=id_xhe, &
               Domain2=G%Domain%mpp_domain)
   id_yh = diag_axis_init('yT', G%gridLonT(G%jsg:G%jeg), G%y_axis_units, 'y', &
-              'T point nominal latitude', set_name='ice', &
+              'T point nominal latitude', set_name='ice', edges=id_yhe, &
               Domain2=G%Domain%mpp_domain)
 
   if (set_vert) then
