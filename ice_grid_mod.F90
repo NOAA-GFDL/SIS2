@@ -17,6 +17,7 @@ use MOM_coms, only : g_sum=>reproducing_sum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
 use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use fms_io_mod,        only : file_exist, parse_mask_table
   use fms_mod,         only: field_exist, field_size, read_data
   use fms_mod,         only: get_global_att_value, stderr
   use mosaic_mod,      only: get_mosaic_ntiles, get_mosaic_ncontacts
@@ -151,7 +152,12 @@ type, public :: SIS2_domain_type
   integer :: layout(2), io_layout(2)    ! Saved data for sake of constructing
   integer :: X_FLAGS, Y_FLAGS           ! new domains of different resolution.
   logical :: use_io_layout              ! True if an I/O layout is available.
-  logical, pointer :: maskmap(:,:)=> NULL() !option to mpp_define_domains
+  logical, pointer :: maskmap(:,:)=>NULL() ! A pointer to an array indicating
+                                ! which logical processors are actually used for
+                                ! the ocean code. The other logical processors
+                                ! would be all land points and are not assigned
+                                ! to actual processors. This need not be
+                                ! assigned if all logical processors are used.
 end type SIS2_domain_type
 
 
@@ -217,15 +223,14 @@ end subroutine get_avg
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, maskmap )
+subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt) !, layout, io_layout )
   type(sea_ice_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
 
   type(domain2D),        intent(inout) :: ice_domain
-  integer,               intent(in)    :: km_in
-  integer, dimension(2), intent(inout) :: layout
-  integer, dimension(2), intent(inout) :: io_layout
-  logical, optional,     intent(in)    :: maskmap(:,:)
+  integer,               intent(in)    :: NCat_dflt
+  !  integer, dimension(2), intent(inout) :: layout
+  !  integer, dimension(2), intent(inout) :: io_layout
 ! Arguments: G - The sea-ice's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
@@ -250,6 +255,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
     integer                             :: npes, p
     logical                             :: symmetrize, ndivx_is_even, im_is_even
+  integer :: layout(2) = (/0, 0/), io_layout(2) = (/1, 1/)
+  logical            :: mask_table_exists
+  character(len=128) :: mask_table, inputdir
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed !###, km
 
@@ -262,7 +270,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 #ifdef STATIC_MEMORY_
   call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
-                 default=km_in-1)
+                 default=NCat_dflt)
   if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "MOM_grid_init: " // &
        "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
        "param_file or the input namelist file.")
@@ -281,7 +289,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
 #else
   call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
-                 default=km_in-1)
+                 default=NCat_dflt)
   call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
@@ -289,6 +297,31 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
+
+!  call get_param(param_file, mod_nm, "INPUTDIR", inputdir, do_not_log=.true., default=".")
+!  inputdir = slasher(inputdir)
+  call get_param(param_file, mod_nm, "LAYOUT", layout, &
+                 "The processor layout to be used, or 0, 0 to automatically \n"//&
+                 "set the layout based on the number of processors.", default=0)
+  call get_param(param_file, mod_nm, "IO_LAYOUT", io_layout, &
+                 "The processor layout to be used, or 1,1 to automatically \n"//&
+                 "set the layout based on the number of processors.", default=1)
+
+  call get_param(param_file, mod_nm, "MASKTABLE", mask_table, &
+                 "A text file to specify n_mask, layout and mask_list. \n"//&
+                 "This feature masks out processors that contain only land points. \n"//&
+                 "The first line of mask_table is the number of regions to be masked out.\n"//&
+                 "The second line is the layout of the model and must be \n"//&
+                 "consistent with the actual model layout.\n"//&
+                 "The following (n_mask) lines give the logical positions \n"//&
+                 "of the processors that are masked out. The mask_table \n"//&
+                 "can be created by tools like check_mask. The \n"//&
+                 "following example of mask_table masks out 2 processors, \n"//&
+                 "(1,2) and (3,6), out of the 24 in a 4x6 layout: \n"//&
+                 " 2\n 4,6\n 1,2\n 3,6\n", default="INPUT/ice_mask_table" )
+!  mask_table = trim(inputdir)//trim(mask_table)
+  mask_table_exists = file_exist(mask_table)
+
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
@@ -366,6 +399,13 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     call SIS_mesg("==>Note from ice_grid_mod: y_boundary_type is solid_walls")
   endif
 
+  if (mask_table_exists .and. (layout(1) == 0 .OR. layout(2) == 0)) &
+    call SIS_error(FATAL, &
+         "set_ice_grid: layout should be set via get_param when file "//&
+         trim(mask_table)//' exists')
+
+
+
   ! default is merdional domain decomp. to load balance xgrid
   if( layout(1)==0 .and. layout(2)==0 ) layout=(/ mpp_npes(), 1 /)
   if( layout(1)/=0 .and. layout(2)==0 ) layout(2) = mpp_npes()/layout(1)
@@ -388,22 +428,38 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
   else
     x_flags = 0 ; y_flags = 0
   endif
-  call mpp_define_domains( (/1,im,1,jm/), layout, Domain, maskmap=maskmap, &
-                          xflags=x_flags, xhalo=1, yflags=y_flags, yhalo=1, &
-                          name='ice model' )
-  call mpp_define_io_domain(Domain, io_layout)
-
-  call mpp_get_compute_domain( Domain, isc, iec, jsc, jec )
-  call mpp_get_data_domain( Domain, isd, ied, jsd, jed )
-  call mpp_get_global_domain( Domain, isg, ieg, jsg, jeg )
-
-  call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, maskmap=maskmap, name='ice_nohalo') ! domain without halo
-  call mpp_define_io_domain(ice_domain, io_layout)
 
   ! Set up the SIS_domain_type.  This will later occur via a call to MOM_domains_init.
   ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
   if (.not.associated(G%Domain)) allocate(G%Domain)
   G%Domain%mpp_domain => Domain
+
+  if (mask_table_exists) then
+    call SIS_mesg(' set_ice_grid: reading maskmap information from '//&
+                  trim(mask_table))
+    allocate(G%Domain%maskmap(layout(1), layout(2)))
+    call parse_mask_table(mask_table, G%Domain%maskmap, "Ice model")
+
+    call mpp_define_domains( (/1,im,1,jm/), layout, Domain, maskmap=G%Domain%maskmap, &
+                          xflags=x_flags, xhalo=1, yflags=y_flags, yhalo=1, &
+                          name='ice model' )
+    call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, maskmap=G%Domain%maskmap, name='ice_nohalo') ! domain without halo
+  else
+    call mpp_define_domains( (/1,im,1,jm/), layout, Domain, &
+                          xflags=x_flags, xhalo=1, yflags=y_flags, yhalo=1, &
+                          name='ice model' )
+    call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, name='ice_nohalo') ! domain without halo
+  endif
+  call mpp_define_io_domain(Domain, io_layout)
+  call mpp_define_io_domain(ice_domain, io_layout)
+
+  call mpp_get_compute_domain( Domain, isc, iec, jsc, jec )
+  call mpp_get_data_domain( Domain, isd, ied, jsd, jed )
+  call mpp_get_global_domain( Domain, isg, ieg, jsg, jeg )
+
+  ! Set up the remainder of the SIS_domain_type.  This will later occur via a
+  ! call to MOM_domains_init.
+  ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
   G%Domain%niglobal = im ; G%Domain%njglobal = jm
   G%Domain%nihalo = 1 ; G%Domain%njhalo = 1
   G%Domain%symmetric = .false.
@@ -490,7 +546,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
-!###    km = km_in
 !###    km = G%CatIce + 1  ! Add 1 for the ice-free category.
 
     allocate ( cell_area(isc:iec,jsc:jec) )
@@ -528,7 +583,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, km_in, layout, io_layout, mas
     ! the MOM6 convention of using the "nominal" latitudes and longitudes,
     ! which are the actual lat & lon on spherical portions of the grid.
     allocate ( xb1d (im+1), yb1d (jm+1) )
-    if(PRESENT(maskmap)) then    
+    if(mask_table_exists) then    
        allocate(tmpx(im+1,jm+1), tmpy(im+1,jm+1))
        call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
        xb1d(:) = sum(tmpx,2)/(jm+1)

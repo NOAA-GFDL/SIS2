@@ -13,8 +13,7 @@ module ice_type_mod
                               read_data, close_file, field_exist, &
                               stderr, stdlog, error_mesg, FATAL, WARNING, NOTE, clock_flag_default
   use fms_io_mod,       only: save_restart, restore_state, query_initialized, &
-                              register_restart_field, restart_file_type, set_domain, nullify_domain, &
-                              parse_mask_table
+                              register_restart_field, restart_file_type, set_domain, nullify_domain
   use time_manager_mod, only: time_type, time_type_to_real
   use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
   use constants_mod,    only: Tfreeze, radius, pi
@@ -86,8 +85,10 @@ public  :: earth_area
   logical :: do_sun_angle_for_alb = .false.! find the sun angle for ocean albed in the frame of the ice model
   integer :: layout(2)          = (/0, 0/)
   integer :: io_layout(2)       = (/0, 0/)
+  
   real    :: R_ice=0., R_snw=0., R_pnd=0.
   logical :: do_deltaEdd = .true.
+  character(len=128) :: mask_table = "INPUT/ice_mask_table"
 
   ! The following are archaic namelist variables. They are here only for error
   ! checking of attempts to use out-of-date namelist values.
@@ -112,24 +113,6 @@ public  :: earth_area
   real    :: t_range_melt   = missing    ! melt albedos scaled in over T range
   real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)!CICE value
 
-  ! mask_table contains information for masking domain ( n_mask, layout and mask_list).
-  !   A text file to specify n_mask, layout and mask_list to reduce number of processor
-  !   usage by masking out some domain regions which contain all land points. 
-  !   The default file name of mask_table is "INPUT/ice_mask_table". Please note that 
-  !   this is the full path to this file. The first 
-  !   line of mask_table will be number of region to be masked out. The second line 
-  !   of the mask_table will be the layout of the model. Users need to set ice_model_nml
-  !   variable layout to be the same as the second line of the mask table.
-  !   The following n_mask line will be the position of the processors to be masked out.
-  !   The mask_table could be created by tools check_mask. 
-  !   For example the mask_table will be as following if n_mask=2, layout=4,6 and 
-  !   the processor (1,2) and (3,6) will be masked out. 
-  !     2
-  !     4,6
-  !     1,2
-  !     3,6
-  character(len=128) :: mask_table = "INPUT/ice_mask_table"
-
 
   namelist /ice_model_nml/ mom_rough_ice, heat_rough_ice, p0, c0, cdw, wd_turn,  &
                            kmelt, alb_sno, alb_ice, pen_ice, opt_dep_ice,        &
@@ -145,8 +128,7 @@ public  :: earth_area
 !  namelist /ice_model_nml/  &
 !                           num_part,         &
 !                           layout,           &
-!                           io_layout, &
-!                           mask_table
+!                           io_layout
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -235,14 +217,6 @@ type ice_state_type
                                                                       ! because flux_ice_to_ocean cannot handle 3D fields. This may be
 								! removed, if the information on ice thickness can be derived from 
 								! eventually from h_ice outside the ice module.
-   logical, pointer, dimension(:,:)   :: maskmap             =>NULL() ! A pointer to an array indicating which
-                                                                      ! logical processors are actually used for
-                                                                      ! the ocean code. The other logical
-                                                                      ! processors would be all land points and
-                                                                      ! are not assigned to actual processors.
-                                                                      ! This need not be assigned if all logical
-                                                                      ! processors are used
-
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
@@ -368,13 +342,6 @@ type ice_data_type !  ice_public_type
                                                                      ! because flux_ice_to_ocean cannot handle 3D fields. This may be
 								! removed, if the information on ice thickness can be derived from 
 								! eventually from h_ice outside the ice module.
-     logical, pointer, dimension(:,:)   :: maskmap           =>NULL() ! A pointer to an array indicating which
-                                                                      ! logical processors are actually used for
-                                                                      ! the ocean code. The other logical
-                                                                      ! processors would be all land points and
-                                                                      ! are not assigned to actual processors.
-                                                                      ! This need not be assigned if all logical
-                                                                      ! processors are used
   integer, dimension(3)              :: axes
   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -482,9 +449,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   integer :: io, ierr, nlon, nlat, npart, unit, log_unit, k
   integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
   integer :: isc, iec, jsc, jec
-  integer :: CatIce
-    real              :: dt_slow
-
+  integer :: CatIce, nCat_dflt
   character(len=64) :: restart_file
   real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! thickness limits 1...num_part-1
   character(len=40)  :: mod = "ice_model" ! This module's name.
@@ -625,7 +590,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.004)
 !  call get_param(param_file, mod, "ICE_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
 !  call get_param(param_file, mod, "ICE_IO_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
-!  call get_param(param_file, mod, "ICE_MASK_TABLE?",  ###HANDLE THIS LIKE MOM6?
   call get_param(param_file, mod, "DO_ICE_RESTORE", IST%do_ice_restore, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
@@ -679,29 +643,14 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
        nsteps_dyn = 0
        nsteps_adv = 0
   end if
-  if (IST%slab_ice) num_part = 2 ! open water and ice ... but never in same place
 
-  dt_slow = time_type_to_real(Time_step_slow)
-!    call get_time(Time_step_slow, sc, dy); dt_slow=864e2*dy+sc
+  nCat_dflt = 5
+  if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
 
-  if (file_exist(mask_table)) then
-     call SIS_mesg(' ice_model_init:  reading maskmap information from '//trim(mask_table))
-     if(layout(1) == 0 .OR. layout(2) == 0 ) call error_mesg('ice_model_init', &
-        'ice_model_nml layout should be set when file '//trim(mask_table)//' exists', FATAL)
 
-     allocate(Ice%maskmap(layout(1), layout(2)))
-     call parse_mask_table(mask_table, Ice%maskmap, "Ice model")
-  endif
+  call set_ice_grid(Ice%G, param_file, Ice%domain, nCat_dflt )
 
-  if( ASSOCIATED(Ice%maskmap) ) then
-    call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout, Ice%maskmap  )
-  else
-    call set_ice_grid(Ice%G, param_file, Ice%domain, num_part, layout, io_layout )
-  endif
-  if (IST%slab_ice) then
-    G%CatIce = 1 ! open water and ice ... but never in same place
-  endif
-
+  if (IST%slab_ice) G%CatIce = 1 ! open water and ice ... but never in same place
   ! Initialize G%H_cat_lim here.  ###This needs to be extended to add more options.
   do k=1,min(G%CatIce+1,size(hlim_dflt(:)))
     G%H_cat_lim(k) = hlim_dflt(k)
@@ -714,11 +663,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call set_domain(G%Domain%mpp_domain)
   CatIce = G%CatIce
-
-!  call allocate_ice_data_type_arrays(Ice, G%Domain%mpp_domain, G%CatIce)
-
-  ! Allocate the internally visible ice_state_type's arrays.
-!  call allocate_state_data_type_arrays(IST, G)
 
   ! Allocate and register fields for restarts.
   restart_file = 'ice_model.res.nc'
@@ -849,8 +793,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
   tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           Ice%G%Domain%niglobal, Ice%G%Domain%njglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, Ice%axes(1:2), Ice%maskmap, x_cyclic, tripolar_grid, &
-           dt_slow, Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
+           Ice%G%Domain%niglobal, Ice%G%Domain%njglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, &
+           Ice%axes(1:2), Ice%G%Domain%maskmap, x_cyclic, tripolar_grid, &
+           time_type_to_real(Time_step_slow), Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
            Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
