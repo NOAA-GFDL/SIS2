@@ -44,8 +44,11 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe, &
-          ice_model_restart, ice_data_type_chksum
+public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe
+public :: ice_model_restart
+public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
+public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
+public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 
 public  :: iceClock,iceClock1,iceClock2,iceClock3,iceClock4,iceClock5,iceClock6,iceClock7,iceClock8,iceClock9
 public  :: iceClocka,iceClockb,iceClockc
@@ -192,6 +195,8 @@ type ice_state_type
 
   logical :: do_init = .false. ! If true, there is still some initialization
                                ! that needs to be done.
+  logical :: first_time = .true. ! If true, this is the first call to 
+                               ! update_ice_model_slow_up 
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -215,9 +220,8 @@ type ice_state_type
 
   type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-  type(SIS_diag_ctrl)         :: diag
-  type(icebergs), pointer     :: icebergs => NULL()
-!  type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
+  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
+!   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -275,14 +279,60 @@ type ice_data_type !  ice_public_type
   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
   type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
 
-!      type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
-!      type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-!      type(SIS_diag_ctrl)         :: diag
       type(icebergs), pointer     :: icebergs => NULL()
   type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
 end type ice_data_type !  ice_public_type
+
+!
+! the following three types are for data exchange with the new coupler
+! they are defined here but declared in coupler_main and allocated in flux_init
+!
+type :: ocean_ice_boundary_type
+   real, dimension(:,:),   pointer :: u         =>NULL()
+   real, dimension(:,:),   pointer :: v         =>NULL()
+   real, dimension(:,:),   pointer :: t         =>NULL()
+   real, dimension(:,:),   pointer :: s         =>NULL()
+   real, dimension(:,:),   pointer :: frazil    =>NULL()
+   real, dimension(:,:),   pointer :: sea_level =>NULL()
+   real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
+   integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
+   type(coupler_2d_bc_type)        :: fields     ! array of fields used for additional tracers
+end type 
+
+type :: atmos_ice_boundary_type 
+   real, dimension(:,:,:), pointer :: u_flux  =>NULL()
+   real, dimension(:,:,:), pointer :: v_flux  =>NULL()
+   real, dimension(:,:,:), pointer :: u_star  =>NULL()
+   real, dimension(:,:,:), pointer :: t_flux  =>NULL()
+   real, dimension(:,:,:), pointer :: q_flux  =>NULL()
+   real, dimension(:,:,:), pointer :: lw_flux =>NULL()
+   real, dimension(:,:,:), pointer :: sw_flux_vis_dir =>NULL()
+   real, dimension(:,:,:), pointer :: sw_flux_vis_dif =>NULL()
+   real, dimension(:,:,:), pointer :: sw_flux_nir_dir =>NULL()
+   real, dimension(:,:,:), pointer :: sw_flux_nir_dif =>NULL()
+   real, dimension(:,:,:), pointer :: lprec   =>NULL()
+   real, dimension(:,:,:), pointer :: fprec   =>NULL()
+   real, dimension(:,:,:), pointer :: dhdt    =>NULL()
+   real, dimension(:,:,:), pointer :: dedt    =>NULL()
+   real, dimension(:,:,:), pointer :: drdt    =>NULL()
+   real, dimension(:,:,:), pointer :: coszen  =>NULL()
+   real, dimension(:,:,:), pointer :: p       =>NULL()
+   real, dimension(:,:,:), pointer :: data    =>NULL()
+   integer                         :: xtype
+   type(coupler_3d_bc_type)        :: fluxes     ! array of fluxes used for additional tracers
+end type
+
+type :: land_ice_boundary_type
+   real, dimension(:,:),   pointer :: runoff  =>NULL()
+   real, dimension(:,:),   pointer :: calving =>NULL()
+   real, dimension(:,:),   pointer :: runoff_hflx  =>NULL()
+   real, dimension(:,:),   pointer :: calving_hflx =>NULL()
+   real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
+   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
+end type
+
 
   integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
              iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
@@ -292,78 +342,6 @@ end type ice_data_type !  ice_public_type
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_stock_pe(Ice, index, value)
-
-  use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
-
-  type(ice_data_type) :: Ice
-  integer, intent(in) :: index
-  real, intent(out)   :: value
-  type(ice_state_type), pointer :: IST => NULL()
-
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
-  real :: icebergs_value
-
-  value = 0.0
-  if(.not.Ice%pe) return
-
-  IST => Ice%Ice_state
-
-  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
-  ncat = Ice%G%CatIce
-
-  select case (index)
-
-    case (ISTOCK_WATER)
-
-      value = 0.0
-      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
-      enddo ; enddo ; enddo
-
-    case (ISTOCK_HEAT)
-
-      value = 0.0
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
-          if (IST%slab_ice) then
-            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                           IST%h_ice(i,j,2)*IST%Rho_ice*LI
-          else
-            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                            e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
-                                      IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
-                                      IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
-                                      IST%t_ice(i,j,k,4) )
-          endif
-        endif
-      enddo ; enddo ; enddo
-
-    case (ISTOCK_SALT)
-      !No salt in the h_snow component.
-      value = 0.0
-      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
-      enddo ; enddo ; enddo
-
-    case default
-
-      value = 0.0
-
-  end select
-
-  if (IST%do_icebergs) then
-    call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
-    value = value + icebergs_value
-  endif
-
-end subroutine ice_stock_pe
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_init - initializes ice model data, parameters and diagnostics      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
@@ -371,16 +349,16 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   type(ice_data_type), intent(inout) :: Ice
   type(time_type)    , intent(in)    :: Time_Init      ! starting time of model integration
   type(time_type)    , intent(in)    :: Time           ! current time
-    type(time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
-    type(time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
+  type(time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
+  type(time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
 
+! This include declares and sets the variable "version".
+#include "version_variable.h"
   logical :: x_cyclic, tripolar_grid
-  integer :: nlon, nlat, npart, log_unit, k
-  integer :: sc, dy, i, j, l, i2, j2, k2, i_off, j_off
-  integer :: isc, iec, jsc, jec
-  integer :: CatIce, nCat_dflt
-  character(len=128) :: restart_file
   real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
+  integer :: i, j, k, l, i2, j2, k2, i_off, j_off
+  integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
+  character(len=128) :: restart_file
   character(len=40)  :: mod = "ice_model" ! This module's name.
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
@@ -396,11 +374,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%G)
   G => Ice%G
 
-  ! read namelist and write to logfile
-
+  ! Open the parameter file.
   call Get_SIS_Input(param_file)
-
-  call write_version_number( version, tagname )
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
@@ -544,7 +519,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 !    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
 
 
-
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -571,23 +545,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   restart_file = 'INPUT/ice_model.res.nc'
   if (file_exist(restart_file)) then
     call restore_state(Ice_restart)
-
-!    if ( .NOT.query_initialized(Ice_restart, id_restart_flux_sw) ) then
-!      call error_mesg ('ice_model_init', &
-!         'Restart file does not contain flux_sw_* subcomponents!', WARNING)
-!      ! for compatibility with preN restarts, we should check for total SW flux 
-!      if (field_exist(restart_file,'flux_sw')) then
-!        call read_data( restart_file, 'flux_sw', Ice%flux_sw_vis_dir, domain) 
-!        ! simplest way to break the total flux to 4 components
-!        Ice%flux_sw_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:) / 4
-!        Ice%flux_sw_vis_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-!        Ice%flux_sw_nir_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
-!        Ice%flux_sw_nir_dif(:,:) = Ice%flux_sw_vis_dir(:,:)
-!      else
-!        call error_mesg ('ice_model_init', &
-!             'Restart file does not contain flux_sw total or its components!', FATAL)
-!      endif
-!    endif
 
     !--- update the halo values.
     call pass_var(IST%part_size, Ice%G%Domain, complete=.false.)
@@ -693,7 +650,7 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
   ! registers the appopriate ones for inclusion in the restart file.
-  integer :: isc, iec, jsc, jec, km, id_restart
+  integer :: isc, iec, jsc, jec, km, idr
 
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
@@ -739,39 +696,39 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 
 
   ! Now register some of these arrays to be read from the restart files.
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
+  idr = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
                                       domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
+  idr = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
                                       domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
+  idr = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
                                       domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
+  idr = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
                                       domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
 
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
                                       domain=domain)    
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
                                       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
                                       domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
                                       domain=domain)
 end subroutine ice_data_type_register_restarts
 
@@ -788,7 +745,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   character(len=*),        intent(in)    :: restart_file
   
   type(domain2d), pointer :: domain
-  integer :: CatIce, id_restart
+  integer :: CatIce, idr
 
   CatIce = G%CatIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
@@ -840,18 +797,18 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
 
   ! Now register some of these arrays to be read from the restart files.
   domain => G%domain%mpp_domain
-  id_restart = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
-  id_restart = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
 
@@ -860,10 +817,7 @@ end subroutine ice_state_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_model_end (Ice)
   type(ice_data_type), intent(inout) :: Ice
-  integer           :: k
 
-  integer           :: unit
-  character(len=22) :: restart='RESTART/ice_model.res'
   type(ice_state_type), pointer :: IST => NULL()
 
   IST => Ice%Ice_state
@@ -872,7 +826,24 @@ subroutine ice_model_end (Ice)
   call ice_model_restart()
 
   !--- release memory ------------------------------------------------
+
+  call ice_dyn_end(IST%ice_dyn_CSp)
+  call ice_transport_end(IST%ice_transport_CSp)
+
   call ice_grid_end(Ice%G)
+  call dealloc_Ice_arrays(Ice)
+  call dealloc_IST_arrays(IST)
+
+  ! End icebergs
+  if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
+  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
+  
+  deallocate(Ice%Ice_state)
+
+end subroutine ice_model_end
+
+subroutine dealloc_Ice_arrays(Ice)
+  type(ice_data_type), intent(inout) :: Ice
 
   deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf)
   deallocate(Ice%u_surf, Ice%v_surf, Ice%part_size)
@@ -887,6 +858,10 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif)
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif)
   deallocate(Ice%area, Ice%mi)
+end subroutine dealloc_Ice_arrays
+
+subroutine dealloc_IST_arrays(IST)
+  type(ice_state_type), intent(inout) :: IST
 
   deallocate(IST%t_surf, IST%s_surf, IST%sea_lev)
   deallocate(IST%part_size, IST%part_size_uv)
@@ -907,17 +882,7 @@ subroutine ice_model_end (Ice)
   deallocate(IST%u_ice, IST%v_ice, IST%h_snow, IST%t_snow)
   deallocate(IST%h_ice, IST%t_ice)
 
-  call ice_dyn_end(IST%ice_dyn_CSp)
-  call ice_transport_end(IST%ice_transport_CSp)
-
-  ! End icebergs
-  if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
-  
-  deallocate(Ice%Ice_state)
-
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
-
-end subroutine ice_model_end
+end subroutine dealloc_IST_arrays
 
 subroutine ice_print_budget(IST)
   type(ice_state_type), intent(inout) :: IST
@@ -1145,7 +1110,77 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 
 end subroutine ice_diagnostics_init
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_stock_pe(Ice, index, value)
 
+  use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
+
+  type(ice_data_type) :: Ice
+  integer, intent(in) :: index
+  real, intent(out)   :: value
+  type(ice_state_type), pointer :: IST => NULL()
+
+  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  real :: icebergs_value
+
+  value = 0.0
+  if(.not.Ice%pe) return
+
+  IST => Ice%Ice_state
+
+  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
+  ncat = Ice%G%CatIce
+
+  select case (index)
+
+    case (ISTOCK_WATER)
+
+      value = 0.0
+      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
+               IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+      enddo ; enddo ; enddo
+
+    case (ISTOCK_HEAT)
+
+      value = 0.0
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
+          if (IST%slab_ice) then
+            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+                           IST%h_ice(i,j,2)*IST%Rho_ice*LI
+          else
+            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+                            e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
+                                      IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
+                                      IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
+                                      IST%t_ice(i,j,k,4) )
+          endif
+        endif
+      enddo ; enddo ; enddo
+
+    case (ISTOCK_SALT)
+      !No salt in the h_snow component.
+      value = 0.0
+      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
+               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+      enddo ; enddo ; enddo
+
+    case default
+
+      value = 0.0
+
+  end select
+
+  if (IST%do_icebergs) then
+    call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
+    value = value + icebergs_value
+  endif
+
+end subroutine ice_stock_pe
 
 subroutine ice_data_type_chksum(id, timestep, Ice)
   use fms_mod,                 only: stdout
@@ -1232,6 +1267,88 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 101 FORMAT("   CHECKSUM::",A16,a,'%',a," = ",Z20)
 
 end subroutine ice_data_type_chksum
+
+
+subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
+  use fms_mod,                 only: stdout
+  use mpp_mod,                 only: mpp_chksum
+
+  character(len=*), intent(in) :: id
+  integer         , intent(in) :: timestep
+  type(ocean_ice_boundary_type), intent(in) :: bnd_type
+  integer ::   n, m, outunit
+
+  outunit = stdout()
+  write(outunit,*) 'BEGIN CHECKSUM(ocean_ice_boundary_type):: ', id, timestep
+  write(outunit,100) 'ocn_ice_bnd_type%u        ',mpp_chksum(bnd_type%u        )
+  write(outunit,100) 'ocn_ice_bnd_type%v        ',mpp_chksum(bnd_type%v        )
+  write(outunit,100) 'ocn_ice_bnd_type%t        ',mpp_chksum(bnd_type%t        )
+  write(outunit,100) 'ocn_ice_bnd_type%s        ',mpp_chksum(bnd_type%s        )
+  write(outunit,100) 'ocn_ice_bnd_type%frazil   ',mpp_chksum(bnd_type%frazil   )
+  write(outunit,100) 'ocn_ice_bnd_type%sea_level',mpp_chksum(bnd_type%sea_level)
+  !    write(outunit,100) 'ocn_ice_bnd_type%data     ',mpp_chksum(bnd_type%data     )
+  100 FORMAT("CHECKSUM::",A32," = ",Z20)
+
+  do n = 1, bnd_type%fields%num_bcs  !{
+    do m = 1, bnd_type%fields%bc(n)%num_fields  !{
+        write(outunit,101) 'oibt%',trim(bnd_type%fields%bc(n)%name), &
+             trim(bnd_type%fields%bc(n)%field(m)%name), &
+             mpp_chksum(bnd_type%fields%bc(n)%field(m)%values)
+    enddo  !} m
+  enddo  !} n
+  101 FORMAT("CHECKSUM::",A16,a,'%',a," = ",Z20)
+
+end subroutine ocn_ice_bnd_type_chksum
+
+subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
+  use fms_mod,                 only: stdout
+  use mpp_mod,                 only: mpp_chksum
+
+  character(len=*), intent(in) :: id
+  integer         , intent(in) :: timestep
+  type(atmos_ice_boundary_type), intent(in) :: bnd_type
+  integer ::   n, outunit
+
+  outunit = stdout()
+  write(outunit,*) 'BEGIN CHECKSUM(atmos_ice_boundary_type):: ', id, timestep
+  write(outunit,100) 'atm_ice_bnd_type%u_flux          ',mpp_chksum(bnd_type%u_flux)          
+  write(outunit,100) 'atm_ice_bnd_type%v_flux          ',mpp_chksum(bnd_type%v_flux)
+  write(outunit,100) 'atm_ice_bnd_type%u_star          ',mpp_chksum(bnd_type%u_star)
+  write(outunit,100) 'atm_ice_bnd_type%t_flux          ',mpp_chksum(bnd_type%t_flux)
+  write(outunit,100) 'atm_ice_bnd_type%q_flux          ',mpp_chksum(bnd_type%q_flux)
+  write(outunit,100) 'atm_ice_bnd_type%lw_flux         ',mpp_chksum(bnd_type%lw_flux)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ',mpp_chksum(bnd_type%sw_flux_vis_dir)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ',mpp_chksum(bnd_type%sw_flux_vis_dif)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ',mpp_chksum(bnd_type%sw_flux_nir_dir)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ',mpp_chksum(bnd_type%sw_flux_nir_dif)
+  write(outunit,100) 'atm_ice_bnd_type%lprec           ',mpp_chksum(bnd_type%lprec)
+  write(outunit,100) 'atm_ice_bnd_type%fprec           ',mpp_chksum(bnd_type%fprec)
+  write(outunit,100) 'atm_ice_bnd_type%dhdt            ',mpp_chksum(bnd_type%dhdt)
+  write(outunit,100) 'atm_ice_bnd_type%dedt            ',mpp_chksum(bnd_type%dedt)
+  write(outunit,100) 'atm_ice_bnd_type%drdt            ',mpp_chksum(bnd_type%drdt)
+  write(outunit,100) 'atm_ice_bnd_type%coszen          ',mpp_chksum(bnd_type%coszen)
+  write(outunit,100) 'atm_ice_bnd_type%p               ',mpp_chksum(bnd_type%p)
+!    write(outunit,100) 'atm_ice_bnd_type%data            ',mpp_chksum(bnd_type%data)
+100 FORMAT("CHECKSUM::",A32," = ",Z20)
+end subroutine atm_ice_bnd_type_chksum
+
+subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
+  use fms_mod,                 only: stdout
+  use mpp_mod,                 only: mpp_chksum
+
+  character(len=*), intent(in) :: id
+  integer         , intent(in) :: timestep
+  type(land_ice_boundary_type), intent(in) :: bnd_type
+  integer ::   n, outunit
+
+  outunit = stdout()
+  write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
+  write(outunit,100) 'lnd_ice_bnd_type%runoff  ',mpp_chksum(bnd_type%runoff)
+  write(outunit,100) 'lnd_ice_bnd_type%calving ',mpp_chksum(bnd_type%calving)
+  !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
+  100 FORMAT("CHECKSUM::",A32," = ",Z20)
+end subroutine lnd_ice_bnd_type_chksum
+
 
 
 subroutine check_ice_model_nml(param_file)

@@ -44,15 +44,18 @@ use astronomy_mod,    only: universal_time, orbital_time, diurnal_solar, daily_m
   use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
-use ice_type_mod,     only: ice_data_type, ice_state_type
   use ice_type_mod,     only: ice_model_init, ice_model_end, &
                               iceClock, &
                               iceClock1, iceClock2, iceClock3, &
                               iceClock4, iceClock5, iceClock6, &
                               iceClock7, iceClock8, iceClock9, &
                               iceClocka, iceClockb, iceClockc, &
-                              ice_stock_pe, ice_model_restart, &
-                              ice_data_type_chksum
+                              ice_stock_pe, ice_model_restart
+use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
+use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
+use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
+
 use ice_grid_mod,     only: get_avg, ice_line, cell_area
 use ice_grid_mod,     only: sea_ice_grid_type
 use ice_spec_mod,     only: get_sea_surface
@@ -77,56 +80,6 @@ public :: ice_model_restart  ! for intermediate restart
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 
-  !
-  ! the following three types are for data exchange with the new coupler
-  ! they are defined here but declared in coupler_main and allocated in flux_init
-  !
-  type :: ocean_ice_boundary_type
-     real, dimension(:,:),   pointer :: u         =>NULL()
-     real, dimension(:,:),   pointer :: v         =>NULL()
-     real, dimension(:,:),   pointer :: t         =>NULL()
-     real, dimension(:,:),   pointer :: s         =>NULL()
-     real, dimension(:,:),   pointer :: frazil    =>NULL()
-     real, dimension(:,:),   pointer :: sea_level =>NULL()
-     real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
-     integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
-     type(coupler_2d_bc_type)        :: fields     ! array of fields used for additional tracers
-  end type 
-
-  type :: atmos_ice_boundary_type 
-     real, dimension(:,:,:), pointer :: u_flux  =>NULL()
-     real, dimension(:,:,:), pointer :: v_flux  =>NULL()
-     real, dimension(:,:,:), pointer :: u_star  =>NULL()
-     real, dimension(:,:,:), pointer :: t_flux  =>NULL()
-     real, dimension(:,:,:), pointer :: q_flux  =>NULL()
-     real, dimension(:,:,:), pointer :: lw_flux =>NULL()
-     real, dimension(:,:,:), pointer :: sw_flux_vis_dir =>NULL()
-     real, dimension(:,:,:), pointer :: sw_flux_vis_dif =>NULL()
-     real, dimension(:,:,:), pointer :: sw_flux_nir_dir =>NULL()
-     real, dimension(:,:,:), pointer :: sw_flux_nir_dif =>NULL()
-     real, dimension(:,:,:), pointer :: lprec   =>NULL()
-     real, dimension(:,:,:), pointer :: fprec   =>NULL()
-     real, dimension(:,:,:), pointer :: dhdt    =>NULL()
-     real, dimension(:,:,:), pointer :: dedt    =>NULL()
-     real, dimension(:,:,:), pointer :: drdt    =>NULL()
-     real, dimension(:,:,:), pointer :: coszen  =>NULL()
-     real, dimension(:,:,:), pointer :: p       =>NULL()
-     real, dimension(:,:,:), pointer :: data    =>NULL()
-     integer                         :: xtype
-     type(coupler_3d_bc_type)        :: fluxes     ! array of fluxes used for additional tracers
-  end type
-
-  type :: land_ice_boundary_type
-     real, dimension(:,:),   pointer :: runoff  =>NULL()
-     real, dimension(:,:),   pointer :: calving =>NULL()
-     real, dimension(:,:),   pointer :: runoff_hflx  =>NULL()
-     real, dimension(:,:),   pointer :: calving_hflx =>NULL()
-     real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
-     integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
-  end type
-
-  logical :: first_time = .true.               ! first time ice_bottom_to_ice_top
-
 interface post_avg
   module procedure post_avg_all, post_avg_G
 end interface post_avg
@@ -140,7 +93,7 @@ contains
 subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
   type(land_ice_boundary_type),  intent(inout) :: Land_boundary
-  type (ice_data_type),          intent(inout) :: Ice
+  type(ice_data_type),           intent(inout) :: Ice
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock2)
@@ -193,7 +146,7 @@ end subroutine zero_top_quantities
 subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v, flux_t,  flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
        flux_lw, lprec, fprec, flux_lh, G)
-  type (ice_data_type),             intent(inout) :: Ice
+  type(ice_data_type),              intent(inout) :: Ice
   type(ice_state_type),             intent(inout) :: IST
   type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
   type(sea_ice_grid_type),          intent(inout) :: G
@@ -386,7 +339,7 @@ end subroutine avg_top_quantities
 !   state to the public ice data type for use by the ocean model.              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
-  type (ice_data_type), intent(inout) :: Ice
+  type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension (G%isc:G%iec,G%jsc:G%jec,0:G%CatIce), intent(in) :: part_size, part_size_uv
@@ -436,7 +389,7 @@ end subroutine ice_top_to_ice_bottom
 !
 subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
-  type (ice_data_type),          intent(inout) :: Ice
+  type(ice_data_type),           intent(inout) :: Ice
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock1)
@@ -451,8 +404,8 @@ end subroutine update_ice_model_slow_up
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_bottom_to_ice_top - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
-                                  frazil_ice_bot, OIB, G, s_surf_ice_bot, sea_lev_ice_bot )
+subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
+                                 frazil_ice_bot, OIB, G, s_surf_ice_bot, sea_lev_ice_bot )
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
   type(sea_ice_grid_type),                 intent(inout) :: G
@@ -499,7 +452,7 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
     IST%do_init = .false.
   endif
 
-  if (first_time .and. IST%conservation_check) then
+  if (IST%first_time .and. IST%conservation_check) then
     IST%h2o(:) = 0.0
     IST%salt(:) = 0.0
     IST%heat(:) = 0.0
@@ -520,9 +473,10 @@ subroutine ice_bottom_to_ice_top (Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_su
         endif
       endif
     enddo ; enddo ; enddo
-
-    first_time = .false.
   endif
+
+  ! Any special first-time initialization must be completed before this point.
+  IST%first_time = .false.
 
   do j=jsc,jec ; do i=isc,iec
     sst(i,j) = IST%t_surf(i,j,0) - Tfreeze
@@ -1594,85 +1548,5 @@ function is_NaN(x)
             (.not.(x < 0.0) .and. .not.(x >= 0.0)))
 
 end function is_nan
-
-subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
-  use fms_mod,                 only: stdout
-  use mpp_mod,                 only: mpp_chksum
-
-  character(len=*), intent(in) :: id
-  integer         , intent(in) :: timestep
-  type(ocean_ice_boundary_type), intent(in) :: bnd_type
-  integer ::   n, m, outunit
-
-  outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(ocean_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'ocn_ice_bnd_type%u        ',mpp_chksum(bnd_type%u        )
-  write(outunit,100) 'ocn_ice_bnd_type%v        ',mpp_chksum(bnd_type%v        )
-  write(outunit,100) 'ocn_ice_bnd_type%t        ',mpp_chksum(bnd_type%t        )
-  write(outunit,100) 'ocn_ice_bnd_type%s        ',mpp_chksum(bnd_type%s        )
-  write(outunit,100) 'ocn_ice_bnd_type%frazil   ',mpp_chksum(bnd_type%frazil   )
-  write(outunit,100) 'ocn_ice_bnd_type%sea_level',mpp_chksum(bnd_type%sea_level)
-  !    write(outunit,100) 'ocn_ice_bnd_type%data     ',mpp_chksum(bnd_type%data     )
-  100 FORMAT("CHECKSUM::",A32," = ",Z20)
-
-  do n = 1, bnd_type%fields%num_bcs  !{
-    do m = 1, bnd_type%fields%bc(n)%num_fields  !{
-        write(outunit,101) 'oibt%',trim(bnd_type%fields%bc(n)%name), &
-             trim(bnd_type%fields%bc(n)%field(m)%name), &
-             mpp_chksum(bnd_type%fields%bc(n)%field(m)%values)
-    enddo  !} m
-  enddo  !} n
-  101 FORMAT("CHECKSUM::",A16,a,'%',a," = ",Z20)
-
-end subroutine ocn_ice_bnd_type_chksum
-
-subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
-  use fms_mod,                 only: stdout
-  use mpp_mod,                 only: mpp_chksum
-
-  character(len=*), intent(in) :: id
-  integer         , intent(in) :: timestep
-  type(atmos_ice_boundary_type), intent(in) :: bnd_type
-  integer ::   n, outunit
-
-  outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(atmos_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'atm_ice_bnd_type%u_flux          ',mpp_chksum(bnd_type%u_flux)          
-  write(outunit,100) 'atm_ice_bnd_type%v_flux          ',mpp_chksum(bnd_type%v_flux)
-  write(outunit,100) 'atm_ice_bnd_type%u_star          ',mpp_chksum(bnd_type%u_star)
-  write(outunit,100) 'atm_ice_bnd_type%t_flux          ',mpp_chksum(bnd_type%t_flux)
-  write(outunit,100) 'atm_ice_bnd_type%q_flux          ',mpp_chksum(bnd_type%q_flux)
-  write(outunit,100) 'atm_ice_bnd_type%lw_flux         ',mpp_chksum(bnd_type%lw_flux)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ',mpp_chksum(bnd_type%sw_flux_vis_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ',mpp_chksum(bnd_type%sw_flux_vis_dif)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ',mpp_chksum(bnd_type%sw_flux_nir_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ',mpp_chksum(bnd_type%sw_flux_nir_dif)
-  write(outunit,100) 'atm_ice_bnd_type%lprec           ',mpp_chksum(bnd_type%lprec)
-  write(outunit,100) 'atm_ice_bnd_type%fprec           ',mpp_chksum(bnd_type%fprec)
-  write(outunit,100) 'atm_ice_bnd_type%dhdt            ',mpp_chksum(bnd_type%dhdt)
-  write(outunit,100) 'atm_ice_bnd_type%dedt            ',mpp_chksum(bnd_type%dedt)
-  write(outunit,100) 'atm_ice_bnd_type%drdt            ',mpp_chksum(bnd_type%drdt)
-  write(outunit,100) 'atm_ice_bnd_type%coszen          ',mpp_chksum(bnd_type%coszen)
-  write(outunit,100) 'atm_ice_bnd_type%p               ',mpp_chksum(bnd_type%p)
-!    write(outunit,100) 'atm_ice_bnd_type%data            ',mpp_chksum(bnd_type%data)
-100 FORMAT("CHECKSUM::",A32," = ",Z20)
-end subroutine atm_ice_bnd_type_chksum
-
-subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
-  use fms_mod,                 only: stdout
-  use mpp_mod,                 only: mpp_chksum
-
-  character(len=*), intent(in) :: id
-  integer         , intent(in) :: timestep
-  type(land_ice_boundary_type), intent(in) :: bnd_type
-  integer ::   n, outunit
-
-  outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'lnd_ice_bnd_type%runoff  ',mpp_chksum(bnd_type%runoff)
-  write(outunit,100) 'lnd_ice_bnd_type%calving ',mpp_chksum(bnd_type%calving)
-  !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
-  100 FORMAT("CHECKSUM::",A32," = ",Z20)
-end subroutine lnd_ice_bnd_type_chksum
 
 end module ice_model_mod
