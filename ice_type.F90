@@ -70,9 +70,9 @@ type ice_state_type
   type(time_type) :: Time_Init, Time
   type(time_type) :: Time_step_fast, Time_step_slow
   integer :: avg_count
-   logical                            :: pe
+!   logical                            :: pe
 
-   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
+!   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
   real, pointer, dimension(:,:,:) :: &
     part_size =>NULL(), &  ! The fractional coverage of a grid cell by each ice
                            ! thickness category, nondim, 0 to 1.  Category 0 is
@@ -129,25 +129,23 @@ type ice_state_type
     fprec_top           =>NULL()    ! The downward flux of frozen precipitation
                                     ! at the top of the ice, in kg m-2 s-1.
 
-  real,    pointer, dimension(:,:)   :: lwdn                =>NULL() ! Accumulated diagnostics of
-  real,    pointer, dimension(:,:  ) :: swdn                =>NULL() ! downward long/shortwave
-  real,    pointer, dimension(:,:,:) :: pen                 =>NULL()
-  real,    pointer, dimension(:,:,:) :: trn                 =>NULL() ! ice optical parameters
-  real,    pointer, dimension(:,:,:) :: sw_abs_sfc          =>NULL() ! frac abs sw abs @ surf.
-  real,    pointer, dimension(:,:,:) :: sw_abs_snow         =>NULL() ! frac abs sw abs in snow
-  real,    pointer, dimension(:,:,:,:) :: sw_abs_ice        =>NULL() ! frac abs sw abs in ice layers
-  real,    pointer, dimension(:,:,:) :: sw_abs_ocn          =>NULL() ! frac abs sw abs in ocean
-  real,    pointer, dimension(:,:,:) :: sw_abs_int          =>NULL() ! frac abs sw abs in ice interior
-  real,    pointer, dimension(:,:)   :: coszen              =>NULL()
-  real,    pointer, dimension(:,:,:) :: tmelt               =>NULL()
-  real,    pointer, dimension(:,:,:) :: bmelt               =>NULL()
+  !  ### ADD BETTER COMMENTS, WITH UNITS.
+  real, pointer, dimension(:,:)   :: lwdn         =>NULL() ! Accumulated diagnostics of
+  real, pointer, dimension(:,:  ) :: swdn         =>NULL() ! downward long/shortwave
+  real, pointer, dimension(:,:,:) :: pen          =>NULL()
+  real, pointer, dimension(:,:,:) :: trn          =>NULL() ! ice optical parameters
+  real, pointer, dimension(:,:,:) :: sw_abs_sfc   =>NULL() ! frac abs sw abs @ surf.
+  real, pointer, dimension(:,:,:) :: sw_abs_snow  =>NULL() ! frac abs sw abs in snow
+  real, pointer, dimension(:,:,:,:) :: sw_abs_ice =>NULL() ! frac abs sw abs in ice layers
+  real, pointer, dimension(:,:,:) :: sw_abs_ocn   =>NULL() ! frac abs sw abs in ocean
+  real, pointer, dimension(:,:,:) :: sw_abs_int   =>NULL() ! frac abs sw abs in ice interior
+  real, pointer, dimension(:,:)   :: coszen       =>NULL()
+  real, pointer, dimension(:,:,:) :: tmelt        =>NULL()
+  real, pointer, dimension(:,:,:) :: bmelt        =>NULL()
 
-  real,    pointer, dimension(:,:)   :: frazil              =>NULL()
-  real,    pointer, dimension(:,:)   :: bheat               =>NULL()
-   real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
-                                                                      ! because flux_ice_to_ocean cannot handle 3D fields. This may be
-								! removed, if the information on ice thickness can be derived from 
-								! eventually from h_ice outside the ice module.
+  real, pointer, dimension(:,:)   :: frazil       =>NULL()
+  real, pointer, dimension(:,:)   :: bheat        =>NULL()
+  real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
@@ -158,34 +156,25 @@ type ice_state_type
                             ! no need for ice dynamics.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
 
-                  !### FIX THESE COMMENTS.
-  logical :: atmos_winds ! wind stress from atmosphere model over t points and has wrong sign
-  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
-  real :: heat_rough_ice ! heat roughness length, in m.
-  real :: kmelt          ! ocean/ice heat flux constant, W m-2 K-1.
-  real :: k_snow         ! snow conductivity (W/mK)
-  real :: ice_bulk_salin ! ice bulk salinity (for ocean salt flux), in kg/kg.
-  real :: alb_snow       ! snow albedo (less if melting), nondim.
-  real :: alb_ice        ! ice albedo (less if melting), nondim.
-  real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
-  real :: opt_dep_ice  ! ice optical depth, in m-1.
-  real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
-  logical :: do_ice_restore   ! restore sea-ice toward climatology
-  real    :: ice_restore_timescale ! time scale for restoring ice (days)
-  logical :: do_ice_limit   ! limit sea ice to max_ice_limit
-  real    :: max_ice_limit  ! The maximum sea ice height, in m,
-                            ! if do_ice_limit is true
+  logical :: atmos_winds ! The wind stresses come directly from the atmosphere
+                         ! model and have the wrong sign.
+  real :: kmelt          ! A constant that is used in the calculation of the 
+                         ! ocean/ice basal heat flux, in W m-2 K-1.
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in kg/kg
+                         ! that is used to calculate the ocean salt flux.
+  logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
+                            ! by applying a restorative heat flux.
+  real    :: ice_restore_timescale ! The time scale for restoring ice when
+                            ! do_ice_restore is true, in days.
+  logical :: do_ice_limit   ! Limit the sea ice thickness to max_ice_limit.
+  real    :: max_ice_limit  ! The maximum sea ice thickness, in m, when
+                            ! do_ice_limit is true.
   logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
-  real    :: h_lo_lim   ! The min ice thickness for temp. calc, in m.
-  logical :: verbose    ! control printing message, will slow model down when turn true
+  logical :: verbose    ! A flag to control the printing of an ice-diagnostic 
+                        ! message.  When true, this will slow the model down.
   logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
-  logical :: do_deltaEdd  ! If true, a delta-Eddington radiative transfer calculation
-                          ! for the shortwave radiation within the sea-ice.
-  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
 
   real    :: h2o(4), heat(4), salt(4) ! for conservation analysis
                              ! 1 - initial ice h2o/heat content
@@ -234,46 +223,49 @@ type ice_data_type !  ice_public_type
   logical                            :: pe
   integer, pointer, dimension(:)     :: pelist              =>NULL() ! Used for flux-exchange.
      logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
-  logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Size only?)
-  real,    pointer, dimension(:,:,:) :: part_size           =>NULL()
-  real,    pointer, dimension(:,:,:) :: albedo              =>NULL()
-  real,    pointer, dimension(:,:,:) :: albedo_vis_dir      =>NULL()
-  real,    pointer, dimension(:,:,:) :: albedo_nir_dir      =>NULL()
-  real,    pointer, dimension(:,:,:) :: albedo_vis_dif      =>NULL()
-  real,    pointer, dimension(:,:,:) :: albedo_nir_dif      =>NULL()
-  real,    pointer, dimension(:,:,:) :: rough_mom           =>NULL()
-  real,    pointer, dimension(:,:,:) :: rough_heat          =>NULL()
-  real,    pointer, dimension(:,:,:) :: rough_moist         =>NULL()
-  real,    pointer, dimension(:,:,:) :: t_surf              =>NULL()
-  real,    pointer, dimension(:,:,:) :: u_surf              =>NULL()
-  real,    pointer, dimension(:,:,:) :: v_surf              =>NULL()
-  real,    pointer, dimension(:,:)   :: s_surf              =>NULL()
+  logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Used for k-size only?)
+
+  !### ADD COMMENTS DESCRIBING EACH FIELD.
+  real, pointer, dimension(:,:,:) :: part_size      =>NULL()
+  real, pointer, dimension(:,:,:) :: albedo         =>NULL()
+  real, pointer, dimension(:,:,:) :: albedo_vis_dir =>NULL()
+  real, pointer, dimension(:,:,:) :: albedo_nir_dir =>NULL()
+  real, pointer, dimension(:,:,:) :: albedo_vis_dif =>NULL()
+  real, pointer, dimension(:,:,:) :: albedo_nir_dif =>NULL()
+  real, pointer, dimension(:,:,:) :: rough_mom      =>NULL()
+  real, pointer, dimension(:,:,:) :: rough_heat     =>NULL()
+  real, pointer, dimension(:,:,:) :: rough_moist    =>NULL()
+  real, pointer, dimension(:,:,:) :: t_surf         =>NULL()
+  real, pointer, dimension(:,:,:) :: u_surf         =>NULL()
+  real, pointer, dimension(:,:,:) :: v_surf         =>NULL()
+  real, pointer, dimension(:,:)   :: s_surf         =>NULL()
 
   ! These arrays will be used to set the forcing for the ocean.
-  real,    pointer, dimension(:,:  ) :: flux_u              =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_v              =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_t              =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_q              =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_lw             =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_sw_vis_dir     =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_sw_vis_dif     =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_sw_nir_dir     =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_sw_nir_dif     =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_lh             =>NULL()
-  real,    pointer, dimension(:,:  ) :: lprec               =>NULL()
-  real,    pointer, dimension(:,:  ) :: fprec               =>NULL()
-  real,    pointer, dimension(:,:  ) :: p_surf              =>NULL()
-  real,    pointer, dimension(:,:  ) :: runoff              =>NULL()
-  real,    pointer, dimension(:,:  ) :: calving             =>NULL()
-  real,    pointer, dimension(:,:  ) :: runoff_hflx         =>NULL()
-  real,    pointer, dimension(:,:  ) :: calving_hflx        =>NULL()
-  real,    pointer, dimension(:,:  ) :: flux_salt           =>NULL()
+  real, pointer, dimension(:,:) :: flux_u       =>NULL()
+  real, pointer, dimension(:,:) :: flux_v       =>NULL()
+  real, pointer, dimension(:,:) :: flux_t       =>NULL()
+  real, pointer, dimension(:,:) :: flux_q       =>NULL()
+  real, pointer, dimension(:,:) :: flux_lw      =>NULL()
+  real, pointer, dimension(:,:) :: flux_sw_vis_dir =>NULL()
+  real, pointer, dimension(:,:) :: flux_sw_vis_dif =>NULL()
+  real, pointer, dimension(:,:) :: flux_sw_nir_dir =>NULL()
+  real, pointer, dimension(:,:) :: flux_sw_nir_dif =>NULL()
+  real, pointer, dimension(:,:) :: flux_lh      =>NULL()
+  real, pointer, dimension(:,:) :: lprec        =>NULL()
+  real, pointer, dimension(:,:) :: fprec        =>NULL()
+  real, pointer, dimension(:,:) :: p_surf       =>NULL()
+  real, pointer, dimension(:,:) :: runoff       =>NULL()
+  real, pointer, dimension(:,:) :: calving      =>NULL()
+  real, pointer, dimension(:,:) :: runoff_hflx  =>NULL()
+  real, pointer, dimension(:,:) :: calving_hflx =>NULL()
+  real, pointer, dimension(:,:) :: flux_salt    =>NULL()
 
-  real,    pointer, dimension(:,:)   :: area                =>NULL()
-  real,    pointer, dimension(:,:)   :: mi                  =>NULL() ! This is needed for the wave model. It is introduced here,
-                                                                     ! because flux_ice_to_ocean cannot handle 3D fields. This may be
-								! removed, if the information on ice thickness can be derived from 
-								! eventually from h_ice outside the ice module.
+  real, pointer, dimension(:,:)   :: area         =>NULL()
+  real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
+             ! mi is needed for the wave model. It is introduced here,
+             ! because flux_ice_to_ocean cannot handle 3D fields. This may be
+			       ! removed, if the information on ice thickness can be derived from 
+			       ! eventually from h_ice outside the ice module.
   integer, dimension(3)              :: axes
   type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -288,49 +280,49 @@ end type ice_data_type !  ice_public_type
 !
 ! the following three types are for data exchange with the new coupler
 ! they are defined here but declared in coupler_main and allocated in flux_init
-!
+!   ###ADD COMMENTS DESCRIBING EACH FIELD!
 type :: ocean_ice_boundary_type
-   real, dimension(:,:),   pointer :: u         =>NULL()
-   real, dimension(:,:),   pointer :: v         =>NULL()
-   real, dimension(:,:),   pointer :: t         =>NULL()
-   real, dimension(:,:),   pointer :: s         =>NULL()
-   real, dimension(:,:),   pointer :: frazil    =>NULL()
-   real, dimension(:,:),   pointer :: sea_level =>NULL()
-   real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
-   integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
-   type(coupler_2d_bc_type)        :: fields     ! array of fields used for additional tracers
+  real, dimension(:,:),   pointer :: u         =>NULL()
+  real, dimension(:,:),   pointer :: v         =>NULL()
+  real, dimension(:,:),   pointer :: t         =>NULL()
+  real, dimension(:,:),   pointer :: s         =>NULL()
+  real, dimension(:,:),   pointer :: frazil    =>NULL()
+  real, dimension(:,:),   pointer :: sea_level =>NULL()
+  real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
+  integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
+  type(coupler_2d_bc_type)        :: fields     ! array of fields used for additional tracers
 end type 
 
 type :: atmos_ice_boundary_type 
-   real, dimension(:,:,:), pointer :: u_flux  =>NULL()
-   real, dimension(:,:,:), pointer :: v_flux  =>NULL()
-   real, dimension(:,:,:), pointer :: u_star  =>NULL()
-   real, dimension(:,:,:), pointer :: t_flux  =>NULL()
-   real, dimension(:,:,:), pointer :: q_flux  =>NULL()
-   real, dimension(:,:,:), pointer :: lw_flux =>NULL()
-   real, dimension(:,:,:), pointer :: sw_flux_vis_dir =>NULL()
-   real, dimension(:,:,:), pointer :: sw_flux_vis_dif =>NULL()
-   real, dimension(:,:,:), pointer :: sw_flux_nir_dir =>NULL()
-   real, dimension(:,:,:), pointer :: sw_flux_nir_dif =>NULL()
-   real, dimension(:,:,:), pointer :: lprec   =>NULL()
-   real, dimension(:,:,:), pointer :: fprec   =>NULL()
-   real, dimension(:,:,:), pointer :: dhdt    =>NULL()
-   real, dimension(:,:,:), pointer :: dedt    =>NULL()
-   real, dimension(:,:,:), pointer :: drdt    =>NULL()
-   real, dimension(:,:,:), pointer :: coszen  =>NULL()
-   real, dimension(:,:,:), pointer :: p       =>NULL()
-   real, dimension(:,:,:), pointer :: data    =>NULL()
-   integer                         :: xtype
-   type(coupler_3d_bc_type)        :: fluxes     ! array of fluxes used for additional tracers
+  real, dimension(:,:,:), pointer :: u_flux  =>NULL()
+  real, dimension(:,:,:), pointer :: v_flux  =>NULL()
+  real, dimension(:,:,:), pointer :: u_star  =>NULL()
+  real, dimension(:,:,:), pointer :: t_flux  =>NULL()
+  real, dimension(:,:,:), pointer :: q_flux  =>NULL()
+  real, dimension(:,:,:), pointer :: lw_flux =>NULL()
+  real, dimension(:,:,:), pointer :: sw_flux_vis_dir =>NULL()
+  real, dimension(:,:,:), pointer :: sw_flux_vis_dif =>NULL()
+  real, dimension(:,:,:), pointer :: sw_flux_nir_dir =>NULL()
+  real, dimension(:,:,:), pointer :: sw_flux_nir_dif =>NULL()
+  real, dimension(:,:,:), pointer :: lprec   =>NULL()
+  real, dimension(:,:,:), pointer :: fprec   =>NULL()
+  real, dimension(:,:,:), pointer :: dhdt    =>NULL()
+  real, dimension(:,:,:), pointer :: dedt    =>NULL()
+  real, dimension(:,:,:), pointer :: drdt    =>NULL()
+  real, dimension(:,:,:), pointer :: coszen  =>NULL()
+  real, dimension(:,:,:), pointer :: p       =>NULL()
+  real, dimension(:,:,:), pointer :: data    =>NULL()
+  integer                         :: xtype
+  type(coupler_3d_bc_type)        :: fluxes     ! array of fluxes used for additional tracers
 end type
 
 type :: land_ice_boundary_type
-   real, dimension(:,:),   pointer :: runoff  =>NULL()
-   real, dimension(:,:),   pointer :: calving =>NULL()
-   real, dimension(:,:),   pointer :: runoff_hflx  =>NULL()
-   real, dimension(:,:),   pointer :: calving_hflx =>NULL()
-   real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
-   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
+  real, dimension(:,:),   pointer :: runoff  =>NULL()
+  real, dimension(:,:),   pointer :: calving =>NULL()
+  real, dimension(:,:),   pointer :: runoff_hflx  =>NULL()
+  real, dimension(:,:),   pointer :: calving_hflx =>NULL()
+  real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
+  integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
 end type
 
 
@@ -363,6 +355,25 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
   type(sea_ice_grid_type), pointer :: G => NULL()
+  
+  ! Parameters that are read in and used to initialize other modules.  If those
+  ! other modules had control states, these would be moved to those modules.
+  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
+  real :: heat_rough_ice ! heat roughness length, in m.
+    ! Parameters that properly belong exclusively to ice_thm.
+  real :: alb_snow       ! snow albedo (less if melting), nondim.
+  real :: alb_ice        ! ice albedo (less if melting), nondim.
+  real :: k_snow         ! snow conductivity (W/mK)
+  real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
+  real :: opt_dep_ice  ! ice optical depth, in m-1.
+  real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
+  real    :: h_lo_lim   ! The min ice thickness for temp. calc, in m.
+  logical :: do_deltaEdd  ! If true, a delta-Eddington radiative transfer calculation
+                          ! for the shortwave radiation within the sea-ice.
+  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
+  
 
   if (associated(Ice%Ice_state)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -393,10 +404,10 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  units="kg m-3", default=330.0)
   call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
-  call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", IST%mom_rough_ice, &
+  call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
                  units="m", default=1.0e-4)
-  call get_param(param_file, mod, "HEAT_ROUGH_ICE", IST%heat_rough_ice, &
+  call get_param(param_file, mod, "HEAT_ROUGH_ICE", heat_rough_ice, &
                  "The default roughness length scale for the turbulent \n"//&
                  "transfer of heat into the ocean.", units="m", default=1.0e-4)
   call get_param(param_file, mod, "ICE_KMELT", IST%kmelt, &
@@ -405,22 +416,22 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "the product of the heat capacity per unit volume of sea \n"//&
                  "water times a molecular diffusive piston velocity.", &
                  units="W m-2 K-1", default=6e-5*4e6)
-  call get_param(param_file, mod, "SNOW_CONDUCT", IST%k_snow, &
+  call get_param(param_file, mod, "SNOW_CONDUCT", k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-  call get_param(param_file, mod, "SNOW_ALBEDO", IST%alb_snow, &
+  call get_param(param_file, mod, "SNOW_ALBEDO", alb_snow, &
                  "The albedo of dry snow atop sea ice.", units="nondim", &
                  default=0.85)
-  call get_param(param_file, mod, "ICE_ALBEDO", IST%alb_ice, &
+  call get_param(param_file, mod, "ICE_ALBEDO", alb_ice, &
                  "The albedo of dry bare sea ice.", units="nondim", &
                  default=0.5826)
-  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", IST%pen_ice, &
+  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", pen_ice, &
                  "The fraction of the unreflected shortwave radiation that \n"//&
                  "penetrates into the ice.", units="Nondimensional", default=0.3)
-  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", IST%opt_dep_ice, &
+  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", opt_dep_ice, &
                  "The optical depth of shortwave radiation in sea ice.", &
                  units="m", default=0.67)
-  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", IST%t_range_melt, &
+  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", t_range_melt, &
                  "The temperature range below freezing over which the \n"//&
                  "albedos are changed by partial melting.", units="degC", &
                  default=1.0)
@@ -454,7 +465,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
                  "the ocean.", default=.false.)
-  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", IST%h_lo_lim, &
+  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
   call get_param(param_file, mod, "VERBOSE", IST%verbose, &
@@ -467,19 +478,19 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", IST%do_sun_angle_for_alb, &
                  "If true, find the sun angle for calculating the ocean \n"//&
                  "albedo within the sea ice model.", default=.false.)
-  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", IST%do_deltaEdd, &
+  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", do_deltaEdd, &
                  "If true, a delta-Eddington radiative transfer calculation \n"//&
                  "for the shortwave radiation within the sea-ice.", default=.true.)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", IST%deltaEdd_R_ice, &
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of sea ice with the delta-Eddington radiative \n"//&
                  "transfer calculation.", units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", IST%deltaEdd_R_snow, &
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of snow on sea ice with the delta-Eddington \n"//&
                  "radiative transfer calculation.", &
                  units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", IST%deltaEdd_R_pond, &
+  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
                  "radiative transfer calculation.", units="perhaps nondimensional?", &
@@ -560,9 +571,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
 
-    Ice%rough_mom(:,:,:)   = IST%mom_rough_ice
-    Ice%rough_heat(:,:,:)  = IST%heat_rough_ice
-    Ice%rough_moist(:,:,:) = IST%heat_rough_ice
+    Ice%rough_mom(:,:,:)   = mom_rough_ice
+    Ice%rough_heat(:,:,:)  = heat_rough_ice
+    Ice%rough_moist(:,:,:) = heat_rough_ice
     IST%t_surf(:,:,:) = Tfreeze-5.0
     IST%t_snow(:,:,:) = -5.0
     IST%t_ice(:,:,:,:) = -5.0
@@ -597,8 +608,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
   call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
-  call ice_thm_param(IST%alb_snow, IST%alb_ice, IST%pen_ice, IST%opt_dep_ice, IST%slab_ice, &
-                     IST%t_range_melt, IST%k_snow, IST%h_lo_lim, IST%do_deltaEdd)
+  call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
+                     t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
 
   call close_param_file(param_file)
 
@@ -627,7 +638,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 
-  call shortwave_dEdd0_set_params(IST%deltaEdd_R_ice,IST%deltaEdd_R_snow,IST%deltaEdd_R_pond)
+  if (do_deltaEdd) &
+    call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
 
   call nullify_domain()
 
