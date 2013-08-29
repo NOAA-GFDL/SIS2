@@ -74,11 +74,9 @@ type ice_state_type
 
 !   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
   real, pointer, dimension(:,:,:) :: &
-    part_size =>NULL(), &  ! The fractional coverage of a grid cell by each ice
+    part_size =>NULL()     ! The fractional coverage of a grid cell by each ice
                            ! thickness category, nondim, 0 to 1.  Category 0 is
                            ! open ocean.  The sum of part_size is 1.
-    part_size_uv =>NULL()  ! The equivalent of part_size for B-grid velocity
-                           ! cells.  Nondim., and 0 to 1, sums to 1 on a cell.
 
   ! The following are the 6 variables that constitute the sea-ice state.
   real, pointer, dimension(:,:) :: &
@@ -446,8 +444,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "sign changed.", default=.true.)
   call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.004)
-!  call get_param(param_file, mod, "ICE_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
-!  call get_param(param_file, mod, "ICE_IO_LAYOUT?",  ###HANDLE THIS LIKE MOM6?
   call get_param(param_file, mod, "DO_ICE_RESTORE", IST%do_ice_restore, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
@@ -586,20 +582,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
-
-  IST%part_size_uv(:,:,:) = 0.0
-  IST%part_size_uv(:,:,0) = 1.0
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-    if(Ice%G%mask2dBu(i,j) > 0.5 ) then
-       IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
-                                       IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-    else
-       IST%part_size_uv(i,j,k) = 0.0
-    endif
-    IST%part_size_uv(i,j,1) = IST%part_size_uv(i,j,1) - IST%part_size_uv(i,j,k)
-  enddo ; enddo ; enddo
-
     
   call SIS_diag_mediator_init(Ice%G, param_file, IST%diag, component="SIS")
   call set_SIS_axes_info(Ice%G, param_file, IST%diag)
@@ -764,7 +746,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
   allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%part_size_uv(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%part_size_uv(:,:,:) = 0.0 !NR X
   allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
   allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
@@ -876,8 +857,7 @@ subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
 
   deallocate(IST%t_surf, IST%s_surf, IST%sea_lev)
-  deallocate(IST%part_size, IST%part_size_uv)
-  deallocate(IST%u_ocn, IST%v_ocn)
+  deallocate(IST%part_size, IST%u_ocn, IST%v_ocn)
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
   deallocate(IST%flux_t_top, IST%flux_q_top, IST%flux_lw_top)
@@ -1206,7 +1186,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   outunit = stdout()
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", id, timestep
   write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size          )
-! write(outunit,100) 'ice_data_type%part_size_uv       ',mpp_chksum(IST%part_size_uv       )
   write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo             )
   write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir     )
   write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir     )
@@ -1219,22 +1198,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf             )
   write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf             )
   write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf             )
-! write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(IST%sea_lev            )
   write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf             )
-! write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(IST%u_ocn              )
-! write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(IST%v_ocn              )
-! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
-! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
-! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
-! write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(IST%flux_q_top         )
-! write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(IST%flux_lw_top        )
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(IST%flux_sw_vis_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(IST%flux_sw_vis_dif_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(IST%flux_sw_nir_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(IST%flux_sw_nir_dif_top)
-! write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(IST%flux_lh_top        )
-! write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(IST%lprec_top          )
-! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
   write(outunit,100) 'ice_data_type%flux_u             ',mpp_chksum(Ice%flux_u             )
   write(outunit,100) 'ice_data_type%flux_v             ',mpp_chksum(Ice%flux_v             )
   write(outunit,100) 'ice_data_type%flux_t             ',mpp_chksum(Ice%flux_t             )
@@ -1251,6 +1215,22 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
+
+! write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(IST%sea_lev            )
+! write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(IST%u_ocn              )
+! write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(IST%v_ocn              )
+! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
+! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
+! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
+! write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(IST%flux_q_top         )
+! write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(IST%flux_lw_top        )
+! write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(IST%flux_sw_vis_dir_top)
+! write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(IST%flux_sw_vis_dif_top)
+! write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(IST%flux_sw_nir_dir_top)
+! write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(IST%flux_sw_nir_dif_top)
+! write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(IST%flux_lh_top        )
+! write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(IST%lprec_top          )
+! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
 !  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(IST%lwdn               )
 !  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
 !  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(IST%pen                )

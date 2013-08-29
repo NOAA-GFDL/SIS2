@@ -338,7 +338,9 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension (G%isd:G%ied,G%jsd:G%jed,0:G%CatIce), intent(in) :: part_size, part_size_uv
+  real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
+  real, dimension (SZI_(G),SZJB_(G),0:G%CatIce), intent(in) :: part_size_uv
+
   integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
@@ -431,20 +433,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call pass_var(IST%part_size(:,:,0), G%Domain, complete=.false. )
     call pass_var(IST%part_size(:,:,1), G%Domain, complete=.false. )
     call pass_var(IST%h_ice(:,:,1), G%Domain, complete=.true. )
-
-    IST%part_size_uv(:,:,:) = 0.0
-    IST%part_size_uv(:,:,0) = 1.0
-   
-   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      if(G%mask2dBu(i,j) > 0.5 ) then
-         IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
-                                         IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-      else
-         IST%part_size_uv(i,j,k) = 0.0
-      endif
-      IST%part_size_uv(i,j,0) = IST%part_size_uv(i,j,0) - IST%part_size_uv(i,j,k)
-    enddo ; enddo ; enddo
     IST%do_init = .false.
   endif
 
@@ -838,7 +826,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: hi_change, h2o_change, bsnk, tmp2d, mass
   real, dimension(SZI_(G),SZJ_(G),1:G%CatIce) :: snow_to_ice
   real, dimension(SZI_(G),SZJ_(G),0:G%CatIce) :: &
-    part_save, part_save_uv
+    part_save
+  real, dimension(SZIB_(G),SZJB_(G),0:G%CatIce) :: &
+    part_size_uv
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: dum1, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: tmp1, tmp2
@@ -903,12 +893,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call avg_top_quantities(Ice, IST, G) ! average fluxes from update_ice_model_fast
 
+
   do k=0,ncat ; do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     part_save(i,j,k) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    part_save_uv(i,j,k) = IST%part_size_uv(i,j,k)
-  enddo ; enddo ; enddo
+
   !
   ! conservation checks: top fluxes
   !
@@ -940,13 +929,27 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Dynamics
   !
 
+  part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
+  do k=1,ncat
+    !### ADD PARENTHESIS FOR REPRODUCIBILITY.
+    do j=jsc,jec ; do i=isc,iec
+      if(G%mask2dBu(i,j) > 0.5 ) then
+         part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
+                                         IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
+      else
+         part_size_uv(i,j,k) = 0.0
+      endif
+      part_size_uv(i,j,0) = part_size_uv(i,j,0) - part_size_uv(i,j,k)
+    enddo ; enddo
+  enddo
+
   call mpp_clock_begin(iceClock4)
   call get_avg(IST%h_snow, IST%part_size(:,:,1:), tmp1, wtd=.true.)
   call get_avg(IST%h_ice,IST%part_size(:,:,1:), tmp2, wtd=.true.)
   wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
-  call get_avg(IST%flux_u_top_bgrid(isc:iec,jsc:jec,1:), IST%part_size_uv(isc:iec,jsc:jec,1:), &
+  call get_avg(IST%flux_u_top_bgrid(isc:iec,jsc:jec,1:), part_size_uv(isc:iec,jsc:jec,1:), &
                wind_stress_x(isc:iec,jsc:jec), wtd=.true.)
-  call get_avg(IST%flux_v_top_bgrid(isc:iec,jsc:jec,1:), IST%part_size_uv(isc:iec,jsc:jec,1:), &
+  call get_avg(IST%flux_v_top_bgrid(isc:iec,jsc:jec,1:), part_size_uv(isc:iec,jsc:jec,1:), &
                wind_stress_y(isc:iec,jsc:jec), wtd=.true.)
 
   call mpp_clock_begin(iceClocka)
@@ -965,9 +968,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Dynamics diagnostics
   !
   if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
-                                  IST%part_size_uv, IST%diag, G=G)
+                                  part_size_uv, IST%diag, G=G)
   if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
-                                  IST%part_size_uv, IST%diag, G=G)
+                                  part_size_uv, IST%diag, G=G)
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
@@ -1298,21 +1301,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
 
   IST%part_size(:,:,0) = 1.0
-  IST%part_size_uv(:,:,0) = 1.0
 
   do k=1,ncat
     IST%part_size(:,:,0) = IST%part_size(:,:,0) - IST%part_size(:,:,k)
-
-    !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do j=jsc,jec ; do i=isc,iec
-      if(G%mask2dBu(i,j) > 0.5 ) then
-         IST%part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
-                                         IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-      else
-         IST%part_size_uv(i,j,k) = 0.0
-      endif
-      IST%part_size_uv(i,j,0) = IST%part_size_uv(i,j,0) - IST%part_size_uv(i,j,k)
-    enddo ; enddo
   enddo
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -1374,7 +1365,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
   call disable_SIS_averaging(IST%diag)
 
-  call ice_top_to_ice_bottom(Ice, IST, part_save, part_save_uv, G)
+!######  call ice_top_to_ice_bottom(Ice, IST, part_save, part_save_uv, G)
+  call ice_top_to_ice_bottom(Ice, IST, part_save, part_size_uv, G)
   !
   ! conservation checks:  bottom fluxes and final
   !

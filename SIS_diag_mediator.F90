@@ -50,7 +50,7 @@ public SIS_diag_mediator_close_registration, get_SIS_diag_time_end
 public diag_axis_init, register_static_field
 
 interface post_SIS_data
-  module procedure post_data_3d, post_data_2d
+  module procedure post_data_2d, post_data_3d
 end interface post_SIS_data
 
 !   The following data type contains pointers to diagnostic fields that might
@@ -232,7 +232,7 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
 
   is_stat = .false. ; if (present(is_static)) is_stat = is_static 
 
-  ! Determine the propery array indices, noting that because of the (:,:)
+  ! Determine the proper array indices, noting that because of the (:,:)
   ! declaration of field, symmetric arrays are using a SW-grid indexing,
   ! but non-symmetric arrays are using a NE-grid indexing.  Send_data
   ! actually only uses the difference between ie and is to determine
@@ -309,7 +309,7 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
   integer :: isv, iev, jsv, jev
   is_stat = .false. ; if (present(is_static)) is_stat = is_static 
   
-  ! Determine the propery array indices, noting that because of the (:,:)
+  ! Determine the proper array indices, noting that because of the (:,:)
   ! declaration of field, symmetric arrays are using a SW-grid indexing,
   ! but non-symmetric arrays are using a NE-grid indexing.  Send_data
   ! actually only uses the difference between ie and is to determine
