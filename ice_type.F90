@@ -19,7 +19,6 @@ module ice_type_mod
   use constants_mod,    only: Tfreeze, radius, pi
 
 use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
-  use ice_grid_mod,     only: Domain
   use ice_grid_mod,     only: cell_area
 
   use ice_thm_mod,      only: ice_thm_param, e_to_melt

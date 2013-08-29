@@ -4,8 +4,7 @@
 module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi, grav
-  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe !, mpp_chksum
-!  use mpp_mod,         only: mpp_sync_self, mpp_send, mpp_recv, stdout, EVENT_RECV, COMM_TAG_1, NULL_PE
+  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe
   use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
   use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
   use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
@@ -29,16 +28,8 @@ implicit none ; private
 include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-  public :: set_ice_grid, ice_grid_end, g_sum, get_avg
-  public :: ice_line
-
-  public :: Domain, im, jm
-!  public :: xb1d, yb1d
-  public :: cell_area
-!  public :: grid_x_t,grid_y_t
-  public :: tripolar_grid, x_cyclic
-
-  type(domain2D), target, save :: Domain
+public :: set_ice_grid, ice_grid_end, g_sum, get_avg, ice_line
+public :: cell_area
 
 type, public :: sea_ice_grid_type
   type(SIS_domain_type), pointer :: Domain => NULL()
@@ -160,110 +151,58 @@ type, public :: SIS2_domain_type
                                 ! assigned if all logical processors are used.
 end type SIS2_domain_type
 
-
-  integer                           :: im, jm   ! global domain and vertical size
-  !
-  ! grid geometry
-  !
-  logical                           ::  x_cyclic           ! x boundary condition
-  logical                           ::  tripolar_grid      ! y boundary condition
-  real, allocatable, dimension(:  ) ::  xb1d, yb1d         ! 1d global grid for diag_mgr
-  real, allocatable, dimension(:  ) ::  grid_x_t,grid_y_t  ! 1d global grid for diag_mgr
-  real, allocatable, dimension(:,:) ::  cell_area          ! grid cell area; sphere frac.
-  
-!  integer            :: comm_pe                      ! pe to be communicated with
+! This is still here as an artefact of an older public interface and should go.
+real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_avg - take area weighted average over all partitions                     !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_avg(x, cn, avg, wtd)
-  real, dimension(:,:,:), intent(in)  :: x
-  real, dimension(:,:,:), intent(in)  :: cn
-  real, dimension(:,:),   intent(out) :: avg
-  logical,      optional, intent(in)  :: wtd
-
-  real, dimension(size(x,1),size(x,2)) :: wts
-  logical :: do_wt
-  integer :: i, j, k, ni, nj, nk
-
-  do_wt = .false. ; if (present(wtd)) do_wt = wtd
-
-  ni = size(x,1) ; nj = size(x,2); nk = size(x,3)
-  if ((size(cn,1) /= ni) .or. (size(cn,2) /= nj) .or. (size(cn,3) /= nk)) &
-    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and cn in get_avg.")
-  if ((size(avg,1) /= ni) .or. (size(avg,2) /= nj)) &
-    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and avg in get_avg.")
-  if (size(cn,3) /= nk) &
-    call SIS_error(FATAL, "Mismatched category sizes of x and cn in get_avg.")
-
-  if (do_wt) then
-    avg(:,:) = 0.0 ; wts(:,:) = 0.0
-    do k=1,nk ; do j=1,nj ; do i=1,ni
-      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-      wts(i,j) = wts(i,j) + cn(i,j,k)
-    enddo ; enddo ; enddo
-     do j=1,nj ; do i=1,ni
-      if (wts(i,j) > 0.) then
-        avg(i,j) = avg(i,j) / wts(i,j)
-      else
-        avg(i,j) = 0.0
-      endif
-    enddo ; enddo
-  else
-    avg(:,:) = 0.0
-    do k=1,nk ; do j=1,nj ; do i=1,ni
-      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-    enddo ; enddo ; enddo
-  endif
-
-end subroutine get_avg
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt) !, layout, io_layout )
+subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   type(sea_ice_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
-
   type(domain2D),        intent(inout) :: ice_domain
   integer,               intent(in)    :: NCat_dflt
-  !  integer, dimension(2), intent(inout) :: layout
-  !  integer, dimension(2), intent(inout) :: io_layout
 ! Arguments: G - The sea-ice's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
+!  (inout)   ice_domain - A domain with no halos that can be shared publicly.
+!  (in)      NCat_dflt - The default number of ice categories.
+
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
 
-    real                                :: angle, lon_scale
-    integer                             :: i, j, m, ntiles, ncontacts
-    integer                             :: dims(4)
-    real, allocatable, dimension(:,:,:) :: x_vert_t, y_vert_t
-    real, allocatable,   dimension(:,:) :: depth, tmpx, tmpy, tmp_2d
-    integer, dimension(2)               :: tile1, tile2
-    integer, dimension(2)               :: istart1, iend1, jstart1, jend1
-    integer, dimension(2)               :: istart2, iend2, jstart2, jend2
+  real                                :: angle, lon_scale
+  integer                             :: i, j, m, ntiles, ncontacts
+  integer                             :: dims(4)
+  real, allocatable, dimension(:,:,:) :: x_vert_t, y_vert_t
+  real, allocatable,   dimension(:,:) :: depth, tmpx, tmpy, tmp_2d
+  integer, dimension(2)               :: tile1, tile2
+  integer, dimension(2)               :: istart1, iend1, jstart1, jend1
+  integer, dimension(2)               :: istart2, iend2, jstart2, jend2
   integer :: x_flags, y_flags
-    character(len=128)                  :: grid_file, ocean_topog
-    character(len=256)                  :: ocean_hgrid, ocean_mosaic, attvalue
-    type(domain2d)                      :: domain2
-    integer                             :: isg, ieg, jsg, jeg
-    integer                             :: is,  ie,  js,  je
-    integer                             :: ni,nj,siz(4)
-    integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
-    integer                             :: npes, p
-    logical                             :: symmetrize, ndivx_is_even, im_is_even
+  character(len=128)                  :: grid_file, ocean_topog
+  character(len=256)                  :: ocean_hgrid, ocean_mosaic, attvalue
+  type(domain2d)                      :: domain2
+  integer                             :: isg, ieg, jsg, jeg
+  integer                             :: is,  ie,  js,  je
+  integer                             :: ni,nj,siz(4) , im, jm
+  integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
+  integer                             :: npes, p
+  logical                             :: symmetrize, ndivx_is_even, im_is_even
   integer :: layout(2) = (/0, 0/), io_layout(2) = (/1, 1/)
-  logical            :: mask_table_exists
+  logical :: x_cyclic           ! x boundary condition
+  logical :: tripolar_grid      ! y boundary condition
+  logical :: mask_table_exists
+  real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
   character(len=128) :: mask_table, inputdir
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
-  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed !###, km
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
+  type(domain2d), pointer :: Domain => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
-
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
@@ -432,7 +371,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt) !, layout, io_layo
   ! Set up the SIS_domain_type.  This will later occur via a call to MOM_domains_init.
   ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
   if (.not.associated(G%Domain)) allocate(G%Domain)
-  G%Domain%mpp_domain => Domain
+  if (.not.associated(G%Domain%mpp_domain)) allocate(G%Domain%mpp_domain)
+  Domain => G%Domain%mpp_domain
 
   if (mask_table_exists) then
     call SIS_mesg(' set_ice_grid: reading maskmap information from '//&
@@ -546,13 +486,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt) !, layout, io_layo
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
-!###    km = G%CatIce + 1  ! Add 1 for the ice-free category.
-
-    allocate ( cell_area(isc:iec,jsc:jec) )
-    
-    allocate (grid_x_t(ni))
-    allocate (grid_y_t(nj))    
-    grid_x_t = 0.0;grid_y_t = 0.0 
+  allocate ( cell_area(isc:iec,jsc:jec) )
 
   call mpp_copy_domain(domain, domain2)
   call mpp_set_compute_domain(domain2, 2*isc-1, 2*iec+1, 2*jsc-1, 2*jec+1, 2*(iec-isc)+3, 2*(jec-jsc)+3 )
@@ -718,44 +652,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt) !, layout, io_layo
     endif
 !    comm_pe = mpp_pe() + layout(1) - 2*mod(mpp_pe()-mpp_root_pe(),layout(1)) - 1
 
-  end subroutine set_ice_grid
+  deallocate( xb1d, yb1d )
 
-!#####################################################################
-!--- release memory
-subroutine ice_grid_end(G)
-  type(sea_ice_grid_type), intent(inout) :: G
-
-  DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
-  DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
-
-  DEALLOC_(G%dyT)  ; DEALLOC_(G%dyCu)  ; DEALLOC_(G%dyCv)  ; DEALLOC_(G%dyBu)
-  DEALLOC_(G%IdyT) ; DEALLOC_(G%IdyCu) ; DEALLOC_(G%IdyCv) ; DEALLOC_(G%IdyBu)
-
-  DEALLOC_(G%areaT)  ; DEALLOC_(G%IareaT)
-  DEALLOC_(G%areaBu) ; DEALLOC_(G%IareaBu)
-  DEALLOC_(G%areaCu) ; DEALLOC_(G%IareaCu)
-  DEALLOC_(G%areaCv)  ; DEALLOC_(G%IareaCv)
-
-  DEALLOC_(G%mask2dT)  ; DEALLOC_(G%mask2dCu)
-  DEALLOC_(G%mask2dCv) ; DEALLOC_(G%mask2dBu)
-
-  DEALLOC_(G%geoLatT)  ; DEALLOC_(G%geoLatCu)
-  DEALLOC_(G%geoLatCv) ; DEALLOC_(G%geoLatBu)
-  DEALLOC_(G%geoLonT)  ; DEALLOC_(G%geoLonCu)
-  DEALLOC_(G%geoLonCv) ; DEALLOC_(G%geoLonBu)
-
-  DEALLOC_(G%dx_Cv) ; DEALLOC_(G%dy_Cu)
-  DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
-
-  DEALLOC_(G%CoriolisBu)
-  DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
-
-  deallocate(G%gridLatT) ; deallocate(G%gridLatB)
-  deallocate(G%gridLonT) ; deallocate(G%gridLonB)
-
-  deallocate( xb1d, yb1d, cell_area )
-
-end subroutine ice_grid_end
+end subroutine set_ice_grid
 
 !#####################################################################
 
@@ -785,6 +684,51 @@ function edge_length(x1, y1, x2, y2)
   edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
 end function edge_length
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! get_avg - take area weighted average over all partitions                     !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine get_avg(x, cn, avg, wtd)
+  real, dimension(:,:,:), intent(in)  :: x
+  real, dimension(:,:,:), intent(in)  :: cn
+  real, dimension(:,:),   intent(out) :: avg
+  logical,      optional, intent(in)  :: wtd
+
+  real, dimension(size(x,1),size(x,2)) :: wts
+  logical :: do_wt
+  integer :: i, j, k, ni, nj, nk
+
+  do_wt = .false. ; if (present(wtd)) do_wt = wtd
+
+  ni = size(x,1) ; nj = size(x,2); nk = size(x,3)
+  if ((size(cn,1) /= ni) .or. (size(cn,2) /= nj) .or. (size(cn,3) /= nk)) &
+    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and cn in get_avg.")
+  if ((size(avg,1) /= ni) .or. (size(avg,2) /= nj)) &
+    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and avg in get_avg.")
+  if (size(cn,3) /= nk) &
+    call SIS_error(FATAL, "Mismatched category sizes of x and cn in get_avg.")
+
+  if (do_wt) then
+    avg(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
+      wts(i,j) = wts(i,j) + cn(i,j,k)
+    enddo ; enddo ; enddo
+     do j=1,nj ; do i=1,ni
+      if (wts(i,j) > 0.) then
+        avg(i,j) = avg(i,j) / wts(i,j)
+      else
+        avg(i,j) = 0.0
+      endif
+    enddo ; enddo
+  else
+    avg(:,:) = 0.0
+    do k=1,nk ; do j=1,nj ; do i=1,ni
+      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
+    enddo ; enddo ; enddo
+  endif
+
+end subroutine get_avg
+
 !#####################################################################
 subroutine ice_line(year, day, second, cn_ocn, sst, G)
   integer,                         intent(in) :: year, day, second
@@ -797,7 +741,7 @@ subroutine ice_line(year, day, second, cn_ocn, sst, G)
   integer :: n, i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-!    if (.not.(second==0 .and. mod(day,5)==0) ) return  ! safe?
+  if (.not.(second==0 .and. mod(day,5)==0) ) return
 
   do n=-1,1,2
     do j=jsc,jec ; do i=isc,iec
@@ -815,7 +759,6 @@ subroutine ice_line(year, day, second, cn_ocn, sst, G)
   if ( mpp_pe()==0 .and. second==0 .and. mod(day,5)==0 ) &
     print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
 end subroutine ice_line
-
 
 subroutine allocate_metrics(G)
   type(sea_ice_grid_type), intent(inout) :: G
@@ -888,5 +831,45 @@ subroutine allocate_metrics(G)
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
 end subroutine allocate_metrics
+
+!#####################################################################
+!--- release memory
+subroutine ice_grid_end(G)
+  type(sea_ice_grid_type), intent(inout) :: G
+
+  DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
+  DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
+
+  DEALLOC_(G%dyT)  ; DEALLOC_(G%dyCu)  ; DEALLOC_(G%dyCv)  ; DEALLOC_(G%dyBu)
+  DEALLOC_(G%IdyT) ; DEALLOC_(G%IdyCu) ; DEALLOC_(G%IdyCv) ; DEALLOC_(G%IdyBu)
+
+  DEALLOC_(G%areaT)  ; DEALLOC_(G%IareaT)
+  DEALLOC_(G%areaBu) ; DEALLOC_(G%IareaBu)
+  DEALLOC_(G%areaCu) ; DEALLOC_(G%IareaCu)
+  DEALLOC_(G%areaCv)  ; DEALLOC_(G%IareaCv)
+
+  DEALLOC_(G%mask2dT)  ; DEALLOC_(G%mask2dCu)
+  DEALLOC_(G%mask2dCv) ; DEALLOC_(G%mask2dBu)
+
+  DEALLOC_(G%geoLatT)  ; DEALLOC_(G%geoLatCu)
+  DEALLOC_(G%geoLatCv) ; DEALLOC_(G%geoLatBu)
+  DEALLOC_(G%geoLonT)  ; DEALLOC_(G%geoLonCu)
+  DEALLOC_(G%geoLonCv) ; DEALLOC_(G%geoLonBu)
+
+  DEALLOC_(G%dx_Cv) ; DEALLOC_(G%dy_Cu)
+  DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
+
+  DEALLOC_(G%CoriolisBu)
+  DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
+
+  deallocate(G%gridLatT) ; deallocate(G%gridLatB)
+  deallocate(G%gridLonT) ; deallocate(G%gridLonB)
+
+  deallocate(cell_area)
+  
+  deallocate(G%Domain%mpp_domain)
+  deallocate(G%Domain)
+
+end subroutine ice_grid_end
 
 end module ice_grid_mod
