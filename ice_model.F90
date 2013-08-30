@@ -976,6 +976,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call mpp_clock_begin(iceClockb)
   call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
+  ! This is here because of limitations with the FMS restart capability.
+  do J=G%jsd,G%jed ; do I=G%isd,G%ied
+    IST%u_ice_nonsym(I,J) = IST%u_ice(I,J) 
+    IST%v_ice_nonsym(I,J) = IST%v_ice(I,J) 
+  enddo ; enddo
   call mpp_clock_end(iceClockb)
 
   call mpp_clock_begin(iceClockc)
@@ -1676,6 +1681,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     enddo
     call pass_var(IST%t_snow, G%Domain, complete=.true.)
 
+    ! This is here because of limitations with the FMS restart capability.
+    do J=G%jsd,G%jed ; do I=G%isd,G%ied
+      IST%u_ice(I,J) = IST%u_ice_nonsym(I,J) 
+      IST%v_ice(I,J) = IST%v_ice_nonsym(I,J) 
+    enddo ; enddo
     call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0

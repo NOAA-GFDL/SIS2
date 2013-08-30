@@ -65,9 +65,12 @@ type ice_state_type
   ! The following are the 6 variables that constitute the sea-ice state.
   real, pointer, dimension(:,:) :: &
     u_ice =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
-    v_ice =>NULL()    ! along the model's grid directions, in m s-1.  All
+    v_ice =>NULL(), & ! along the model's grid directions, in m s-1.  All
                       ! thickness categories are assumed to have the same
                       ! velocity.
+    u_ice_nonsym =>NULL(), & ! These are non-symmetric memory versions of u_ice
+    v_ice_nonsym =>NULL()    ! and v_ice, in m s-1.  These are here because of
+                             ! limitations with the FMS restart capability.
   real, pointer, dimension(:,:,:) :: &
     h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
     h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
@@ -469,6 +472,9 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+  ! These are here because of limitations with the FMS restart capability.
+  allocate(IST%u_ice_nonsym(SZI_(G), SZJ_(G))) ; IST%u_ice_nonsym(:,:) = 0.0
+  allocate(IST%v_ice_nonsym(SZI_(G), SZJ_(G))) ; IST%v_ice_nonsym(:,:) = 0.0
   
 
   ! Now register some of these arrays to be read from the restart files.
@@ -482,9 +488,12 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
+!  The following lines should be used, but can not due to a limitation with register_restart_field.
+!  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice,     domain=domain)
+!  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice,     domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice_nonsym, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice_nonsym, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen, domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
 
@@ -526,6 +535,7 @@ subroutine dealloc_IST_arrays(IST)
 
   deallocate(IST%u_ice, IST%v_ice, IST%h_snow, IST%t_snow)
   deallocate(IST%h_ice, IST%t_ice)
+  deallocate(IST%u_ice_nonsym, IST%v_ice_nonsym)
 
 end subroutine dealloc_IST_arrays
 
