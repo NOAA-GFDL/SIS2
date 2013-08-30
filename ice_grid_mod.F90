@@ -185,7 +185,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   character(len=256)                  :: ocean_hgrid, ocean_mosaic, attvalue
   type(domain2d)                      :: domain2
   integer                             :: isg, ieg, jsg, jeg
-  integer                             :: is,  ie,  js,  je
+  integer                             :: is,  ie,  js,  je, i_off, j_off
   integer                             :: ni,nj,siz(4) , im, jm
   integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
   integer                             :: npes, p
@@ -197,7 +197,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
   character(len=128) :: mask_table, inputdir
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
-  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
+  integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
   type(domain2d), pointer :: Domain => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
@@ -392,8 +392,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call mpp_define_io_domain(Domain, io_layout)
   call mpp_define_io_domain(ice_domain, io_layout)
 
-  call mpp_get_compute_domain( Domain, isc, iec, jsc, jec )
-  call mpp_get_data_domain( Domain, isd, ied, jsd, jed )
+  call mpp_get_compute_domain( Domain, isca, ieca, jsca, jeca )
+  call mpp_get_data_domain( Domain, isda, ieda, jsda, jeda )
   call mpp_get_global_domain( Domain, isg, ieg, jsg, jeg )
 
   ! Set up the remainder of the SIS_domain_type.  This will later occur via a
@@ -405,12 +405,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%Domain%layout(:) = layout(:) ; G%Domain%io_layout(:) = io_layout(:)
   G%Domain%X_FLAGS = X_FLAGS ; G%Domain%Y_FLAGS = Y_FLAGS
   G%Domain%nonblocking_updates = .false.
-  ! call get_domain_extent(G%Domain, isc, iec, jsc, jec, isd, ied, jsd, jed, &
+  ! call get_domain_extent(G%Domain, isca, ieca, jsca, jeca, isda, ieda, jsda, jeda, &
   !                          isg, ieg, jsg, jeg, i_offset, j_offset, G%Domain%Symmetric, .false.)
 
   ! Allocate and fill in default values for elements of the sea ice grid type.
-  G%isc = isc ; G%iec = iec ; G%jsc = jsc ; G%jec = jec
-  G%isd = isd ; G%ied = ied ; G%jsd = jsd ; G%jed = jed
+  G%isc = isca ; G%iec = ieca ; G%jsc = jsca ; G%jec = jeca
+  G%isd = isda ; G%ied = ieda ; G%jsd = jsda ; G%jed = jeda
   G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
 
   G%symmetric = G%Domain%symmetric 
@@ -428,21 +428,20 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%IedB = G%ied ; G%JedB = G%jed
   G%IegB = G%ieg ; G%JegB = G%jeg
 
+  i_off = isca - G%isc ; j_off = jsca - G%jsc
+
   call allocate_metrics(G)
 
-  allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
-  allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
-
   !--- read data from grid_spec.nc
-  allocate(depth(isc:iec,jsc:jec))
-  call read_data(ocean_topog, 'depth', depth(isc:iec,jsc:jec), Domain)
-  do j=jsc,jec ; do i=isc,iec ; if (depth(i,j) > 0) then
+  allocate(depth(G%isc:G%iec,G%jsc:G%jec))
+  call read_data(ocean_topog, 'depth', depth(G%isc:G%iec,G%jsc:G%jec), Domain)
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (depth(i,j) > 0) then
     G%mask2dT(i,j) = 1.0
   endif ; enddo ; enddo
   deallocate(depth)
   call mpp_update_domains(G%mask2dT, Domain)
 
-  do J=jsc-1,jec ; do I=isc-1,iec
+  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
         G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
        G%mask2dBu(I,J) = 1.0 ; G%Lmask2dBu(I,J) = .true.
@@ -451,7 +450,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     endif
   enddo ; enddo
 
-  do j=jsc,jec ; do I=isc-1,iec
+  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
        G%mask2dCu(I,j) = 1.0 ; G%Lmask2dCu(I,j) = .true.
     else
@@ -459,7 +458,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     endif
   enddo ; enddo
 
-  do J=jsc-1,jec ; do i=isc,iec
+  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
        G%mask2dCv(i,J) = 1.0 ; G%Lmask2dCv(i,J) = .true.
     else
@@ -467,13 +466,13 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     endif
   enddo ; enddo
 
-  do j=jsd,jed ; do i=isd,ied
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied
     G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5) 
   enddo ; enddo
-  do J=G%JsdB,G%JedB ; do i=isd,ied
+  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
     G%Lmask2dCv(i,J) = (G%mask2dCv(i,J) > 0.5) 
   enddo ; enddo
-  do j=jsd,jed ; do I=G%IsdB,G%IedB
+  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
     G%Lmask2dCu(I,j) = (G%mask2dCu(I,j) > 0.5) 
   enddo ; enddo
   do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB
@@ -481,32 +480,33 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   enddo ; enddo
 
     if(tripolar_grid) then
-       if (jsc==1.and.any(G%mask2dT(:,jsc)>0.5)) call SIS_error(FATAL, &
+       if (jsca==1.and.any(G%mask2dT(:,G%jsc)>0.5)) call SIS_error(FATAL, &
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
     endif
 
-  allocate ( cell_area(isc:iec,jsc:jec) )
+  allocate ( cell_area(isca:ieca,jsca:jeca) )
 
   call mpp_copy_domain(domain, domain2)
-  call mpp_set_compute_domain(domain2, 2*isc-1, 2*iec+1, 2*jsc-1, 2*jec+1, 2*(iec-isc)+3, 2*(jec-jsc)+3 )
-  call mpp_set_data_domain   (domain2, 2*isd-1, 2*ied+1, 2*jsd-1, 2*jed+1, 2*(ied-isd)+3, 2*(jed-jsd)+3 )   
+  call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
+  call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
   call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
   call mpp_get_compute_domain(domain2, is, ie, js, je)
-  if(is .NE. 2*isc-1 .OR. ie .NE. 2*iec+1 .OR. js .NE. 2*jsc-1 .OR. je .NE. 2*jec+1) then
+  if(is .NE. 2*isca-1 .OR. ie .NE. 2*ieca+1 .OR. js .NE. 2*jsca-1 .OR. je .NE. 2*jeca+1) then
     call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
   endif
   allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
   call read_data(ocean_hgrid, 'x', tmpx, domain2)
   call read_data(ocean_hgrid, 'y', tmpy, domain2)     
-  do J=jsc-1,jec ; do I=isc-1,iec
-    G%geoLonBu(I,J) = tmpx(2*i+1,2*j+1)
-    G%geoLatBu(I,J) = tmpy(2*i+1,2*j+1)
+  do J=jsca-1,jeca ; do I=isca-1,ieca
+    G%geoLonBu(I-i_off,J-j_off) = tmpx(2*i+1,2*j+1)
+    G%geoLatBu(I-i_off,J-j_off) = tmpy(2*i+1,2*j+1)
   enddo ; enddo
   deallocate(tmpx, tmpy)
-  call calc_mosaic_grid_area(G%geoLonBu(isc-1:iec,jsc-1:jec)*pi/180, &
-                             G%geoLatBu(isc-1:iec,jsc-1:jec)*pi/180, G%areaT(isc:iec,jsc:jec))
-  do j=jsc,jec ; do i=isc,iec
-    cell_area(i,j) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
+  call calc_mosaic_grid_area(G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
+                             G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
+                             G%areaT(G%isc:G%iec,G%jsc:G%jec))
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
   enddo ; enddo       
   call mpp_deallocate_domain(domain2)
 
@@ -523,28 +523,31 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
        yb1d(:) = sum(tmpy,1)/(im+1)
        deallocate(tmpx, tmpy)
     else
-       allocate ( tmpx(isc:iec+1, jm+1) )
+       allocate ( tmpx(isca:ieca+1, jm+1) )
        call mpp_set_domain_symmetry(Domain, .TRUE.)
-       call mpp_global_field(Domain, G%geoLonBu(isc-1:iec,jsc-1:jec), tmpx, flags=YUPDATE, position=CORNER)
-       allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
+       call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
+                             tmpx, flags=YUPDATE, position=CORNER)
+       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
        tmp_2d = 0
-       tmp_2d(isc:iec+1,jsc) = sum(tmpx,2)/(jm+1);
+       tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(jm+1);
        deallocate(tmpx)
-       allocate ( tmpx(im+1, jsc:jec+1) )
+       allocate ( tmpx(im+1, jsca:jeca+1) )
 
-       call mpp_global_field(Domain, G%geoLatBu(isc-1:iec,jsc-1:jec), tmpx, flags=XUPDATE, position=CORNER)
-       xb1d(:) = tmpx(:,jsc)
+       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
+                             tmpx, flags=XUPDATE, position=CORNER)
+       xb1d(:) = tmpx(:,jsca)
        deallocate(tmpx, tmp_2d)
 
-       allocate ( tmpy(im+1, jsc:jec+1) )
-       call mpp_global_field(Domain, G%geoLatBu(isc-1:iec,jsc-1:jec), tmpy, flags=XUPDATE, position=CORNER)
-       allocate ( tmp_2d(isc:iec+1, jsc:jec+1) )
+       allocate ( tmpy(im+1, jsca:jeca+1) )
+       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), tmpy, &
+                             flags=XUPDATE, position=CORNER)
+       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
        tmp_2d = 0
-       tmp_2d(isc,jsc:jec+1) = sum(tmpy,1)/(im+1);
+       tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(im+1);
        deallocate(tmpy)
-       allocate ( tmpy(isc:iec+1, jm+1) )
+       allocate ( tmpy(isca:ieca+1, jm+1) )
        call mpp_global_field(Domain, tmp_2d, tmpy, flags=YUPDATE, position=CORNER)
-       yb1d(:) = tmpy(isc,:)
+       yb1d(:) = tmpy(isca,:)
        deallocate(tmpy, tmp_2d)
        call mpp_set_domain_symmetry(Domain, .FALSE.)
     endif
@@ -555,15 +558,15 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
   do j=jsg,jeg ; G%gridLatT(j) = 0.5*(G%gridLatB(j-1)+G%gridLatB(j)) ; enddo
 
-  do j=jsc,jec ; do I=isc-1,iec
+  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
     G%dyCu(I,j) = edge_length(G%geoLonBu(I,J-1),G%geoLatBu(I,J-1), &
                                  G%geoLonBu(I,J),G%geoLatBu(I,J))
   enddo ; enddo
-  do J=jsc-1,jec ; do i=isc,iec
+  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
     G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
                                  G%geoLonBu(I,J), G%geoLatBu(I,J))
   enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
                         G%geoLatBu(I-1,J) + G%geoLatBu(I,J)) * atan(1.0)/180)
     angle        = atan2((G%geoLonBu(I-1,J) + G%geoLonBu(I,J) - &
@@ -580,27 +583,25 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     call mpp_update_domains(G%cos_rot, Domain)
     call mpp_update_domains(G%sin_rot, Domain)
 
-    do j = jsc, jec
-       do i = isc, iec
-          G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
-          if (G%mask2dT(i,j) > 0.0) then
-!             G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
-            G%dyT(i,j) = cell_area(i,j)*4*pi*radius*radius/G%dxT(i,j)
-          else
-            G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
-          endif
-       enddo
-    enddo
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
+    if (G%mask2dT(i,j) > 0.0) then
+!      G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
+      G%dyT(i,j) = cell_area(i+i_off,j+j_off)*4*pi*radius*radius/G%dxT(i,j)
+    else
+      G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
+    endif
+  enddo ; enddo
 
-  ! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
-    call mpp_update_domains(G%dxT, Domain )
-    call mpp_update_domains(G%dyT, Domain )
+! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
+  call mpp_update_domains(G%dxT, Domain )
+  call mpp_update_domains(G%dyT, Domain )
 
-    G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
-    G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
+  G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
+  G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
 
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do J=jsc-1,jec ; do I=isc-1,iec
+  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     G%dxBu(I,J) = 0.25*(G%dxT(i+1,j+1)+G%dxT(i+1,j)+G%dxT(i,j+1)+G%dxT(i,j) )
     G%IdxBu(I,J) = 1.0 / G%dxBu(I,j)
     G%dyBu(I,J) = 0.25*(G%dyT(i+1,j+1)+G%dyT(i+1,j)+G%dyT(i,j+1)+G%dyT(i,j) )
@@ -610,7 +611,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call mpp_update_domains(G%dxBu, G%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
   call mpp_update_domains(G%IdxBu, G%IdyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
 
-  do j=jsc,jec ; do i=isc,iec
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
     G%geoLonT(i,j) = lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J-1), &
                                  G%geoLonBu(I-1,J), G%geoLonBu(I,J) /) )
@@ -618,7 +619,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                       G%geoLatBu(I-1,J)   + G%geoLatBu(I,J)) / 4
   enddo ; enddo
 
-  do J=jsc-1,jec ; do I=isc-1,iec
+  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
   enddo ; enddo
 
@@ -633,23 +634,19 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
        call mpp_get_pelist(Domain, pelist)
        call mpp_get_compute_domains(Domain, xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
 
-!       comm_pe = NULL_PE
- 
        do p = 1, npes
-          if( jslist(p) == jsc .AND. islist(p) + iec == im+1 ) then
-             if( jelist(p) .NE. jec ) then
+          if( jslist(p) == jsca .AND. islist(p) + ieca == im+1 ) then
+             if( jelist(p) .NE. jeca ) then
                 call SIS_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
              endif
-             if( ielist(p) + isc .NE. im+1) then
+             if( ielist(p) + isca .NE. im+1) then
                 call SIS_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
              endif
-!             comm_pe = pelist(p)
              exit 
           endif
        enddo
        deallocate(pelist, islist, ielist, jslist, jelist)
     endif
-!    comm_pe = mpp_pe() + layout(1) - 2*mod(mpp_pe()-mpp_root_pe(),layout(1)) - 1
 
   deallocate( xb1d, yb1d )
 
@@ -745,6 +742,9 @@ subroutine allocate_metrics(G)
   ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0
 
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
+
+  allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
+  allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
   allocate(G%H_cat_lim(1:G%CatIce+1)) ; G%H_cat_lim(:) = 0.0
 
