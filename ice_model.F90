@@ -162,9 +162,14 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
 
   real,dimension(G%isc:G%iec,G%jsc:G%jec)                 :: tmp
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = 0 ; j_off = 0
+  if (Ice%ocean_fluxes_top%num_bcs>=1) then ; if (Ice%ocean_fluxes_top%bc(1)%num_fields>=1) then
+    i_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,1) - G%isc
+    j_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,2) - G%jsc
+  endif ; endif
 
   if (IST%avg_count == 0) call zero_top_quantities (Ice, IST)
 
@@ -185,7 +190,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
 
   do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
     do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
-      do k2=1,ncat+1 ; do j2=jsc,jec ; do i2=isc,iec
+      do k2=1,ncat+1 ; do j2=jsc+j_off,jec+j_off ; do i2=isc+i_off,iec+i_off
         Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
               Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) + &
              Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
@@ -582,8 +587,8 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   ! Pre-timestep diagnostics
   !
   call enable_SIS_averaging(real(time_type_to_real(IST%Time_step_slow)), IST%Time, IST%diag)
-  if (IST%id_alb>0) call post_avg(IST%id_alb, Ice%albedo(isc:iec,jsc:jec,:), &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
+  if (IST%id_alb>0) call post_avg(IST%id_alb, Ice%albedo, &
+                     IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
   if (IST%id_sst>0) call post_data(IST%id_sst, sst(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_sss>0) call post_data(IST%id_sss, IST%s_surf, IST%diag, mask=G%Lmask2dT)
   if (IST%id_ssh>0) call post_data(IST%id_ssh, IST%sea_lev, IST%diag, mask=G%Lmask2dT)
@@ -790,13 +795,13 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   enddo ; enddo ; enddo
 
   call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
-  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir(isc:iec,jsc:jec,:), &
+  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
-  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif(isc:iec,jsc:jec,:), &
+  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
-  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir(isc:iec,jsc:jec,:), &
+  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
-  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif(isc:iec,jsc:jec,:), &
+  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
 
   if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
@@ -1218,8 +1223,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_ice(isc:iec,jsc:jec,:), IST%part_size(isc:iec,jsc:jec,1:), tmp2d)
   hi_change(:,:)  = tmp2d(:,:) - hi_change(:,:)
   Ice%flux_salt(:,:) = IST%ice_bulk_salin*IST%Rho_ice*hi_change(:,:) / dt_slow
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt(isc:iec,jsc:jec), &
-                                     IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt, IST%diag, &
+                                     mask=G%Lmask2dT(isc:iec,jsc:jec))
 
   ! Note that at this point h2o_change is the negative of the mass.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -1631,8 +1636,8 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
 
-  call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
-!    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
+  call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
+!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
 
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
@@ -1643,7 +1648,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%mask(i2,j2) = ( Ice%G%mask2dT(i,j) > 0.5 )
+    Ice%mask(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
 !###   Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
  
@@ -1663,15 +1668,15 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call restore_state(Ice_restart)
 
     !--- update the halo values.
-    call pass_var(IST%part_size, Ice%G%Domain, complete=.false.)
-    call pass_var(IST%h_ice, Ice%G%Domain, complete=.false.)
-    call pass_var(IST%h_snow, Ice%G%Domain, complete=.false.)
+    call pass_var(IST%part_size, G%Domain, complete=.false.)
+    call pass_var(IST%h_ice, G%Domain, complete=.false.)
+    call pass_var(IST%h_snow, G%Domain, complete=.false.)
     do l=1,G%NkIce
-      call pass_var(IST%t_ice(:,:,:,l), Ice%G%Domain, complete=.false.)
+      call pass_var(IST%t_ice(:,:,:,l), G%Domain, complete=.false.)
     enddo
-    call pass_var(IST%t_snow, Ice%G%Domain, complete=.true.)
+    call pass_var(IST%t_snow, G%Domain, complete=.true.)
 
-    call pass_vector(IST%u_ice, IST%v_ice, Ice%G%Domain, stagger=BGRID_NE)
+    call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
@@ -1692,13 +1697,13 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
     
-  call SIS_diag_mediator_init(Ice%G, param_file, IST%diag, component="SIS")
-  call set_SIS_axes_info(Ice%G, param_file, IST%diag)
+  call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS")
+  call set_SIS_axes_info(G, param_file, IST%diag)
 
-  call ice_diagnostics_init(Ice, IST, Ice%G, IST%diag, IST%Time)
+  call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
-  call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
-  call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
+  call ice_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_dyn_CSp)
+  call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
                      t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
 
@@ -1719,13 +1724,13 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
   ! Initialize icebergs
-  x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
-  tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
+  x_cyclic = (G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
+  tripolar_grid = (G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           Ice%G%Domain%niglobal, Ice%G%Domain%njglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, &
-           Ice%axes(1:2), Ice%G%Domain%maskmap, x_cyclic, tripolar_grid, &
-           time_type_to_real(Time_step_slow), Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
-           Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
+           G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
+           Ice%axes(1:2), G%Domain%maskmap, x_cyclic, tripolar_grid, &
+           time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
+           G%mask2dT, G%dxCv, G%dyCu, cell_area, G%cos_rot, G%sin_rot )
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 
