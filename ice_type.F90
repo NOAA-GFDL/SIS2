@@ -4,61 +4,46 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_type_mod
 
-  use mpp_mod,          only: mpp_sum, mpp_clock_id, CLOCK_COMPONENT, &
-                              CLOCK_LOOP, CLOCK_ROUTINE, stdout,input_nml_file
-  use mpp_domains_mod,  only: domain2D, CORNER
-  use mpp_domains_mod,  only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
-  use mpp_domains_mod,  only: mpp_get_compute_domain
-  use fms_mod,          only: file_exist, open_namelist_file, check_nml_error, write_version_number,&
-                              read_data, close_file, field_exist, &
-                              stderr, stdlog, error_mesg, FATAL, WARNING, NOTE, clock_flag_default
-  use fms_io_mod,       only: save_restart, restore_state, query_initialized, &
-                              register_restart_field, restart_file_type, set_domain, nullify_domain
-  use time_manager_mod, only: time_type, time_type_to_real
-  use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
-  use constants_mod,    only: Tfreeze, radius, pi
+use mpp_mod,          only: mpp_sum, stdout, input_nml_file
+use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain
+use fms_mod,          only: open_namelist_file, check_nml_error, close_file
+use fms_io_mod,       only: save_restart, restore_state, query_initialized
+use fms_io_mod,       only: register_restart_field, restart_file_type
+use time_manager_mod, only: time_type, time_type_to_real
+use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 
-use ice_grid_mod,     only: set_ice_grid, ice_grid_end, sea_ice_grid_type
-  use ice_grid_mod,     only: cell_area
+use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
-  use ice_thm_mod,      only: ice_thm_param, e_to_melt
-use ice_dyn_mod,       only: ice_dyn_init, ice_dyn_CS, ice_dyn_register_restarts, ice_dyn_end
-use ice_transport_mod, only: ice_transport_init, ice_transport_CS, ice_transport_end ! , ice_transport_register_restarts
-  use constants_mod,    only: LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
-  use ice_bergs,        only: icebergs_init, icebergs_end, icebergs, icebergs_stock_pe
-  use ice_bergs,        only: icebergs_save_restart
-  use astronomy_mod,    only: astronomy_init, astronomy_end
-  use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
+use ice_thm_mod,      only: e_to_melt
+use ice_dyn_mod,       only: ice_dyn_CS
+use ice_transport_mod, only: ice_transport_CS
+use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
+use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
-use MOM_domains,     only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_file_parser, only : open_param_file, close_param_file
+use MOM_file_parser, only : param_file_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
-use SIS_diag_mediator, only : SIS_diag_ctrl, set_SIS_axes_info, SIS_diag_mediator_init
-use SIS_diag_mediator, only : post_data=>post_SIS_data, diag_axis_init, register_static_field
-use SIS_diag_mediator, only : register_SIS_diag_field
-use SIS_get_input, only : Get_SIS_input, directories, archaic_nml_check
+use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
+use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
+use SIS_get_input, only : archaic_nml_check
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_data_type, ice_state_type, ice_model_init, ice_model_end, ice_stock_pe
-public :: ice_model_restart
+public :: ice_data_type, ice_state_type
+public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
+public :: ice_data_type_register_restarts, ice_state_register_restarts
+public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
-public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
+public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
 
-public  :: iceClock,iceClock1,iceClock2,iceClock3,iceClock4,iceClock5,iceClock6,iceClock7,iceClock8,iceClock9
-public  :: iceClocka,iceClockb,iceClockc
 public  :: earth_area
 
   real, parameter :: earth_area = 4*PI*RADIUS*RADIUS !5.10064471909788E+14 m^2
   real, parameter :: missing = -1e34
   integer, parameter :: miss_int = -9999
 
-  character(len=128) :: version = '$Id: ice_type.F90,v 1.1.2.1.6.1.2.2.2.1 2013/06/18 22:24:14 nnz Exp $'
-  character(len=128) :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -322,310 +307,9 @@ type :: land_ice_boundary_type
   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
 end type
 
-
-  integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
-             iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
-
-  type(restart_file_type), save :: Ice_restart
+type(restart_file_type), save :: Ice_restart
 
 contains
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_init - initializes ice model data, parameters and diagnostics      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
-
-  type(ice_data_type), intent(inout) :: Ice
-  type(time_type)    , intent(in)    :: Time_Init      ! starting time of model integration
-  type(time_type)    , intent(in)    :: Time           ! current time
-  type(time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
-  type(time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
-
-! This include declares and sets the variable "version".
-#include "version_variable.h"
-  logical :: x_cyclic, tripolar_grid
-  real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
-  integer :: i, j, k, l, i2, j2, k2, i_off, j_off
-  integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
-  character(len=128) :: restart_file
-  character(len=40)  :: mod = "ice_model" ! This module's name.
-  type(param_file_type) :: param_file
-  type(ice_state_type),    pointer :: IST => NULL()
-  type(sea_ice_grid_type), pointer :: G => NULL()
-  
-  ! Parameters that are read in and used to initialize other modules.  If those
-  ! other modules had control states, these would be moved to those modules.
-  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
-  real :: heat_rough_ice ! heat roughness length, in m.
-    ! Parameters that properly belong exclusively to ice_thm.
-  real :: alb_snow       ! snow albedo (less if melting), nondim.
-  real :: alb_ice        ! ice albedo (less if melting), nondim.
-  real :: k_snow         ! snow conductivity (W/mK)
-  real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
-  real :: opt_dep_ice  ! ice optical depth, in m-1.
-  real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
-  real    :: h_lo_lim   ! The min ice thickness for temp. calc, in m.
-  logical :: do_deltaEdd  ! If true, a delta-Eddington radiative transfer calculation
-                          ! for the shortwave radiation within the sea-ice.
-  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
-  
-
-  if (associated(Ice%Ice_state)) then
-    call SIS_error(WARNING, "ice_model_init called with an associated "// &
-                    "Ice%Ice_state structure. Model is already initialized.")
-    return
-  endif
-  allocate(Ice%Ice_state)
-  IST => Ice%Ice_state
-  allocate(Ice%G)
-  G => Ice%G
-
-  ! Open the parameter file.
-  call Get_SIS_Input(param_file)
-
-  ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "SPECIFIED_ICE", IST%specified_ice, &
-                 "If true, the ice is specified and there is no dynamics.", &
-                 default=.false.)
-  call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
-                 "The nominal density of sea water as used by SIS.", &
-                 units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", IST%Rho_ice, &
-                 "The nominal density of sea ice as used by SIS.", &
-                 units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", IST%Rho_snow, &
-                 "The nominal density of snow as used by SIS.", &
-                 units="kg m-3", default=330.0)
-  call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
-                 "If true, use the very old slab-style ice.", default=.false.)
-  call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
-                 "The default momentum roughness length scale for the ocean.", &
-                 units="m", default=1.0e-4)
-  call get_param(param_file, mod, "HEAT_ROUGH_ICE", heat_rough_ice, &
-                 "The default roughness length scale for the turbulent \n"//&
-                 "transfer of heat into the ocean.", units="m", default=1.0e-4)
-  call get_param(param_file, mod, "ICE_KMELT", IST%kmelt, &
-                 "A constant giving the proportionality of the ocean/ice \n"//&
-                 "base heat flux to the tempature difference, given by \n"//&
-                 "the product of the heat capacity per unit volume of sea \n"//&
-                 "water times a molecular diffusive piston velocity.", &
-                 units="W m-2 K-1", default=6e-5*4e6)
-  call get_param(param_file, mod, "SNOW_CONDUCT", k_snow, &
-                 "The conductivity of heat in snow.", units="W m-1 K-1", &
-                 default=0.31)
-  call get_param(param_file, mod, "SNOW_ALBEDO", alb_snow, &
-                 "The albedo of dry snow atop sea ice.", units="nondim", &
-                 default=0.85)
-  call get_param(param_file, mod, "ICE_ALBEDO", alb_ice, &
-                 "The albedo of dry bare sea ice.", units="nondim", &
-                 default=0.5826)
-  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", pen_ice, &
-                 "The fraction of the unreflected shortwave radiation that \n"//&
-                 "penetrates into the ice.", units="Nondimensional", default=0.3)
-  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", opt_dep_ice, &
-                 "The optical depth of shortwave radiation in sea ice.", &
-                 units="m", default=0.67)
-  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", t_range_melt, &
-                 "The temperature range below freezing over which the \n"//&
-                 "albedos are changed by partial melting.", units="degC", &
-                 default=1.0)
-  call get_param(param_file, mod, "ICE_CONSERVATION_CHECK", IST%conservation_check, &
-                 "If true, do additional calculations to check for \n"//&
-                 "internal conservation of heat, salt, and water mass in \n"//&
-                 "the sea ice model.  This does not change answers, but \n"//&
-                 "can increase model run time.", default=.true.)
-  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%atmos_winds, &
-                 "If true, the sea ice is being given wind stresses with \n"//&
-                 "the atmospheric sign convention, and need to have their \n"//&
-                 "sign changed.", default=.true.)
-  call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.004)
-  call get_param(param_file, mod, "DO_ICE_RESTORE", IST%do_ice_restore, &
-                 "If true, restore the sea ice state toward climatology.", &
-                 default=.false.)
-  if (IST%do_ice_restore) &
-    call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", IST%ice_restore_timescale, &
-                 "The restoring timescale when DO_ICE_RESTORE is true.", &
-                 units="days", default=5.0)
-  call get_param(param_file, mod, "APPLY_ICE_LIMIT", IST%do_ice_limit, &
-                 "If true, restore the sea ice state toward climatology.", &
-                 default=.false.)
-  if (IST%do_ice_limit) &
-    call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", IST%max_ice_limit, &
-                 "The maximum permitted sea ice thickness when \n"//&
-                 "APPLY_ICE_LIMIT is true.", units="m", default=4.0)
-  call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
-                 "If true, apply the atmospheric sea level pressure to \n"//&
-                 "the ocean.", default=.false.)
-  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
-                 "The minimum ice thickness at which to do temperature \n"//&
-                 "calculations.", units="m", default=0.0)
-  call get_param(param_file, mod, "VERBOSE", IST%verbose, &
-                 "If true, write out verbose diagnostics.", default=.false.)
-  call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
-                 "If true, call the iceberg module.", default=.false.)
-  call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
-                 "If true, add a synthetic diurnal cycle to the shortwave \n"//&
-                 "radiation.", default=.false.)
-  call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", IST%do_sun_angle_for_alb, &
-                 "If true, find the sun angle for calculating the ocean \n"//&
-                 "albedo within the sea ice model.", default=.false.)
-  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", do_deltaEdd, &
-                 "If true, a delta-Eddington radiative transfer calculation \n"//&
-                 "for the shortwave radiation within the sea-ice.", default=.true.)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of sea ice with the delta-Eddington radiative \n"//&
-                 "transfer calculation.", units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of snow on sea ice with the delta-Eddington \n"//&
-                 "radiative transfer calculation.", &
-                 units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
-                 "radiative transfer calculation.", units="perhaps nondimensional?", &
-                 default=0.0)
-
-  call check_ice_model_nml(param_file)
-
-  if (IST%specified_ice) IST%slab_ice = .true.
-
-  nCat_dflt = 5
-  if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
-
-
-  call set_ice_grid(Ice%G, param_file, Ice%domain, nCat_dflt )
-
-  if (IST%slab_ice) G%CatIce = 1 ! open water and ice ... but never in same place
-  ! Initialize G%H_cat_lim here.  ###This needs to be extended to add more options.
-  do k=1,min(G%CatIce+1,size(hlim_dflt(:)))
-    G%H_cat_lim(k) = hlim_dflt(k)
-  enddo
-  if ((G%CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
-    do k=min(G%CatIce+1,size(hlim_dflt(:))) + 1, G%CatIce+1
-      G%H_cat_lim(k) =  2.0*G%H_cat_lim(k-1) - G%H_cat_lim(k-2)
-    enddo
-  endif
-
-  call set_domain(G%Domain%mpp_domain)
-  CatIce = G%CatIce
-
-  ! Allocate and register fields for restarts.
-  restart_file = 'ice_model.res.nc'
-  call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, param_file, Ice, Ice_restart, restart_file)
-
-  call ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
-
-  call ice_dyn_register_restarts(Ice%G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
-!    call ice_transport_register_restarts(Ice%G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
-
-
-  ! Redefine the computational domain sizes to use the ice model's indexing convention.
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-
-  Ice%area(:,:)   = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
-  IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
-
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%mask(i2,j2) = ( Ice%G%mask2dT(i,j) > 0.5 )
-!###   Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
-  enddo ; enddo
- 
-  Ice%Time           = Time
-  IST%Time           = Time
-  IST%Time_Init      = Time_Init
-  IST%Time_step_fast = Time_step_fast
-  IST%Time_step_slow = Time_step_slow
-
-  IST%avg_count      = 0
-
-  !
-  ! read restart
-  !
-  restart_file = 'INPUT/ice_model.res.nc'
-  if (file_exist(restart_file)) then
-    call restore_state(Ice_restart)
-
-    !--- update the halo values.
-    call pass_var(IST%part_size, Ice%G%Domain, complete=.false.)
-    call pass_var(IST%h_ice, Ice%G%Domain, complete=.false.)
-    call pass_var(IST%h_snow, Ice%G%Domain, complete=.false.)
-    do l=1,G%NkIce
-      call pass_var(IST%t_ice(:,:,:,l), Ice%G%Domain, complete=.false.)
-    enddo
-    call pass_var(IST%t_snow, Ice%G%Domain, complete=.true.)
-
-    call pass_vector(IST%u_ice, IST%v_ice, Ice%G%Domain, stagger=BGRID_NE)
-  else ! no restart implies initialization with no ice
-    IST%part_size(:,:,:) = 0.0
-    IST%part_size(:,:,0) = 1.0
-
-    Ice%rough_mom(:,:,:)   = mom_rough_ice
-    Ice%rough_heat(:,:,:)  = heat_rough_ice
-    Ice%rough_moist(:,:,:) = heat_rough_ice
-    IST%t_surf(:,:,:) = Tfreeze-5.0
-    IST%t_snow(:,:,:) = -5.0
-    IST%t_ice(:,:,:,:) = -5.0
-
-    IST%do_init = .true. ! Some more initilization needs to be done in ice_model.
-  endif ! file_exist(restart_file)
-
-  do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
-    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
-    
-  call SIS_diag_mediator_init(Ice%G, param_file, IST%diag, component="SIS")
-  call set_SIS_axes_info(Ice%G, param_file, IST%diag)
-
-  call ice_diagnostics_init(Ice, IST, Ice%G, IST%diag, IST%Time)
-
-  call ice_dyn_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_dyn_CSp)
-  call ice_transport_init(IST%Time, Ice%G, param_file, IST%diag, IST%ice_transport_CSp)
-  call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
-                     t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
-
-  call close_param_file(param_file)
-
-  iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
-  iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClockb = mpp_clock_id( '       slow: comm/cut check ', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClockc = mpp_clock_id( '       slow: diags', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock8 = mpp_clock_id( '  Ice: slow: salt to ocean', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock9 = mpp_clock_id( '  Ice: slow: thermodyn diags', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-
-  ! Initialize icebergs
-  x_cyclic = (Ice%G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
-  tripolar_grid = (Ice%G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
-  if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           Ice%G%Domain%niglobal, Ice%G%Domain%njglobal, Ice%G%Domain%layout, Ice%G%Domain%io_layout, &
-           Ice%axes(1:2), Ice%G%Domain%maskmap, x_cyclic, tripolar_grid, &
-           time_type_to_real(Time_step_slow), Time, Ice%G%geoLonBu(isc:iec,jsc:jec), Ice%G%geoLatBu(isc:iec,jsc:jec), &
-           Ice%G%mask2dT, Ice%G%dxCv, Ice%G%dyCu, cell_area, Ice%G%cos_rot, Ice%G%sin_rot )
-
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
-
-  if (do_deltaEdd) &
-    call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
-
-  call nullify_domain()
-
-end subroutine ice_model_init
-
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_data_type_register_restarts - allocate the arrays in the ice_data_type   !
@@ -803,36 +487,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen,    domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_end - writes the restart file and deallocates memory               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_model_end (Ice)
-  type(ice_data_type), intent(inout) :: Ice
-
-  type(ice_state_type), pointer :: IST => NULL()
-
-  IST => Ice%Ice_state
-  if (IST%conservation_check) call ice_print_budget(IST)
-
-  call ice_model_restart()
-
-  !--- release memory ------------------------------------------------
-
-  call ice_dyn_end(IST%ice_dyn_CSp)
-  call ice_transport_end(IST%ice_transport_CSp)
-
-  call ice_grid_end(Ice%G)
-  call dealloc_Ice_arrays(Ice)
-  call dealloc_IST_arrays(IST)
-
-  ! End icebergs
-  if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
-  
-  deallocate(Ice%Ice_state)
-
-end subroutine ice_model_end
 
 subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice

@@ -12,7 +12,6 @@ module ice_grid_mod
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
   use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
   use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
-use MOM_coms, only : g_sum=>reproducing_sum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
 use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
@@ -28,7 +27,7 @@ implicit none ; private
 include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-public :: set_ice_grid, ice_grid_end, g_sum, get_avg, ice_line
+public :: set_ice_grid, ice_grid_end
 public :: cell_area
 
 type, public :: sea_ice_grid_type
@@ -683,82 +682,6 @@ function edge_length(x1, y1, x2, y2)
   dy = y2-y1
   edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
 end function edge_length
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_avg - take area weighted average over all partitions                     !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_avg(x, cn, avg, wtd)
-  real, dimension(:,:,:), intent(in)  :: x
-  real, dimension(:,:,:), intent(in)  :: cn
-  real, dimension(:,:),   intent(out) :: avg
-  logical,      optional, intent(in)  :: wtd
-
-  real, dimension(size(x,1),size(x,2)) :: wts
-  logical :: do_wt
-  integer :: i, j, k, ni, nj, nk
-
-  do_wt = .false. ; if (present(wtd)) do_wt = wtd
-
-  ni = size(x,1) ; nj = size(x,2); nk = size(x,3)
-  if ((size(cn,1) /= ni) .or. (size(cn,2) /= nj) .or. (size(cn,3) /= nk)) &
-    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and cn in get_avg.")
-  if ((size(avg,1) /= ni) .or. (size(avg,2) /= nj)) &
-    call SIS_error(FATAL, "Mismatched i- or j- sizes of x and avg in get_avg.")
-  if (size(cn,3) /= nk) &
-    call SIS_error(FATAL, "Mismatched category sizes of x and cn in get_avg.")
-
-  if (do_wt) then
-    avg(:,:) = 0.0 ; wts(:,:) = 0.0
-    do k=1,nk ; do j=1,nj ; do i=1,ni
-      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-      wts(i,j) = wts(i,j) + cn(i,j,k)
-    enddo ; enddo ; enddo
-     do j=1,nj ; do i=1,ni
-      if (wts(i,j) > 0.) then
-        avg(i,j) = avg(i,j) / wts(i,j)
-      else
-        avg(i,j) = 0.0
-      endif
-    enddo ; enddo
-  else
-    avg(:,:) = 0.0
-    do k=1,nk ; do j=1,nj ; do i=1,ni
-      avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-    enddo ; enddo ; enddo
-  endif
-
-end subroutine get_avg
-
-!#####################################################################
-subroutine ice_line(year, day, second, cn_ocn, sst, G)
-  integer,                         intent(in) :: year, day, second
-  type(sea_ice_grid_type),         intent(in) :: G
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: cn_ocn
-  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: sst
-
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
-  real :: gx(3)
-  integer :: n, i, j, isc, iec, jsc, jec
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  if (.not.(second==0 .and. mod(day,5)==0) ) return
-
-  do n=-1,1,2
-    do j=jsc,jec ; do i=isc,iec
-      x(i,j) = 0.0
-      if (cn_ocn(i,j)<0.85 .and. n*G%geoLatT(i,j)>0.0) &
-        x(i,j) = G%mask2dT(i,j)*G%areaT(i,j)
-    enddo ; enddo
-    gx((n+3)/2) = g_sum(x(isc:iec,jsc:jec))/1e12
-  enddo
-  gx(3) = g_sum(sst(isc:iec,jsc:jec)*G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) / &
-         (g_sum(G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) + 1e-10)
-  !
-  ! print info every 5 days
-  !
-  if ( mpp_pe()==0 .and. second==0 .and. mod(day,5)==0 ) &
-    print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
-end subroutine ice_line
 
 subroutine allocate_metrics(G)
   type(sea_ice_grid_type), intent(inout) :: G
