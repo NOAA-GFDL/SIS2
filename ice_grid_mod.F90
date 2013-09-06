@@ -11,9 +11,9 @@ module ice_grid_mod
   use mpp_domains_mod, only: mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
   use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
   use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
-  use mpp_domains_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE
 
 use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use MOM_domains,     only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_string_functions, only : slasher
@@ -35,7 +35,7 @@ public :: cell_area
 
 type, public :: sea_ice_grid_type
   type(SIS_domain_type), pointer :: Domain => NULL()
-  type(SIS_domain_type), pointer :: Domain_aux => NULL()
+  type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
   integer :: isc, iec, jsc, jec ! The range of the computational domain indicies
   integer :: isd, ied, jsd, jed ! and data domain indicies at tracer cell centers.
   integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indicies.
@@ -229,8 +229,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   if (.not.associated(G%Domain)) then
     allocate(G%Domain)
     allocate(G%Domain%mpp_domain)
+    allocate(G%Domain_aux)
+    allocate(G%Domain_aux%mpp_domain)
   endif
-  Domain => G%Domain%mpp_domain
   MOM_dom => G%Domain
 
 !  pe = PE_here()
@@ -554,22 +555,28 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     allocate(G%Domain%maskmap(layout(1), layout(2)))
     call parse_mask_table(mask_table, G%Domain%maskmap, "Ice model")
 
-    call mpp_define_domains( (/1,im,1,jm/), layout, Domain, maskmap=G%Domain%maskmap, &
+    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain%mpp_domain, maskmap=G%Domain%maskmap, &
                           xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
                           symmetry=MOM_dom%symmetric, name='ice model' )
+    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain_aux%mpp_domain, maskmap=G%Domain%maskmap, &
+                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
+                          symmetry=.false., name='ice model' )
     call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, maskmap=G%Domain%maskmap, name='ice_nohalo') ! domain without halo
   else
-    call mpp_define_domains( (/1,im,1,jm/), layout, Domain, &
+    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain%mpp_domain, &
                           xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
                           symmetry=MOM_dom%symmetric, name='ice model' )
+    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain_aux%mpp_domain, &
+                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
+                          symmetry=.false., name='ice model' )
     call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, name='ice_nohalo') ! domain without halo
   endif
-  call mpp_define_io_domain(Domain, io_layout)
+  call mpp_define_io_domain(G%Domain%mpp_domain, io_layout)
   call mpp_define_io_domain(ice_domain, io_layout)
 
-  call mpp_get_compute_domain( Domain, isca, ieca, jsca, jeca )
-  call mpp_get_data_domain( Domain, isda, ieda, jsda, jeda )
-  call mpp_get_global_domain( Domain, isg, ieg, jsg, jeg )
+  call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
+  call mpp_get_data_domain(G%Domain%mpp_domain, isda, ieda, jsda, jeda )
+  call mpp_get_global_domain(G%Domain%mpp_domain, isg, ieg, jsg, jeg )
 
   ! Set up the remainder of the SIS_domain_type.  This will later occur via a
   ! call to MOM_domains_init.
@@ -583,12 +590,24 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   ! call get_domain_extent(G%Domain, isca, ieca, jsca, jeca, isda, ieda, jsda, jeda, &
   !                          isg, ieg, jsg, jeg, i_offset, j_offset, G%Domain%Symmetric, .false.)
 
+  ! Copy the elements of G%Domain to the non-symmetric auxiliary domain.
+  G%domain_aux%symmetric = .false.
+  G%domain_aux%niglobal = G%domain%niglobal ; G%domain_aux%njglobal = G%domain%njglobal
+  G%domain_aux%nihalo = G%domain%nihalo ; G%domain_aux%njhalo = G%domain%njhalo
+  G%domain_aux%nonblocking_updates = G%domain%nonblocking_updates
+  G%domain_aux%use_io_layout = G%domain%use_io_layout
+  G%domain_aux%layout(:) = G%domain%layout(:)
+  G%domain_aux%io_layout(:) = G%domain%io_layout(:)
+  G%domain_aux%X_FLAGS = G%domain%X_FLAGS ; G%domain_aux%Y_FLAGS = G%domain%Y_FLAGS
+  if (associated(G%domain%maskmap)) G%domain_aux%maskmap => G%domain%maskmap
+
+
   ! Allocate and fill in default values for elements of the sea ice grid type.
   if (global_indexing) then
     i_off = 0 ; j_off = 0
   else
-    ! i_off = isda-1 ; j_off = jsda-1 
-    i_off = 1000 ; j_off = 1000 ! Use this for debugging.
+    i_off = isda-1 ; j_off = jsda-1 
+    ! i_off = 1000 ; j_off = 1000 ! Use this for debugging.
   endif
 
   G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
@@ -616,12 +635,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
 
   !--- read data from grid_spec.nc
   allocate(depth(G%isc:G%iec,G%jsc:G%jec))
-  call read_data(ocean_topog, 'depth', depth(G%isc:G%iec,G%jsc:G%jec), Domain)
+  call read_data(ocean_topog, 'depth', depth(G%isc:G%iec,G%jsc:G%jec), G%Domain%mpp_domain)
   do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (depth(i,j) > 0) then
     G%mask2dT(i,j) = 1.0
   endif ; enddo ; enddo
   deallocate(depth)
-  call mpp_update_domains(G%mask2dT, Domain)
+  call pass_var(G%mask2dT, G%Domain)
 
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
@@ -668,7 +687,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
 
   allocate ( cell_area(isca:ieca,jsca:jeca) )
 
-  call mpp_copy_domain(domain, domain2)
+  call mpp_copy_domain(G%Domain%mpp_domain, domain2)
   call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
   call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
   call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
@@ -705,6 +724,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
        yb1d(:) = sum(tmpy,1)/(im+1)
        deallocate(tmpx, tmpy)
     else
+       Domain => G%Domain%mpp_domain
        allocate ( tmpx(isca:ieca+1, jm+1) )
        call mpp_set_domain_symmetry(Domain, .TRUE.)
        call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
@@ -759,11 +779,11 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     G%cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
-  call mpp_update_domains(G%dyCu, G%dxCv, Domain, gridtype=CGRID_NE, flags = SCALAR_PAIR)
+  call pass_vector(G%dyCu, G%dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
 
   ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
-    call mpp_update_domains(G%cos_rot, Domain)
-    call mpp_update_domains(G%sin_rot, Domain)
+    call pass_var(G%cos_rot, G%Domain)
+    call pass_var(G%sin_rot, G%Domain)
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
@@ -776,8 +796,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   enddo ; enddo
 
 ! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
-  call mpp_update_domains(G%dxT, Domain )
-  call mpp_update_domains(G%dyT, Domain )
+  call pass_var(G%dxT, G%Domain )
+  call pass_var(G%dyT, G%Domain )
 
   G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
   G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
@@ -790,8 +810,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
   enddo ; enddo
 
-  call mpp_update_domains(G%dxBu, G%dyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
-  call mpp_update_domains(G%IdxBu, G%IdyBu, Domain, gridtype=BGRID_NE, flags=SCALAR_PAIR )
+  call pass_vector(G%dxBu, G%dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
+  call pass_vector(G%IdxBu, G%IdyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
@@ -813,8 +833,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     if (tripolar_grid) then
        npes = mpp_npes()
        allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
-       call mpp_get_pelist(Domain, pelist)
-       call mpp_get_compute_domains(Domain, xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
+       call mpp_get_pelist(G%Domain%mpp_domain, pelist)
+       call mpp_get_compute_domains(G%Domain%mpp_domain, &
+                xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
 
        do p = 1, npes
           if( jslist(p) == jsca .AND. islist(p) + ieca == im+1 ) then

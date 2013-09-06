@@ -34,9 +34,11 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use SIS_error_checking, only : chksum, Bchksum, hchksum
 use SIS_get_input, only : Get_SIS_input
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
+! use MOM_domains,       only : fill_symmetric_edges
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
@@ -63,6 +65,7 @@ use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
 use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
+use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_utils_mod, only : get_avg, post_avg, ice_line
 use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
@@ -360,6 +363,11 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
+  if (IST%debug) then
+    call IST_chksum("Start ice_top_to_ice_bottom", IST, G)
+    call Ice_public_type_chksum("Start ice_top_to_ice_bottom", Ice)
+  endif
+
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
   Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
@@ -395,6 +403,11 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
     enddo ; enddo
   enddo ; enddo ; enddo
 
+  if (IST%debug) then
+    call IST_chksum("End ice_top_to_ice_bottom", IST, G)
+    call Ice_public_type_chksum("End ice_top_to_ice_bottom", Ice)
+  endif
+
 end subroutine ice_top_to_ice_bottom
 
 !
@@ -428,6 +441,8 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: sst, tmp
+  real, dimension(SZIB_(G),SZJB_(G)) :: u_tmp, v_tmp
+  real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
   real :: u, v
   real :: area_pt
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -476,6 +491,13 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   ! Any special first-time initialization must be completed before this point.
   IST%first_time = .false.
+
+  if (IST%debug) then
+    call IST_chksum("Start ice_bottom_to_ice_top", IST, G)
+    call Ice_public_type_chksum("Start ice_bottom_to_ice_top", Ice)
+    call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT u_surf_ice_bot")
+    call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT v_surf_ice_bot")
+  endif
 
   do j=jsc,jec ; do i=isc,iec
     sst(i,j) = IST%t_surf(i,j,0) - Tfreeze
@@ -534,12 +556,43 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   endif ; enddo ; enddo ; enddo
 
-  do j=jsc,jec ; do i=isc,iec
-    IST%u_ocn(i,j) = u_surf_ice_bot(i,j) ! need under-ice current
-    IST%v_ocn(i,j) = v_surf_ice_bot(i,j) ! for water drag term
-  enddo ; enddo
+  IST%u_ocn(:,:) = 0.0 ; IST%v_ocn(:,:) = 0.0 !### DELETE THIS?
+
+  if (G%symmetric) then  ! This is a place-holder until the Tikal release.
+    u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec
+      u_nonsym(i,j) = u_surf_ice_bot(i,j) ! need under-ice current
+      v_nonsym(i,j) = v_surf_ice_bot(i,j) ! for water drag term
+    enddo ; enddo
+    call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+    do j=jsc-1,jec ; do i=isc-1,iec
+      IST%u_ocn(i,j) = u_nonsym(i,j) ! need under-ice current
+      IST%v_ocn(i,j) = v_nonsym(i,j) ! for water drag term
+    enddo ; enddo
+  else
+    do j=jsc,jec ; do i=isc,iec
+      IST%u_ocn(i,j) = u_surf_ice_bot(i,j) ! need under-ice current
+      IST%v_ocn(i,j) = v_surf_ice_bot(i,j) ! for water drag term
+    enddo ; enddo
+  endif
+  !   This will be used with Tikal and later shared code.
+  ! if (G%symmetric) &
+  !   call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+
+  u_tmp(:,:) = IST%u_ocn(:,:) ; v_tmp(:,:) = IST%v_ocn(:,:) !### DELETE THIS
+
+  if (IST%debug) then
+    call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass u_surf_ice_bot")
+    call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass v_surf_ice_bot")
+    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Pre-pass IST%u_ocn(0,0)")
+    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Pre-pass IST%v_ocn(0,0)")
+  endif
 
   call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+  if (IST%debug) then
+    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Post-pass IST%u_ocn(0,0)")
+    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Post-pass IST%v_ocn(0,0)")
+  endif
 
   ! Copy the surface temperatures into the externally visible data type.
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
@@ -571,6 +624,24 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     endif
   enddo ; enddo
 
+  if (IST%debug) then
+    call chksum(Ice%u_surf(:,:,1), "Intermed Ice%u_surf(1)")
+    call chksum(Ice%v_surf(:,:,1), "Intermed Ice%v_surf(1)")
+    call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
+    call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
+    call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
+    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Intermed IST%u_ocn(0,0)")
+    call chksum(IST%u_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%u_ocn(-,0)")
+    call chksum(IST%u_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%u_ocn(0,-)")
+    call chksum(IST%u_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%u_ocn(-,-)")
+    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Intermed IST%v_ocn(0,0)")
+    call chksum(IST%v_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%v_ocn(-,0)")
+    call chksum(IST%v_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%v_ocn(0,-)")
+    call chksum(IST%v_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%v_ocn(-,-)")
+    call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
+    call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
+  endif
+
   ! Rotate the velocities from the ocean coordinates to lat/lon coordiantes.
   do k2=1,2 ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
@@ -583,6 +654,12 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     Ice%u_surf(:,:,k2) = Ice%u_surf(:,:,2)  ! same ice flow on all ice partitions
     Ice%v_surf(:,:,k2) = Ice%v_surf(:,:,2)  !
   enddo
+  if (IST%debug) then
+    do k2=1,ncat+1
+      call chksum(Ice%u_surf(:,:,k2), "End Ice%u_surf(k2)")
+      call chksum(Ice%v_surf(:,:,k2), "End Ice%v_surf(k2)")
+    enddo
+  endif
   !
   ! Pre-timestep diagnostics
   !
@@ -592,10 +669,15 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%id_sst>0) call post_data(IST%id_sst, sst(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_sss>0) call post_data(IST%id_sss, IST%s_surf, IST%diag, mask=G%Lmask2dT)
   if (IST%id_ssh>0) call post_data(IST%id_ssh, IST%sea_lev, IST%diag, mask=G%Lmask2dT)
-  if (IST%id_uo >0) call post_data(IST%id_uo , IST%u_ocn, IST%diag, mask=G%Lmask2dT)
-  if (IST%id_vo >0) call post_data(IST%id_vo , IST%v_ocn, IST%diag, mask=G%Lmask2dT)
+  if (IST%id_uo >0) call post_data(IST%id_uo , IST%u_ocn, IST%diag, mask=G%Lmask2dBu)
+  if (IST%id_vo >0) call post_data(IST%id_vo , IST%v_ocn, IST%diag, mask=G%Lmask2dBu)
   if (IST%id_bheat>0) call post_data(IST%id_bheat, IST%bheat, IST%diag, mask=G%Lmask2dT)
   call disable_SIS_averaging(IST%diag)
+
+  if (IST%debug) then
+    call IST_chksum("End ice_bottom_to_ice_top", IST, G)
+    call Ice_public_type_chksum("End ice_bottom_to_ice_top", Ice)
+  endif
 
 end subroutine ice_bottom_to_ice_top
 
@@ -651,6 +733,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
 
   rad = acos(-1.)/180.
+
+  if (IST%debug) then
+    call IST_chksum("Start do_update_ice_model_fast", IST, G)
+    call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
+  endif
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
@@ -823,6 +910,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag, mask=G%Lmask2dT)
   call disable_SIS_averaging(IST%diag)
 
+  if (IST%debug) then
+    call IST_chksum("End do_update_ice_model_fast", IST, G)
+    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
+  endif
+
 end subroutine do_update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -866,6 +958,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow)
+
+  if (IST%debug) then
+    call IST_chksum("Start update_ice_model_slow", IST, G)
+    call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
+  endif
 
   !
   ! Set up fluxes
@@ -947,14 +1044,14 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
   do k=1,ncat
     !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-    do j=jsc,jec ; do i=isc,iec
+    do J=jsc-1,jec ; do I=isc-1,iec
       if(G%mask2dBu(i,j) > 0.5 ) then
-         part_size_uv(i,j,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
+         part_size_uv(I,J,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
                                          IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
       else
-         part_size_uv(i,j,k) = 0.0
+         part_size_uv(I,J,k) = 0.0
       endif
-      part_size_uv(i,j,0) = part_size_uv(i,j,0) - part_size_uv(i,j,k)
+      part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
     enddo ; enddo
   enddo
 
@@ -962,10 +1059,22 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_snow, IST%part_size(:,:,1:), tmp1, wtd=.true.)
   call get_avg(IST%h_ice,IST%part_size(:,:,1:), tmp2, wtd=.true.)
   wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
-  call get_avg(IST%flux_u_top_bgrid(isc:iec,jsc:jec,1:), part_size_uv(isc:iec,jsc:jec,1:), &
-               wind_stress_x(isc:iec,jsc:jec), wtd=.true.)
-  call get_avg(IST%flux_v_top_bgrid(isc:iec,jsc:jec,1:), part_size_uv(isc:iec,jsc:jec,1:), &
-               wind_stress_y(isc:iec,jsc:jec), wtd=.true.)
+  call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
+               wind_stress_x(isc-1:iec,jsc-1:jec), wtd=.true.)
+  call get_avg(IST%flux_v_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
+               wind_stress_y(isc-1:iec,jsc-1:jec), wtd=.true.)
+
+  if (IST%debug) then
+    call IST_chksum("Before ice_dynamics", IST, G)
+    call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
+    call hchksum(tmp1, "tmp1 before ice_dynamics", G)
+    call hchksum(tmp2, "tmp2 before ice_dynamics", G)
+    call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
+    call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
+    call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
+    call Bchksum(wind_stress_x, "wind_stress_x before ice_dynamics", G, symmetric=.true.)
+    call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
+  endif
 
   call mpp_clock_begin(iceClocka)
   call ice_dynamics(1.0-IST%part_size(:,:,0), tmp1, tmp2, IST%u_ice, IST%v_ice, &
@@ -973,6 +1082,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                     wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
                     dt_slow, G, IST%ice_dyn_CSp)
   call mpp_clock_end(iceClocka)
+
+  if (IST%debug) then
+    call IST_chksum("After ice_dynamics", IST, G)
+  endif
 
   call mpp_clock_begin(iceClockb)
   call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
@@ -1269,6 +1382,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                 (IST%Rho_snow*IST%h_snow(i,j,k)+IST%Rho_ice*IST%h_ice(i,j,k))
   enddo ; enddo ; enddo
 
+  if (IST%debug) then
+    call IST_chksum("Before ice_transport", IST, G)
+  endif
+
   ! Convert the velocities to C-grid points for transport.
   uc(:,:) = 0.0; vc(:,:) = 0.0
   do j=jsc,jec ; do I=isc-1,iec
@@ -1286,6 +1403,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = Tfreeze - MU_TS*IST%s_surf(i,j)
   enddo ; enddo ; enddo
+
+  if (IST%debug) then
+    call IST_chksum("After ice_transport", IST, G)
+  endif
 
   ! Convert thickness and concentration to mass.
   mass(:,:) = 0.0 
@@ -1447,6 +1568,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   enddo ; enddo
   call mpp_clock_end(iceClock9)
 
+  if (IST%debug) then
+    call IST_chksum("End update_ice_model_slow", IST, G)
+    call Ice_public_type_chksum("End update_ice_model_slow", Ice)
+  endif
+
 end subroutine update_ice_model_slow
 
 
@@ -1521,6 +1647,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  units="kg m-3", default=330.0)
   call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+
   call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
                  units="m", default=1.0e-4)
@@ -1557,6 +1684,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "internal conservation of heat, salt, and water mass in \n"//&
                  "the sea ice model.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.true.)
+  call get_param(param_file, mod, "DEBUG", IST%debug, &
+                 "If true, write out verbose debugging data.", default=.false.)
+
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
@@ -1673,7 +1803,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call restore_state(Ice_restart)
 
     !--- update the halo values.
-    call pass_var(IST%part_size, G%Domain, complete=.false.)
+    call pass_var(IST%part_size, G%Domain)
     call pass_var(IST%h_ice, G%Domain, complete=.false.)
     call pass_var(IST%h_snow, G%Domain, complete=.false.)
     do l=1,G%NkIce

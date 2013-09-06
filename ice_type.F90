@@ -24,6 +24,7 @@ use MOM_file_parser, only : param_file_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
+use SIS_error_checking, only : chksum, Bchksum, hchksum, check_redundant_B
 use SIS_get_input, only : archaic_nml_check
 
 implicit none ; private
@@ -37,6 +38,7 @@ public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
+public :: IST_chksum, Ice_public_type_chksum
 
 public  :: earth_area
 
@@ -140,6 +142,7 @@ type ice_state_type
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
+  logical :: debug           ! If true, write verbose checksums for debugging purposes.
 
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
@@ -432,8 +435,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
   allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%u_ocn(SZI_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
-  allocate(IST%v_ocn(SZI_(G), SZJ_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+  allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
+  allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
 
   allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
@@ -538,6 +541,83 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%u_ice_nonsym, IST%v_ice_nonsym)
 
 end subroutine dealloc_IST_arrays
+
+subroutine IST_chksum(mesg, IST, G, haloshift)
+  character(len=*),        intent(in)    :: mesg
+  type(ice_state_type),    intent(inout) :: IST
+  type(sea_ice_grid_type), intent(inout) :: G
+  integer, optional,       intent(in)    :: haloshift
+!   This subroutine writes out chksums for the model's basic state variables.
+! Arguments: mesg - A message that appears on the chksum lines.
+!  (in)      IST - The ice state type variable to be checked.
+!  (in)      G - The ocean's grid structure.
+!  (in,opt)  haloshift - If present, check halo points out this far.
+  character(len=20) :: k_str1, k_str
+  integer :: hs, k
+
+  ! Note that for the chksum calls to be useful for reproducing across PE
+  ! counts, there must be no redundant points, so all variables use is..ie
+  ! and js...je as their extent.
+  hs=0; if (present(haloshift)) hs=haloshift
+
+  call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
+  call hchksum(IST%h_ice, trim(mesg)//" IST%h_ice",G,haloshift=hs)
+  do k=1,4
+    write(k_str1,'(I8)') k
+    k_str = "("//trim(adjustl(k_str1))//")"
+    call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%h_ice("//trim(k_str),G,haloshift=hs)
+  enddo
+  call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
+  call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
+  call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
+  call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
+  call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
+
+end subroutine IST_chksum
+
+subroutine Ice_public_type_chksum(mesg, Ice)
+  character(len=*),        intent(in)    :: mesg
+  type(ice_data_type),     intent(inout) :: Ice
+!   This subroutine writes out chksums for the model's basic state variables.
+! Arguments: mesg - A message that appears on the chksum lines.
+!  (in)      Ice - An ice_data_type structure whose elements are to be
+!                  checksummed.
+
+  ! Note that the publicly visible ice_data_type has no halos, so it is not
+  ! possible do check their values.
+
+  call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
+  call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
+  call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
+  call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
+  call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
+  call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
+  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+  call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
+
+  call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
+  call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
+  call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
+  call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
+
+  call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
+  call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
+  call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
+  call chksum(Ice%flux_q, trim(mesg)//" Ice%flux_q")
+  call chksum(Ice%flux_lw, trim(mesg)//" Ice%flux_lw")
+  call chksum(Ice%flux_sw_vis_dir, trim(mesg)//" Ice%flux_sw_vis_dir")
+  call chksum(Ice%flux_sw_nir_dir, trim(mesg)//" Ice%flux_sw_nir_dir")
+  call chksum(Ice%flux_sw_vis_dif, trim(mesg)//" Ice%flux_sw_vis_dif")
+  call chksum(Ice%flux_sw_nir_dif, trim(mesg)//" Ice%flux_sw_nir_dif")
+  call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
+  call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
+  call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
+  call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
+  call chksum(Ice%calving, trim(mesg)//" Ice%calving")
+  call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+
+end subroutine Ice_public_type_chksum
 
 subroutine ice_print_budget(IST)
   type(ice_state_type), intent(inout) :: IST
