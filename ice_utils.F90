@@ -29,16 +29,19 @@
 module ice_utils_mod
 
 use MOM_coms, only : g_sum=>reproducing_sum
+use MOM_domains,       only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
+use SIS_error_checking, only : hchksum, Bchksum, uchksum, vchksum
+use SIS_error_checking, only : check_redundant_B
 use ice_grid_mod, only : sea_ice_grid_type
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: get_avg, post_avg, ice_line, is_NaN, g_sum
+public :: get_avg, post_avg, ice_line, is_NaN, g_sum, ice_grid_chksum
 
 contains
 
@@ -200,6 +203,68 @@ subroutine post_avg(id, val, part, diag, G, mask, scale, offset, wtd)
   call post_SIS_data(id, avg, diag, mask=mask)
 
 end subroutine post_avg
+
+subroutine ice_grid_chksum(G, haloshift)
+  type(sea_ice_grid_type), optional, intent(inout) :: G
+  integer, optional, intent(in) :: haloshift
+
+  integer :: isc, iec, jsc, jec, hs
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  hs = 1 ; if (present(haloshift)) hs = haloshift
+
+  call hchksum(G%mask2dT, "G%mask2dT", G, haloshift=hs)
+  call hchksum(G%geoLatT, "G%geoLatT", G, haloshift=hs)
+  call hchksum(G%geoLonT, "G%geoLonT", G, haloshift=hs)
+  call hchksum(G%dxT, "G%dxT", G, haloshift=hs)
+  call hchksum(G%IdxT, "G%IdxT", G, haloshift=hs)
+  call hchksum(G%IdyT, "G%IdyT", G, haloshift=hs)
+  call hchksum(G%dyT, "G%dyT", G, haloshift=hs)
+  call hchksum(G%areaT, "G%areaT", G, haloshift=hs)
+  call hchksum(G%IareaT, "G%IareaT", G, haloshift=hs)
+  call hchksum(G%mask2dT, "G%mask2dT", G, haloshift=hs)
+  call hchksum(G%cos_rot, "G%cos_rot", G)
+  call hchksum(G%sin_rot, "G%sin_rot", G)
+
+  call Bchksum(G%mask2dBu, "G%mask2dBu", G, haloshift=hs)
+  call Bchksum(G%geoLatBu, "G%geoLatBu", G, haloshift=hs)
+  call Bchksum(G%geoLonBu, "G%geoLonBu", G, haloshift=hs)
+  call Bchksum(G%dxBu, "G%dxBu", G, haloshift=hs)
+  call Bchksum(G%dyBu, "G%dyBu", G, haloshift=hs)
+  call Bchksum(G%IdxBu, "G%IdxBu", G, haloshift=hs)
+  call Bchksum(G%IdyBu, "G%IdyBu", G, haloshift=hs)
+  call Bchksum(G%areaBu, "G%areaBu", G, haloshift=hs)
+  call Bchksum(G%IareaBu, "G%IareaBu", G, haloshift=hs)
+
+  call check_redundant_B("G%dx/dyBu", G%dxBu, G%dyBu, G, &
+             isc-1, iec+1, jsc-1, jec+1, To_All+Scalar_Pair)
+  call check_redundant_B("G%Idx/dyBu", G%IdxBu, G%IdyBu, G, &
+             isc-1, iec+1, jsc-1, jec+1, To_All+Scalar_Pair)
+  call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1)
+  call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1)
+
+  call uchksum(G%mask2dCu, "G%mask2dCu", G, haloshift=hs)
+  call uchksum(G%geoLatCu, "G%geoLatCu", G, haloshift=hs)
+  call uchksum(G%geoLonCu, "G%geolonCu", G, haloshift=hs)
+  call uchksum(G%dxCu, "G%dxCu", G, haloshift=hs)
+  call uchksum(G%dyCu, "G%dyCu", G, haloshift=hs)
+  call uchksum(G%IdxCu, "G%IdxCu", G, haloshift=hs)
+  call uchksum(G%IdyCu, "G%IdyCu", G, haloshift=hs)
+  call uchksum(G%areaCu, "G%areaCu", G, haloshift=hs)
+  call uchksum(G%IareaCu, "G%IareaCu", G, haloshift=hs)
+
+  call vchksum(G%mask2dCv, "G%mask2dCv", G, haloshift=hs)
+  call vchksum(G%geoLatCv, "G%geoLatCv", G, haloshift=hs)
+  call vchksum(G%geoLonCv, "G%geoLonCv", G, haloshift=hs)
+  call vchksum(G%dxCv, "G%dxCv", G, haloshift=hs)
+  call vchksum(G%dyCv, "G%dyCv", G, haloshift=hs)
+  call vchksum(G%IdxCv, "G%IdxCv", G, haloshift=hs)
+  call vchksum(G%IdyCv, "G%IdyCv", G, haloshift=hs)
+  call uchksum(G%areaCu, "G%areaCv", G, haloshift=hs)
+  call uchksum(G%IareaCu, "G%IareaCv", G, haloshift=hs)
+
+end subroutine ice_grid_chksum
+
 
 function is_NaN(x)
   real, intent(in) :: x
