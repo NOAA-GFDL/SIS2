@@ -66,7 +66,7 @@ use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
-use ice_utils_mod, only : get_avg, post_avg, ice_line
+use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 use ice_spec_mod, only: get_sea_surface
@@ -1089,11 +1089,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call mpp_clock_begin(iceClockb)
   call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
-  ! This is here because of limitations with the FMS restart capability.
-  do J=G%jsd,G%jed ; do I=G%isd,G%ied
-    IST%u_ice_nonsym(I,J) = IST%u_ice(I,J) 
-    IST%v_ice_nonsym(I,J) = IST%v_ice(I,J) 
-  enddo ; enddo
   call mpp_clock_end(iceClockb)
 
   call mpp_clock_begin(iceClockc)
@@ -1811,11 +1806,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     enddo
     call pass_var(IST%t_snow, G%Domain, complete=.true.)
 
-    ! This is here because of limitations with the FMS restart capability.
-    do J=G%jsd,G%jed ; do I=G%isd,G%ied
-      IST%u_ice(I,J) = IST%u_ice_nonsym(I,J) 
-      IST%v_ice(I,J) = IST%v_ice_nonsym(I,J) 
-    enddo ; enddo
     call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
@@ -1878,6 +1868,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
 
   call nullify_domain()
+
+  ! Do any error checking here.
+  if (IST%debug) then
+    call ice_grid_chksum(G)
+  endif
 
 end subroutine ice_model_init
 
