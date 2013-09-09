@@ -91,6 +91,8 @@ logical :: calculateStatistics=.false. ! If true, report min, max and mean
                                ! instead of the bitcount checksum
 logical :: checkForNaNs=.true. ! If true, checks array for NaNs and cause
                                ! FATAL error is any are found
+integer :: max_redundant_prints = 100
+integer :: redundant_prints(3) = 0
 
 contains
 
@@ -1136,20 +1138,24 @@ subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
   
   do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
-    if (u_resym(i,j) /= u_comp(i,j)) then
+    if (u_resym(i,j) /= u_comp(i,j) .and. &
+        redundant_prints(3) < max_redundant_prints) then
       write(mesg2,'(" redundant u-components",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," on pe ",i4)') &
            u_comp(i,j), u_resym(i,j),u_comp(i,j)-u_resym(i,j),i,j,pe_here()
       write(0,'(A130)') trim(mesg)//trim(mesg2)
+      redundant_prints(3) = redundant_prints(3) + 1
     endif
   enddo ; enddo
   do i=is_ch+1,ie_ch ; do j=js_ch,je_ch
-    if (v_resym(i,j) /= v_comp(i,j)) then
+    if (v_resym(i,j) /= v_comp(i,j) .and. &
+        redundant_prints(3) < max_redundant_prints) then
       write(mesg2,'(" redundant v-comps",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," x,y = ",2(1pe12.4)" on pe ",i4)') &
            v_comp(i,j), v_resym(i,j),v_comp(i,j)-v_resym(i,j),i,j, &
            G%geoLonBu(i,j), G%geoLatBu(i,j), pe_here()
       write(0,'(A155)') trim(mesg)//trim(mesg2)
+      redundant_prints(3) = redundant_prints(3) + 1
     endif
   enddo ; enddo
 
@@ -1226,11 +1232,13 @@ subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
   
   do i=is_ch,ie_ch ; do j=js_ch,je_ch
-    if (a_resym(i,j) /= array(i,j)) then
+    if (a_resym(i,j) /= array(i,j) .and. &
+        redundant_prints(2) < max_redundant_prints) then
       write(mesg2,'(" Redundant points",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," on pe ",i4)') &
            array(i,j), a_resym(i,j),array(i,j)-a_resym(i,j),i,j,pe_here()
       write(0,'(A130)') trim(mesg)//trim(mesg2)
+      redundant_prints(2) = redundant_prints(2) + 1
     endif
   enddo ; enddo
 
@@ -1319,20 +1327,24 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
   
   do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
-    if (u_resym(i,j) /= u_comp(i,j)) then
+    if (u_resym(i,j) /= u_comp(i,j) .and. &
+        redundant_prints(2) < max_redundant_prints) then
       write(mesg2,'(" redundant u-components",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," on pe ",i4)') &
            u_comp(i,j), u_resym(i,j),u_comp(i,j)-u_resym(i,j),i,j,pe_here()
       write(0,'(A130)') trim(mesg)//trim(mesg2)
+      redundant_prints(2) = redundant_prints(2) + 1
     endif
   enddo ; enddo
   do i=is_ch+1,ie_ch ; do j=js_ch,je_ch
-    if (v_resym(i,j) /= v_comp(i,j)) then
+    if (v_resym(i,j) /= v_comp(i,j) .and. &
+        redundant_prints(2) < max_redundant_prints) then
       write(mesg2,'(" redundant v-comps",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," x,y = ",2(1pe12.4)" on pe ",i4)') &
            v_comp(i,j), v_resym(i,j),v_comp(i,j)-v_resym(i,j),i,j, &
            G%geoLonBu(i,j), G%geoLatBu(i,j), pe_here()
       write(0,'(A155)') trim(mesg)//trim(mesg2)
+      redundant_prints(2) = redundant_prints(2) + 1
     endif
   enddo ; enddo
 
@@ -1397,12 +1409,14 @@ subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
   call pass_var(a_nonsym, G%Domain)
   
   do i=is_ch,ie_ch ; do j=js_ch,je_ch
-    if (a_nonsym(i,j) /= array(i,j)) then
+    if (a_nonsym(i,j) /= array(i,j) .and. &
+        redundant_prints(1) < max_redundant_prints) then
       write(mesg2,'(" Redundant points",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," on pe ",i4)') &
            array(i,j), a_nonsym(i,j),array(i,j)-a_nonsym(i,j),i,j,pe_here()
       write(0,'(A130)') trim(mesg)//trim(mesg2)
-    endif
+     redundant_prints(1) = redundant_prints(1) + 1
+   endif
   enddo ; enddo
 
 end subroutine  check_redundant_sT2d
@@ -1477,20 +1491,24 @@ subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   call pass_vector(u_nonsym, v_nonsym, G%Domain, direction, stagger=AGRID)
   
   do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
-    if (u_nonsym(i,j) /= u_comp(i,j)) then
+    if (u_nonsym(i,j) /= u_comp(i,j) .and. &
+        redundant_prints(1) < max_redundant_prints) then
       write(mesg2,'(" redundant u-components",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," on pe ",i4)') &
            u_comp(i,j), u_nonsym(i,j),u_comp(i,j)-u_nonsym(i,j),i,j,pe_here()
       write(0,'(A130)') trim(mesg)//trim(mesg2)
+      redundant_prints(1) = redundant_prints(1) + 1
     endif
   enddo ; enddo
   do i=is_ch+1,ie_ch ; do j=js_ch,je_ch
-    if (v_nonsym(i,j) /= v_comp(i,j)) then
+    if (v_nonsym(i,j) /= v_comp(i,j) .and. &
+        redundant_prints(1) < max_redundant_prints) then
       write(mesg2,'(" redundant v-comps",2(1pe12.4)," differ by ", &
                     & 1pe12.4," at i,j = ",2i4," x,y = ",2(1pe12.4)" on pe ",i4)') &
            v_comp(i,j), v_nonsym(i,j),v_comp(i,j)-v_nonsym(i,j),i,j, &
            G%geoLonBu(i,j), G%geoLatBu(i,j), pe_here()
       write(0,'(A155)') trim(mesg)//trim(mesg2)
+      redundant_prints(1) = redundant_prints(1) + 1
     endif
   enddo ; enddo
 
