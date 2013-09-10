@@ -485,8 +485,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice, domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice, domain=domain, position=CORNER)
+  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice, domain=domain, position=CORNER)
   idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen, domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
