@@ -1326,7 +1326,7 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   if (present(is)) is_ch = is ; if (present(ie)) ie_ch = ie
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
   
-  do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
+  do i=is_ch,ie_ch ; do j=js_ch,je_ch
     if (u_resym(i,j) /= u_comp(i,j) .and. &
         redundant_prints(2) < max_redundant_prints) then
       write(mesg2,'(" redundant u-components",2(1pe12.4)," differ by ", &
@@ -1336,7 +1336,7 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
       redundant_prints(2) = redundant_prints(2) + 1
     endif
   enddo ; enddo
-  do i=is_ch+1,ie_ch ; do j=js_ch,je_ch
+  do i=is_ch,ie_ch ; do j=js_ch,je_ch
     if (v_resym(i,j) /= v_comp(i,j) .and. &
         redundant_prints(2) < max_redundant_prints) then
       write(mesg2,'(" redundant v-comps",2(1pe12.4)," differ by ", &
