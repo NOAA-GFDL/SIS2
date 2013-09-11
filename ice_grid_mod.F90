@@ -19,8 +19,9 @@ use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_comput
 use mpp_domains_mod, only : domain1D, mpp_get_domain_components
 
 
-use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
-use MOM_domains,     only : PE_here, root_PE, broadcast, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
+use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use MOM_domains, only : PE_here, root_PE, broadcast
+use MOM_domains, only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All, AGRID
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -160,9 +161,6 @@ type, public :: SIS2_domain_type
                                 ! to actual processors. This need not be
                                 ! assigned if all logical processors are used.
 end type SIS2_domain_type
-
-real, parameter :: Epsln = 1.0e-10  !   A distance used to replace negative
-                                    ! distances in the metric arrays.
 
 ! This is still here as an artefact of an older public interface and should go.
 real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
@@ -697,11 +695,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5) 
   enddo ; enddo
 
-  ! ### This is probably no longer necessary!
-    if(tripolar_grid) then
-       if (jsca==1.and.any(G%mask2dT(:,G%jsc)>0.5)) call SIS_error(FATAL, &
-          'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
-    endif
 
   allocate ( cell_area(isca:ieca,jsca:jeca) )
 
@@ -738,43 +731,42 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     ! the MOM6 convention of using the "nominal" latitudes and longitudes,
     ! which are the actual lat & lon on spherical portions of the grid.
     allocate ( xb1d (im+1), yb1d (jm+1) )
-    if(mask_table_exists) then    
-       allocate(tmpx(im+1,jm+1), tmpy(im+1,jm+1))
-       call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
-       xb1d(:) = sum(tmpx,2)/(jm+1)
-       yb1d(:) = sum(tmpy,1)/(im+1)
-       deallocate(tmpx, tmpy)
+    if (mask_table_exists) then    
+      allocate(tmpx(im+1,jm+1), tmpy(im+1,jm+1))
+      call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
+      xb1d(:) = sum(tmpx,2)/(jm+1)
+      yb1d(:) = sum(tmpy,1)/(im+1)
+      deallocate(tmpx, tmpy)
     else
-       Domain => G%Domain%mpp_domain
-       allocate ( tmpx(isca:ieca+1, jm+1) )
-       call mpp_set_domain_symmetry(Domain, .TRUE.)
-       call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
-                             tmpx, flags=YUPDATE, position=CORNER)
-       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
-       tmp_2d = 0
-       tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(jm+1);
-       deallocate(tmpx)
-       allocate ( tmpx(im+1, jsca:jeca+1) )
+      Domain => G%Domain%mpp_domain
+      allocate ( tmpx(isca:ieca+1, jm+1) )
+      call mpp_set_domain_symmetry(Domain, .TRUE.)
+      call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
+                           tmpx, flags=YUPDATE, position=CORNER)
+      allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
+      tmp_2d = 0
+      tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(jm+1);
+      deallocate(tmpx)
+      allocate ( tmpx(im+1, jsca:jeca+1) )
 
-       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
-                             tmpx, flags=XUPDATE, position=CORNER)
-       xb1d(:) = tmpx(:,jsca)
-       deallocate(tmpx, tmp_2d)
+      call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
+                           tmpx, flags=XUPDATE, position=CORNER)
+      xb1d(:) = tmpx(:,jsca)
+      deallocate(tmpx, tmp_2d)
 
-       allocate ( tmpy(im+1, jsca:jeca+1) )
-       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), tmpy, &
-                             flags=XUPDATE, position=CORNER)
-       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
-       tmp_2d = 0
-       tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(im+1);
-       deallocate(tmpy)
-       allocate ( tmpy(isca:ieca+1, jm+1) )
-       call mpp_global_field(Domain, tmp_2d, tmpy, flags=YUPDATE, position=CORNER)
-       yb1d(:) = tmpy(isca,:)
-       deallocate(tmpy, tmp_2d)
-       call mpp_set_domain_symmetry(Domain, G%domain%symmetric)
+      allocate ( tmpy(im+1, jsca:jeca+1) )
+      call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), tmpy, &
+                           flags=XUPDATE, position=CORNER)
+      allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
+      tmp_2d = 0
+      tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(im+1);
+      deallocate(tmpy)
+      allocate ( tmpy(isca:ieca+1, jm+1) )
+      call mpp_global_field(Domain, tmp_2d, tmpy, flags=YUPDATE, position=CORNER)
+      yb1d(:) = tmpy(isca,:)
+      deallocate(tmpy, tmp_2d)
+      call mpp_set_domain_symmetry(Domain, G%domain%symmetric)
     endif
-
 
     G%gridLatB(jsg-1:jeg) = yb1d(1:jm+1)
     G%gridLonB(isg-1:ieg) = xb1d(1:im+1)
@@ -791,7 +783,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
       G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
                                 G%geoLonBu(I,J), G%geoLatBu(I,J))
     enddo ; enddo
-
     call pass_vector(G%dyCu, G%dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
 
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
@@ -803,10 +794,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
         G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
       endif
     enddo ; enddo
-
-  ! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
-    call pass_var(G%dxT, G%Domain )
-    call pass_var(G%dyT, G%Domain )
+    call pass_vector(G%dxT, G%dyT, G%Domain, To_All+Scalar_Pair, AGRID)
 
     G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
     G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
@@ -818,10 +806,18 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
       G%dyBu(I,J) = 0.25*((G%dyT(i+1,j+1) + G%dyT(i,j)) + &
                           (G%dyT(i+1,j) + G%dyT(i,j+1)) )
       G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
+      G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
     enddo ; enddo
-
     call pass_vector(G%dxBu, G%dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
     call pass_vector(G%IdxBu, G%IdyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
+
+    do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+      G%dxCu(I,j) = 0.5*(G%dxBu(I,J) + G%dxBu(I,J-1))
+    enddo ; enddo
+    do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
+      G%dyCv(i,J) = 0.5*(G%dyBu(I,J) + G%dyBu(I-1,J))
+    enddo ; enddo
+    call pass_vector(G%dxCu, G%dyCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
 
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
       G%geoLonT(i,j) = 0.5 * (lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J) /) ) + &
@@ -831,15 +827,15 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     enddo ; enddo
   else
     call set_grid_metrics_from_mosaic(G, param_file)
-    call set_grid_derived_metrics(G, param_file)
-
-    ! cell_area is unfortunately used outside of the ice model for various
-    ! things, so it has to be set, but it should be eliminated.
-    do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
-    enddo ; enddo       
-
   endif
+  call set_grid_derived_metrics(G, param_file)
+
+  ! cell_area is unfortunately used outside of the ice model for various
+  ! things, so it has to be set, but it should be eliminated. -RWH
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
+  enddo ; enddo       
+
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
@@ -945,67 +941,67 @@ subroutine set_grid_derived_metrics(G, param_file)
   call SIS_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
  
   do j=jsd,jed ; do i=isd,ied
-    if (G%dxT(i,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),Epsln
+    if (G%dxT(i,j) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dxT(i,j) = Epsln
+      G%dxT(i,j) = 0.0
     endif
-    if (G%dyT(i,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dyT",i,j,G%dyT(i,j),Epsln
+    if (G%dyT(i,j) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dyT",i,j,G%dyT(i,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dyT(i,j) = Epsln
+      G%dyT(i,j) = 0.0
     endif
-    G%IdxT(i,j) = 1.0 / G%dxT(i,j)
-    G%IdyT(i,j) = 1.0 / G%dyT(i,j)
-    G%IareaT(i,j) = 1.0 / G%areaT(i,j)
+    G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
+    G%IdyT(i,j) = Adcroft_reciprocal(G%dyT(i,j))
+    G%IareaT(i,j) = Adcroft_reciprocal(G%areaT(i,j))
   enddo ; enddo
 
   do j=jsd,jed ; do I=IsdB,IedB
-    if (G%dxCu(I,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dxCu",I,j,G%dxCu(I,j),Epsln
+    if (G%dxCu(I,j) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dxCu",I,j,G%dxCu(I,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dxCu(I,j) = Epsln
+      G%dxCu(I,j) = 0.0
     endif
-    if (G%dyCu(I,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dyCu",I,j,G%dyCu(I,j),Epsln
+    if (G%dyCu(I,j) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dyCu",I,j,G%dyCu(I,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dyCu(I,j) = Epsln
+      G%dyCu(I,j) = 0.0
     endif
-    G%IdxCu(i,j) = 1.0 / G%dxCu(i,j)
-    G%IdyCu(i,j) = 1.0 / G%dyCu(i,j)
+    G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
+    G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
   enddo ; enddo
 
   do J=JsdB,JedB ; do i=isd,ied
-    if (G%dxCv(i,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dxCv",i,j,G%dxCv(i,j),Epsln
+    if (G%dxCv(i,J) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dxCv",i,j,G%dxCv(i,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dxCv(i,j) = Epsln
+      G%dxCv(i,j) = 0.0
     endif
-    if (G%dyCv(i,j) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dyCv",i,j,G%dyCv(i,j),Epsln
+    if (G%dyCv(i,J) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dyCv",i,j,G%dyCv(i,j),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dyCv(i,j) = Epsln
+      G%dyCv(i,J) = 0.0
     endif
-    G%IdxCv(i,j) = 1.0 / G%dxCv(i,j)
-    G%IdyCv(i,j) = 1.0 / G%dyCv(i,j)
+    G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
+    G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
   enddo ; enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB
-    if (G%dxBu(I,J) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dxBu",I,J,G%dxBu(I,J),Epsln
+    if (G%dxBu(I,J) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dxBu",I,J,G%dxBu(I,J),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dxBu(I,J) = Epsln
+      G%dxBu(I,J) = 0.0
     endif
-    if (G%dyBu(I,J) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dyBu",I,J,G%dyBu(I,J),Epsln
+    if (G%dyBu(I,J) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dyBu",I,J,G%dyBu(I,J),0.0
       call SIS_mesg(warnmesg, all_print=.true.)
-      G%dyBu(I,J) = Epsln
+      G%dyBu(I,J) = 0.0
     endif
 
-    G%IdxBu(I,J) = 1.0 / G%dxBu(I,J)
-    G%IdyBu(I,J) = 1.0 / G%dyBu(I,J)
-    G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
-    G%IareaBu(I,J) = G%IdxBu(I,J) * G%IdyBu(I,J)
+    G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
+    G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
+    ! G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    G%IareaBu(I,J) = Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 
 68 FORMAT ("WARNING: PE ",I4," ",a3,"(",I4,",",I4,") = ",ES10.4, &
@@ -1013,6 +1009,14 @@ subroutine set_grid_derived_metrics(G, param_file)
 
 end subroutine set_grid_derived_metrics
 
+function Adcroft_reciprocal(val) result(I_val)
+  real, intent(in) :: val
+  real :: I_val
+  ! This function implements Adcroft's rule for division by 0.  
+
+  I_val = 0.0
+  if (val /= 0.0) I_val = 1.0/val
+end function Adcroft_reciprocal
 
 subroutine set_grid_metrics_from_mosaic(G,param_file)
   type(sea_ice_grid_type), intent(inout) :: G
@@ -1065,9 +1069,9 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
                            trim(filename))
 
 ! Initialize everything to a small number
-  dxCu(:,:)=Epsln; dyCu(:,:)=Epsln
-  dxCv(:,:)=Epsln; dyCv(:,:)=Epsln
-  dxBu(:,:)=Epsln; dyBu(:,:)=Epsln; areaBu(:,:)=Epsln
+  dxCu(:,:)=0.0; dyCu(:,:)=0.0
+  dxCv(:,:)=0.0; dyCv(:,:)=0.0
+  dxBu(:,:)=0.0; dyBu(:,:)=0.0; areaBu(:,:)=0.0
 
 !<MISSING CODE TO READ REFINEMENT LEVEL>
   ni=2*(G%iec-G%isc+1) ! i size of supergrid
