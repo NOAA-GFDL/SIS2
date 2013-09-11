@@ -1,20 +1,28 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_grid_mod - sets up grid and processor domain - Michael.Winton@noaa.gov   !
+!   This module is in the process of extensive revision to harmonize it with   !
+! MOM6.  -Robert Hallberg                                                      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi, grav
   use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe
-  use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
-  use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
-  use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
-  use mpp_domains_mod, only: mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
-  use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
-  use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
+
+use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
+use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
+use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
+use mpp_domains_mod, only : MOM_define_io_domain => mpp_define_io_domain
+use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
+use mpp_domains_mod, only: mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
+use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
+use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
+use mpp_domains_mod, only : domain1D, mpp_get_domain_components
+
 
 use MOM_domains,     only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
-use MOM_domains,     only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
+use MOM_domains,     only : PE_here, root_PE, broadcast, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_string_functions, only : slasher
 
@@ -153,6 +161,9 @@ type, public :: SIS2_domain_type
                                 ! assigned if all logical processors are used.
 end type SIS2_domain_type
 
+real, parameter :: Epsln = 1.0e-10  !   A distance used to replace negative
+                                    ! distances in the metric arrays.
+
 ! This is still here as an artefact of an older public interface and should go.
 real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
 
@@ -213,6 +224,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   logical :: x_cyclic           ! x boundary condition
   logical :: tripolar_grid      ! y boundary condition
   logical :: mask_table_exists, global_indexing, symmetric_memory
+  logical :: set_grid_like_SIS1 = .true.
   real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
   character(len=128) :: mask_table, inputdir
   character(len=200) :: mesg
@@ -263,21 +275,21 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=NCat_dflt)
-  if (G%CatIce /= NCAT_ICE_) call MOM_error(FATAL, "set_ice_grid: " // &
+  if (G%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
        "param_file or the input namelist file.")
   call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=NK_ICE_)
-  if (G%NkIce /= NK_ICE_) call MOM_error(FATAL, "set_ice_grid: " // &
+  if (G%NkIce /= NK_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
 
   call get_param(param_file, mod_nm, "NK_SNOW", G%NkSnow, &
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=NK_SNOW_)
-  if (G%NkSnow /= NK_SNOW_) call MOM_error(FATAL, "set_ice_grid: " // &
+  if (G%NkSnow /= NK_SNOW_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
-  if (global_indexing) cal MOM_error(FATAL, "set_ice_grid : "//&
+  if (global_indexing) cal SIS_error(FATAL, "set_ice_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #else
   call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
@@ -311,6 +323,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   call get_param(param_file, mod_nm, "NONBLOCKING_UPDATES", MOM_dom%nonblocking_updates, &
                  "If true, non-blocking halo updates may be used.", &
                  default=.false.)
+  call get_param(param_file, mod_nm, "SET_GRID_LIKE_SIS1", set_grid_like_SIS1, &
+                 "If true, use SIS1 code to set the grid values.  Otherwise \n"//&
+                 "use code derived from MOM6.", default=.true.)
 
   may_be_static = .true. ; if (present(dynamic)) may_be_static = .not.dynamic
 
@@ -367,15 +382,15 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
                  "The total number of thickness grid points in the \n"//&
                  "y-direction in the physical domain. With STATIC_MEMORY_ \n"//&
                  "this is set in MOM_memory.h at compile time.", default=NJGLOBAL_)
-    if (MOM_dom%niglobal /= NIGLOBAL_) call MOM_error(FATAL,"MOM_domains_init: " // &
+    if (MOM_dom%niglobal /= NIGLOBAL_) call SIS_error(FATAL,"MOM_domains_init: " // &
      "static mismatch for NIGLOBAL_ domain size. Header file does not match input namelist")
-    if (MOM_dom%njglobal /= NJGLOBAL_) call MOM_error(FATAL,"MOM_domains_init: " // &
+    if (MOM_dom%njglobal /= NJGLOBAL_) call SIS_error(FATAL,"MOM_domains_init: " // &
      "static mismatch for NJGLOBAL_ domain size. Header file does not match input namelist")
 
     if (.not.present(min_halo)) then
-      if (MOM_dom%nihalo /= NIHALO_) call MOM_error(FATAL,"MOM_domains_init: " // &
+      if (MOM_dom%nihalo /= NIHALO_) call SIS_error(FATAL,"MOM_domains_init: " // &
              "static mismatch for NIHALO domain size")
-      if (MOM_dom%njhalo /= NJHALO_) call MOM_error(FATAL,"MOM_domains_init: " // &
+      if (MOM_dom%njhalo /= NJHALO_) call SIS_error(FATAL,"MOM_domains_init: " // &
              "static mismatch for NJHALO domain size")
     endif
 #endif
@@ -666,6 +681,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
        G%mask2dCv(i,J) = 0.0 ; G%Lmask2dCv(i,J) = .false.
     endif
   enddo ; enddo
+  call pass_var(G%mask2dBu, G%Domain, position=CORNER)
+  call pass_vector(G%mask2dCu, G%mask2dCv, G%Domain, To_All+Scalar_pair)
 
   do j=G%jsd,G%jed ; do i=G%isd,G%ied
     G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5) 
@@ -680,6 +697,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5) 
   enddo ; enddo
 
+  ! ### This is probably no longer necessary!
     if(tripolar_grid) then
        if (jsca==1.and.any(G%mask2dT(:,G%jsc)>0.5)) call SIS_error(FATAL, &
           'ice_model_mod: ice model requires southernmost row of land', all_print=.true.);
@@ -687,30 +705,33 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
 
   allocate ( cell_area(isca:ieca,jsca:jeca) )
 
-  call mpp_copy_domain(G%Domain%mpp_domain, domain2)
-  call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
-  call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
-  call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
-  call mpp_get_compute_domain(domain2, is, ie, js, je)
-  if(is .NE. 2*isca-1 .OR. ie .NE. 2*ieca+1 .OR. js .NE. 2*jsca-1 .OR. je .NE. 2*jeca+1) then
-    call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
-  endif
-  allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
-  call read_data(ocean_hgrid, 'x', tmpx, domain2)
-  call read_data(ocean_hgrid, 'y', tmpy, domain2)     
-  do J=jsca-1,jeca ; do I=isca-1,ieca
-    G%geoLonBu(I-i_off,J-j_off) = tmpx(2*i+1,2*j+1)
-    G%geoLatBu(I-i_off,J-j_off) = tmpy(2*i+1,2*j+1)
-  enddo ; enddo
-  deallocate(tmpx, tmpy)
-  call calc_mosaic_grid_area(G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
-                             G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
-                             G%areaT(G%isc:G%iec,G%jsc:G%jec))
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
-  enddo ; enddo       
-  call mpp_deallocate_domain(domain2)
+  if (set_grid_like_SIS1) then
+    call mpp_copy_domain(G%Domain%mpp_domain, domain2)
+    call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
+    call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
+    call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
+    call mpp_get_compute_domain(domain2, is, ie, js, je)
+    if(is .NE. 2*isca-1 .OR. ie .NE. 2*ieca+1 .OR. js .NE. 2*jsca-1 .OR. je .NE. 2*jeca+1) then
+      call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
+    endif
+    allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
+    call read_data(ocean_hgrid, 'x', tmpx, domain2)
+    call read_data(ocean_hgrid, 'y', tmpy, domain2)     
+    do J=jsca-1,jeca ; do I=isca-1,ieca
+      G%geoLonBu(I-i_off,J-j_off) = tmpx(2*i+1,2*j+1)
+      G%geoLatBu(I-i_off,J-j_off) = tmpy(2*i+1,2*j+1)
+    enddo ; enddo
+    deallocate(tmpx, tmpy)
+    call calc_mosaic_grid_area(G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
+                               G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
+                               G%areaT(G%isc:G%iec,G%jsc:G%jec))
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
+    enddo ; enddo       
+    call mpp_deallocate_domain(domain2)
 
+!    call pass_var(G%geoLonBu, G%Domain, position=CORNER)
+!    call pass_var(G%geoLatBu, G%Domain, position=CORNER)
 
     ! Determine the domain-averaged latitudes and longitudes on the grid for
     ! diagnostic purposes. This is a hold-over and will be changed to match
@@ -755,19 +776,71 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     endif
 
 
-  G%gridLatB(jsg-1:jeg) = yb1d(1:jm+1)
-  G%gridLonB(isg-1:ieg) = xb1d(1:im+1)
-  do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
-  do j=jsg,jeg ; G%gridLatT(j) = 0.5*(G%gridLatB(j-1)+G%gridLatB(j)) ; enddo
+    G%gridLatB(jsg-1:jeg) = yb1d(1:jm+1)
+    G%gridLonB(isg-1:ieg) = xb1d(1:im+1)
+    do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
+    do j=jsg,jeg ; G%gridLatT(j) = 0.5*(G%gridLatB(j-1)+G%gridLatB(j)) ; enddo
 
-  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
-    G%dyCu(I,j) = edge_length(G%geoLonBu(I,J-1),G%geoLatBu(I,J-1), &
-                                 G%geoLonBu(I,J),G%geoLatBu(I,J))
-  enddo ; enddo
-  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
-    G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
-                                 G%geoLonBu(I,J), G%geoLatBu(I,J))
-  enddo ; enddo
+    deallocate( xb1d, yb1d )
+
+    do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+      G%dyCu(I,j) = edge_length(G%geoLonBu(I,J-1), G%geoLatBu(I,J-1), &
+                                G%geoLonBu(I,J), G%geoLatBu(I,J))
+    enddo ; enddo
+    do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
+      G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
+                                G%geoLonBu(I,J), G%geoLatBu(I,J))
+    enddo ; enddo
+
+    call pass_vector(G%dyCu, G%dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
+
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
+      if (G%mask2dT(i,j) > 0.0) then
+  !      G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
+        G%dyT(i,j) = cell_area(i+i_off,j+j_off)*4*pi*radius*radius/G%dxT(i,j)
+      else
+        G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
+      endif
+    enddo ; enddo
+
+  ! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
+    call pass_var(G%dxT, G%Domain )
+    call pass_var(G%dyT, G%Domain )
+
+    G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
+    G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
+
+    do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+      G%dxBu(I,J) = 0.25*((G%dxT(i+1,j+1) + G%dxT(i,j)) + &
+                          (G%dxT(i+1,j) + G%dxT(i,j+1)) )
+      G%IdxBu(I,J) = 1.0 / G%dxBu(I,j)
+      G%dyBu(I,J) = 0.25*((G%dyT(i+1,j+1) + G%dyT(i,j)) + &
+                          (G%dyT(i+1,j) + G%dyT(i,j+1)) )
+      G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
+    enddo ; enddo
+
+    call pass_vector(G%dxBu, G%dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
+    call pass_vector(G%IdxBu, G%IdyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
+
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      G%geoLonT(i,j) = 0.5 * (lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J) /) ) + &
+                              lon_avg( (/ G%geoLonBu(I,J-1), G%geoLonBu(I-1,J) /) ) )
+      G%geoLatT(i,j) = ((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J)) + &
+                        (G%geoLatBu(I,J-1) + G%geoLatBu(I-1,J)) ) * 0.25
+    enddo ; enddo
+  else
+    call set_grid_metrics_from_mosaic(G, param_file)
+    call set_grid_derived_metrics(G, param_file)
+
+    ! cell_area is unfortunately used outside of the ice model for various
+    ! things, so it has to be set, but it should be eliminated.
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
+    enddo ; enddo       
+
+  endif
+
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
                         G%geoLatBu(I-1,J) + G%geoLatBu(I,J)) * atan(1.0)/180)
@@ -779,47 +852,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     G%cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
   enddo ; enddo
 
-  call pass_vector(G%dyCu, G%dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
-
-  ! ### THIS DOESN'T SEEM RIGHT AT THE TRIPOLAR FOLD. -RWH
-    call pass_var(G%cos_rot, G%Domain)
-    call pass_var(G%sin_rot, G%Domain)
-
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
-    if (G%mask2dT(i,j) > 0.0) then
-!      G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
-      G%dyT(i,j) = cell_area(i+i_off,j+j_off)*4*pi*radius*radius/G%dxT(i,j)
-    else
-      G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
-    endif
-  enddo ; enddo
-
-! ### THIS SHOULD BE A SCALAR PAIR VECTOR FOR A CUBED SPHERE, ETC. -RWH
-  call pass_var(G%dxT, G%Domain )
-  call pass_var(G%dyT, G%Domain )
-
-  G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
-  G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
-
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-    G%dxBu(I,J) = 0.25*(G%dxT(i+1,j+1)+G%dxT(i+1,j)+G%dxT(i,j+1)+G%dxT(i,j) )
-    G%IdxBu(I,J) = 1.0 / G%dxBu(I,j)
-    G%dyBu(I,J) = 0.25*(G%dyT(i+1,j+1)+G%dyT(i+1,j)+G%dyT(i,j+1)+G%dyT(i,j) )
-    G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
-  enddo ; enddo
-
-  call pass_vector(G%dxBu, G%dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
-  call pass_vector(G%IdxBu, G%IdyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
-
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    !### REGROUP FOR ROTATIONAL REPRODUCIBILITY
-    G%geoLonT(i,j) = lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J-1), &
-                                 G%geoLonBu(I-1,J), G%geoLonBu(I,J) /) )
-    G%geoLatT(i,j) = (G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1) + &
-                      G%geoLatBu(I-1,J)   + G%geoLatBu(I,J)) / 4
-  enddo ; enddo
+  ! ### THIS DOESN'T SEEM RIGHT AT A CUBED-SPHERE FOLD -RWH
+  call pass_var(G%cos_rot, G%Domain)
+  call pass_var(G%sin_rot, G%Domain)
 
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
@@ -851,11 +886,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
        deallocate(pelist, islist, ielist, jslist, jelist)
     endif
 
-  deallocate( xb1d, yb1d )
-
 end subroutine set_ice_grid
 
-!#####################################################################
+!---------------------------------------------------------------------
 
 real function lon_avg(lons)
   real, dimension(:), intent(in) :: lons
@@ -872,7 +905,7 @@ real function lon_avg(lons)
   lon_avg = lons(1)+sum(lons2)/size(lons(:))
 end function lon_avg
 
-!#####################################################################
+!---------------------------------------------------------------------
 function edge_length(x1, y1, x2, y2)
   real, intent(in) :: x1, x2, y1, y2 ! end-point coordinates in degrees
   real             :: edge_length
@@ -882,6 +915,368 @@ function edge_length(x1, y1, x2, y2)
   dy = y2-y1
   edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
 end function edge_length
+
+! ------------------------------------------------------------------------------
+
+subroutine set_grid_derived_metrics(G, param_file)
+  type(sea_ice_grid_type), intent(inout) :: G
+  type(param_file_type), intent(in)    :: param_file
+! Arguments:
+!  (inout)   G - The ocean's grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+
+!    Calculate the values of the metric terms that might be used
+!  and save them in arrays.  This should be identical to the corresponding
+!  subroutine in MOM_grid_initialize.F90.
+!    Within this subroutine, the x- and y- grid spacings and their
+!  inverses and the cell areas centered on T, Bu, Cu, and Cv points are
+!  calculated, as are the geographic locations of each of these 4
+!  sets of points.
+  character( len = 128) :: warnmesg
+  integer :: i,j, isd, ied, jsd, jed
+  integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
+
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+
+  call SIS_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
+ 
+  do j=jsd,jed ; do i=isd,ied
+    if (G%dxT(i,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dxT(i,j) = Epsln
+    endif
+    if (G%dyT(i,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dyT",i,j,G%dyT(i,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dyT(i,j) = Epsln
+    endif
+    G%IdxT(i,j) = 1.0 / G%dxT(i,j)
+    G%IdyT(i,j) = 1.0 / G%dyT(i,j)
+    G%IareaT(i,j) = 1.0 / G%areaT(i,j)
+  enddo ; enddo
+
+  do j=jsd,jed ; do I=IsdB,IedB
+    if (G%dxCu(I,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dxCu",I,j,G%dxCu(I,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dxCu(I,j) = Epsln
+    endif
+    if (G%dyCu(I,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dyCu",I,j,G%dyCu(I,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dyCu(I,j) = Epsln
+    endif
+    G%IdxCu(i,j) = 1.0 / G%dxCu(i,j)
+    G%IdyCu(i,j) = 1.0 / G%dyCu(i,j)
+  enddo ; enddo
+
+  do J=JsdB,JedB ; do i=isd,ied
+    if (G%dxCv(i,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dxCv",i,j,G%dxCv(i,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dxCv(i,j) = Epsln
+    endif
+    if (G%dyCv(i,j) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dyCv",i,j,G%dyCv(i,j),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dyCv(i,j) = Epsln
+    endif
+    G%IdxCv(i,j) = 1.0 / G%dxCv(i,j)
+    G%IdyCv(i,j) = 1.0 / G%dyCv(i,j)
+  enddo ; enddo
+
+  do J=JsdB,JedB ; do I=IsdB,IedB
+    if (G%dxBu(I,J) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dxBu",I,J,G%dxBu(I,J),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dxBu(I,J) = Epsln
+    endif
+    if (G%dyBu(I,J) <= 0.0) then
+      write(warnmesg,68)  pe_here(),"dyBu",I,J,G%dyBu(I,J),Epsln
+      call SIS_mesg(warnmesg, all_print=.true.)
+      G%dyBu(I,J) = Epsln
+    endif
+
+    G%IdxBu(I,J) = 1.0 / G%dxBu(I,J)
+    G%IdyBu(I,J) = 1.0 / G%dyBu(I,J)
+    G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    G%IareaBu(I,J) = G%IdxBu(I,J) * G%IdyBu(I,J)
+  enddo ; enddo
+
+68 FORMAT ("WARNING: PE ",I4," ",a3,"(",I4,",",I4,") = ",ES10.4, &
+           " is being changed to ",ES10.4,".")
+
+end subroutine set_grid_derived_metrics
+
+
+subroutine set_grid_metrics_from_mosaic(G,param_file)
+  type(sea_ice_grid_type), intent(inout) :: G
+  type(param_file_type), intent(in)    :: param_file
+!   This subroutine sets the grid metrics from a mosaic file.  This should be
+! identical to the corresponding subroutine in MOM_grid_initialize.F90.
+!  
+! Arguments:
+!  (inout)   G - The ocean's grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+
+  real, dimension(G%isd :G%ied ,G%jsd :G%jed ) :: tempH1, tempH2, tempH3, tempH4
+  real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB) :: tempQ1, tempQ2, tempQ3, tempQ4
+  real, dimension(G%IsdB:G%IedB,G%jsd :G%jed ) :: tempE1, tempE2
+  real, dimension(G%isd :G%ied ,G%JsdB:G%JedB) :: tempN1, tempN2
+  ! These arrays are a holdover from earlier code in which the arrays in G were
+  ! macros and may have had reduced dimensions.
+  real, dimension(G%isd :G%ied ,G%jsd :G%jed ) :: dxT, dyT, areaT
+  real, dimension(G%IsdB:G%IedB,G%jsd :G%jed ) :: dxCu, dyCu
+  real, dimension(G%isd :G%ied ,G%JsdB:G%JedB) :: dxCv, dyCv
+  real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB) :: dxBu, dyBu, areaBu
+  ! This are symmetric arrays, corresponding to the data in the mosaic file
+  real, dimension(2*G%isd-2:2*G%ied+1,2*G%jsd-2:2*G%jed+1) :: tmpT
+  real, dimension(2*G%isd-3:2*G%ied+1,2*G%jsd-2:2*G%jed+1) :: tmpU
+  real, dimension(2*G%isd-2:2*G%ied+1,2*G%jsd-3:2*G%jed+1) :: tmpV
+  real, dimension(2*G%isd-3:2*G%ied+1,2*G%jsd-3:2*G%jed+1) :: tmpZ
+  real, dimension(:,:), allocatable :: tmpGlbl
+  character(len=200) :: filename, grid_file, inputdir
+  character(len=64)  :: mod="MOM_grid_init set_grid_metrics_from_mosaic"
+  integer :: err=0, ni, nj, global_indices(4)
+  type(SIS_domain_type) :: SGdom ! Supergrid domain
+  integer :: i, j, i2, j2
+  integer :: npei,npej
+  integer, dimension(:), allocatable :: exni,exnj
+  type(domain1D) :: domx, domy
+  integer        :: start(4), nread(4)
+ 
+  call SIS_mesg("   MOM_grid_init.F90, set_grid_metrics_from_mosaic: reading grid", 5)
+
+  call get_param(param_file, mod, "GRID_FILE", grid_file, &
+                 "Name of the file from which to read horizontal grid data.", &
+                 fail_if_missing=.true.)
+  call get_param(param_file,  mod, "INPUTDIR", inputdir, default=".")
+  inputdir = slasher(inputdir)
+  filename = trim(adjustl(inputdir)) // trim(adjustl(grid_file))
+  call log_param(param_file, mod, "INPUTDIR/GRID_FILE", filename)
+  if (.not.file_exist(filename)) &
+    call SIS_error(FATAL," set_grid_metrics_from_mosaic: Unable to open "//&
+                           trim(filename))
+
+! Initialize everything to a small number
+  dxCu(:,:)=Epsln; dyCu(:,:)=Epsln
+  dxCv(:,:)=Epsln; dyCv(:,:)=Epsln
+  dxBu(:,:)=Epsln; dyBu(:,:)=Epsln; areaBu(:,:)=Epsln
+
+!<MISSING CODE TO READ REFINEMENT LEVEL>
+  ni=2*(G%iec-G%isc+1) ! i size of supergrid
+  nj=2*(G%jec-G%jsc+1) ! j size of supergrid
+
+! Define a domain for the supergrid (SGdom)
+  npei=G%domain%layout(1)
+  npej=G%domain%layout(2)
+  allocate(exni(npei))
+  allocate(exnj(npej))
+  call mpp_get_domain_components(G%domain%mpp_domain, domx, domy)
+  call mpp_get_compute_domains(domx,size=exni)
+  call mpp_get_compute_domains(domy,size=exnj)
+  allocate(SGdom%mpp_domain)
+  SGdom%nihalo = 2*G%domain%nihalo+1
+  SGdom%njhalo = 2*G%domain%njhalo+1
+  SGdom%niglobal = 2*G%domain%niglobal
+  SGdom%njglobal = 2*G%domain%njglobal
+  SGdom%layout(:) = G%domain%layout(:)
+  SGdom%use_io_layout = G%domain%use_io_layout
+  SGdom%io_layout(:) = G%domain%io_layout(:)
+  global_indices(1) = 1+SGdom%nihalo
+  global_indices(2) = SGdom%niglobal+SGdom%nihalo
+  global_indices(3) = 1+SGdom%njhalo
+  global_indices(4) = SGdom%njglobal+SGdom%njhalo
+  exni(:)=2*exni(:); exnj(:)=2*exnj(:)
+  if(ASSOCIATED(G%domain%maskmap)) then
+     call mpp_define_domains(global_indices, SGdom%layout, SGdom%mpp_domain, &
+            xflags=G%domain%X_FLAGS, yflags=G%domain%Y_FLAGS, &
+            xhalo=SGdom%nihalo, yhalo=SGdom%njhalo, &
+            xextent=exni,yextent=exnj, &
+            symmetry=.true., name="MOM_MOSAIC", maskmap=G%domain%maskmap)
+  else
+     call mpp_define_domains(global_indices, SGdom%layout, SGdom%mpp_domain, &
+            xflags=G%domain%X_FLAGS, yflags=G%domain%Y_FLAGS, &
+            xhalo=SGdom%nihalo, yhalo=SGdom%njhalo, &
+            xextent=exni,yextent=exnj, &
+            symmetry=.true., name="MOM_MOSAIC")
+  endif
+
+  if (SGdom%use_io_layout) &
+    call MOM_define_IO_domain(SGdom%mpp_domain, SGdom%io_layout)
+  deallocate(exni)
+  deallocate(exnj)
+
+! Read X from the supergrid
+  tmpZ(:,:)=999.
+  call read_data(filename,'x',tmpZ,domain=SGdom%mpp_domain,position=CORNER)
+
+  call pass_var(tmpZ, SGdom, position=CORNER)
+  call extrapolate_metric(tmpZ,2*(G%jsc-G%jsd)+2)
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
+    G%geoLonT(i,j) = tmpZ(i2-1,j2-1)
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB ; i2 = 2*I ; j2 = 2*J
+    G%geoLonBu(I,J) = tmpZ(i2,j2)
+  enddo ; enddo
+  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB ; i2 = 2*i ; j2 = 2*j
+    G%geoLonCu(I,j) = tmpZ(i2,j2-1)
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*J
+    G%geoLonCv(i,J) = tmpZ(i2-1,j2)
+  enddo ; enddo
+ ! For some reason, this messes up the solution...
+ !   call pass_var(G%geoLonBu, G%domain, position=CORNER)
+
+! Read Y from the supergrid
+  tmpZ(:,:)=999.
+  call read_data(filename,'y',tmpZ,domain=SGdom%mpp_domain,position=CORNER)
+
+  call pass_var(tmpZ, SGdom, position=CORNER)
+  call extrapolate_metric(tmpZ,2*(G%jsc-G%jsd)+2)
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
+    G%geoLatT(i,j) = tmpZ(i2-1,j2-1)
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB ; i2 = 2*I ; j2 = 2*J
+    G%geoLatBu(I,J) = tmpZ(i2,j2)
+  enddo ; enddo
+  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB ; i2 = 2*i ; j2 = 2*j
+    G%geoLatCu(I,j) = tmpZ(i2,j2-1)
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*J
+    G%geoLatCv(i,J) = tmpZ(i2-1,j2)
+  enddo ; enddo
+
+! Read DX,DY from the supergrid
+  tmpU(:,:)=0.; tmpV(:,:)=0.
+  call read_data(filename,'dx',tmpV,domain=SGdom%mpp_domain,position=NORTH_FACE)
+  call read_data(filename,'dy',tmpU,domain=SGdom%mpp_domain,position=EAST_FACE)
+  call pass_vector(tmpU,tmpV,SGdom,To_All+Scalar_Pair,CGRID_NE)
+  call extrapolate_metric(tmpV,2*(G%jsc-G%jsd)+2)
+  call extrapolate_metric(tmpU,2*(G%jsc-G%jsd)+2)
+
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
+    dxT(i,j) = tmpV(i2-1,j2-1) + tmpV(i2,j2-1)
+    dyT(i,j) = tmpU(i2-1,j2-1) + tmpU(i2-1,j2)
+  enddo ; enddo
+
+  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB ; i2 = 2*i ; j2 = 2*j
+    dxCu(I,j) = tmpV(i2,j2-1) + tmpV(i2+1,j2-1)
+    dyCu(I,j) = tmpU(i2,j2-1) + tmpU(i2,j2)
+  enddo ; enddo
+
+  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
+    dxCv(i,J) = tmpV(i2-1,j2) + tmpV(i2,j2)
+    dyCv(i,J) = tmpU(i2-1,j2) + tmpU(i2-1,j2+1)
+  enddo ; enddo
+
+  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB ; i2 = 2*i ; j2 = 2*j
+    dxBu(I,J) = tmpV(i2,j2) + tmpV(i2+1,j2)
+    dyBu(I,J) = tmpU(i2,j2) + tmpU(i2,j2+1)
+  enddo ; enddo
+
+! Read AREA from the supergrid
+  tmpT(:,:)=0.
+  call read_data(filename,'area',tmpT,domain=SGdom%mpp_domain)
+  call pass_var(tmpT, SGdom)
+  call extrapolate_metric(tmpT,2*(G%jsc-G%jsd)+2)
+
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
+    areaT(i,j) = (tmpT(i2-1,j2-1) + tmpT(i2,j2)) + &
+                 (tmpT(i2-1,j2) + tmpT(i2,j2-1))
+  enddo ; enddo
+  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB ; i2 = 2*i ; j2 = 2*j
+    areaBu(i,j) = (tmpT(i2,j2) + tmpT(i2+1,j2+1)) + &
+                  (tmpT(i2,j2+1) + tmpT(i2+1,j2))
+  enddo ; enddo
+
+  ni=SGdom%niglobal
+  nj=SGdom%njglobal
+  deallocate(SGdom%mpp_domain)
+
+  call pass_vector(dyCu, dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
+  call pass_vector(dxCu, dyCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
+  call pass_vector(dxBu, dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
+  call pass_var(areaT, G%Domain)
+  call pass_var(areaBu, G%Domain, position=CORNER)
+
+  do i=G%isd,G%ied ; do j=G%jsd,G%jed
+    G%dxT(i,j) = dxT(i,j) ; G%dyT(i,j) = dyT(i,j) ; G%areaT(i,j) = areaT(i,j)
+  enddo ; enddo
+  do I=G%IsdB,G%IedB ; do j=G%jsd,G%jed
+    G%dxCu(I,j) = dxCu(I,j) ; G%dyCu(I,j) = dyCu(I,j)
+  enddo ; enddo
+  do i=G%isd,G%ied ; do J=G%JsdB,G%JedB
+    G%dxCv(i,J) = dxCv(i,J) ; G%dyCv(i,J) = dyCv(i,J)
+  enddo ; enddo
+  do I=G%IsdB,G%IedB ; do J=G%JsdB,G%JedB
+    G%dxBu(I,J) = dxBu(I,J) ; G%dyBu(I,J) = dyBu(I,J) ; G%areaBu(I,J) = areaBu(I,J)
+  enddo ; enddo
+
+  ! Construct axes for diagnostic output (only necessary because "ferret" uses
+  ! broken convention for interpretting netCDF files).
+  start(:) = 1 ; nread(:) = 1
+  start(2) = 2 ; nread(1) = ni+1 ; nread(2) = 2
+  allocate( tmpGlbl(ni+1,2) )
+  if (is_root_PE()) &
+    call read_data(filename, "x", tmpGlbl, start, nread, no_domain=.TRUE.)
+  call broadcast(tmpGlbl, 2*(ni+1), root_PE())
+  
+  G%gridLonT(:) = tmpGlbl(2:ni:2,2)
+  G%gridLonB(:) = tmpGlbl(1:ni+1:2,1)
+  deallocate( tmpGlbl )
+
+  allocate  ( tmpGlbl(1, nj+1) )  
+  start(:) = 1 ; nread(:) = 1
+  start(1) = int(ni/4)+1 ; nread(2) = nj+1  
+  if (is_root_PE()) &
+    call read_data(filename, "y", tmpGlbl, start, nread, no_domain=.TRUE.)
+  call broadcast(tmpGlbl, nj+1, root_PE())
+
+  G%gridLatT(:) = tmpGlbl(1,2:nj:2)
+  G%gridLatB(:) = tmpGlbl(1,1:nj+1:2)
+  deallocate( tmpGlbl )
+
+end subroutine set_grid_metrics_from_mosaic
+
+! ------------------------------------------------------------------------------
+
+subroutine extrapolate_metric(var, jh)
+  real, dimension(:,:), intent(inout) ::  var
+  integer, intent(in) :: jh
+  integer :: i,j
+
+  ! Fill in southern halo by extrapolating from the computational domain
+  do j=lbound(var,2)+jh,lbound(var,2),-1; do i=lbound(var,1),ubound(var,1)
+    if (var(i,j)==0.) var(i,j)=2.0*var(i,j+1)-var(i,j+2)
+  enddo; enddo
+
+  ! Fill in northern halo by extrapolating from the computational domain
+  do j=ubound(var,2)-jh,ubound(var,2); do i=lbound(var,1),ubound(var,1)
+    if (var(i,j)==0.) var(i,j)=2.0*var(i,j-1)-var(i,j-2)
+  enddo; enddo
+  
+  ! Fill in western halo by extrapolating from the computational domain
+  do j=lbound(var,2),ubound(var,2); do i=lbound(var,1)+jh,lbound(var,1),-1
+    if (var(i,j)==0.) var(i,j)=2.0*var(i+1,j)-var(i+2,j)
+  enddo; enddo
+
+  ! Fill in eastern halo by extrapolating from the computational domain
+  do j=lbound(var,2),ubound(var,2); do i=ubound(var,1)-jh,ubound(var,1)
+    if (var(i,j)==0.) var(i,j)=2.0*var(i-1,j)-var(i-2,j)
+  enddo; enddo
+
+end subroutine extrapolate_metric
+
+
+
+!---------------------------------------------------------------------
 
 subroutine allocate_metrics(G)
   type(sea_ice_grid_type), intent(inout) :: G
@@ -958,7 +1353,7 @@ subroutine allocate_metrics(G)
 
 end subroutine allocate_metrics
 
-!#####################################################################
+!---------------------------------------------------------------------
 !--- release memory
 subroutine ice_grid_end(G)
   type(sea_ice_grid_type), intent(inout) :: G
