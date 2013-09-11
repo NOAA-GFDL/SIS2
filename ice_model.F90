@@ -34,7 +34,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_error_checking, only : chksum, Bchksum, hchksum
+use SIS_error_checking, only : chksum, Bchksum, hchksum, check_redundant_B
 use SIS_get_input, only : Get_SIS_input
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
@@ -95,7 +95,7 @@ integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
 
 contains
 
-!#######################################################################
+!-----------------------------------------------------------------------
 !
 ! Coupler interface to do slow ice processes:  dynamics, transport, mass
 !
@@ -261,19 +261,18 @@ subroutine avg_top_quantities(Ice, IST, G)
 
   ! Put wind stress on u,v points and change sign to +down
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=0,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
     if ( G%mask2dBu(i,j) > 0.5 ) then
-      IST%flux_u_top_bgrid(i,j,k) = sign*0.25*( &
-            IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i+1,j,k) + &
-            IST%flux_u_top(i,j+1,k) + IST%flux_u_top(i,j,k) )
-      IST%flux_v_top_bgrid(i,j,k) = sign*0.25*( &
-            IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i+1,j,k) + &
-            IST%flux_v_top(i,j+1,k) + IST%flux_v_top(i,j,k) )
+      IST%flux_u_top_bgrid(I,J,k) = sign*0.25*( &
+            (IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i,j,k)) + &
+            (IST%flux_u_top(i+1,j,k) + IST%flux_u_top(i,j+1,k)) )
+      IST%flux_v_top_bgrid(I,J,k) = sign*0.25*( &
+            (IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i,j,k)) + &
+            (IST%flux_v_top(i+1,j,k) + IST%flux_v_top(i,j+1,k)) )
     else
-      IST%flux_u_top_bgrid(i,j,k) = 0.0
-      IST%flux_v_top_bgrid(i,j,k) = 0.0
+      IST%flux_u_top_bgrid(I,J,k) = 0.0
+      IST%flux_v_top_bgrid(I,J,k) = 0.0
     endif
   enddo ; enddo ; enddo
 
@@ -357,7 +356,7 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
-  real, dimension (SZI_(G),SZJB_(G),0:G%CatIce), intent(in) :: part_size_uv
+  real, dimension (SZIB_(G),SZJB_(G),0:G%CatIce), intent(in) :: part_size_uv
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
@@ -441,7 +440,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: sst, tmp
-  real, dimension(SZIB_(G),SZJB_(G)) :: u_tmp, v_tmp
   real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
   real :: u, v
   real :: area_pt
@@ -579,8 +577,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   ! if (G%symmetric) &
   !   call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
 
-  u_tmp(:,:) = IST%u_ocn(:,:) ; v_tmp(:,:) = IST%v_ocn(:,:) !### DELETE THIS
-
   if (IST%debug) then
     call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass u_surf_ice_bot")
     call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass v_surf_ice_bot")
@@ -605,17 +601,16 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   enddo ; enddo ; enddo
 
   ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     if (G%mask2dT(i,j) > 0.5 ) then
-      Ice%u_surf(i2,j2,1) = 0.25*(IST%u_ocn(i,j) + IST%u_ocn(i,j-1) + &
-                                  IST%u_ocn(i-1,j) + IST%u_ocn(i-1,j-1) )   
-      Ice%v_surf(i2,j2,1) = 0.25*(IST%v_ocn(i,j) + IST%v_ocn(i,j-1) + &
-                                  IST%v_ocn(i-1,j) + IST%v_ocn(i-1,j-1) )   
-      Ice%u_surf(i2,j2,2) = 0.25*(IST%u_ice(i,j) + IST%u_ice(i,j-1) + &
-                                  IST%u_ice(i-1,j) + IST%u_ice(i-1,j-1) )   
-      Ice%v_surf(i2,j2,2) = 0.25*(IST%v_ice(i,j) + IST%v_ice(i,j-1) + &
-                                  IST%v_ice(i-1,j) + IST%v_ice(i-1,j-1) )   
+      Ice%u_surf(i2,j2,1) = 0.25*((IST%u_ocn(i,j) + IST%u_ocn(i-1,j-1)) + &
+                                  (IST%u_ocn(i,j-1) + IST%u_ocn(i-1,j)) )   
+      Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(i,j) + IST%v_ocn(i-1,j-1)) + &
+                                  (IST%v_ocn(i,j-1) + IST%v_ocn(i-1,j)) )   
+      Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice(i,j) + IST%u_ice(i-1,j-1)) + &
+                                  (IST%u_ice(i,j-1) + IST%u_ice(i-1,j)) )   
+      Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice(i,j) + IST%v_ice(i-1,j-1)) + &
+                                  (IST%v_ice(i,j-1) + IST%v_ice(i-1,j)) )   
     else
       Ice%u_surf(i2,j2,1) = 0.0
       Ice%v_surf(i2,j2,1) = 0.0
@@ -822,9 +817,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
         latent             = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
       endif
+      flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
+                (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
       !### ADD PARENTHESES.
-      flux_sw = flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k) &
-               +flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k)
       hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
       hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
             - (1-IST%pen(i,j,k))*flux_sw - hfd*(IST%t_surf(i,j,k)-Tfreeze)
@@ -1043,13 +1038,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
   do k=1,ncat
-    !### ADD PARENTHESIS FOR REPRODUCIBILITY.
     do J=jsc-1,jec ; do I=isc-1,iec
-      if(G%mask2dBu(i,j) > 0.5 ) then
-         part_size_uv(I,J,k) = 0.25*(IST%part_size(i+1,j+1,k) + IST%part_size(i+1,j,k) + &
-                                         IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
+      if (G%mask2dBu(i,j) > 0.5 ) then
+        part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
+                                    (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
       else
-         part_size_uv(I,J,k) = 0.0
+        part_size_uv(I,J,k) = 0.0
       endif
       part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
     enddo ; enddo
@@ -1058,6 +1052,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_begin(iceClock4)
   call get_avg(IST%h_snow, IST%part_size(:,:,1:), tmp1, wtd=.true.)
   call get_avg(IST%h_ice,IST%part_size(:,:,1:), tmp2, wtd=.true.)
+
   wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
   call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
                wind_stress_x(isc-1:iec,jsc-1:jec), wtd=.true.)
@@ -1074,6 +1069,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
     call Bchksum(wind_stress_x, "wind_stress_x before ice_dynamics", G, symmetric=.true.)
     call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
+    call check_redundant_B("wind_stress before ice_dynamics",wind_stress_x, wind_stress_y, G)
+    call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
+    call check_redundant_B("part_size_uv before ice_dynamics",part_size_uv, G)
   endif
 
   call mpp_clock_begin(iceClocka)
@@ -1501,7 +1499,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
   call disable_SIS_averaging(IST%diag)
 
-!######  call ice_top_to_ice_bottom(Ice, IST, part_save, part_save_uv, G)
   call ice_top_to_ice_bottom(Ice, IST, part_save, part_size_uv, G)
   !
   ! conservation checks:  bottom fluxes and final
@@ -1564,8 +1561,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_end(iceClock9)
 
   if (IST%debug) then
-    call IST_chksum("End update_ice_model_slow", IST, G)
-    call Ice_public_type_chksum("End update_ice_model_slow", Ice)
+    call IST_chksum("End UIMS", IST, G)
+    call Ice_public_type_chksum("End UIMS", Ice)
   endif
 
 end subroutine update_ice_model_slow

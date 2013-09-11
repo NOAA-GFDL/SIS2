@@ -63,6 +63,7 @@ type, public :: ice_dyn_CS ; private
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
+  logical :: debug_redundant  ! If true, debug redundant points
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
@@ -149,6 +150,8 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS)
 
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
+                 "If true, debug redundant data points.", default=CS%debug)
   call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
   call get_param(param_file, mod, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
@@ -252,9 +255,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     real                             :: del2, a, b, tmp
     real, dimension(SZI_(G),SZJ_(G)) :: edt, mp4z, t0, t1, t2
     real                             :: f11, f22
-    real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
-    real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
-    real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7
+  real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
+  real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
+  real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9
 
     ! for velocity calculation
     real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
@@ -286,10 +289,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
   dt_evp = dt_slow/CS%evp_sub_steps
 
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   do J=jsc-1,jec ; do I=isc-1,iec
-    dydx(I,J) = 0.5*(G%dyT(i+1,j+1) - G%dyT(i,j+1) + G%dyT(i+1,j) - G%dyT(i,j) )
-    dxdy(I,J) = 0.5*(G%dxT(i+1,j+1) - G%dxT(i+1,j) + G%dxT(i,j+1) - G%dxT(i,j) )
+    dydx(I,J) = 0.5*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
+    dxdy(I,J) = 0.5*((G%dxT(i+1,j+1) - G%dxT(i+1,j)) + (G%dxT(i,j+1) - G%dxT(i,j)))
   enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
@@ -300,23 +302,21 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   enddo ; enddo
 
   ! sea level slope force
-  ! ### Add parentheses for rotational consistency.
   ! ### Multiply by G%IdxBu, etc.
   do J=jsc-1,jec ; do I=isc-1,iec
-    sldx(I,J) = -dt_evp*G%g_Earth*(0.5*(sea_lev(i+1,j+1)-sea_lev(i,j+1) &
-              + sea_lev(i+1,j)-sea_lev(i,j))) / G%dxBu(i,J)
-    sldy(I,J) = -dt_evp*G%g_Earth*(0.5*(sea_lev(i+1,j+1)-sea_lev(i+1,j) &
-              + sea_lev(i,j+1)-sea_lev(i,j))) / G%dyBu(I,J)
+    sldx(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
+              + (sea_lev(i+1,j)-sea_lev(i,j)))) / G%dxBu(i,J)
+    sldy(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
+              + (sea_lev(i,j+1)-sea_lev(i,j)))) / G%dyBu(I,J)
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     mit(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
   enddo ; enddo
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
   do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
-    miv(I,J) = 0.25*( mit(i+1,j+1) + mit(i+1,j) + mit(i,j+1) + mit(i,j) )
-    civ(I,J) = 0.25*( ci(i+1,j+1) + ci(i+1,j) + ci(i,j+1) + ci(i,j) )
+    miv(I,J) = 0.25*( (mit(i+1,j+1) + mit(i,j)) + (mit(i+1,j) + mit(i,j+1)) )
+    civ(I,J) = 0.25*( (ci(i+1,j+1) + ci(i,j)) + (ci(i+1,j) + ci(i,j+1)) )
   else
     miv(I,J) = 0.0 ; civ(I,J) = 0.0
   endif ; enddo ; enddo
@@ -344,7 +344,19 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   if (CS%debug) then
     call Bchksum(sldx, "sldx in ice_dynamics", G, symmetric=.true.)
     call Bchksum(sldy, "sldy in ice_dynamics", G, symmetric=.true.)
-    call check_redundant_B("sldx/sldy in ice_dynamics",sldx,sldy, G)
+
+    call Bchksum(ui, "ui pre-steps ice_dynamics", G, symmetric=.true.)
+    call Bchksum(vi, "vi pre-steps ice_dynamics", G, symmetric=.true.)
+  endif
+  if (CS%debug_redundant) then
+    call check_redundant_B("sldx/sldy in ice_dynamics", sldx, sldy, G)
+    call check_redundant_B("fxat/fyat in ice_dynamics", fxat, fyat, G)
+    call check_redundant_B("uo/vo in ice_dynamics",uo, vo, G)
+    call check_redundant_B("civ in ice_dynamics", civ, G)
+    call check_redundant_B("miv in ice_dynamics", miv, G)
+    call check_redundant_B("dydx/dxdy in ice_dynamics",dydx, dxdy, G)
+
+    call check_redundant_B("ui/vi pre-steps ice_dynamics",ui, vi, G)
   endif
 
   do l=1,CS%evp_sub_steps
@@ -352,28 +364,23 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     ! calculate strain tensor for viscosities and forcing elastic eqn.
     call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
 
-    if (CS%debug) then
-      call Bchksum(ui, "ui start steps ice_dynamics", G, symmetric=.true.)
-      call Bchksum(vi, "vi start steps ice_dynamics", G, symmetric=.true.)
-      call check_redundant_B("ui/vi start steps ice_dynamics",ui, vi, G)
-    endif
-
-  !### ADD PARENTHESES FOR CLARITY
   !### MULTIPLY BY GRID METRIC INVERSES FOR EFFICIENCY.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_strain - calculate generalized orthogonal coordinate strain tensor       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
     do j=jsc,jec ; do i=isc,iec
-      strn11(i,j) = (0.5*(ui(I,J)-ui(I-1,J)+ui(I,J-1)-ui(I-1,J-1))        &
-                  + 0.25*(vi(I,J)+vi(I,J-1)+vi(I-1,J)+vi(I-1,J-1))*grid_fac1(i,j)) / &
-                  G%dxT(i,j)   !### Use G%IdxT?
-      strn22(i,j) = (0.5*(vi(I,J)-vi(I,J-1)+vi(I-1,J)-vi(I-1,J-1))        &
-                  + 0.25*(ui(I,J)+ui(I,J-1)+ui(I-1,J)+ui(I-1,J-1))*grid_fac2(i,j)) / &
-                  G%dyT(i,j)
-      strn12(i,j) = grid_fac3(i,j)*(0.5*(vi(I,J)/G%dyBu(I,J) - vi(I-1,J)/G%dyBu(I-1,J) + &
-                                    vi(I,J-1)/G%dyBu(I,J-1) - vi(I-1,J-1)/G%dyBu(I-1,J-1))) &
-                  + grid_fac4(i,j)*(0.5*(ui(I,J)/G%dxBu(I,J)-ui(I,J-1)/G%dxBu(I,J-1) + &
-                                    ui(I-1,J)/G%dxBu(I-1,J)-ui(I-1,J-1)/G%dxBu(I-1,J-1)))
+      strn11(i,j) = (0.5*((ui(I,J)-ui(I-1,J)) + (ui(I,J-1)-ui(I-1,J-1))) + &
+                     0.25*((vi(I,J)+vi(I-1,J-1)) + (vi(I,J-1)+vi(I-1,J))) * &
+                     grid_fac1(i,j)) / G%dxT(i,j)   !### Use G%IdxT?
+      strn22(i,j) = (0.5*((vi(I,J)-vi(I,J-1)) + (vi(I-1,J)-vi(I-1,J-1))) + &
+                     0.25*((ui(I,J)+ui(I,J-1)) + (ui(I-1,J)+ui(I-1,J-1))) * &
+                     grid_fac2(i,j)) / G%dyT(i,j)
+      strn12(i,j) = 0.5*grid_fac3(i,j) * &
+                   ( (vi(I,J)/G%dyBu(I,J) - vi(I-1,J)/G%dyBu(I-1,J)) + &
+                     (vi(I,J-1)/G%dyBu(I,J-1) - vi(I-1,J-1)/G%dyBu(I-1,J-1)) ) + &
+                    0.5*grid_fac4(i,j) * &
+                   ( (ui(I,J)/G%dxBu(I,J) - ui(I,J-1)/G%dxBu(I,J-1)) + &
+                     (ui(I-1,J)/G%dxBu(I-1,J) - ui(I-1,J-1)/G%dxBu(I-1,J-1)) )
     enddo ; enddo
 
     ! calculate viscosities - how often should we do this ?
@@ -422,15 +429,10 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
       endif
     enddo ; enddo
 
+    ! ### SIG11 and SIG22 SHOULD BE PAIRED ON A CUBED SPHERE.
     call pass_var(CS%sig11, G%Domain, complete=.false.)
     call pass_var(CS%sig22, G%Domain, complete=.false.)
     call pass_var(CS%sig12, G%Domain, complete=.true.)
-
-    if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in ice_dynamics", G, haloshift=1)
-      call hchksum(CS%sig22, "sig22 in ice_dynamics", G, haloshift=1)
-      call hchksum(CS%sig12, "sig12 in ice_dynamics", G, haloshift=1)
-    endif
 
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
@@ -439,18 +441,17 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-        tmp1 = 0.5*(CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j) + &
-                    CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j) )
-        tmp2 = 0.5*(CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1) + &
-                    CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j) )
-        tmp6 = 0.5*(CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1) + &
-                    CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j) )
-        tmp7 = 0.5*(CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j) + &
-                    CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j) )
-        tmp3 = 0.25*(CS%sig12(i+1,j+1)+CS%sig12(i+1,j)+CS%sig12(i,j+1)+CS%sig12(i,j) )
-        tmp4 = 0.25*(CS%sig22(i+1,j+1)+CS%sig22(i+1,j)+CS%sig22(i,j+1)+CS%sig22(i,j) )
-        tmp5 = 0.25*(CS%sig11(i+1,j+1)+CS%sig11(i+1,j)+CS%sig11(i,j+1)+CS%sig11(i,j) )
+        tmp1 = 0.5*((CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j)) + &
+                    (CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j)) )
+        tmp2 = 0.5*((CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1)) + &
+                    (CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j)) )
+        tmp6 = 0.5*((CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1)) + &
+                    (CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j)) )
+        tmp7 = 0.5*((CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j)) + &
+                    (CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j)))
+        tmp3 = 0.25*((CS%sig12(i+1,j+1)+CS%sig12(i,j)) + (CS%sig12(i+1,j)+CS%sig12(i,j+1)) )
+        tmp4 = 0.25*((CS%sig22(i+1,j+1)+CS%sig22(i,j)) + (CS%sig22(i+1,j)+CS%sig22(i,j+1)) )
+        tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
 
   !### ADD PARENTHESIS FOR REPRODUCIBILITY.
         fxic_now = ( tmp1 + tmp2 + tmp3*dxdy(I,J) - tmp4*dydx(I,J) ) / (G%dxBu(I,J)*G%dyBu(I,J)) 
@@ -460,6 +461,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
                              real(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
         vi(I,J) = vi(I,J) + (fyic_now + civ(I,J)*fyat(I,J) + &
                              aimag(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldy(I,J)
+
         !
         ! second, timestep implicit parts (Coriolis and ice part of water stress)
         !
@@ -475,24 +477,39 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
         fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))              
+
       endif
     enddo ; enddo
 
     if (CS%debug) then
-      call Bchksum(ui, "ui in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(vi, "vi in ice_dynamics", G, symmetric=.true.)
+      call hchksum(CS%sig11, "sig11 in ice_dynamics", G, haloshift=1)
+      call hchksum(CS%sig22, "sig22 in ice_dynamics", G, haloshift=1)
+      call hchksum(CS%sig12, "sig12 in ice_dynamics", G, haloshift=1)
+
       call Bchksum(fxic, "fxic in ice_dynamics", G, symmetric=.true.)
       call Bchksum(fyic, "fyic in ice_dynamics", G, symmetric=.true.)
-      call check_redundant_B("ui/vi end ice_dynamics steps",ui, vi, G)
+      call Bchksum(fxoc, "fxoc in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fyoc, "fyoc in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fxco, "fxco in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fyco, "fyco in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(ui, "ui in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(vi, "vi in ice_dynamics", G, symmetric=.true.)
+    endif
+    if (CS%debug_redundant) then
+      call check_redundant_B("fxic/fyic in ice_dynamics steps",fxic, fyic, G)
+      call check_redundant_B("fxco in ice_dynamics steps", fxco, fyco, G)
+      call check_redundant_B("fxoc in ice_dynamics steps", fxoc, fyoc, G)
+      call check_redundant_B("ui/vi in ice_dynamics steps", ui, vi, G)
     endif
 
   enddo ! l=1,CS%evp_sub_steps
 
   if (CS%debug) then
-    call Bchksum(ui, "ui late in ice_dynamics", G, symmetric=.true.)
-    call Bchksum(vi, "vi late in ice_dynamics", G, symmetric=.true.)
-    call check_redundant_B("ui/vi late in ice_dynamics",ui, vi, G)
+    call Bchksum(ui, "ui end ice_dynamics", G, symmetric=.true.)
+    call Bchksum(vi, "vi end ice_dynamics", G, symmetric=.true.)
   endif
+  if (CS%debug_redundant) &
+    call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
 
   ! make averages
   ! ### Multiply by reciprocal of evp_sub_steps?
