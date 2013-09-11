@@ -222,7 +222,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   logical :: x_cyclic           ! x boundary condition
   logical :: tripolar_grid      ! y boundary condition
   logical :: mask_table_exists, global_indexing, symmetric_memory
-  logical :: set_grid_like_SIS1 = .true.
+  logical :: set_grid_like_SIS1
   real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
   character(len=128) :: mask_table, inputdir
   character(len=200) :: mesg
@@ -323,7 +323,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
                  default=.false.)
   call get_param(param_file, mod_nm, "SET_GRID_LIKE_SIS1", set_grid_like_SIS1, &
                  "If true, use SIS1 code to set the grid values.  Otherwise \n"//&
-                 "use code derived from MOM6.", default=.true.)
+                 "use code derived from MOM6.", default=.false.)
 
   may_be_static = .true. ; if (present(dynamic)) may_be_static = .not.dynamic
 
