@@ -253,7 +253,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
     ! temporaries for ice stress calculation
     real                             :: del2, a, b, tmp
-    real, dimension(SZI_(G),SZJ_(G)) :: edt, mp4z, t0, t1, t2
+    real, dimension(SZI_(G),SZJ_(G)) :: edt, mp4z, t0, t1, It2
     real                             :: f11, f22
   real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
   real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
@@ -261,7 +261,9 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
     ! for velocity calculation
     real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
-  real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s. 
+  real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s.
+  real :: Rho_2dt_evp ! Rho_ice / (2*dt_evp)
+  real :: I_sub_steps
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
     complex                             :: newuv
 
@@ -295,19 +297,18 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
-    grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))/G%dyT(i,j) !### Use G%IdyT?
-    grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))/G%dxT(i,j)
-    grid_fac3(i,j) = 0.5*G%dyT(i,j)/G%dxT(i,j) !### Use G%IdxT?
-    grid_fac4(i,j) = 0.5*G%dxT(i,j)/G%dyT(i,j)
+    grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))*G%IdyT(i,j)
+    grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))*G%IdxT(i,j)
+    grid_fac3(i,j) = 0.5*G%dyT(i,j) * G%IdxT(i,j)
+    grid_fac4(i,j) = 0.5*G%dxT(i,j) * G%IdyT(i,j)
   enddo ; enddo
 
   ! sea level slope force
-  ! ### Multiply by G%IdxBu, etc.
   do J=jsc-1,jec ; do I=isc-1,iec
     sldx(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
-              + (sea_lev(i+1,j)-sea_lev(i,j)))) / G%dxBu(i,J)
+              + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
     sldy(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
-              + (sea_lev(i,j+1)-sea_lev(i,j)))) / G%dyBu(I,J)
+              + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
@@ -325,11 +326,12 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   !
   call find_ice_strength(hi, ci, prs, G, CS)
 
+  Rho_2dt_evp = CS%Rho_ice / (2.0*dt_evp)
   do j=jsc,jec ; do i=isc,iec
     if(G%dxT(i,j) < G%dyT(i,j) ) then
-      edt(i,j) = (CS%Rho_ice*G%dxT(i,j)*G%dxT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      edt(i,j) = Rho_2dt_evp * (G%dxT(i,j)**2 * (ci(i,j)*hi(i,j)))
     else
-      edt(i,j) = (CS%Rho_ice*G%dyT(i,j)*G%dyT(i,j)*ci(i,j)*hi(i,j))/(2*dt_evp)
+      edt(i,j) = Rho_2dt_evp * (G%dyT(i,j)**2 * (ci(i,j)*hi(i,j)))
     endif
   enddo ; enddo
 
@@ -364,23 +366,22 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     ! calculate strain tensor for viscosities and forcing elastic eqn.
     call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
 
-  !### MULTIPLY BY GRID METRIC INVERSES FOR EFFICIENCY.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_strain - calculate generalized orthogonal coordinate strain tensor       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
     do j=jsc,jec ; do i=isc,iec
       strn11(i,j) = (0.5*((ui(I,J)-ui(I-1,J)) + (ui(I,J-1)-ui(I-1,J-1))) + &
                      0.25*((vi(I,J)+vi(I-1,J-1)) + (vi(I,J-1)+vi(I-1,J))) * &
-                     grid_fac1(i,j)) / G%dxT(i,j)   !### Use G%IdxT?
+                     grid_fac1(i,j)) * G%IdxT(i,j)
       strn22(i,j) = (0.5*((vi(I,J)-vi(I,J-1)) + (vi(I-1,J)-vi(I-1,J-1))) + &
                      0.25*((ui(I,J)+ui(I,J-1)) + (ui(I-1,J)+ui(I-1,J-1))) * &
-                     grid_fac2(i,j)) / G%dyT(i,j)
+                     grid_fac2(i,j)) * G%IdyT(i,j)
       strn12(i,j) = 0.5*grid_fac3(i,j) * &
-                   ( (vi(I,J)/G%dyBu(I,J) - vi(I-1,J)/G%dyBu(I-1,J)) + &
-                     (vi(I,J-1)/G%dyBu(I,J-1) - vi(I-1,J-1)/G%dyBu(I-1,J-1)) ) + &
+                   ( (vi(I,J)*G%IdyBu(I,J) - vi(I-1,J)*G%IdyBu(I-1,J)) + &
+                     (vi(I,J-1)*G%IdyBu(I,J-1) - vi(I-1,J-1)*G%IdyBu(I-1,J-1)) ) + &
                     0.5*grid_fac4(i,j) * &
-                   ( (ui(I,J)/G%dxBu(I,J) - ui(I,J-1)/G%dxBu(I,J-1)) + &
-                     (ui(I-1,J)/G%dxBu(I-1,J) - ui(I-1,J-1)/G%dxBu(I-1,J-1)) )
+                   ( (ui(I,J)*G%IdxBu(I,J) - ui(I,J-1)*G%IdxBu(I,J-1)) + &
+                     (ui(I-1,J)*G%IdxBu(I-1,J) - ui(I-1,J-1)*G%IdxBu(I-1,J-1)) )
     enddo ; enddo
 
     ! calculate viscosities - how often should we do this ?
@@ -408,7 +409,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
           a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
           b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
           t1(i,j)   = b/a                         ! = (1-EC2I)*edt(i,j) / (4*eta + (1+EC2I)*edt(i,j))
-          t2(i,j)   = a - b*b/a                   ! 1/t2 = a / (a*a - b*b)
+          It2(i,j)  = a / (a**2 - b**2)           ! 1/t2 = a / (a*a - b*b)
         endif
       enddo ; enddo
     endif
@@ -419,8 +420,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
           (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
-        CS%sig11(i,j) = (t1(i,j)*f22 + f11) / t2(i,j)
-        CS%sig22(i,j) = (t1(i,j)*f11 + f22) / t2(i,j)
+        CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
+        CS%sig22(i,j) = (t1(i,j)*f11 + f22) * It2(i,j)
         CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
       else
         CS%sig11(i,j) = 0.0
@@ -453,10 +454,10 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
         tmp4 = 0.25*((CS%sig22(i+1,j+1)+CS%sig22(i,j)) + (CS%sig22(i+1,j)+CS%sig22(i,j+1)) )
         tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
 
-  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-        fxic_now = ( tmp1 + tmp2 + tmp3*dxdy(I,J) - tmp4*dydx(I,J) ) / (G%dxBu(I,J)*G%dyBu(I,J)) 
-        fyic_now = ( tmp6 + tmp7 + tmp3*dydx(I,J) - tmp5*dxdy(I,J) ) / (G%dxBu(I,J)*G%dyBu(I,J)) 
+        fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * G%IareaBu(I,J)
+        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J) 
 
+        !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
         ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &
                              real(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
         vi(I,J) = vi(I,J) + (fyic_now + civ(I,J)*fyat(I,J) + &
@@ -512,12 +513,12 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
 
   ! make averages
-  ! ### Multiply by reciprocal of evp_sub_steps?
+  I_sub_steps = 1.0/CS%evp_sub_steps
   do J=jsc-1,jec ; do I=isc-1,iec
-    if( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
-       fxoc(i,j) = fxoc(i,j)/CS%evp_sub_steps;  fyoc(i,j) = fyoc(i,j)/CS%evp_sub_steps
-       fxic(i,j) = fxic(i,j)/CS%evp_sub_steps;  fyic(i,j) = fyic(i,j)/CS%evp_sub_steps
-       fxco(i,j) = fxco(i,j)/CS%evp_sub_steps;  fyco(i,j) = fyco(i,j)/CS%evp_sub_steps             
+    if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
+      fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
+      fxic(i,j) = fxic(i,j)*I_sub_steps ; fyic(i,j) = fyic(i,j)*I_sub_steps
+      fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps            
     endif
   enddo ; enddo
 

@@ -696,8 +696,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
   enddo ; enddo
 
 
-  allocate ( cell_area(isca:ieca,jsca:jeca) )
-
   if (set_grid_like_SIS1) then
     call mpp_copy_domain(G%Domain%mpp_domain, domain2)
     call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
@@ -718,9 +716,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     call calc_mosaic_grid_area(G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
                                G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
                                G%areaT(G%isc:G%iec,G%jsc:G%jec))
-    do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
-    enddo ; enddo       
     call mpp_deallocate_domain(domain2)
 
 !    call pass_var(G%geoLonBu, G%Domain, position=CORNER)
@@ -788,8 +783,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
       G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
       if (G%mask2dT(i,j) > 0.0) then
-  !      G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)  !### ANSWERS CHANGE?
-        G%dyT(i,j) = cell_area(i+i_off,j+j_off)*4*pi*radius*radius/G%dxT(i,j)
+        G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)
       else
         G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
       endif
@@ -832,10 +826,10 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
 
   ! cell_area is unfortunately used outside of the ice model for various
   ! things, so it has to be set, but it should be eliminated. -RWH
+  allocate ( cell_area(isca:ieca,jsca:jeca) )
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS*RADIUS)
+    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
   enddo ; enddo       
-
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &

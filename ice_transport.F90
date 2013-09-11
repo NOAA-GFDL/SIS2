@@ -173,52 +173,50 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     ustar(:,:)=0.; vstar(:,:)=0.
     ustaro(:,:)=0.; vstaro(:,:)=0.
     ustarv(:,:)=0.; vstarv(:,:)=0.
-    do j = jsc, jec
-      do i = isc, iec
-        if ((uc(i,j)==0.) .and. & ! this is a redundant test due to following line
-            (G%mask2dBu(i,j)+G%mask2dBu(i,j-1)==0.) .and. &  ! =0 => no vels
-            (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
-          grad_eta=(sea_lev(i+1,j)-sea_lev(i,j)) & ! delta_i eta
-                   /(0.5*(G%dxBu(I,J)+G%dxBu(I,J-1)))         ! /dx  ### = G%IdxCu(I,j)
-          u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                   *grad_eta                                                  ! d/dx eta
-          u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-          u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-          cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
-          uc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-          ! Limit flow to be stable for fully divergent flow
-          if (uc(i,j)>0.) then
-            uc(i,j)=min( uc(i,j), CS%chan_cfl_limit*G%dxT(i,j)/dt_adv)
-          else
-            uc(i,j)=max( uc(i,j),(-1*CS%chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
-          endif
-          if (CS%id_ustar>0) ustar(i,j)=uc(i,j)
-          if (CS%id_uocean>0) ustaro(i,j)=u_ocn
-          if (CS%id_uchan>0) ustarv(i,j)=u_visc
+    do j=jsc,jec ; do I=isc-1,iec
+      if ((uc(I,j)==0.) .and. & ! this is a redundant test due to following line
+          (G%mask2dBu(I,J)+G%mask2dBu(I,J-1)==0.) .and. &  ! =0 => no vels
+          (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
+        grad_eta=(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j) ! delta_i eta/dx
+        u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+                 *grad_eta                                                  ! d/dx eta
+        u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+        u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+        cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
+        uc(I,j)=cnn*u_visc+(1.-cnn)*u_ocn
+        ! Limit flow to be stable for fully divergent flow
+        if (uc(I,j)>0.) then
+          uc(I,j)=min( uc(I,j), CS%chan_cfl_limit*G%dxT(i,j)/dt_adv)
+        else
+          uc(I,j)=max( uc(I,j),(-1*CS%chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
         endif
-        if ((vc(i,j)==0.) .and. & ! this is a redundant test due to following line
-            (G%mask2dBu(i,j)+G%mask2dBu(i-1,j)==0.) .and. &  ! =0 => no vels
-            (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
-          grad_eta=(sea_lev(i,j+1)-sea_lev(i,j)) & ! delta_i eta
-                  /(0.5*(G%dyBu(I,J)+G%dyBu(I,J-1)))         ! /dy
-          u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                  *grad_eta                                                  ! d/dx eta
-          u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-          u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-          cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
-          vc(i,j)=cnn*u_visc+(1.-cnn)*u_ocn
-          ! Limit flow to be stable for fully divergent flow
-          if (vc(i,j)>0.) then
-           vc(i,j)=min( vc(i,j), CS%chan_cfl_limit*G%dyT(i,j)/dt_adv)
-          else
-           vc(i,j)=max( vc(i,j),(-1*CS%chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
-          endif
-          if (CS%id_vstar>0) vstar(i,j)=vc(i,j)
-          if (CS%id_vocean>0) vstaro(i,j)=u_ocn
-          if (CS%id_vchan>0) vstarv(i,j)=u_visc
+        if (CS%id_ustar>0) ustar(I,j)=uc(I,j)
+        if (CS%id_uocean>0) ustaro(I,j)=u_ocn
+        if (CS%id_uchan>0) ustarv(I,j)=u_visc
+      endif
+    enddo ; enddo
+    do J=jsc-1,jec ; do i=isc,iec
+      if ((vc(i,J)==0.) .and. & ! this is a redundant test due to following line
+          (G%mask2dBu(I,J)+G%mask2dBu(I-1,J)==0.) .and. &  ! =0 => no vels
+          (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
+        grad_eta=(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J) ! delta_i eta/dy
+        u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+                *grad_eta                                                  ! d/dx eta
+        u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+        u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
+        cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
+        vc(i,J)=cnn*u_visc+(1.-cnn)*u_ocn
+        ! Limit flow to be stable for fully divergent flow
+        if (vc(i,J)>0.) then
+         vc(i,J)=min( vc(i,J), CS%chan_cfl_limit*G%dyT(i,j)/dt_adv)
+        else
+         vc(i,J)=max( vc(i,J),(-1*CS%chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
         endif
-      enddo
-    enddo
+        if (CS%id_vstar>0) vstar(i,J)=vc(i,J)
+        if (CS%id_vocean>0) vstaro(i,J)=u_ocn
+        if (CS%id_vchan>0) vstarv(i,J)=u_visc
+      endif
+    enddo ; enddo
   endif
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
@@ -303,7 +301,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
 end subroutine ice_transport
 
-!#####################################################################
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_advect - take adv_sub_steps upstream advection timesteps                 !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -329,7 +327,7 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
 
   real, dimension(SZIB_(G),SZJ_(G)) :: uflx
   real, dimension(SZI_(G),SZJB_(G)) :: vflx
-  real :: dt_adv
+  real :: dt_adv, I_adv_steps
   integer :: l, i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -359,33 +357,35 @@ subroutine ice_advect(uc, vc, trc, dt_slow, G, CS, uf, vf)
       endif
     enddo ; enddo
 
-    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j) - uflx(I,j) + &
-                 vflx(i,J-1) - vflx(i,J) )/ ( G%dxT(i,j) * G%dyT(i,j) )  !### G%IdxdyT ?
+    do j=jsc,jec ; do i=isc,iec
+      trc(i,j) = trc(i,j) + dt_adv * ( (uflx(I-1,j) - uflx(I,j)) + &
+                 (vflx(i,J-1) - vflx(i,J)) ) * G%IareaT(i,j)
     enddo ; enddo
 
     call pass_var(trc, G%Domain)
 
-    if (present(uf)) then ; do j=jsc,jec ; do I=isc,iec       
+    if (present(uf)) then ; do j=jsc,jec ; do I=isc-1,iec       
       uf(I,j) = uf(I,j) + uflx(I,j)
     enddo ; enddo ; endif
 
-    if (present(vf)) then ;  do J=jsc,jec ; do i=isc,iec       
+    if (present(vf)) then ;  do J=jsc-1,jec ; do i=isc,iec       
       vf(i,J) = vf(i,J) + vflx(i,J)
     enddo ; enddo ; endif
   enddo
 
-  !### MULTIPLY BY INVERSE.
-  if (present(uf) .and. CS%adv_sub_steps>1) then ; do j=jsc,jec ; do I=isc,iec       
-    uf(I,j) = uf(I,j)/CS%adv_sub_steps
-  enddo ; enddo ; endif
-  if (present(vf) .and. CS%adv_sub_steps>1) then ;  do J=jsc,jec ; do i=isc,iec       
-    vf(i,J) = vf(i,J)/CS%adv_sub_steps
-  enddo ; enddo ; endif
+  if (CS%adv_sub_steps>1) then
+    I_adv_steps = 1.0/CS%adv_sub_steps
+    if (present(uf)) then ; do j=jsc,jec ; do I=isc-1,iec       
+      uf(I,j) = uf(I,j) * I_adv_steps
+    enddo ; enddo ; endif
+    if (present(vf)) then ;  do J=jsc-1,jec ; do i=isc,iec       
+      vf(i,J) = vf(i,J) * I_adv_steps
+    enddo ; enddo ; endif
+  endif
 
 end subroutine ice_advect
 
-!#####################################################################
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  ! x-face advecting velocity
@@ -441,9 +441,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
       endif
     enddo ; enddo
 
-    do j=jsc,jec ; do i=isc,iec  !### ADD PARENTHESIS FOR REPRODUCIBILITY.
-      trc(i,j) = trc(i,j) + dt_adv * ( uflx(I-1,j)-uflx(I,j) + vflx(i,J-1)-vflx(i,J) ) / &
-                                     (G%dxT(i,j)*G%dyT(i,j)) !### G%IdxdyT ?
+    do j=jsc,jec ; do i=isc,iec
+      trc(i,j) = trc(i,j) + dt_adv * ((uflx(I-1,j) - uflx(I,j)) + &
+                                      (vflx(i,J-1) - vflx(i,J)) ) * G%IareaT(i,j)
     enddo ; enddo
 
     call pass_var(trc, G%Domain)

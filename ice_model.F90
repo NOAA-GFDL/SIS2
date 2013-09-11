@@ -168,11 +168,9 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
-  i_off = 0 ; j_off = 0
-  if (Ice%ocean_fluxes_top%num_bcs>=1) then ; if (Ice%ocean_fluxes_top%bc(1)%num_fields>=1) then
-    i_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,1) - G%isc
-    j_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,2) - G%jsc
-  endif ; endif
+
+  i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
+  j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
   if (IST%avg_count == 0) call zero_top_quantities (Ice, IST)
 
@@ -210,15 +208,14 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   endif
 
   if (IST%id_swdn > 0) then
-    !### REWRITE TO MERGE LOOPS
-    call get_avg(flux_sw_vis_dir(:,:,:)/(1-Ice%albedo_vis_dir(:,:,:)) + &
-                       flux_sw_vis_dif(:,:,:)/(1-Ice%albedo_vis_dif(:,:,:)) + &
-                       flux_sw_nir_dir(:,:,:)/(1-Ice%albedo_nir_dir(:,:,:)) + &
-                       flux_sw_nir_dif(:,:,:)/(1-Ice%albedo_nir_dif(:,:,:)), &
-         IST%part_size(isc:iec,jsc:jec,:), tmp(:,:) )
-    do j=jsc,jec ; do i=isc,iec
-      if (G%Lmask2dT(i,j)) IST%swdn(i,j) = IST%swdn(i,j) + tmp(i,j)
-    enddo ; enddo
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+      IST%swdn(i,j) = IST%swdn(i,j) + IST%part_size(i,j,k) * ( &
+            (flux_sw_vis_dir(i,j,k)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
+             flux_sw_vis_dif(i,j,k)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
+            (flux_sw_nir_dir(i,j,k)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
+             flux_sw_nir_dif(i,j,k)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+    endif ; enddo ; enddo ; enddo
   endif
 
   IST%avg_count = IST%avg_count + 1
@@ -554,8 +551,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   endif ; enddo ; enddo ; enddo
 
-  IST%u_ocn(:,:) = 0.0 ; IST%v_ocn(:,:) = 0.0 !### DELETE THIS?
-
   if (G%symmetric) then  ! This is a place-holder until the Tikal release.
     u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec
@@ -814,7 +809,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
         latent             = hlv + (hlf-CI*IST%t_snow(i,j,k))
       else
-        flux_lh(i,j,k) = flux_lh(i,j,k)+hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
+        flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
         latent             = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
       endif
       flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
@@ -942,6 +937,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G))  :: diagVar ! An temporary array for diagnostics.
 
   real :: area_h, area_pt
+  real :: Idt_slow, yr_dtslow
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
     real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
@@ -952,7 +948,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
-  dt_slow = time_type_to_real(IST%Time_step_slow)
+  dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   if (IST%debug) then
     call IST_chksum("Start update_ice_model_slow", IST, G)
@@ -1108,19 +1104,18 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   ! Thermodynamics
   !
-  !### REPLACE /dt_slow with I_dt_slow = 1.0/dt_slow
   call mpp_clock_begin(iceClock5)
-  if (IST%id_frazil>0) call post_data(IST%id_frazil, IST%frazil(isc:iec,jsc:jec)/dt_slow, &
+  if (IST%id_frazil>0) call post_data(IST%id_frazil, IST%frazil(isc:iec,jsc:jec)*Idt_slow, &
                                     IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   call disable_SIS_averaging(IST%diag)
 
   snow_to_ice(:,:,:) = 0.0
   bsnk(:,:) = 0.0
 
-  call get_avg(IST%h_ice(isc:iec,jsc:jec,:), IST%part_size(isc:iec,jsc:jec,1:), hi_change(:,:))
-  
+  hi_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    hi_change(i,j) = hi_change(i,J) - IST%h_ice(i,j,k)*IST%part_size(i,j,k)
     h2o_change(i,j) = h2o_change(i,j) - IST%part_size(i,j,k) * &
                   (IST%Rho_snow*IST%h_snow(i,j,k) + IST%Rho_ice*IST%h_ice(i,j,k))
   enddo ; enddo ; enddo
@@ -1144,10 +1139,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                           snow_to_ice(i,j,k), bablt                          )
 
       ! modify above-ice to under-ice fluxes for passing to ocean
-      IST%flux_q_top(i,j,k) = h2o_from_ocn/dt_slow ! no ice, evaporation left
+      IST%flux_q_top(i,j,k) = h2o_from_ocn*Idt_slow ! no ice, evaporation left
       IST%flux_lh_top(i,j,k) = hlv*IST%flux_q_top(i,j,k)
       IST%flux_lw_top(i,j,k) = 0.0
-      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn/dt_slow
+      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
       IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
             IST%flux_sw_nir_dif_top(i,j,k))*IST%pen(i,j,k)*IST%trn(i,j,k)
@@ -1155,7 +1150,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       IST%flux_sw_nir_dif_top(i,j,k) = 0.0
       IST%flux_sw_vis_dir_top(i,j,k) = 0.0
       IST%fprec_top(i,j,k) = 0.0
-      IST%lprec_top(i,j,k) = IST%lprec_top(i,j,k) + h2o_to_ocn/dt_slow
+      IST%lprec_top(i,j,k) = IST%lprec_top(i,j,k) + h2o_to_ocn*Idt_slow
 
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt ! bot. melt. ablation
 
@@ -1330,40 +1325,42 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_begin(iceClock8)
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
-  !### Inlining sensibly would change answers.
-  call get_avg(IST%h_ice(isc:iec,jsc:jec,:), IST%part_size(isc:iec,jsc:jec,1:), tmp2d)
-  hi_change(:,:)  = tmp2d(:,:) - hi_change(:,:)
-  Ice%flux_salt(:,:) = IST%ice_bulk_salin*IST%Rho_ice*hi_change(:,:) / dt_slow
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt, IST%diag, &
-                                     mask=G%Lmask2dT(isc:iec,jsc:jec))
-
-  ! Note that at this point h2o_change is the negative of the mass.
+  ! Note that at this point hi_change and h2o_change are the negative of the masses.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    hi_change(i,j) = hi_change(i,J) + IST%h_ice(i,j,k)*IST%part_size(i,j,k)
     h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
                 (IST%Rho_snow*IST%h_snow(i,j,k) + IST%Rho_ice*IST%h_ice(i,j,k))
   enddo ; enddo ; enddo
 
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Ice%flux_salt(i2,j2) = IST%ice_bulk_salin*IST%Rho_ice*hi_change(i,j) * Idt_slow
+  enddo ; enddo
+  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt, IST%diag, &
+                                     mask=G%Lmask2dT(isc:iec,jsc:jec))
+
+  yr_dtslow = (864e2*365/dt_slow)
   if (IST%id_lsnk>0) then
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = min(h2o_change(i,j),0.0) * (864e2*365/dt_slow)
+      tmp2d(i,j) = min(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(IST%id_lsnk, tmp2d(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   if (IST%id_lsrc>0) then
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = max(h2o_change(i,j),0.0) * (864e2*365/dt_slow)
+      tmp2d(i,j) = max(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(IST%id_lsrc, tmp2d(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
 
-  if (IST%id_bsnk>0)  call post_data(IST%id_bsnk, bsnk(isc:iec,jsc:jec)*(864e2*365/dt_slow), &
-                              IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
+  if (IST%id_bsnk>0)  call post_data(IST%id_bsnk, bsnk(isc:iec,jsc:jec)*yr_dtslow, &
+                                     IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_tmelt>0) call post_avg(IST%id_tmelt, IST%tmelt, IST%part_size(:,:,1:), IST%diag, G=G, &
-                                    scale=1.0/dt_slow, mask=G%Lmask2dT, wtd=.true.)
+                                    scale=Idt_slow, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_bmelt>0) call post_avg(IST%id_bmelt, IST%bmelt, IST%part_size(:,:,1:), IST%diag, G=G, &
-                                    scale=1.0/dt_slow, mask=G%Lmask2dT, wtd=.true.)
+                                    scale=Idt_slow, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_sn2ic>0) call post_avg(IST%id_sn2ic, snow_to_ice, IST%part_size(:,:,1:), IST%diag, G=G, &
-                                    scale=1.0/dt_slow, mask=G%Lmask2dT)
+                                    scale=Idt_slow, mask=G%Lmask2dT)
   if (IST%id_qflim>0) call post_data(IST%id_qflim, qflx_lim_ice, IST%diag, mask=G%Lmask2dT)
   if (IST%id_qfres>0) call post_data(IST%id_qfres, qflx_res_ice, IST%diag, mask=G%Lmask2dT)
   !
@@ -1766,17 +1763,15 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
 !  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
 
-
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
-  Ice%area(:,:)   = cell_area(:,:) * 4*PI*RADIUS*RADIUS  ! ### Eliminate later
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%mask(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
-!###   Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
+    Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
  
   Ice%Time           = Time
