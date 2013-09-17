@@ -6,22 +6,19 @@
 module ice_grid_mod
 
   use constants_mod,   only: radius, omega, pi, grav
-  use mpp_mod,         only: mpp_pe, mpp_npes, mpp_root_pe
 
-use mpp_domains_mod, only: mpp_define_domains, CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
-use mpp_domains_mod, only: mpp_update_domains, domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
+use mpp_domains_mod, only: mpp_define_domains, FOLD_NORTH_EDGE
+use mpp_domains_mod, only: domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
 use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
-use mpp_domains_mod, only : MOM_define_io_domain => mpp_define_io_domain
 use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_set_domain_symmetry
 use mpp_domains_mod, only: mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
 use mpp_domains_mod, only: mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
 use mpp_domains_mod, only: mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
 use mpp_domains_mod, only : domain1D, mpp_get_domain_components
 
-
 use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
-use MOM_domains, only : PE_here, root_PE, broadcast
-use MOM_domains, only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All, AGRID
+use MOM_domains, only : PE_here, root_PE, broadcast, MOM_domains_init, clone_MOM_domain
+use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All, AGRID
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -170,66 +167,43 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetric, dynamic)
+subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   type(sea_ice_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
   type(domain2D),        intent(inout) :: ice_domain
   integer,               intent(in)    :: NCat_dflt
-  integer, dimension(2), optional, intent(inout) :: min_halo
-  logical, optional,               intent(in)    :: symmetric
-  logical, optional,               intent(in)    :: dynamic
+!   This subroutine sets up the necessary domain types and the sea-ice grid.
+
 ! Arguments: G - The sea-ice's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (inout)   ice_domain - A domain with no halos that can be shared publicly.
 !  (in)      NCat_dflt - The default number of ice categories.
-!  (in,opt)  min_halo - If present, this sets the minimum halo size for this
-!                       domain in the x- and y- directions, and returns the
-!                       actual halo size used.
-!  (in,opt)  symmetric - If present, this specified whether this domain
-!                        is symmetric, regardless of whether the macro
-!                        SYMMETRIC_MEMORY_ is defined.
-!  (in,opt)  dynamic - If present and true, this domain type is always dynamic,
-!                      and all macros related to static memory are disregarded.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
 
-  real                                :: angle, lon_scale
-  integer                             :: i, j, m, ntiles, ncontacts
-  integer                             :: dims(4)
-  real, allocatable, dimension(:,:,:) :: x_vert_t, y_vert_t
-  real, allocatable,   dimension(:,:) :: depth, tmpx, tmpy, tmp_2d
-  integer, dimension(2)               :: tile1, tile2
-  integer, dimension(2)               :: istart1, iend1, jstart1, jend1
-  integer, dimension(2)               :: istart2, iend2, jstart2, jend2
-  integer :: x_flags, y_flags
-  character(len=128)                  :: grid_file, ocean_topog
-  character(len=256)                  :: ocean_hgrid, ocean_mosaic, attvalue
-  type(domain2d)                      :: domain2
-  integer                             :: isg, ieg, jsg, jeg
-  integer                             :: is, ie, js, je, i_off, j_off
-  integer                             :: ni,nj,siz(4) , im, jm
-  integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
-  integer                             :: npes, p
-  logical                             :: symmetrize, ndivx_is_even, im_is_even
-  integer, dimension(4) :: global_indices
-  integer :: layout(2) = (/0, 0/), io_layout(2) = (/1, 1/)
-  
-  integer :: nihalo, njhalo, nihalo_dflt, njhalo_dflt
-  logical :: reentrant_x, reentrant_y, tripolar_N, is_static, may_be_static
-
-  logical :: x_cyclic           ! x boundary condition
-  logical :: tripolar_grid      ! y boundary condition
-  logical :: mask_table_exists, global_indexing, symmetric_memory
-  logical :: set_grid_like_SIS1
+  real, allocatable, dimension(:,:)   :: depth, tmpx, tmpy, tmp_2d
   real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
-  character(len=128) :: mask_table, inputdir
+  real    :: angle, lon_scale
+
+  integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
+  integer :: i, j, m, pe, ntiles, ncontacts
+  integer :: isg, ieg, jsg, jeg
+  integer :: is, ie, js, je, i_off, j_off
+  integer :: ni, nj, dims(4)
+  integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
+  integer :: npes
+
+  logical :: symmetric       ! If true, use symmetric memory allocation.
+  logical :: global_indexing
+  logical :: set_grid_like_SIS1
+  character(len=256) :: grid_file, ocean_topog
+  character(len=256) :: ocean_hgrid, ocean_mosaic
   character(len=200) :: mesg
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
-  integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
+  type(domain2d)     :: domain2
   type(domain2d), pointer :: Domain => NULL()
-  type(SIS_domain_type), pointer :: MOM_dom => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
   ocean_topog = 'INPUT/topog.nc'
@@ -242,25 +216,28 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     allocate(G%Domain_aux)
     allocate(G%Domain_aux%mpp_domain)
   endif
-  MOM_dom => G%Domain
 
 !  pe = PE_here()
-!  npes = num_PEs()
-  npes = mpp_nPEs()
+  npes = num_PEs()
 
-  if (present(symmetric)) then
-    MOM_dom%symmetric = symmetric
-    if (symmetric) then ; mod_nm = "MOM_domains symmetric"
-    else ; mod_nm = "MOM_domains non-symmetric" ; endif
-  else
-    mod_nm = "MOM_domains"
 #ifdef SYMMETRIC_MEMORY_
-    MOM_dom%symmetric = .true.
+  symmetric = .true.
 #else
-    MOM_dom%symmetric = .false.
+  symmetric = .false.
 #endif
-  endif
-  if (present(min_halo)) mod_nm = trim(mod_nm)//" min_halo"
+#ifdef STATIC_MEMORY_
+  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
+            static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
+            NIGLOBAL=NIGLOBAL_, NJGLOBAL=NJGLOBAL_, NIPROC=NIPROC_, &
+            NJPROC=NJPROC_, domain_name="ice model", include_name="SIS2_memory.h")
+#else
+  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
+           domain_name="ice model", include_name="SIS2_memory.h")
+#endif
+  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
+                        domain_name="ice model aux")
+  call clone_MOM_domain(G%domain, ice_domain, halo_size=0, symmetric=.false., &
+                        domain_name="ice_nohalo")
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
@@ -301,166 +278,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
 
- call get_param(param_file, mod_nm, "REENTRANT_X", reentrant_x, &
-                 "If true, the domain is zonally reentrant.", default=.true.)
-  call get_param(param_file, mod_nm, "REENTRANT_Y", reentrant_y, &
-                 "If true, the domain is meridionally reentrant.", &
-                 default=.false.)
-  call get_param(param_file, mod_nm, "TRIPOLAR_N", tripolar_N, &
-                 "Use tripolar connectivity at the northern edge of the \n"//&
-                 "domain.  With TRIPOLAR_N, NIGLOBAL must be even.", &
-                 default=.false.)
-  
-  call log_param(param_file, mod_nm, "!SYMMETRIC_MEMORY_", MOM_dom%symmetric, &
-                 "If defined, the velocity point data domain includes \n"//&
-                 "every face of the thickness points. In other words, \n"//&
-                 "some arrays are larger than others, depending on where \n"//&
-                 "they are on the staggered grid.  Also, the starting \n"//&
-                 "index of the velocity-point arrays is usually 0, not 1. \n"//&
-                 "This can only be set at compile time.")
-  call get_param(param_file, mod_nm, "NONBLOCKING_UPDATES", MOM_dom%nonblocking_updates, &
-                 "If true, non-blocking halo updates may be used.", &
-                 default=.false.)
   call get_param(param_file, mod_nm, "SET_GRID_LIKE_SIS1", set_grid_like_SIS1, &
                  "If true, use SIS1 code to set the grid values.  Otherwise \n"//&
                  "use code derived from MOM6.", default=.false.)
-
-  may_be_static = .true. ; if (present(dynamic)) may_be_static = .not.dynamic
-
-  is_static = .false.
-  nihalo_dflt = 1 ; njhalo_dflt = 1
-  if (may_be_static) then
-#ifdef STATIC_MEMORY_
-    is_static = .true.
-    nihalo_dflt = NIHALO_ ; njhalo_dflt = NJHALO_
-#else
-# ifdef NIHALO_
-    nihalo_dflt = NIHALO_
-# endif
-# ifdef NJHALO_
-    njhalo_dflt = NJHALO_
-# endif
-#endif
-    call log_param(param_file, mod_nm, "!STATIC_MEMORY_", is_static, &
-                 "If STATIC_MEMORY_ is defined, the principle variables \n"//&
-                 "will have sizes that are statically determined at \n"//&
-                 "compile time.  Otherwise the sizes are not determined \n"//&
-                 "until run time. The STATIC option is substantially \n"//&
-                 "faster, but does not allow the PE count to be changed \n"//&
-                 "at run time.  This can only be set at compile time.")
-  endif ! may_be_static
-
-  call get_param(param_file, mod_nm, "NIHALO", MOM_dom%nihalo, &
-                 "The number of halo points on each side in the \n"//&
-                 "x-direction.  With STATIC_MEMORY_ this is set as NIHALO_ \n"//&
-                 "in MOM_memory.h at compile time; without STATIC_MEMORY_ \n"//&
-                 "the default is NIHALO_ in MOM_memory.h (if defined) or 2.", &
-                 default=nihalo_dflt)
-  call get_param(param_file, mod_nm, "NJHALO", MOM_dom%njhalo, &
-                 "The number of halo points on each side in the \n"//&
-                 "y-direction.  With STATIC_MEMORY_ this is set as NJHALO_ \n"//&
-                 "in MOM_memory.h at compile time; without STATIC_MEMORY_ \n"//&
-                 "the default is NJHALO_ in MOM_memory.h (if defined) or 2.", &
-                 default=njhalo_dflt)
-  if (present(min_halo)) then
-    MOM_dom%nihalo = max(MOM_dom%nihalo, min_halo(1))
-    min_halo(1) = MOM_dom%nihalo
-    MOM_dom%njhalo = max(MOM_dom%njhalo, min_halo(2))
-    min_halo(2) = MOM_dom%njhalo
-    call log_param(param_file, mod_nm, "!NIHALO min_halo", MOM_dom%nihalo)
-    call log_param(param_file, mod_nm, "!NJHALO min_halo", MOM_dom%nihalo)
-  endif
-  if (is_static) then
-#ifdef STATIC_MEMORY_
-    call get_param(param_file, mod_nm, "NIGLOBAL", MOM_dom%niglobal, &
-                 "The total number of thickness grid points in the \n"//&
-                 "x-direction in the physical domain. With STATIC_MEMORY_ \n"//&
-                 "this is set in MOM_memory.h at compile time.", default=NIGLOBAL_)
-    call get_param(param_file, mod_nm, "NJGLOBAL", MOM_dom%njglobal, &
-                 "The total number of thickness grid points in the \n"//&
-                 "y-direction in the physical domain. With STATIC_MEMORY_ \n"//&
-                 "this is set in MOM_memory.h at compile time.", default=NJGLOBAL_)
-    if (MOM_dom%niglobal /= NIGLOBAL_) call SIS_error(FATAL,"MOM_domains_init: " // &
-     "static mismatch for NIGLOBAL_ domain size. Header file does not match input namelist")
-    if (MOM_dom%njglobal /= NJGLOBAL_) call SIS_error(FATAL,"MOM_domains_init: " // &
-     "static mismatch for NJGLOBAL_ domain size. Header file does not match input namelist")
-
-    if (.not.present(min_halo)) then
-      if (MOM_dom%nihalo /= NIHALO_) call SIS_error(FATAL,"MOM_domains_init: " // &
-             "static mismatch for NIHALO domain size")
-      if (MOM_dom%njhalo /= NJHALO_) call SIS_error(FATAL,"MOM_domains_init: " // &
-             "static mismatch for NJHALO domain size")
-    endif
-#endif
-  else
-    call get_param(param_file, mod_nm, "NIGLOBAL", MOM_dom%niglobal, &
-                 "The total number of thickness grid points in the \n"//&
-                 "x-direction in the physical domain. With STATIC_MEMORY_ \n"//&
-                 "this is set in MOM_memory.h at compile time.", &
-                 fail_if_missing=.true.)
-    call get_param(param_file, mod_nm, "NJGLOBAL", MOM_dom%njglobal, &
-                 "The total number of thickness grid points in the \n"//&
-                 "y-direction in the physical domain. With STATIC_MEMORY_ \n"//&
-                 "this is set in MOM_memory.h at compile time.", &
-                 fail_if_missing=.true.)
-  endif
-  nihalo = MOM_dom%nihalo
-  njhalo = MOM_dom%njhalo
-
-  global_indices(1) = 1
-  global_indices(2) = MOM_dom%niglobal
-  global_indices(3) = 1
-  global_indices(4) = MOM_dom%njglobal
-
-  call get_param(param_file, mod_nm, "INPUTDIR", inputdir, do_not_log=.true., default=".")
-  inputdir = slasher(inputdir)
-
-  call get_param(param_file, mod_nm, "MASKTABLE", mask_table, &
-                 "A text file to specify n_mask, layout and mask_list. \n"//&
-                 "This feature masks out processors that contain only land points. \n"//&
-                 "The first line of mask_table is the number of regions to be masked out.\n"//&
-                 "The second line is the layout of the model and must be \n"//&
-                 "consistent with the actual model layout.\n"//&
-                 "The following (n_mask) lines give the logical positions \n"//&
-                 "of the processors that are masked out. The mask_table \n"//&
-                 "can be created by tools like check_mask. The \n"//&
-                 "following example of mask_table masks out 2 processors, \n"//&
-                 "(1,2) and (3,6), out of the 24 in a 4x6 layout: \n"//&
-                 " 2\n 4,6\n 1,2\n 3,6\n", default="INPUT/ice_mask_table" )
-  mask_table = trim(inputdir)//trim(mask_table)
-  mask_table_exists = file_exist(mask_table)
-
-  if (is_static) then
-#ifdef STATIC_MEMORY_
-    layout(1) = NIPROC_ ; layout(2) = NJPROC_
-#endif
-  else
-    call get_param(param_file, mod_nm, "LAYOUT", layout, &
-                 "The processor layout to be used, or 0, 0 to automatically \n"//&
-                 "set the layout based on the number of processors.", default=0)
-    if (mask_table_exists .and. (layout(1) == 0 .OR. layout(2) == 0)) &
-      call SIS_error(FATAL, &
-         "set_ice_grid: layout should be set via get_param when file "//&
-         trim(mask_table)//' exists')
-    ! default is merdional domain decomp. to load balance xgrid
-    if( layout(1)==0 .and. layout(2)==0 ) layout=(/ mpp_npes(), 1 /)
-    if( layout(1)/=0 .and. layout(2)==0 ) layout(2) = mpp_npes()/layout(1)
-    if( layout(1)==0 .and. layout(2)/=0 ) layout(1) = mpp_npes()/layout(2)
-  endif
-
-  call log_param(param_file, mod_nm, "!NIPROC", layout(1), &
-                 "The number of processors in the x-direction. With \n"//&
-                 "STATIC_MEMORY_ this is set in MOM_memory.h at compile time.")
-  call log_param(param_file, mod_nm, "!NJPROC", layout(2), &
-                 "The number of processors in the x-direction. With \n"//&
-                 "STATIC_MEMORY_ this is set in MOM_memory.h at compile time.")
-
-  call get_param(param_file, mod_nm, "IO_LAYOUT", io_layout, &
-                 "The processor layout to be used, or 1,1 to automatically \n"//&
-                 "set the layout based on the number of processors.", default=1)
-
-! Everything above this point is adopted from MOM_domain.F90.
-
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
@@ -483,137 +303,54 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
       "ntiles should be 1 for ocean mosaic.")
   call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
   ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
-  call field_size(ocean_hgrid, 'x', siz)
-  ni = siz(1)/2
-  nj = siz(2)/2
 
-  x_cyclic = .false.; tripolar_grid = .false.
+  ! This code should be moved to MOM_domains_init once we start using a cubed-sphere grid.
+  ! if (field_exist(ocean_mosaic, "contacts") ) then
+  !   ncontacts = get_mosaic_ncontacts(ocean_mosaic)
+  !   if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+  !        'number of contacts should be larger than 0 when field contacts exist in file '//&
+  !        trim(ocean_mosaic) )
+  !   if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+  !        'number of contacts should be no larger than 2')
+  !   call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
+  !        istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
+  !        istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
+  !   do m = 1, ncontacts
+  !     if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
+  !       if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
+  !            "==>Error from ice_grid_mod(set_ice_grid): only cyclic condition is allowed for x-boundary")
+  !       x_cyclic = .true.
+  !     elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
+  !       if ( jstart1(m) == jstart2(m) ) then ! folded north
+  !          tripolar_grid=.true.
+  !       else 
+  !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
+  !            "only folded-north condition is allowed for y-boundary")
+  !       endif
+  !     else 
+  !       call SIS_error(FATAL,  &
+  !            "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
+  !     endif
+  !   enddo
+  ! endif
 
-  if (field_exist(ocean_mosaic, "contacts") ) then
-    ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-    if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
-         'number of contacts should be larger than 0 when field contacts exist in file '//&
-         trim(ocean_mosaic) )
-    if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
-         'number of contacts should be no larger than 2')
-    call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
-         istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
-         istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
-    do m = 1, ncontacts
-      if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
-        if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
-             "==>Error from ice_grid_mod(set_ice_grid): only cyclic condition is allowed for x-boundary")
-        x_cyclic = .true.
-      elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
-        if ( jstart1(m) == jstart2(m) ) then ! folded north
-           tripolar_grid=.true.
-        else 
-           call SIS_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
-             "only folded-north condition is allowed for y-boundary")
-        endif
-      else 
-        call SIS_error(FATAL,  &
-             "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
-      endif
-    enddo
-  endif
-
-  !--- get grid size
+  !--- get grid size from the input file hgrid file.
   call field_size(ocean_hgrid, 'x', dims)
-  if(mod(dims(1),2) .NE. 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
-      'x-size of x in file '//trim(ocean_hgrid)//' should be 2*ni+1')
-  if(mod(dims(2),2) .NE. 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
-      'y-size of x in file '//trim(ocean_hgrid)//' should be 2*nj+1')
-  im = dims(1)/2 
-  jm = dims(2)/2 
+  if(mod(dims(1),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+      'x-size of x in file '//trim(ocean_hgrid)//' should be 2*niglobal+1')
+  if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+      'y-size of x in file '//trim(ocean_hgrid)//' should be 2*njglobal+1')
+  ni = dims(1)/2 
+  nj = dims(2)/2 
   
-  if (im /= MOM_dom%niglobal) call SIS_error(FATAL, "set_ice_grid: "//&
+  if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_ice_grid: "//&
     "The total i-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-  if (jm /= MOM_dom%njglobal) call SIS_error(FATAL, "set_ice_grid: "//&
+  if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_ice_grid: "//&
     "The total j-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-
-  if (x_cyclic) then
-    call SIS_mesg("==>Note from ice_grid_mod: x_boundary_type is cyclic")
-  else
-    call SIS_mesg("==>Note from ice_grid_mod: x_boundary_type is solid_walls")
-  endif
-  if (tripolar_grid) then
-    call SIS_mesg("==>Note from ice_grid_mod: y_boundary_type is fold_north_edge")
-  else
-    call SIS_mesg("==>Note from ice_grid_mod: y_boundary_type is solid_walls")
-  endif
-
-  x_flags = 0 ; y_flags = 0
-  if (tripolar_grid) then    
-    !z1l: Tripolar grid requires symmetry in i-direction domain decomposition
-    ndivx_is_even = (mod(layout(1),2) == 0)
-    im_is_even    = (mod(im,2) == 0)
-    symmetrize = ( ndivx_is_even .AND. im_is_even ) .OR. &
-            (  (.NOT.ndivx_is_even) .AND.  (.NOT.im_is_even) ) .OR. &
-            (  (.NOT.ndivx_is_even) .AND. im_is_even .AND. layout(1) .LT. im/2 )
-
-    if( .not. symmetrize) then
-      call SIS_error(FATAL, "ice_model(set_ice_grid): tripolar regrid requires symmetry in i-direction domain decomposition")
-    endif
-    x_flags=CYCLIC_GLOBAL_DOMAIN ; y_flags=FOLD_NORTH_EDGE
-  else if(x_cyclic) then
-    x_flags=CYCLIC_GLOBAL_DOMAIN ; y_flags = 0
-  else
-    x_flags = 0 ; y_flags = 0
-  endif
-
-  if (mask_table_exists) then
-    call SIS_mesg(' set_ice_grid: reading maskmap information from '//&
-                  trim(mask_table))
-    allocate(G%Domain%maskmap(layout(1), layout(2)))
-    call parse_mask_table(mask_table, G%Domain%maskmap, "Ice model")
-
-    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain%mpp_domain, maskmap=G%Domain%maskmap, &
-                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
-                          symmetry=MOM_dom%symmetric, name='ice model' )
-    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain_aux%mpp_domain, maskmap=G%Domain%maskmap, &
-                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
-                          symmetry=.false., name='ice model' )
-    call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, maskmap=G%Domain%maskmap, name='ice_nohalo') ! domain without halo
-  else
-    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain%mpp_domain, &
-                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
-                          symmetry=MOM_dom%symmetric, name='ice model' )
-    call mpp_define_domains( (/1,im,1,jm/), layout, G%Domain_aux%mpp_domain, &
-                          xflags=x_flags, xhalo=nihalo, yflags=y_flags, yhalo=njhalo, &
-                          symmetry=.false., name='ice model' )
-    call mpp_define_domains( (/1,im,1,jm/), layout, ice_domain, name='ice_nohalo') ! domain without halo
-  endif
-  call mpp_define_io_domain(G%Domain%mpp_domain, io_layout)
-  call mpp_define_io_domain(ice_domain, io_layout)
 
   call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
   call mpp_get_data_domain(G%Domain%mpp_domain, isda, ieda, jsda, jeda )
   call mpp_get_global_domain(G%Domain%mpp_domain, isg, ieg, jsg, jeg )
-
-  ! Set up the remainder of the SIS_domain_type.  This will later occur via a
-  ! call to MOM_domains_init.
-  ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
-  G%Domain%niglobal = im ; G%Domain%njglobal = jm
-!  G%Domain%nihalo = 1 ; G%Domain%njhalo = 1
-!  G%Domain%symmetric = .false.
-  G%Domain%layout(:) = layout(:) ; G%Domain%io_layout(:) = io_layout(:)
-  G%Domain%X_FLAGS = X_FLAGS ; G%Domain%Y_FLAGS = Y_FLAGS
-  G%Domain%nonblocking_updates = .false.
-  ! call get_domain_extent(G%Domain, isca, ieca, jsca, jeca, isda, ieda, jsda, jeda, &
-  !                          isg, ieg, jsg, jeg, i_offset, j_offset, G%Domain%Symmetric, .false.)
-
-  ! Copy the elements of G%Domain to the non-symmetric auxiliary domain.
-  G%domain_aux%symmetric = .false.
-  G%domain_aux%niglobal = G%domain%niglobal ; G%domain_aux%njglobal = G%domain%njglobal
-  G%domain_aux%nihalo = G%domain%nihalo ; G%domain_aux%njhalo = G%domain%njhalo
-  G%domain_aux%nonblocking_updates = G%domain%nonblocking_updates
-  G%domain_aux%use_io_layout = G%domain%use_io_layout
-  G%domain_aux%layout(:) = G%domain%layout(:)
-  G%domain_aux%io_layout(:) = G%domain%io_layout(:)
-  G%domain_aux%X_FLAGS = G%domain%X_FLAGS ; G%domain_aux%Y_FLAGS = G%domain%Y_FLAGS
-  if (associated(G%domain%maskmap)) G%domain_aux%maskmap => G%domain%maskmap
-
 
   ! Allocate and fill in default values for elements of the sea ice grid type.
   if (global_indexing) then
@@ -702,7 +439,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
     call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
     call mpp_get_compute_domain(domain2, is, ie, js, je)
-    if(is .NE. 2*isca-1 .OR. ie .NE. 2*ieca+1 .OR. js .NE. 2*jsca-1 .OR. je .NE. 2*jeca+1) then
+    if(is /= 2*isca-1 .or. ie /= 2*ieca+1 .or. js /= 2*jsca-1 .or. je /= 2*jeca+1) then
       call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
     endif
     allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
@@ -725,46 +462,46 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
     ! diagnostic purposes. This is a hold-over and will be changed to match
     ! the MOM6 convention of using the "nominal" latitudes and longitudes,
     ! which are the actual lat & lon on spherical portions of the grid.
-    allocate ( xb1d (im+1), yb1d (jm+1) )
-    if (mask_table_exists) then    
-      allocate(tmpx(im+1,jm+1), tmpy(im+1,jm+1))
+    allocate ( xb1d (ni+1), yb1d (nj+1) )
+    if (associated(G%Domain%maskmap)) then    
+      allocate(tmpx(ni+1,nj+1), tmpy(ni+1,nj+1))
       call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
-      xb1d(:) = sum(tmpx,2)/(jm+1)
-      yb1d(:) = sum(tmpy,1)/(im+1)
+      xb1d(:) = sum(tmpx,2)/(nj+1)
+      yb1d(:) = sum(tmpy,1)/(ni+1)
       deallocate(tmpx, tmpy)
     else
       Domain => G%Domain%mpp_domain
-      allocate ( tmpx(isca:ieca+1, jm+1) )
+      allocate ( tmpx(isca:ieca+1, nj+1) )
       call mpp_set_domain_symmetry(Domain, .TRUE.)
       call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
                            tmpx, flags=YUPDATE, position=CORNER)
       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
       tmp_2d = 0
-      tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(jm+1);
+      tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(nj+1);
       deallocate(tmpx)
-      allocate ( tmpx(im+1, jsca:jeca+1) )
+      allocate ( tmpx(ni+1, jsca:jeca+1) )
 
       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
                            tmpx, flags=XUPDATE, position=CORNER)
       xb1d(:) = tmpx(:,jsca)
       deallocate(tmpx, tmp_2d)
 
-      allocate ( tmpy(im+1, jsca:jeca+1) )
+      allocate ( tmpy(ni+1, jsca:jeca+1) )
       call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), tmpy, &
                            flags=XUPDATE, position=CORNER)
       allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
       tmp_2d = 0
-      tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(im+1);
+      tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(ni+1);
       deallocate(tmpy)
-      allocate ( tmpy(isca:ieca+1, jm+1) )
+      allocate ( tmpy(isca:ieca+1, nj+1) )
       call mpp_global_field(Domain, tmp_2d, tmpy, flags=YUPDATE, position=CORNER)
       yb1d(:) = tmpy(isca,:)
       deallocate(tmpy, tmp_2d)
       call mpp_set_domain_symmetry(Domain, G%domain%symmetric)
     endif
 
-    G%gridLatB(jsg-1:jeg) = yb1d(1:jm+1)
-    G%gridLonB(isg-1:ieg) = xb1d(1:im+1)
+    G%gridLatB(jsg-1:jeg) = yb1d(1:nj+1)
+    G%gridLonB(isg-1:ieg) = xb1d(1:ni+1)
     do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
     do j=jsg,jeg ; G%gridLatT(j) = 0.5*(G%gridLatB(j-1)+G%gridLatB(j)) ; enddo
 
@@ -852,29 +589,24 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt, min_halo, symmetri
 
   G%g_Earth = grav
 
-    !--- z1l: loop through the pelist to find the symmetry processor.
-    !--- This is needed to address the possibility that some of the all-land processor 
-    !--- regions are masked out. This is only needed for tripolar grid.
-    if (tripolar_grid) then
-       npes = mpp_npes()
-       allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
-       call mpp_get_pelist(G%Domain%mpp_domain, pelist)
-       call mpp_get_compute_domains(G%Domain%mpp_domain, &
-                xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
+  !--- z1l: loop through the pelist to find the symmetry processor.
+  !--- This is needed to address the possibility that some of the all-land processor 
+  !--- regions are masked out. This is only needed for tripolar grid.
+  if (G%Domain%Y_flags == FOLD_NORTH_EDGE) then
+    allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
+    call mpp_get_pelist(G%Domain%mpp_domain, pelist)
+    call mpp_get_compute_domains(G%Domain%mpp_domain, &
+             xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
 
-       do p = 1, npes
-          if( jslist(p) == jsca .AND. islist(p) + ieca == im+1 ) then
-             if( jelist(p) .NE. jeca ) then
-                call SIS_error(FATAL, "ice_model: jelist(p) .NE. jec but jslist(p) == jsc")
-             endif
-             if( ielist(p) + isca .NE. im+1) then
-                call SIS_error(FATAL, "ice_model: ielist(p) + isc .NE. im+1 but islist(p) + iec == im+1")
-             endif
-             exit 
-          endif
-       enddo
-       deallocate(pelist, islist, ielist, jslist, jelist)
-    endif
+    do pe=1,npes ; if ( jslist(pe) == jsca .and. islist(pe) + ieca == ni+1 ) then
+      if ( jelist(pe) /= jeca ) call SIS_error(FATAL, &
+              "ice_model: jelist(p) /= jec but jslist(p) == jsc")
+      if ( ielist(pe) + isca /= ni+1) call SIS_error(FATAL, &
+              "ice_model: ielist(p) + isc /= ni+1 but islist(p) + iec == ni+1")
+      exit 
+    endif ; enddo
+    deallocate(pelist, islist, ielist, jslist, jelist)
+  endif
 
 end subroutine set_ice_grid
 
@@ -1107,7 +839,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   endif
 
   if (SGdom%use_io_layout) &
-    call MOM_define_IO_domain(SGdom%mpp_domain, SGdom%io_layout)
+    call mpp_define_IO_domain(SGdom%mpp_domain, SGdom%io_layout)
   deallocate(exni)
   deallocate(exnj)
 
