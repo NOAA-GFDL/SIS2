@@ -1615,6 +1615,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   allocate(Ice%Ice_state)
   IST => Ice%Ice_state
   allocate(Ice%G)
+  allocate(Ice%Ice_restart)
   G => Ice%G
 
   ! Open the parameter file.
@@ -1754,14 +1755,21 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call set_domain(G%Domain%mpp_domain)
   CatIce = G%CatIce
 
+  ! Eliminate this after the Tikal release interface changes.
+  Ice_restart => Ice%Ice_restart
+
   ! Allocate and register fields for restarts.
   restart_file = 'ice_model.res.nc'
-  call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, param_file, Ice, Ice_restart, restart_file)
+  call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, &
+                         param_file, Ice, Ice%Ice_restart, restart_file)
 
-  call ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
+  call ice_state_register_restarts(G, param_file, IST, Ice%Ice_restart, &
+                                   restart_file)
 
-  call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, Ice_restart, restart_file)
-!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, Ice_restart, restart_file)
+  call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, &
+                                 Ice%Ice_restart, restart_file)
+!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
+!                                       Ice%Ice_restart, restart_file)
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1787,7 +1795,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   !
   restart_file = 'INPUT/ice_model.res.nc'
   if (file_exist(restart_file)) then
-    call restore_state(Ice_restart)
+    call restore_state(Ice%Ice_restart)
 
     !--- update the halo values.
     call pass_var(IST%part_size, G%Domain)
@@ -1880,7 +1888,7 @@ subroutine ice_model_end (Ice)
   IST => Ice%Ice_state
   if (IST%conservation_check) call ice_print_budget(IST)
 
-  call ice_model_restart()
+  call ice_model_restart(Ice)
 
   !--- release memory ------------------------------------------------
 
@@ -1890,6 +1898,7 @@ subroutine ice_model_end (Ice)
   call ice_grid_end(Ice%G)
   call dealloc_Ice_arrays(Ice)
   call dealloc_IST_arrays(IST)
+  deallocate(Ice%Ice_restart)
 
   ! End icebergs
   if (IST%do_icebergs) call icebergs_end(Ice%icebergs)

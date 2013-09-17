@@ -260,6 +260,7 @@ type ice_data_type !  ice_public_type
   type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
+  type(restart_file_type), pointer :: Ice_restart
 end type ice_data_type !  ice_public_type
 
 !
@@ -310,7 +311,7 @@ type :: land_ice_boundary_type
   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
 end type
 
-type(restart_file_type), save :: Ice_restart
+type(restart_file_type), pointer, save :: Ice_restart
 
 contains
 
@@ -641,13 +642,17 @@ end subroutine ice_print_budget
 ! <DESCRIPTION>
 !  Write out restart files registered through register_restart_file
 ! </DESCRIPTION>
-subroutine ice_model_restart(time_stamp)
-  character(len=*),         intent(in), optional :: time_stamp
+subroutine ice_model_restart(Ice, time_stamp)
+  type(ice_data_type), intent(inout), optional :: Ice
+  character(len=*),    intent(in), optional :: time_stamp
 
-  call save_restart(Ice_restart, time_stamp)
- !call icebergs_save_restart(Ice%icebergs)
- ! This should go here but since "Ice" is not available we have to
- ! rely on the restart written via ice_model_end() -AJA
+  if (present(Ice)) then
+    call save_restart(Ice%Ice_restart, time_stamp)
+    call icebergs_save_restart(Ice%icebergs)
+  else
+    ! This option is here only to accomodate an old and inappropriate interface.
+    call save_restart(Ice_restart, time_stamp)
+  endif
 
 end subroutine ice_model_restart
 ! </SUBROUTINE>
