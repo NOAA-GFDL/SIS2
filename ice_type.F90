@@ -642,7 +642,7 @@ end subroutine ice_print_budget
 ! <DESCRIPTION>
 !  Write out restart files registered through register_restart_file
 ! </DESCRIPTION>
-subroutine ice_model_restart(Ice, time_stamp)
+subroutine ice_model_restart(time_stamp, Ice)
   type(ice_data_type), intent(inout), optional :: Ice
   character(len=*),    intent(in), optional :: time_stamp
 
@@ -651,6 +651,7 @@ subroutine ice_model_restart(Ice, time_stamp)
     call icebergs_save_restart(Ice%icebergs)
   else
     ! This option is here only to accomodate an old and inappropriate interface.
+    ! Redo the order of the arguments when done right.
     call save_restart(Ice_restart, time_stamp)
   endif
 

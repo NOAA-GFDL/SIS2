@@ -1888,7 +1888,7 @@ subroutine ice_model_end (Ice)
   IST => Ice%Ice_state
   if (IST%conservation_check) call ice_print_budget(IST)
 
-  call ice_model_restart(Ice)
+  call ice_model_restart(Ice=Ice)
 
   !--- release memory ------------------------------------------------
 
