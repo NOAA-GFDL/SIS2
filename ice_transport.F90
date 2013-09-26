@@ -26,7 +26,9 @@ module ice_transport_mod
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_coms, only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
+use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
@@ -54,6 +56,7 @@ type, public :: ice_transport_CS ; private
                               ! no need for ice dynamics.
   logical :: SIS1_transport   ! If true, use SIS1 code to solve the sea ice
                               ! continuity equation and transport tracers.
+  logical :: check_conservation ! If true, write out verbose diagnostics of conservation.
   integer :: adv_sub_steps    ! The number of advective iterations for each slow
                               ! time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
@@ -129,8 +132,11 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZI_(G),SZJ_(G)) :: tmp1 ! Local variables, 2D ice concentration
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
+  type(EFP_type) :: tot_ice(2), tot_snow(2)
+  real :: I_tot_ice, I_tot_snow
 
   real :: dt_adv
+  character(len=200) :: mesg
   integer :: i, j, k, l, bad, isc, iec, jsc, jec, isd, ied, jsd, jed
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -165,13 +171,20 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       enddo
       vol_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
       t_snow(i,j,k) = t_snow(i,j,k)*vol_snow(i,j,k)
-    else 
+    else
+      if (part_sz(i,j,k)*h_snow(i,j,k) > 0.0) then
+        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
+      endif
       part_sz(i,j,k) = 0.0 ; vol_ice(i,j,k) = 0.0
       do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
       vol_snow(i,j,k) = 0.0
       t_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
+
+  if (CS%check_conservation) then
+    call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
+  endif
   
   call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
   do l=1,G%NkIce ! The do loop allows these to be combined with the following.
@@ -292,7 +305,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
         t_snow(i,j,k) = 0.0
       endif
     enddo ; enddo ; enddo
-  else ! Not SIS1.
+  else ! Not SIS1_transport.
     ! Do the transport via the continuity equations and tracer conservation
     ! equations for h_ice and tracers, inverting for the fractional size of
     ! each partition.
@@ -321,7 +334,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    T_snow_d2(:,:,:) = T_snow(:,:,:)
 !    T_ice_d2(:,:,:,:) = T_ice(:,:,:,:)
 
-
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
       vol0_ice(i,j,k) = vol_ice(i,j,k)
       vol0_snow(i,j,k) = vol_snow(i,j,k)
@@ -340,7 +352,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       if (vol_ice(i,j,k) > 0.0) then
         part_sz(i,j,k) = vol_ice(i,j,k) / h_ice(i,j,k)
         h_snow(i,j,k) = vol_snow(i,j,k) / part_sz(i,j,k)
-!        h_snow(i,j,k) = h_ice(i,j,k) * vol_snow(i,j,k) / vol_ice(i,j,k)
+!### Consider...        h_snow(i,j,k) = h_ice(i,j,k) * vol_snow(i,j,k) / vol_ice(i,j,k)
         ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
       else
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
@@ -367,7 +379,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       enddo ; enddo
     enddo ; endif
 
-
     !   Convert from enthalpy back to ice temperature. These expressions stem from
     ! the assumptions that brine pockets will shrink or grow until their salinity
     ! gives a freezing point that matches the local temperature.
@@ -385,6 +396,28 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       endif
     enddo ; enddo ; enddo
 
+  endif ! Not SIS1_transport.
+
+  if (CS%check_conservation) then
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      vol_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
+      vol_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
+    enddo ; enddo ; enddo
+    
+    call get_total_amounts(vol_ice, vol_snow, G, tot_ice(2), tot_snow(2))
+    
+    if (is_root_pe()) then
+      I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
+      if (I_tot_ice > 0.0) I_tot_ice = 1.0 / I_tot_ice    ! Adcroft's rule inverse.
+      I_tot_snow = abs(EFP_to_real(tot_snow(1)))
+      if (I_tot_snow > 0.0) I_tot_snow = 1.0 / I_tot_snow ! Adcroft's rule inverse.
+      write(*,'("  Total Ice vol:  ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
+        EFP_to_real(tot_ice(2)), EFP_real_diff(tot_ice(2),tot_ice(1)), &
+        EFP_real_diff(tot_ice(2),tot_ice(1)) * I_tot_ice
+      write(*,'("  Total Snow vol: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
+        EFP_to_real(tot_snow(2)), EFP_real_diff(tot_snow(2),tot_snow(1)), &
+        EFP_real_diff(tot_snow(2),tot_snow(1)) * I_tot_snow
+    endif
   endif
 
   ! Check for bad values of thickness and temperature.
@@ -652,7 +685,9 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, 
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
 ! the sum over all categories (including ice free) of part_sz is 1, but that the
-! part_sz of the ice free category may be negative to make this so.
+! part_sz of the ice free category may be negative to make this so.  In this
+! routine, the volume (mass) is conserved, while the fractional coverage is
+! solved for, while the new thicknesses are diagnosed.
 
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
@@ -678,6 +713,7 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, 
   real :: snow_trans, snow_old
   real :: Ivol_snow, Ivol_new
   logical :: do_j(SZJ_(G))
+  character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -716,8 +752,10 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, 
           T_ice(i,j,k+1,m) = (vol_trans*T_ice(i,j,k,m) + &
                               vol_old*T_ice(i,j,k+1,m)) * Ivol_new
         enddo
-        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
-                          vol_old*h_ice(i,j,k+1)) * Ivol_new
+!        This is not quite right, or at least not consistent.
+!        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
+!                          vol_old*h_ice(i,j,k+1)) * Ivol_new
+        h_ice(i,j,k+1) = vol_ice(i,j,k+1) / part_sz(i,j,k+1)
 
         if (vol_snow(i,j,k) > 0.0) then
           snow_trans = vol_snow(i,j,k) ; snow_old = vol_snow(i,j,k+1)
@@ -748,6 +786,22 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, 
       excess_cover(i,j) = 0.0
     endif
   enddo ; endif ; enddo
+
+  if (CS%check_conservation) then
+    ! Check for consistency between vol_ice, h_ice, and part_sz.
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      if ((vol_ice(i,j,k) == 0.0) .and. (h_ice(i,j,k)*part_sz(i,j,k) /= 0.0)) then
+        write(mesg,'("Compress mismatch at ",3(i8),": vol, h, part, hxp = zero, ",3(1pe15.6))') &
+           i, j, k, h_ice(i,j,k), part_sz(i,j,k), h_ice(i,j,k)*part_sz(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
+      endif
+      if (abs(vol_ice(i,j,k) - h_ice(i,j,k)*part_sz(i,j,k)) > 1e-12*vol_ice(i,j,k)) then
+        write(mesg,'("Compress mismatch at ",3(i8),": vol, h, part, hxp = ",4(1pe15.6))') &
+           i, j, k, vol_ice(i,j,k), h_ice(i,j,k), part_sz(i,j,k), h_ice(i,j,k)*part_sz(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
+      endif
+    enddo ; enddo ; enddo
+  endif
 
 end subroutine compress_ice
 
@@ -950,6 +1004,36 @@ subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
 
 end subroutine ice_redistribute
 
+subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: vol_ice, vol_snow
+  type(EFP_type), intent(out) :: tot_ice, tot_snow
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1 at the end, in/out.
+!  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
+!                      category in m.
+!  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
+!                       ice in each category in m.
+!  (out)     tot_ice - The globally integrated total ice, in m3.
+!  (out)     tot_snow - The globally integrated total snow, in m3.
+
+  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_vol_ice, sum_vol_snow
+  real :: total
+  integer :: i, j, k, m, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  sum_vol_ice(:,:) = 0.0
+  sum_vol_snow(:,:) = 0.0
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    sum_vol_ice(i,j) = sum_vol_ice(i,j) + G%areaT(i,j) * vol_ice(i,j,k)
+    sum_vol_snow(i,j) = sum_vol_snow(i,j) + G%areaT(i,j) * vol_snow(i,j,k)
+  enddo ; enddo ; enddo
+
+  total = reproducing_sum(sum_vol_ice, EFP_sum=tot_ice)
+  total = reproducing_sum(sum_vol_snow, EFP_sum=tot_snow)
+
+end subroutine get_total_amounts
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_transport_init - initialize the ice transport and set parameters.        !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1029,7 +1113,10 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "SIS1_ICE_TRANSPORT", CS%SIS1_transport, &
                  "If true, use SIS1 code to solve the ice continuity \n"//&
                  "equation and transport tracers.", default=.true.)
-
+  call get_param(param_file, mod, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
+                 "If true, use add multiple diagnostics of ice and snow \n"//&
+                 "mass conservation in the sea-ice transport code.  This \n"//&
+                 "is expensive and should be used sparingly.", default=.false.)
 
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)
