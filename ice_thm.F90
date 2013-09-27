@@ -1128,9 +1128,10 @@ end subroutine ice5lay_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_thermo_coefs(pocket_coef, layer_coefs)
+subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg)
   real, optional, intent(out) :: pocket_coef
   real, dimension(:), optional, intent(out) :: layer_coefs
+  real, optional, intent(out) :: max_enthalpy_chg
 ! Arguments: pocket_coef - Minus the partial derivative of the freezing point
 !                          with salinity, times the latent heat of fusion over
 !                          the heat capacity of ice, in degC^2/psu.  This term
@@ -1140,6 +1141,8 @@ subroutine get_thermo_coefs(pocket_coef, layer_coefs)
 !                          up to 4 layers, in degC^2.  With more than 4 layers,
 !                          the prescribed salinity of layer 4 is used for all
 !                          subsequent layers.
+!            max_enth_chg - The maximum ethalpy change due to the presence of
+!                           brine pockets, LI/CI.
   integer k, nk
 
   ! Enthalpy = T + pocket_coef*S / T
@@ -1153,6 +1156,8 @@ subroutine get_thermo_coefs(pocket_coef, layer_coefs)
     if (nk >= 4) layer_coefs(4) = MU_TS*SI4*LI/CI
     do k=5,nk ; layer_coefs(k) = MU_TS*SI4*LI/CI ; enddo
   endif
+  
+  if (present(max_enthalpy_chg)) max_enthalpy_chg = LI/CI
 
 end subroutine get_thermo_coefs
 

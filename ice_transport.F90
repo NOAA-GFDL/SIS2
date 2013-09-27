@@ -132,7 +132,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZI_(G),SZJ_(G)) :: tmp1 ! Local variables, 2D ice concentration
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
-  type(EFP_type) :: tot_ice(2), tot_snow(2)
+  type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
   real :: I_tot_ice, I_tot_snow
 
   real :: dt_adv
@@ -155,45 +155,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     return
   endif
 
-  call get_thermo_coefs(layer_coefs=pocket_enth)
-  !   Convert from ice temperature (which is not conserved) to enthalpy, which
-  ! includes the heat requirements for melting of brine pockets associated with 
-  ! temperature changes.  These expressions stem from the assumptions that
-  ! brine pockets will shrink or grow until their salinity gives a freezing
-  ! point that matches the local temperature.
-  ! This was prevously the subroutine thm_pack.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (h_ice(i,j,k)>0.0) then
-      vol_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
-      do l=1,G%NkIce
-        t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l)) * &
-                          vol_ice(i,j,k)
-      enddo
-      vol_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
-      t_snow(i,j,k) = t_snow(i,j,k)*vol_snow(i,j,k)
-    else
-      if (part_sz(i,j,k)*h_snow(i,j,k) > 0.0) then
-        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
-      endif
-      part_sz(i,j,k) = 0.0 ; vol_ice(i,j,k) = 0.0
-      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
-      vol_snow(i,j,k) = 0.0
-      t_snow(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
-
-  if (CS%check_conservation) then
-    call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
-  endif
-  
-  call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
-  do l=1,G%NkIce ! The do loop allows these to be combined with the following.
-    call pass_var(t_ice(:,:,:,l), G%Domain, complete=.false.)
-  enddo
-  call pass_var(t_snow, G%Domain, complete=.false.)
-  call pass_var(vol_ice,  G%Domain, complete=.false.)
-  call pass_var(vol_snow, G%Domain, complete=.false.)
-  call pass_var(h_ice, G%Domain, complete=.true.)
 
   if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
   ! This block of code is a parameterization of either (or both)
@@ -254,6 +215,59 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   endif
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
+
+  call get_thermo_coefs(layer_coefs=pocket_enth)
+
+  if (CS%check_conservation) then
+    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+                            pocket_enth, G, enth_ice(1), enth_snow(1))
+  endif
+
+  !   Convert from ice temperature (which is not conserved) to enthalpy, which
+  ! includes the heat requirements for melting of brine pockets associated with 
+  ! temperature changes.  These expressions stem from the assumptions that
+  ! brine pockets will shrink or grow until their salinity gives a freezing
+  ! point that matches the local temperature.
+  ! This was prevously the subroutine thm_pack.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (h_ice(i,j,k)>0.0) then
+      vol_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
+      vol_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
+      if (CS%SIS1_transport) then
+        do l=1,G%NkIce
+          t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l)) * &
+                            vol_ice(i,j,k)
+        enddo
+        t_snow(i,j,k) = t_snow(i,j,k)*vol_snow(i,j,k)
+      else
+        do l=1,G%NkIce
+          t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l))
+        enddo
+      endif
+    else
+      if (part_sz(i,j,k)*h_snow(i,j,k) > 0.0) then
+        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
+      endif
+      part_sz(i,j,k) = 0.0 ; vol_ice(i,j,k) = 0.0
+      vol_snow(i,j,k) = 0.0
+
+      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+      t_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
+
+  if (CS%check_conservation) then
+    call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
+  endif
+  
+  call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
+  do l=1,G%NkIce ! The do loop allows these to be combined with the following.
+    call pass_var(t_ice(:,:,:,l), G%Domain, complete=.false.)
+  enddo
+  call pass_var(t_snow, G%Domain, complete=.false.)
+  call pass_var(vol_ice,  G%Domain, complete=.false.)
+  call pass_var(vol_snow, G%Domain, complete=.false.)
+  call pass_var(h_ice, G%Domain, complete=.true.)
 
   uf(:,:) = 0.0; vf(:,:) = 0.0
   if (CS%SIS1_transport) then
@@ -405,6 +419,9 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     enddo ; enddo ; enddo
     
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(2), tot_snow(2))
+
+    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+                            pocket_enth, G, enth_ice(2), enth_snow(2))
     
     if (is_root_pe()) then
       I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
@@ -417,6 +434,18 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       write(*,'("  Total Snow vol: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
         EFP_to_real(tot_snow(2)), EFP_real_diff(tot_snow(2),tot_snow(1)), &
         EFP_real_diff(tot_snow(2),tot_snow(1)) * I_tot_snow
+
+
+      I_tot_ice  = abs(EFP_to_real(enth_ice(1)))
+      if (I_tot_ice > 0.0) I_tot_ice = 1.0 / I_tot_ice    ! Adcroft's rule inverse.
+      I_tot_snow = abs(EFP_to_real(enth_snow(1)))
+      if (I_tot_snow > 0.0) I_tot_snow = 1.0 / I_tot_snow ! Adcroft's rule inverse.
+      write(*,'("  Enthalpy Ice:  ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
+        EFP_to_real(enth_ice(2)), EFP_real_diff(enth_ice(2),enth_ice(1)), &
+        EFP_real_diff(enth_ice(2),enth_ice(1)) * I_tot_ice
+      write(*,'("  Enthalpy Snow: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
+        EFP_to_real(enth_snow(2)), EFP_real_diff(enth_snow(2),enth_snow(1)), &
+        EFP_real_diff(enth_snow(2),enth_snow(1)) * I_tot_snow
     endif
   endif
 
@@ -634,7 +663,7 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       if (snow_trans > 0.0) then
         Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k+1))
         t_snow(i,j,k+1) = (snow_trans*T_snow(i,j,k) + &
-                           vol_snow(i,j,k+1)*T_snow(i,j,k+1)) * Ivol_new
+                           vol_snow(i,j,k+1)*T_snow(i,j,k+1)) * Ivol_snow
         vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + snow_trans
         vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
       endif
@@ -664,8 +693,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
 
       if (snow_trans > 0.0) then
         Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k-1))
-        t_snow(i,j,k) = (snow_trans*T_snow(i,j,k) + &
-                         vol_snow(i,j,k-1)*T_snow(i,j,k-1)) * Ivol_new
+        t_snow(i,j,k-1) = (snow_trans*T_snow(i,j,k) + &
+                           vol_snow(i,j,k-1)*T_snow(i,j,k-1)) * Ivol_snow
         vol_snow(i,j,k-1) = vol_snow(i,j,k-1) + snow_trans
         vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
       endif
@@ -1033,6 +1062,81 @@ subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
   total = reproducing_sum(sum_vol_snow, EFP_sum=tot_snow)
 
 end subroutine get_total_amounts
+
+subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+                              pocket_enth, G, enth_ice, enth_snow)
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_ice, h_snow, t_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)),  intent(in) :: t_ice
+  real, dimension(SZK_ICE_(G)),  intent(in) :: pocket_enth
+  type(EFP_type), intent(out) :: enth_ice, enth_snow
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1 at the end, in/out.
+!  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
+!                      category in m.
+!  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
+!                       ice in each category in m.
+!  (out)     tot_ice - The globally integrated total ice, in m3.
+!  (out)     tot_snow - The globally integrated total snow, in m3.
+
+  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
+  real :: total, LI_CI, enth_chg
+  integer :: i, j, k, m, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  call get_thermo_coefs(max_enthalpy_chg=LI_CI)
+
+  sum_enth_ice(:,:) = 0.0
+  sum_enth_snow(:,:) = 0.0
+  do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    ! Determine the enthalpy correction due to brine pockets.
+    if ((t_ice(i,j,k,m) >= 0.0) .or. (pocket_enth(m) > LI_CI*(-t_ice(i,j,k,m)))) then
+      enth_chg = LI_CI
+    else
+      enth_chg = -pocket_enth(m)/t_ice(i,j,k,m)  ! The enthalpy correction due to brine pockets.
+    endif
+    
+    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * (h_ice(i,j,k)*part_sz(i,j,k))) * &
+                           (t_ice(i,j,k,m) + enth_chg) 
+  enddo ; enddo ; enddo ; enddo
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * (h_snow(i,j,k)*part_sz(i,j,k))) * &
+                        T_snow(i,j,k)
+  enddo ; enddo ; enddo
+
+  total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
+  total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
+
+end subroutine get_total_enthalpy
+
+subroutine get_snow_heat(vol_snow, t_snow, G, enth_snow)
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: vol_snow, t_snow
+  type(EFP_type), intent(out) ::  enth_snow
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1 at the end, in/out.
+!  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
+!                      category in m.
+!  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
+!                       ice in each category in m.
+!  (out)     tot_ice - The globally integrated total ice, in m3.
+!  (out)     tot_snow - The globally integrated total snow, in m3.
+
+  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_snow
+  real :: total
+  integer :: i, j, k, m, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  sum_enth_snow(:,:) = 0.0
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * vol_snow(i,j,k)) * &
+                        T_snow(i,j,k)
+  enddo ; enddo ; enddo
+
+  total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
+
+end subroutine get_snow_heat
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_transport_init - initialize the ice transport and set parameters.        !
