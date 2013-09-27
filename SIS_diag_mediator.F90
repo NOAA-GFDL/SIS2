@@ -155,7 +155,7 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
   id_xh = diag_axis_init('xT', G%gridLonT(G%isg:G%ieg), G%x_axis_units, 'x', &
               'T point nominal longitude', set_name='ice', edges=id_xhe, &
               Domain2=G%Domain%mpp_domain)
-  id_yh = diag_axis_init('yT', G%gridLonT(G%jsg:G%jeg), G%y_axis_units, 'y', &
+  id_yh = diag_axis_init('yT', G%gridLatT(G%jsg:G%jeg), G%y_axis_units, 'y', &
               'T point nominal latitude', set_name='ice', edges=id_yhe, &
               Domain2=G%Domain%mpp_domain)
 
