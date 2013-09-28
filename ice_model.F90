@@ -53,7 +53,7 @@ use time_manager_mod, only: operator(+), operator(-), set_date
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
   use coupler_types_mod,only: coupler_3d_bc_type
-  use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN, radius, pi
+  use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 
@@ -497,7 +497,7 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     sst(i,j) = IST%t_surf(i,j,0) - Tfreeze
   enddo ; enddo
 
-  do j=jsc,jec ; do i=isc,iec     
+  do j=jsc,jec ; do i=isc,iec
     IST%s_surf(i,j) = s_surf_ice_bot(i,j)
     IST%frazil(i,j) = frazil_ice_bot(i,j)
     IST%sea_lev(i,j) = sea_lev_ice_bot(i,j)
@@ -510,7 +510,7 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     Ice%ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
   enddo ; enddo
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec  
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%tmelt(i,j,k) = 0.0
     IST%bmelt(i,j,k) = 0.0
   enddo ; enddo ; enddo
@@ -598,13 +598,13 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     if (G%mask2dT(i,j) > 0.5 ) then
       Ice%u_surf(i2,j2,1) = 0.25*((IST%u_ocn(i,j) + IST%u_ocn(i-1,j-1)) + &
-                                  (IST%u_ocn(i,j-1) + IST%u_ocn(i-1,j)) )   
+                                  (IST%u_ocn(i,j-1) + IST%u_ocn(i-1,j)) )
       Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(i,j) + IST%v_ocn(i-1,j-1)) + &
-                                  (IST%v_ocn(i,j-1) + IST%v_ocn(i-1,j)) )   
+                                  (IST%v_ocn(i,j-1) + IST%v_ocn(i-1,j)) )
       Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice(i,j) + IST%u_ice(i-1,j-1)) + &
-                                  (IST%u_ice(i,j-1) + IST%u_ice(i-1,j)) )   
+                                  (IST%u_ice(i,j-1) + IST%u_ice(i-1,j)) )
       Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice(i,j) + IST%v_ice(i-1,j-1)) + &
-                                  (IST%v_ice(i,j-1) + IST%v_ice(i-1,j)) )   
+                                  (IST%v_ice(i,j-1) + IST%v_ice(i-1,j)) )
     else
       Ice%u_surf(i2,j2,1) = 0.0
       Ice%v_surf(i2,j2,1) = 0.0
@@ -695,7 +695,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   type(ice_data_type),           intent(inout) :: Ice
   type(ice_state_type),          intent(inout) :: IST
   type(sea_ice_grid_type),       intent(inout) :: G
-  
+
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:G%CatIce) :: &
     flux_t, flux_q, flux_lh, flux_lw, &
     flux_sw_nir_dir, flux_sw_nir_dif, &
@@ -763,7 +763,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     gmt = universal_time(IST%Time)
 !---------------------------------------------------------------------
 !    extract the time of year relative to the northern hemisphere
-!    autumnal equinox (time_since_ae) from time_type variable 
+!    autumnal equinox (time_since_ae) from time_type variable
 !    time using the function orbital_time.
 !---------------------------------------------------------------------
     time_since_ae = orbital_time(IST%Time)
@@ -1122,7 +1122,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! get observed ice thickness for ice restoring, if calculating qflux
   if (IST%do_ice_restore) &
     call get_sea_surface(IST%Time, dum1, Obs_cn_ice, Obs_h_ice)
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec 
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and.IST%h_ice(i,j,k) > 0) then
       ! reshape the ice based on fluxes
 
@@ -1220,7 +1220,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !
       if (IST%do_ice_restore) then
         ! TK Mod: restore to observed enthalpy (no change for slab, but for
-        !         sis ice, results in restoring toward thickness * concentration      
+        !         sis ice, results in restoring toward thickness * concentration
 
         ! TK Mod for test 10/18/02
         !   Concentration is 1.0 where there is ice for slab case.
@@ -1230,7 +1230,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         if (IST%slab_ice) then
           heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)-sum(e2m)) &
                          *dt_slow/(86400*IST%ice_restore_timescale)
-        else                   
+        else
           heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m)) &
                          *dt_slow/(86400*IST%ice_restore_timescale)
         endif
@@ -1398,7 +1398,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
 
   ! Convert thickness and concentration to mass.
-  mass(:,:) = 0.0 
+  mass(:,:) = 0.0
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     mass(i,j) = mass(i,j) + (IST%Rho_snow*IST%h_snow(i,j,k) + &
                              IST%Rho_ice*IST%h_ice(i,j,k)) * IST%part_size(i,j,k)
@@ -1540,7 +1540,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(IST%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                              IST%t_surf(:,:,0)-Tfreeze, G) 
+                              IST%t_surf(:,:,0)-Tfreeze, G)
   endif
 
   ! Copy the surface properties to the externally visible structure Ice.
@@ -1551,7 +1551,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   enddo ; enddo ; enddo
 
   ! ### ADD BETTER ERROR HANDLING.
-  do j=jsc,jec ; do i=isc,iec 
+  do j=jsc,jec ; do i=isc,iec
     if (G%Lmask2dT(i,j) .and. (abs(sum(IST%part_size(i,j,:))-1.0)>1e-2)) &
          print *,'IST%part_size=',IST%part_size(i,j,:), 'DOES NOT SUM TO 1 AT', &
          G%geoLonT(i,j), G%geoLatT(i,j)
@@ -1587,7 +1587,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
   type(sea_ice_grid_type), pointer :: G => NULL()
-  
+
   ! Parameters that are read in and used to initialize other modules.  If those
   ! other modules had control states, these would be moved to those modules.
   real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
@@ -1605,7 +1605,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
-  
+
 
   if (associated(Ice%Ice_state)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -1781,7 +1781,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     Ice%mask(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
     Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
- 
+
   Ice%Time           = Time
   IST%Time           = Time
   IST%Time_Init      = Time_Init
@@ -1826,7 +1826,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
-    
+
   call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS")
   call set_SIS_axes_info(G, param_file, IST%diag)
 
@@ -1858,7 +1858,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
        G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
        Ice%axes(1:2), G%Domain%maskmap, G%Domain%X_flags, G%Domain%Y_flags, &
        time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-       G%mask2dT, G%dxCv, G%dyCu, cell_area, G%cos_rot, G%sin_rot )
+       G%mask2dT, G%dxCv, G%dyCu, Ice%area, G%cos_rot, G%sin_rot )
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 
@@ -1901,7 +1901,7 @@ subroutine ice_model_end (Ice)
   ! End icebergs
   if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
-  
+
   deallocate(Ice%Ice_state)
 
 end subroutine ice_model_end

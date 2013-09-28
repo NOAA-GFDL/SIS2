@@ -1,6 +1,6 @@
 module ice_bergs
 
-use constants_mod, only: radius, pi, omega, HLF
+use constants_mod, only: pi, omega, HLF
 use fms_mod, only: open_namelist_file, check_nml_error, close_file
 use fms_mod, only: field_exist, get_global_att_value
 use fms_mod, only: stdlog, stderr, error_mesg, FATAL, WARNING
@@ -24,7 +24,6 @@ use mpp_domains_mod, only: mpp_get_neighbor_pe, NORTH, SOUTH, EAST, WEST
 use time_manager_mod, only: time_type, get_date, get_time, set_date, operator(-)
 use diag_manager_mod, only: register_diag_field, register_static_field, send_data
 use diag_manager_mod, only: diag_axis_init
-
 
 implicit none ; private
 
@@ -2677,7 +2676,7 @@ integer :: stdlogunit, stderrunit
   is=grd%isc; ie=grd%iec; js=grd%jsc; je=grd%jec
   grd%lon(is:ie,js:je)=ice_lon(:,:)
   grd%lat(is:ie,js:je)=ice_lat(:,:)
-  grd%area(is:ie,js:je)=ice_area(:,:)*(4.*pi*radius*radius)
+  grd%area(is:ie,js:je)=ice_area(:,:)
   ! Copy data declared on ice model data domain
   is=grd%isc-1; ie=grd%iec+1; js=grd%jsc-1; je=grd%jec+1
   grd%dx(is:ie,js:je)=ice_dx(:,:)
