@@ -47,10 +47,9 @@ use fms_mod, only: file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state
 use mpp_mod, only: mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only: CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
-use mpp_domains_mod,  only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
 
-  use time_manager_mod, only: time_type, operator(+), get_date, get_time, time_type_to_real
-  use time_manager_mod, only: operator(-), set_date
+use time_manager_mod, only: time_type, time_type_to_real, get_date, get_time
+use time_manager_mod, only: operator(+), operator(-), set_date
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
   use coupler_types_mod,only: coupler_3d_bc_type
@@ -1537,10 +1536,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ;  enddo ; enddo
   endif
 
-  call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
-  call get_time(IST%Time-set_date(iyr,1,1,0,0,0),isec,iday)
-  if (IST%verbose) call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                            IST%t_surf(:,:,0)-Tfreeze, G) 
+  if (IST%verbose) then
+    call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
+    call get_time(IST%Time-set_date(iyr,1,1,0,0,0),isec,iday)
+    call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
+                              IST%t_surf(:,:,0)-Tfreeze, G) 
+  endif
 
   ! Copy the surface properties to the externally visible structure Ice.
   ! These may use different indexing conventions.  This may not be needed here.
@@ -1578,7 +1579,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  logical :: x_cyclic, tripolar_grid
   real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off
   integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
@@ -1854,13 +1854,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
   ! Initialize icebergs
-  x_cyclic = (G%Domain%X_FLAGS == CYCLIC_GLOBAL_DOMAIN)
-  tripolar_grid = (G%Domain%Y_FLAGS == FOLD_NORTH_EDGE)
   if (IST%do_icebergs) call icebergs_init(Ice%icebergs, &
-           G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
-           Ice%axes(1:2), G%Domain%maskmap, x_cyclic, tripolar_grid, &
-           time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-           G%mask2dT, G%dxCv, G%dyCu, cell_area, G%cos_rot, G%sin_rot )
+       G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
+       Ice%axes(1:2), G%Domain%maskmap, G%Domain%X_flags, G%Domain%Y_flags, &
+       time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
+       G%mask2dT, G%dxCv, G%dyCu, cell_area, G%cos_rot, G%sin_rot )
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 

@@ -19,9 +19,8 @@ use fms_io_mod, only: get_instance_filename
 use mpp_domains_mod, only: domain2D, mpp_update_domains, mpp_define_domains
 use mpp_parameter_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE, CORNER, AGRID
 use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain
-use mpp_domains_mod, only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
+use mpp_domains_mod, only: mpp_define_io_domain, FOLD_NORTH_EDGE
 use mpp_domains_mod, only: mpp_get_neighbor_pe, NORTH, SOUTH, EAST, WEST
-use mpp_domains_mod, only: mpp_define_io_domain
 use time_manager_mod, only: time_type, get_date, get_time, set_date, operator(-)
 use diag_manager_mod, only: register_diag_field, register_static_field, send_data
 use diag_manager_mod, only: diag_axis_init
@@ -2516,14 +2515,14 @@ end subroutine send_bergs_to_other_pes
 ! ##############################################################################
 
 subroutine icebergs_init(bergs, &
-             gni, gnj, layout, io_layout, axes, maskmap, x_cyclic, tripolar_grid, &
+             gni, gnj, layout, io_layout, axes, maskmap, dom_x_flags, dom_y_flags, &
              dt, Time, ice_lon, ice_lat, ice_wet, ice_dx, ice_dy, ice_area, &
              cos_rot, sin_rot)
 ! Arguments
 type(icebergs), pointer :: bergs
 integer, intent(in) :: gni, gnj, layout(2), io_layout(2), axes(2)
 logical, intent(in), optional :: maskmap(:,:)
-logical, intent(in) :: x_cyclic, tripolar_grid
+integer, intent(in) :: dom_x_flags, dom_y_flags
 real, intent(in) :: dt
 type (time_type), intent(in) :: Time ! current time
 real, dimension(:,:), intent(in) :: ice_lon, ice_lat, ice_wet
@@ -2605,22 +2604,10 @@ integer :: stdlogunit, stderrunit
 
 ! Set up iceberg domain
  !write(stderrunit,*) 'diamonds: defining domain'
-  if(tripolar_grid) then
-    call mpp_define_domains( (/1,gni,1,gnj/), layout, grd%domain, &
-!                            maskmap=maskmap, &
-                             xflags=CYCLIC_GLOBAL_DOMAIN, xhalo=halo,  &
-                             yflags=FOLD_NORTH_EDGE, yhalo=halo, name='diamond')
-  else if(x_cyclic) then
-    call mpp_define_domains( (/1,gni,1,gnj/), layout, grd%domain, &
-!                            maskmap=maskmap, &
-                             xflags=CYCLIC_GLOBAL_DOMAIN, &
-                             xhalo=halo, yhalo=halo, name='diamond')
-  else
-    call mpp_define_domains( (/1,gni,1,gnj/), layout, grd%domain, &
-!                            maskmap=maskmap, &
-                             xhalo=halo, yhalo=halo, name='diamond')
-  endif
-
+  call mpp_define_domains( (/1,gni,1,gnj/), layout, grd%domain, &
+!                          maskmap=maskmap, &
+                           xflags=dom_x_flags, xhalo=halo,  &
+                           yflags=dom_y_flags, yhalo=halo, name='diamond')
   call mpp_define_io_domain(grd%domain, io_layout)
 
  !write(stderrunit,*) 'diamond: get compute domain'
@@ -2632,8 +2619,7 @@ integer :: stdlogunit, stderrunit
   call mpp_get_neighbor_pe(grd%domain, EAST, grd%pe_E)
   call mpp_get_neighbor_pe(grd%domain, WEST, grd%pe_W)
 
-  folded_north_on_pe = .false.
-  if(tripolar_grid .and. grd%jec == gnj) folded_north_on_pe = .true. 
+  folded_north_on_pe = ((dom_y_flags == FOLD_NORTH_EDGE) .and. (grd%jec == gnj))
  !write(stderrunit,'(a,6i4)') 'diamonds, icebergs_init: pe,n,s,e,w =',mpp_pe(),grd%pe_N,grd%pe_S,grd%pe_E,grd%pe_W, NULL_PE
 
  !if (verbose) &
