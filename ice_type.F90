@@ -673,7 +673,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  Ice%axes(:) = diag%axesTc(:)
+  Ice%axes(1:2) = diag%axesTc%handles(1:2)
 
   id_sin_rot   = register_static_field('ice_model', 'SINROT', diag%axesT1, &
                  '-SINROT,COSROT points north', 'none')
