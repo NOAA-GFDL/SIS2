@@ -67,8 +67,12 @@ type ice_state_type
   ! The following are the 6 variables that constitute the sea-ice state.
   real, pointer, dimension(:,:) :: &
     u_ice =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
-    v_ice =>NULL()    ! along the model's grid directions, in m s-1.  All
-                      ! thickness categories are assumed to have the same
+    v_ice =>NULL(), & ! along the model's grid directions on a B-grid, in m s-1.
+                      ! All thickness categories are assumed to have the same
+                      ! velocity.
+    u_ice_C =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
+    v_ice_C =>NULL()  ! along the model's grid directions on a C-grid, in m s-1.
+                      ! All thickness categories are assumed to have the same
                       ! velocity.
   real, pointer, dimension(:,:,:) :: &
     h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
@@ -80,8 +84,10 @@ type ice_state_type
   
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean surface salinity in g/kg.
-    u_ocn   =>NULL(), &    ! The ocean's zonal velocity in m s-1.
-    v_ocn   =>NULL(), &    ! The ocean's meridional velocity in m s-1.
+    u_ocn   =>NULL(), &    ! The ocean's zonal velocity on B-grid points in m s-1.
+    v_ocn   =>NULL(), &    ! The ocean's meridional velocity on B-grid points in m s-1.
+    u_ocn_C =>NULL(), &    ! The ocean's zonal and meridional velocity on C-grid
+    v_ocn_C =>NULL(), &    ! points, both in m s-1.
     sea_lev =>NULL()       ! The equivalent sea-level, after any non-levitating
                            ! ice has been converted to sea-water, as determined
                            ! by the ocean, in m.  Sea-ice only contributes by
@@ -94,8 +100,10 @@ type ice_state_type
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
     flux_u_top          =>NULL(), & ! The downward? flux of zonal and meridional
     flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
-    flux_u_top_bgrid    =>NULL(), & ! The downward? flux of zonal and meridional
-    flux_v_top_bgrid    =>NULL(), & ! momentum on a B-grid velocity point in ???.
+    flux_u_top_Bgrid    =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_v_top_Bgrid    =>NULL(), & ! momentum on a B-grid velocity point in ???.
+    flux_u_top_Cu       =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_v_top_Cv       =>NULL(), & ! momentum on a B-grid velocity point in ???.
     flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
                                     ! in W m-2.
     flux_q_top          =>NULL(), & ! The upward evaporative moisture flux at
@@ -131,6 +139,8 @@ type ice_state_type
   real, pointer, dimension(:,:)   :: bheat        =>NULL()
   real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+                       ! sea-ice dynamics.                            
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.

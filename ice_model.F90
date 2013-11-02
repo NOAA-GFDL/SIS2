@@ -72,8 +72,8 @@ use ice_spec_mod, only: get_sea_surface
 
 use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt
-use ice_dyn_mod,      only: ice_dynamics
 use ice_dyn_mod, only: ice_dynamics, ice_dyn_init, ice_dyn_register_restarts, ice_dyn_end
+! use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
@@ -595,23 +595,36 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   enddo ; enddo ; enddo
 
   ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    if (G%mask2dT(i,j) > 0.5 ) then
-      Ice%u_surf(i2,j2,1) = 0.25*((IST%u_ocn(i,j) + IST%u_ocn(i-1,j-1)) + &
-                                  (IST%u_ocn(i,j-1) + IST%u_ocn(i-1,j)) )
-      Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(i,j) + IST%v_ocn(i-1,j-1)) + &
-                                  (IST%v_ocn(i,j-1) + IST%v_ocn(i-1,j)) )
-      Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice(i,j) + IST%u_ice(i-1,j-1)) + &
-                                  (IST%u_ice(i,j-1) + IST%u_ice(i-1,j)) )
-      Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice(i,j) + IST%v_ice(i-1,j-1)) + &
-                                  (IST%v_ice(i,j-1) + IST%v_ice(i-1,j)) )
-    else
-      Ice%u_surf(i2,j2,1) = 0.0
-      Ice%v_surf(i2,j2,1) = 0.0
-      Ice%u_surf(i2,j2,2) = 0.0
-      Ice%v_surf(i2,j2,2) = 0.0
-    endif
-  enddo ; enddo
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "ice_bottom_to_ice_top: Cgrid dynamics are not yet available.")
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      if (G%mask2dT(i,j) > 0.5 ) then
+        Ice%u_surf(i2,j2,1) = 0.5*(IST%u_ocn_C(I,j) + IST%u_ocn_C(I-1,j))
+        Ice%v_surf(i2,j2,1) = 0.5*(IST%v_ocn_C(i,J) + IST%v_ocn_C(i,J-1))
+        Ice%u_surf(i2,j2,2) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
+        Ice%v_surf(i2,j2,2) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
+      else
+        Ice%u_surf(i2,j2,1) = 0.0 ; Ice%v_surf(i2,j2,1) = 0.0
+        Ice%u_surf(i2,j2,2) = 0.0 ; Ice%v_surf(i2,j2,2) = 0.0
+      endif
+    enddo ; enddo
+  else ! B-grid discretization.
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      if (G%mask2dT(i,j) > 0.5 ) then
+        Ice%u_surf(i2,j2,1) = 0.25*((IST%u_ocn(I,J) + IST%u_ocn(I-1,J-1)) + &
+                                    (IST%u_ocn(I,J-1) + IST%u_ocn(I-1,J)) )
+        Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(I,J) + IST%v_ocn(I-1,J-1)) + &
+                                    (IST%v_ocn(I,J-1) + IST%v_ocn(I-1,J)) )
+        Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice(I,J) + IST%u_ice(I-1,J-1)) + &
+                                    (IST%u_ice(I,J-1) + IST%u_ice(I-1,J)) )
+        Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice(I,J) + IST%v_ice(I-1,J-1)) + &
+                                    (IST%v_ice(I,J-1) + IST%v_ice(I-1,J)) )
+      else
+        Ice%u_surf(i2,j2,1) = 0.0 ; Ice%v_surf(i2,j2,1) = 0.0
+        Ice%u_surf(i2,j2,2) = 0.0 ; Ice%v_surf(i2,j2,2) = 0.0
+      endif
+    enddo ; enddo
+  endif
 
   if (IST%debug) then
     call chksum(Ice%u_surf(:,:,1), "Intermed Ice%u_surf(1)")
@@ -925,9 +938,14 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     part_save
   real, dimension(SZIB_(G),SZJB_(G),0:G%CatIce) :: &
     part_size_uv
+!  real, dimension(SZIB_(G),SZJ_(G),0:G%CatIce) :: &
+!    part_size_u
+!  real, dimension(SZI_(G),SZJB_(G),0:G%CatIce) :: &
+!    part_size_v
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: dum1, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
-  real, dimension(SZI_(G),SZJ_(G))   :: tmp1, tmp2
+  real, dimension(SZI_(G),SZJ_(G))   :: hs_avg, hi_avg
+  real, dimension(SZI_(G),SZJ_(G))   :: tmp1
   real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
   real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
   real, dimension(1:G%CatIce)       :: e2m
@@ -981,7 +999,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_end(iceClock)
   call mpp_clock_end(iceClock2)
   tmp1(:,:) = 1.-max(1.-sum(IST%part_size(:,:,1:ncat),dim=3),0.0)
-  call get_avg(IST%h_ice, IST%part_size(:,:,1:), tmp2, wtd=.true.)
+  call get_avg(IST%h_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) &
     call icebergs_run( Ice%icebergs, IST%Time, &
@@ -989,7 +1007,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
             IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
             Ice%flux_u(:,:), Ice%flux_v(:,:), &
             IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            Ice%calving_hflx(:,:), tmp1, tmp2)
+            Ice%calving_hflx(:,:), tmp1, hi_avg)
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
@@ -1030,74 +1048,138 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   ! Dynamics
   !
-
-  part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
-  do k=1,ncat
-    do J=jsc-1,jec ; do I=isc-1,iec
-      if (G%mask2dBu(i,j) > 0.5 ) then
-        part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
-                                    (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-      else
-        part_size_uv(I,J,k) = 0.0
-      endif
-      part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
-    enddo ; enddo
-  enddo
-
   call mpp_clock_begin(iceClock4)
-  call get_avg(IST%h_snow, IST%part_size(:,:,1:), tmp1, wtd=.true.)
-  call get_avg(IST%h_ice,IST%part_size(:,:,1:), tmp2, wtd=.true.)
 
-  wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
-  call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
-               wind_stress_x(isc-1:iec,jsc-1:jec), wtd=.true.)
-  call get_avg(IST%flux_v_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
-               wind_stress_y(isc-1:iec,jsc-1:jec), wtd=.true.)
+  call get_avg(IST%h_snow, IST%part_size(:,:,1:), hs_avg, wtd=.true.)
+  call get_avg(IST%h_ice,  IST%part_size(:,:,1:), hi_avg, wtd=.true.)
 
-  if (IST%debug) then
-    call IST_chksum("Before ice_dynamics", IST, G)
-    call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
-    call hchksum(tmp1, "tmp1 before ice_dynamics", G)
-    call hchksum(tmp2, "tmp2 before ice_dynamics", G)
-    call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
-    call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
-    call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
-    call Bchksum(wind_stress_x, "wind_stress_x before ice_dynamics", G, symmetric=.true.)
-    call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
-    call check_redundant_B("wind_stress before ice_dynamics",wind_stress_x, wind_stress_y, G)
-    call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
-    call check_redundant_B("part_size_uv before ice_dynamics",part_size_uv, G)
-  endif
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "update_ice_model_slow: Cgrid dynamics are not yet available.")
 
-  call mpp_clock_begin(iceClocka)
-  call ice_dynamics(1.0-IST%part_size(:,:,0), tmp1, tmp2, IST%u_ice, IST%v_ice, &
-                    IST%u_ocn, IST%v_ocn, &
-                    wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
-                    dt_slow, G, IST%ice_dyn_CSp)
-  call mpp_clock_end(iceClocka)
+!    part_size_u(:,:,0) = 1.0 ; part_size_u(:,:,1:) = 0.0
+!    part_size_v(:,:,0) = 1.0 ; part_size_v(:,:,1:) = 0.0
+!    do k=1,ncat
+!      do j=jsc,jec ; do I=isc-1,iec
+!        part_size_u(I,j,k) = 0.5*G%mask2dCu(I,j) * &
+!                             (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
+!        part_size_u(I,j,0) = part_size_u(I,j,0) - part_size_u(I,j,k)
+!      enddo ; enddo
+!      do J=jsc-1,jec ; do i=isc-,iec
+!        part_size_v(i,J,k) = 0.5*G%mask2dCv(i,J) * &
+!                             (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
+!        part_size_v(i,J,0) = part_size_v(i,J,0) - part_size_v(i,J,k)
+!      enddo ; enddo
+!    enddo
+!
+!    wind_stress_Cu(:,:) = 0.0 ; wind_stress_Cv(:,:) = 0.0
+!    call get_avg(IST%flux_u_top_cgrid(isc-1:iec,jsc:jec,1:), part_size_u(isc-1:iec,jsc:jec,1:), &
+!                 wind_stress_x(isc-1:iec,jsc:jec), wtd=.true.)
+!    call get_avg(IST%flux_v_top_cgrid(isc:iec,jsc-1:jec,1:), part_size_v(isc:iec,jsc-1:jec,1:), &
+!                 wind_stress_Cv(isc:iec,jsc-1:jec), wtd=.true.)
+!
+!    if (IST%debug) then
+!      call IST_chksum("Before ice_C_dynamics", IST, G)
+!      call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G)
+!      call hchksum(hs_avg, "hs_avg before ice_C_dynamics", G)
+!      call hchksum(hi_avg, "hi_avg before ice_C_dynamics", G)
+!      call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G, haloshift=1)
+!      call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G, symmetric=.true.)
+!      call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G, symmetric=.true.)
+!      call uchksum(wind_stress_Cu, "wind_stress_Cu before ice_C_dynamics", G, symmetric=.true.)
+!      call vchksum(wind_stress_Cv, "wind_stress_Cv before ice_C_dynamics", G, symmetric=.true.)
+!      call check_redundant_C("wind_stress before ice_C_dynamics", wind_stress_x, wind_stress_y, G)
+!      call check_redundant_B("flux_u/v_top before ice_C_dynamics", IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
+!      call check_redundant_C("part_size_uv before ice_C_dynamics", part_size_u, part_size_v, G)
+!    endif
 
-  if (IST%debug) then
-    call IST_chksum("After ice_dynamics", IST, G)
-  endif
+!    call mpp_clock_begin(iceClocka)
+!    call ice_C_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice_C, IST%v_ice_C, &
+!                      IST%u_ocn_C, IST%v_ocn_C, &
+!                      wind_stress_Cu, wind_stress_Cv, IST%sea_lev, fx_wat_C, fy_wat_C, &
+!                      dt_slow, G, IST%ice_C_dyn_CSp)
+!    call mpp_clock_end(iceClocka)
 
-  call mpp_clock_begin(iceClockb)
-  call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
-  call mpp_clock_end(iceClockb)
+!    if (IST%debug) then
+!      call IST_chksum("After ice_dynamics", IST, G)
+!    endif
 
-  call mpp_clock_begin(iceClockc)
-  !
-  ! Dynamics diagnostics
-  !
-  if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
-                                  part_size_uv, IST%diag, G=G)
-  if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
-                                  part_size_uv, IST%diag, G=G)
+!    call mpp_clock_begin(iceClockb)
+!    call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
+!    call mpp_clock_end(iceClockb)
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
-    IST%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
-  enddo ; enddo ; enddo
-  call mpp_clock_end(iceClockc)
+!    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
+!      IST%flux_u_top_bgrid(I,J,k) = 0.5*(fx_wat_C(I,j) + fx_wat_C(I,j+1)) ! stress of ice on ocean
+!      IST%flux_v_top_bgrid(I,J,k) = 0.5*(fy_wat_C(i,J) + fy_wat_C(i+1,J)) !
+!    enddo ; enddo ; enddo
+!    call mpp_clock_end(iceClockc)
+
+  else ! B-grid dynamics.
+
+    part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
+    do k=1,ncat
+      do J=jsc-1,jec ; do I=isc-1,iec
+        if (G%mask2dBu(I,J) > 0.5 ) then
+          part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
+                                      (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
+        else
+          part_size_uv(I,J,k) = 0.0
+        endif
+        part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
+      enddo ; enddo
+    enddo
+
+    wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
+    call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
+                 wind_stress_x(isc-1:iec,jsc-1:jec), wtd=.true.)
+    call get_avg(IST%flux_v_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
+                 wind_stress_y(isc-1:iec,jsc-1:jec), wtd=.true.)
+
+    if (IST%debug) then
+      call IST_chksum("Before ice_dynamics", IST, G)
+      call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
+      call hchksum(hs_avg, "hs_avg before ice_dynamics", G)
+      call hchksum(hi_avg, "hi_avg before ice_dynamics", G)
+      call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
+      call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
+      call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
+      call Bchksum(wind_stress_x, "wind_stress_x before ice_dynamics", G, symmetric=.true.)
+      call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
+      call check_redundant_B("wind_stress before ice_dynamics",wind_stress_x, wind_stress_y, G)
+      call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
+      call check_redundant_B("part_size_uv before ice_dynamics",part_size_uv, G)
+    endif
+
+    call mpp_clock_begin(iceClocka)
+    call ice_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
+                      IST%u_ocn, IST%v_ocn, &
+                      wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
+                      dt_slow, G, IST%ice_dyn_CSp)
+    call mpp_clock_end(iceClocka)
+
+    if (IST%debug) then
+      call IST_chksum("After ice_dynamics", IST, G)
+    endif
+
+    call mpp_clock_begin(iceClockb)
+    call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
+    call mpp_clock_end(iceClockb)
+
+    call mpp_clock_begin(iceClockc)
+    !
+    ! Dynamics diagnostics
+    !
+    if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
+                                    part_size_uv, IST%diag, G=G)
+    if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
+                                    part_size_uv, IST%diag, G=G)
+
+    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
+      IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
+      IST%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
+    enddo ; enddo ; enddo
+    call mpp_clock_end(iceClockc)
+  endif ! End of B-grid dynamics
+
   call mpp_clock_end(iceClock4)
 
   !
@@ -1375,18 +1457,26 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call IST_chksum("Before ice_transport", IST, G)
   endif
 
-  ! Convert the velocities to C-grid points for transport.
-  uc(:,:) = 0.0; vc(:,:) = 0.0
-  do j=jsc,jec ; do I=isc-1,iec
-    uc(I,j) = 0.5 * ( IST%u_ice(i,j-1) + IST%u_ice(i,j) )
-  enddo ; enddo
-  do J=jsc-1,jec ; do i = isc,iec
-    vc(i,J) = 0.5 * ( IST%v_ice(i-1,j) + IST%v_ice(i,j) )
-  enddo ; enddo
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "update_ice_model_slow: Cgrid dynamics are not yet available.")
+!    call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
+!                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+!                       G, IST%ice_transport_CSp)
+  else
+    ! B-grid transport 
+    ! Convert the velocities to C-grid points for transport.
+    uc(:,:) = 0.0; vc(:,:) = 0.0
+    do j=jsc,jec ; do I=isc-1,iec
+      uc(I,j) = 0.5 * ( IST%u_ice(I,J-1) + IST%u_ice(I,J) )
+    enddo ; enddo
+    do J=jsc-1,jec ; do i = isc,iec
+      vc(i,J) = 0.5 * ( IST%v_ice(I-1,J) + IST%v_ice(I,J) )
+    enddo ; enddo
 
-  call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                     IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
-                     G, IST%ice_transport_CSp)
+    call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
+                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+                       G, IST%ice_transport_CSp)
+  endif
 
   ! Set appropriate surface quantities in categories with no ice.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
@@ -1626,6 +1716,13 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call get_param(param_file, mod, "SPECIFIED_ICE", IST%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
+  call get_param(param_file, mod, "CGRID_ICE_DYNAMICS", IST%Cgrid_dyn, &
+                 "If true, use a C-grid discretization of the sea-ice \n"//&
+                 "dynamics; if false use a B-grid discretization.", &
+                 default=.false.)
+  call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
+                 "If true, use the very old slab-style ice.", default=.false.)
+
   call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
@@ -1635,8 +1732,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call get_param(param_file, mod, "RHO_SNOW", IST%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
-  call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
-                 "If true, use the very old slab-style ice.", default=.false.)
 
   call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
@@ -1766,8 +1861,14 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call ice_state_register_restarts(G, param_file, IST, Ice%Ice_restart, &
                                    restart_file)
 
-  call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, &
-                                 Ice%Ice_restart, restart_file)
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
+    ! call ice_dyn_register_restarts(G, param_file, IST%ice_C_dyn_CSp, &
+    !                             Ice%Ice_restart, restart_file)
+  else
+    call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, &
+                                   Ice%Ice_restart, restart_file)
+  endif
 !  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
 !                                       Ice%Ice_restart, restart_file)
 
@@ -1806,6 +1907,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     enddo
     call pass_var(IST%t_snow, G%Domain, complete=.true.)
 
+    if (IST%Cgrid_dyn) then
+      call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
+    endif
     call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
@@ -1832,7 +1936,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
-  call ice_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_dyn_CSp)
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
+    ! call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp)
+  else
+    call ice_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_dyn_CSp)
+  endif
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
                      t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
@@ -1890,7 +1999,12 @@ subroutine ice_model_end (Ice)
 
   !--- release memory ------------------------------------------------
 
-  call ice_dyn_end(IST%ice_dyn_CSp)
+  if (IST%Cgrid_dyn) then
+    call SIS_error(FATAL, "ice_model_end: Cgrid dynamics are not yet available.")
+    ! call ice_C_dyn_end(IST%ice_C_dyn_CSp)
+  else
+    call ice_dyn_end(IST%ice_dyn_CSp)
+  endif
   call ice_transport_end(IST%ice_transport_CSp)
 
   call ice_grid_end(Ice%G)
