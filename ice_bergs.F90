@@ -2708,19 +2708,23 @@ integer :: stdlogunit, stderrunit
   ! Sanitize lon for the tile (need continuous longitudes within one tile)
   j=grd%jsc; do i=grd%isc+1,grd%ied
     minl=grd%lon(i-1,j)-180.
-    grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
+    if (abs(grd%lon(i,j)-(modulo(grd%lon(i,j)-minl,360.)+minl))>180.) &
+       grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
   enddo
   j=grd%jsc; do i=grd%isc-1,grd%isd,-1
     minl=grd%lon(i+1,j)-180.
-    grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
+    if (abs(grd%lon(i,j)-(modulo(grd%lon(i,j)-minl,360.)+minl))>180.) &
+       grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
   enddo
   do j=grd%jsc+1,grd%jed; do i=grd%isd,grd%ied
-      minl=grd%lon(i,j-1)-180.
-      grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
+    minl=grd%lon(i,j-1)-180.
+    if (abs(grd%lon(i,j)-(modulo(grd%lon(i,j)-minl,360.)+minl))>180.) &
+       grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
   enddo; enddo
   do j=grd%jsc-1,grd%jsd,-1; do i=grd%isd,grd%ied
-      minl=grd%lon(i,j+1)-180.
-      grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
+    minl=grd%lon(i,j+1)-180.
+    if (abs(grd%lon(i,j)-(modulo(grd%lon(i,j)-minl,360.)+minl))>180.) &
+       grd%lon(i,j)=modulo(grd%lon(i,j)-minl,360.)+minl
   enddo; enddo
 
   ! lonc, latc used for searches
@@ -2858,6 +2862,8 @@ integer :: stdlogunit, stderrunit
   if (debug) then
     call grd_chksum2(grd, grd%lon, 'init lon')
     call grd_chksum2(grd, grd%lat, 'init lat')
+    call grd_chksum2(grd, grd%lonc, 'init lonc')
+    call grd_chksum2(grd, grd%latc, 'init latc')
     call grd_chksum2(grd, grd%area, 'init area')
     call grd_chksum2(grd, grd%msk, 'init msk')
     call grd_chksum2(grd, grd%cos, 'init cos')
