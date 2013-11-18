@@ -72,7 +72,7 @@ use ice_spec_mod, only: get_sea_surface
 
 use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt
-use ice_dyn_mod, only: ice_dynamics, ice_dyn_init, ice_dyn_register_restarts, ice_dyn_end
+use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 ! use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
@@ -1150,10 +1150,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     endif
 
     call mpp_clock_begin(iceClocka)
-    call ice_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
+    call ice_B_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
                       IST%u_ocn, IST%v_ocn, &
                       wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
-                      dt_slow, G, IST%ice_dyn_CSp)
+                      dt_slow, G, IST%ice_B_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     if (IST%debug) then
@@ -1863,11 +1863,11 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
   if (IST%Cgrid_dyn) then
     call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
-    ! call ice_dyn_register_restarts(G, param_file, IST%ice_C_dyn_CSp, &
-    !                             Ice%Ice_restart, restart_file)
+    ! call ice_C_dyn_register_restarts(G, param_file, IST%ice_C_dyn_CSp, &
+    !                                  Ice%Ice_restart, restart_file)
   else
-    call ice_dyn_register_restarts(G, param_file, IST%ice_dyn_CSp, &
-                                   Ice%Ice_restart, restart_file)
+    call ice_B_dyn_register_restarts(G, param_file, IST%ice_B_dyn_CSp, &
+                                     Ice%Ice_restart, restart_file)
   endif
 !  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
 !                                       Ice%Ice_restart, restart_file)
@@ -1940,7 +1940,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
     ! call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp)
   else
-    call ice_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_dyn_CSp)
+    call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
   endif
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
@@ -2003,7 +2003,7 @@ subroutine ice_model_end (Ice)
     call SIS_error(FATAL, "ice_model_end: Cgrid dynamics are not yet available.")
     ! call ice_C_dyn_end(IST%ice_C_dyn_CSp)
   else
-    call ice_dyn_end(IST%ice_dyn_CSp)
+    call ice_B_dyn_end(IST%ice_B_dyn_CSp)
   endif
   call ice_transport_end(IST%ice_transport_CSp)
 

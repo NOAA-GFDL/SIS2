@@ -15,7 +15,7 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
 use ice_thm_mod,      only: e_to_melt
-use ice_dyn_mod,       only: ice_dyn_CS
+use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
@@ -202,7 +202,8 @@ type ice_state_type
   integer :: id_abs_int=-1, id_sw_abs_snow=-1, id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
   integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_trn=-1
 
-  type(ice_dyn_CS), pointer       :: ice_dyn_CSp => NULL()
+  type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
+!  type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
 !   type(icebergs), pointer     :: icebergs => NULL()

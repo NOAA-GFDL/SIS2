@@ -1,4 +1,4 @@
-module ice_dyn_mod
+module ice_dyn_bgrid
 !***********************************************************************
 !*                   GNU General Public License                        *
 !* This file is a part of SIS2.                                        *
@@ -40,9 +40,9 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_dyn_init, ice_dynamics, ice_dyn_end, ice_dyn_register_restarts
+public :: ice_B_dyn_init, ice_B_dynamics, ice_B_dyn_end, ice_B_dyn_register_restarts
 
-type, public :: ice_dyn_CS ; private
+type, public :: ice_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
     sig11 => NULL(), &  ! sig11, sig12, and sig22 are the three elements of
     sig12 => NULL(), &  ! the stress tensor, all in units of Pa m.
@@ -72,19 +72,19 @@ type, public :: ice_dyn_CS ; private
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1                  
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1                  
   integer :: id_stren = -1, id_ui = -1, id_vi = -1
-end type ice_dyn_CS
+end type ice_B_dyn_CS
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_init - initialize the ice dynamics and set parameters.               !
+! ice_B_dyn_init - initialize the ice dynamics and set parameters.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dyn_init(Time, G, param_file, diag, CS)
+subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
   type(sea_ice_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_dyn_CS),            pointer       :: CS
+  type(ice_B_dyn_CS),          pointer       :: CS
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -183,7 +183,7 @@ subroutine ice_dyn_init(Time, G, param_file, diag, CS)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesB1, Time,          &
             'ice velocity - y component', 'm/s', missing_value=missing)
 
-end subroutine ice_dyn_init
+end subroutine ice_B_dyn_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -193,7 +193,7 @@ subroutine find_ice_strength(hi, ci, ice_strength, G, CS) ! ??? may change to do
   type(sea_ice_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: hi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
-  type(ice_dyn_CS),                 pointer     :: CS
+  type(ice_B_dyn_CS),               pointer     :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -207,7 +207,7 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
+subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(sea_ice_grid_type), intent(inout) :: G
@@ -218,7 +218,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: sea_lev     ! sea level
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc, fyoc  ! ice stress on ocean
   real,                               intent(in   ) :: dt_slow
-  type(ice_dyn_CS),                   pointer       :: CS
+  type(ice_B_dyn_CS),                 pointer       :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      hs - The thickness of the snow, in m.
 !  (in)      hi - The thickness of the ice, in m.
@@ -253,7 +253,8 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
     ! temporaries for ice stress calculation
     real                             :: del2, a, b, tmp
-    real, dimension(SZI_(G),SZJ_(G)) :: edt, mp4z, t0, t1, It2
+  real, dimension(SZI_(G),SZJ_(G)) :: edt   ! The elasticity (E) times a time-step, in Pa m s.
+    real, dimension(SZI_(G),SZJ_(G)) :: mp4z, t0, t1, It2
     real                             :: f11, f22
   real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
   real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
@@ -326,6 +327,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   !
   call find_ice_strength(hi, ci, prs, G, CS)
 
+  ! This is H&D97, Eq. 44, with their E_0 = 0.25.
   Rho_2dt_evp = CS%Rho_ice / (2.0*dt_evp)
   do j=jsc,jec ; do i=isc,iec
     if(G%dxT(i,j) < G%dyT(i,j) ) then
@@ -404,7 +406,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
         !
         if ( hi(i,j) > 0.0 ) then
           mp4z(i,j) = -prs(i,j)/(4*zeta)
-          t0(i,j)   = 2*eta/(2*eta+edt(i,j))
+          t0(i,j)   = 2*eta / (2*eta + edt(i,j))
           tmp       = 1/(4*eta*zeta)
           a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
           b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
@@ -550,7 +552,7 @@ subroutine ice_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
   endif
 
-end subroutine ice_dynamics
+end subroutine ice_B_dynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigI - first stress invariant                                                !
@@ -559,7 +561,7 @@ function sigI(hi, ci, sig11, sig22, sig12, G, CS)
   type(sea_ice_grid_type), intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: hi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigI
-  type(ice_dyn_CS),                 pointer    :: CS
+  type(ice_B_dyn_CS),               pointer    :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -579,7 +581,7 @@ function sigII(hi, ci, sig11, sig22, sig12, G, CS)
   type(sea_ice_grid_type), intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: hi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigII
-  type(ice_dyn_CS),                 pointer    :: CS
+  type(ice_B_dyn_CS),               pointer    :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -593,13 +595,13 @@ function sigII(hi, ci, sig11, sig22, sig12, G, CS)
 end function sigII
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_register_restarts - allocate and register any variables for this     !
+! ice_B_dyn_register_restarts - allocate and register any variables for this   !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
+subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
   type(sea_ice_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
-  type(ice_dyn_CS),        pointer       :: CS
+  type(ice_B_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
@@ -632,17 +634,17 @@ subroutine ice_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_fil
                               domain=G%Domain%mpp_domain)
   id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
                               domain=G%Domain%mpp_domain)
-end subroutine ice_dyn_register_restarts
+end subroutine ice_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dyn_end - deallocate the memory associated with this module.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_dyn_end(CS)
-  type(ice_dyn_CS), pointer :: CS
+subroutine ice_B_dyn_end(CS)
+  type(ice_B_dyn_CS), pointer :: CS
 
   deallocate(CS%sig11) ; deallocate(CS%sig12) ; deallocate(CS%sig22)
 
   deallocate(CS)
-end subroutine ice_dyn_end
+end subroutine ice_B_dyn_end
 
-end module ice_dyn_mod
+end module ice_dyn_bgrid
