@@ -695,6 +695,8 @@ subroutine set_grid_derived_metrics(G, param_file)
     endif
     G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
     G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
+    G%areaCu(I,j) = G%dxCu(I,j)*G%dyCu(I,j)  !### Replace with * G%dy_Cu(I,j)?
+    G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
   enddo ; enddo
 
   do J=JsdB,JedB ; do i=isd,ied
@@ -710,6 +712,8 @@ subroutine set_grid_derived_metrics(G, param_file)
     endif
     G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
     G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
+    G%areaCv(i,J) = G%dyCv(i,J)*G%dxCv(i,J)  !### Replace with * G%dx_Cv(i,J)?
+    G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
   enddo ; enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB

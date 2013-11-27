@@ -5,7 +5,7 @@
 module ice_type_mod
 
 use mpp_mod,          only: mpp_sum, stdout, input_nml_file
-use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER
+use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
@@ -16,6 +16,7 @@ use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
 use ice_thm_mod,      only: e_to_melt
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
+use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
@@ -24,7 +25,8 @@ use MOM_file_parser, only : param_file_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_error_checking, only : chksum, Bchksum, hchksum, check_redundant_B
+use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
+use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : archaic_nml_check
 
 implicit none ; private
@@ -198,12 +200,13 @@ type ice_state_type
   integer :: id_iy_trans=-1, id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_mib=-1, id_coszen=-1
+  integer :: id_faix_C=-1, id_faiy_C=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
   integer :: id_abs_int=-1, id_sw_abs_snow=-1, id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
   integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_trn=-1
 
   type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
-!  type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
+  type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
 !   type(icebergs), pointer     :: icebergs => NULL()
@@ -484,6 +487,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+
+  if (IST%Cgrid_dyn) then
+    allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
+    allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
+    allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
+    allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+    allocate(IST%flux_u_top_Cu(SZIB_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top_Cu(:,:,:) = 0.0 !NR
+    allocate(IST%flux_v_top_Cv(SZI_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_Cv(:,:,:) = 0.0 !NR
+  endif
   
 
   ! Now register some of these arrays to be read from the restart files.
@@ -497,8 +509,13 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'u_ice',     IST%u_ice, domain=domain, position=CORNER)
-  idr = register_restart_field(Ice_restart, restart_file, 'v_ice',     IST%v_ice, domain=domain, position=CORNER)
+  if (IST%Cgrid_dyn) then
+    idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, domain=domain, position=CORNER)
+    idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, domain=domain, position=CORNER)
+  else
+    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice, domain=domain, position=CORNER)
+    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice, domain=domain, position=CORNER)
+  endif
   idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen, domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
@@ -526,13 +543,17 @@ subroutine dealloc_IST_arrays(IST)
 
   deallocate(IST%t_surf, IST%s_surf, IST%sea_lev)
   deallocate(IST%part_size, IST%u_ocn, IST%v_ocn)
+  if (IST%Cgrid_dyn) then
+    deallocate(IST%u_ice_C, IST%v_ice_C)
+    deallocate(IST%u_ocn_C, IST%v_ocn_C)
+    deallocate(IST%flux_u_top_Cu, IST%flux_v_top_Cv)
+  endif
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
   deallocate(IST%flux_t_top, IST%flux_q_top, IST%flux_lw_top)
   deallocate(IST%flux_lh_top, IST%lprec_top, IST%fprec_top)
   deallocate(IST%flux_sw_vis_dir_top, IST%flux_sw_vis_dif_top)
   deallocate(IST%flux_sw_nir_dir_top, IST%flux_sw_nir_dif_top)
-  deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid )
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil)
   deallocate(IST%bheat,IST%tmelt, IST%bmelt, IST%pen, IST%trn)
@@ -574,6 +595,11 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
   call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
+  if (IST%Cgrid_dyn) then
+    call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C",G,haloshift=hs)
+    call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C",G,haloshift=hs)
+    call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)
+  endif
 
 end subroutine IST_chksum
 
@@ -843,6 +869,14 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
              'sea surface height', 'm', missing_value=missing)
   IST%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &
        'ice observed', '0 or 1', missing_value=missing)
+
+  !
+  ! diagnostics that are specific to C-grid dynamics of the ice model
+  !
+  IST%id_faix_C = register_SIS_diag_field('ice_model', 'FA_XC', diag%axesCu1, Time, &
+               'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
+  IST%id_faiy_C = register_SIS_diag_field('ice_model', 'FA_YC', diag%axesCv1, Time, &
+               'Air stress on ice on C-grid - y component', 'Pa', missing_value=missing)
 
   if (id_sin_rot>0) call post_data(id_sin_rot, G%sin_rot, diag, is_static=.true.)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
