@@ -71,7 +71,8 @@ type, public :: ice_C_dyn_CS ; private
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
-  logical :: debug_redundant  ! If true, debug redundant points
+  logical :: debug_redundant  ! If true, debug redundant points.
+  logical :: weak_coast_stress = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
@@ -84,6 +85,8 @@ type, public :: ice_C_dyn_CS ; private
   integer :: id_fix_d = -1, id_fix_t = -1, id_fix_s = -1
   integer :: id_fiy_d = -1, id_fiy_t = -1, id_fiy_s = -1
   integer :: id_str_d = -1, id_str_t = -1, id_str_s = -1
+  integer :: id_sh_d = -1, id_sh_t = -1, id_sh_s = -1
+  integer :: id_del_sh = -1, id_del_sh_min = -1
   integer :: id_ui_hifreq = -1, id_vi_hifreq = -1
   integer :: id_str_d_hifreq = -1, id_str_t_hifreq = -1, id_str_s_hifreq = -1
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
@@ -234,6 +237,16 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
             'ice tension internal stress', 'Pa', missing_value=missing)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
             'ice shearing internal stress', 'Pa', missing_value=missing)
+  CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time, &
+            'ice divergence strain rate', 's-1', missing_value=missing)
+  CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time, &
+            'ice tension strain rate', 's-1', missing_value=missing)
+  CS%id_sh_s   = register_diag_field('ice_model', 'sh_s', diag%axesB1, Time, &
+            'ice shearing strain rate', 's-1', missing_value=missing)
+  CS%id_del_sh = register_diag_field('ice_model', 'del_sh', diag%axesT1, Time, &
+            'ice strain rate magnitude', 's-1', missing_value=missing)
+  CS%id_del_sh_min = register_diag_field('ice_model', 'del_sh_min', diag%axesT1, Time, &
+            'minimum ice strain rate magnitude', 's-1', missing_value=missing)
 
   CS%id_ui_hifreq = register_diag_field('ice_model', 'ui_hf', diag%axesCu1, Time, &
             'ice velocity - x component', 'm/s', missing_value=missing)
@@ -358,9 +371,9 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     I1_f2dt2_v  ! 1 / ( 1 + f^2 dt^2) at v-points, nondimensional.
 
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    mi_q, &  ! The total mass of ice averaged onto vorticity points, in kg m-2.
-    mi_ratio_q, & ! A ratio of the masses interpolated to the faces around a
-             ! vorticity point that ranges between (4 mi_min/mi_max) and 1.
+    mi_ratio_A_q, & ! A ratio of the masses interpolated to the faces around a
+             ! vorticity point that ranges between (4 mi_min/mi_max) and 1,
+             ! divided by the sum of the ocean areas around a point, in m-2.
     str_s_pres, & ! A ratio of the shearing stress to the sum of the 4 internal
              ! ice pressures aroung a point, in ???.
     q, &     ! A potential-vorticity-like field for the ice, the Coriolis
@@ -383,7 +396,10 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings, in m.
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
                       ! area surrounding a vorticity point, in kg2 m-4.
+  real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
+                      ! to a vorticity point on the coast, in kg m-2.
   real :: stress_mag  ! The magnitude of the stress at a point.
+  real :: pr_vol      ! The internal ice pressure per unit volume, in Pa.
   real :: pres_sum    ! The sum of the internal ice pressures aroung a point, in Pa.
   real :: pres_avg    ! The average of the internal ice pressures around a point, in Pa.
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale, ND.
@@ -400,11 +416,14 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   real :: EC2     ! EC^2, where EC is the yield curve axis ratio.
   real :: I_EC2   ! 1/EC^2, where EC is the yield curve axis ratio.
   real :: I_EC    ! 1/EC, where EC is the yield curve axis ratio.
+  real :: I_2EC   ! 1/(2*EC), where EC is the yield curve axis ratio.
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
                                            ! can be cubed without underflow.
   real :: m_neglect  ! A tiny mass per unit area, in kg m-2.
+  real :: m_neglect2 ! A tiny mass per unit area squared, in kg2 m-4.
   real :: m_neglect3 ! A tiny mass per unit area cubed, in kg3 m-6.
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power, in kg4 m-8.
+  real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iteratve steps.
@@ -443,6 +462,7 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   dt = dt_slow/CS%evp_sub_steps
   EC2 = CS%EC**2
   I_EC = 0.0 ; if (CS%EC > 0.0) I_EC = 1.0 / CS%EC
+  I_2EC = 0.0 ; if (CS%EC > 0.0) I_2EC = 0.5 / CS%EC
   I_EC2 = 0.0 ; if (EC2 > 0.0) I_EC2 = 1.0 / EC2
 
   do_hifreq_output = .false.
@@ -463,28 +483,22 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   endif
   dt_2Tdamp = dt / (2.0 * Tdamp)
 
-  ! sea level slope force
-  do j=jsc,jec ; do I=isc-1,iec
-    PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j)
-  enddo ; enddo
-  do J=jsc-1,jec ; do i=isc,iec
-    PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J)
-  enddo ; enddo
 
-  ! Store the total snow and ice mass.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+    ! Store the total snow and ice mass.
     mi(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
-  enddo ; enddo
 
-  ! Precompute pres_ice and the minimum value of del_sh for stability.
-  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    pres_ice(i,j) = (CS%p0*exp(-CS%c0*(1-ci(i,j)))) * (hi(i,j)*ci(i,j))
+    ! Precompute pres_ice and the minimum value of del_sh for stability.
+    pr_vol = CS%p0*exp(-CS%c0*(1-ci(i,j)))
+    pres_ice(i,j) = pr_vol * (hi(i,j)*ci(i,j))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
-    ! stability of the overall time-stepping.
+    ! stability of the overall time-stepping for the velocities and stresses.
+    ! Setting a minimum value onf the shear magnitudes is equivalent to setting
+    ! a maximum value of the effective lateral viscosities.
     ! I think that the 4.0 here could be 2.0 and still be stable.  -RWH
-    del_sh_min(i,j) = (4.0 * CS%p0 * dt**2) / (Tdamp * CS%Rho_ice * dxharm**2)
+    del_sh_min(i,j) = (4.0 * pr_vol * dt**2) / (Tdamp * CS%Rho_ice * dxharm**2)
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
@@ -519,17 +533,25 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 ! enddo ; enddo
   !   Perhaps this rescaling should be done for each component separately?
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    if (CS%str_d(i,j) < -2.0*pres_ice(i,j)) CS%str_d(i,j) = -2.0*pres_ice(i,j)
-    if (CS%str_t(i,j) > CS%EC*pres_ice(i,j)) CS%str_t(i,j) = CS%EC*pres_ice(i,j)
-    if (CS%str_t(i,j) < -CS%EC*pres_ice(i,j)) CS%str_t(i,j) = -CS%EC*pres_ice(i,j)
+    if (CS%str_d(i,j) < -pres_ice(i,j)) CS%str_d(i,j) = -pres_ice(i,j)
+    if (CS%EC*CS%str_t(i,j) > 0.5*pres_ice(i,j)) CS%str_t(i,j) = I_2EC*pres_ice(i,j)
+    if (CS%EC*CS%str_t(i,j) < -0.5*pres_ice(i,j)) CS%str_t(i,j) = -I_2EC*pres_ice(i,j)
   enddo ; enddo
   do J=jsc-1,jec ; do I=isc-1,iec
-    pres_avg = 0.25 * ((pres_ice(i+1,j+1) + pres_ice(i,j)) + &
-                       (pres_ice(i+1,j) + pres_ice(i,j+1)))
-   if (CS%str_s(I,J) > CS%EC*pres_avg) CS%str_s(I,J) = CS%EC*pres_avg
-   if (CS%str_s(I,J) < -CS%EC*pres_avg) CS%str_s(I,J) = -CS%EC*pres_avg
+    if (CS%weak_coast_stress) then
+      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+    else
+      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+    endif
+    pres_avg = 0.0
+    if (sum_area > 0.0) &
+      pres_avg = ((G%areaT(i,j)*pres_ice(i,j) + G%areaT(i+1,j+1)*pres_ice(i+1,j+1)) + &
+                  (G%areaT(i+1,j)*pres_ice(i+1,j) + G%areaT(i,j+1)*pres_ice(i,j+1))) / &
+                  sum_area
+    if (CS%EC*CS%str_s(I,J) > 0.5*pres_avg) CS%str_s(I,J) = I_2EC*pres_avg
+    if (CS%EC*CS%str_s(I,J) < -0.5*pres_avg) CS%str_s(I,J) = -I_2EC*pres_avg
   enddo ; enddo
-
 
   ! Zero out ice velocities with no mass.
   do j=jsc,jec ; do I=isc-1,iec
@@ -537,6 +559,113 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   enddo ; enddo
   do J=jsc-1,jec ; do i=isc,iec
     if (G%mask2dCv(i,J) * (mi(i,j)+mi(i,j+1)) == 0.0) vi(I,j) = 0.0
+  enddo ; enddo
+
+  do J=jsc-1,jec ; do I=isc-1,iec
+    dx2B(I,J) = G%dxBu(I,J)*G%dxBu(I,J) ; dy2B(I,J) = G%dyBu(I,J)*G%dyBu(I,J)
+  enddo ; enddo
+  do J=jsc-2,jec+1 ; do I=isc-2,iec+1
+    dx_dyB(I,J) = G%dxBu(I,J)*G%IdyBu(I,J) ; dy_dxB(I,J) = G%dyBu(I,J)*G%IdxBu(I,J)
+  enddo ; enddo
+  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+    dx2T(i,j) = G%dxT(i,j)*G%dxT(i,j) ; dy2T(i,j) = G%dyT(i,j)*G%dyT(i,j)
+    dx_dyT(i,j) = G%dxT(i,j)*G%IdyT(i,j) ; dy_dxT(i,j) = G%dyT(i,j)*G%IdxT(i,j)
+  enddo ; enddo
+
+  m_neglect = H_subroundoff*CS%Rho_ice
+  m_neglect2 = m_neglect**2 ; m_neglect3 = m_neglect**3 ; m_neglect4 = m_neglect**4
+  do J=jsc-1,jec ; do I=isc-1,iec
+    if (CS%weak_coast_stress) then
+      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+    else
+      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+    endif
+    if (sum_area <= 0.0) then
+      ! This is a land point.
+      mi_ratio_A_q(I,J) = 0.0
+    elseif (G%Lmask2dBu(I,J)) then
+      ! This is an interior ocean point.
+      !   Determine an appropriately averaged mass on q-points. The following
+      ! expression for mi_q is mi when the masses are all equal, and goes to 4
+      ! times the smallest mass averaged onto the 4 adjacent velocity points.  It
+      ! comes from taking the harmonic means of the harmonic means of the
+      ! arithmetic mean masses at the velocity points.  mi_ratio goes from 4 times
+      ! the ratio of the smallest mass at velocity points over the largest mass
+      ! at velocity points up to 1.
+      muq2 = 0.25 * (mi(i,j) + mi(i+1,j)) * (mi(i,j+1) + mi(i+1,j+1))
+      mvq2 = 0.25 * (mi(i,j) + mi(i,j+1)) * (mi(i+1,j) + mi(i+1,j+1))
+      mi_ratio_A_q(I,J) = 32.0 * muq2 * mvq2 / ((m_neglect4 + (muq2 + mvq2) * &
+                 ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j)))**2) * &
+                 sum_area)
+    elseif ((G%mask2dCu(I,j) + G%mask2dCu(I,j+1)) + &
+            (G%mask2dCv(i,J) + G%mask2dCu(i+1,J)) > 1.5) then
+      !   This is a corner point, and there are 1 unmasked u-point and 1 v-point.
+      ! The ratio below goes from 4 times the ratio of the smaller of the two
+      ! masses at velocity points over the larger up to 1.
+      muq = 0.5 * (G%mask2dCu(I,j) * (mi(i,j) + mi(i+1,j)) + &
+                   G%mask2dCu(I,j+1) * (mi(i,j+1) + mi(i+1,j+1)) )
+      mvq = 0.5 * (G%mask2dCv(i,J) * (mi(i,j) + mi(i,j+1)) + &
+                   G%mask2dCv(i+1,J) * (mi(i+1,j) + mi(i+1,j+1)) )
+      mi_ratio_A_q(I,J) = 4.0 * muq * mvq / ((m_neglect2 + (muq + mvq)**2) * sum_area)
+    else
+      ! This is a straight coastline or all neighboring velocity points are
+      ! masked out.  In any case, with just 1 point, the ratio is always 1.
+      mi_ratio_A_q(I,J) = 1.0 / sum_area
+    endif
+  enddo ; enddo
+
+  do j=jsc-1,jec+1 ; do I=isc-1,iec
+    mi_u(I,j) = 0.5*(mi(i+1,j) + mi(i,j))
+    I_mi_u(I,j) = G%mask2dCu(I,j) / (mi_u(I,j) + m_neglect)
+  enddo ; enddo
+
+  do J=jsc-1,jec ; do i=isc-1,iec+1
+    mi_v(i,J) = 0.5*(mi(i,j+1) + mi(i,j))
+    I_mi_v(i,J) = G%mask2dCv(i,J) / (mi_v(i,J) + m_neglect)
+  enddo ; enddo
+
+  do J=jsc-1,jec ; do I=isc-1,iec
+    tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
+    q(I,J) = G%CoriolisBu(I,J) * tot_area / &
+         (((G%areaT(i,j) * mi(i,j) + G%areaT(i+1,j+1) * mi(i+1,j+1)) + &
+           (G%areaT(i+1,j) * mi(i+1,j) + G%areaT(i,j+1) * mi(i,j+1))) + tot_area * m_neglect)
+  enddo ; enddo
+
+  ! sea level slope force
+  do j=jsc,jec ; do I=isc-1,iec
+  enddo ; enddo
+  do J=jsc-1,jec ; do i=isc,iec
+  enddo ; enddo
+
+  do j=jsc,jec ; do I=isc-1,iec
+    ! Calculate terms related to the Coriolis force on the zonal velocity.
+    azon(I,j) = 0.25 * mi_v(i+1,J) * q(I,J)
+    bzon(I,j) = 0.25 * mi_v(i,J) * q(I,J)
+    czon(I,j) = 0.25 * mi_v(i,J-1) * q(I,J-1)
+    dzon(I,j) = 0.25 * mi_v(i+1,J-1) * q(I,J-1)
+
+    f2dt_u(I,j) = dt * 4.0 * ((azon(I,j)**2 + czon(I,j)**2) + &
+                              (bzon(I,j)**2 + dzon(I,j)**2))
+    I1_f2dt2_u(I,j) = 1.0 / ( 1.0 + dt * f2dt_u(I,j) )
+
+    ! Calculate the zonal acceleration due to the sea level slope.
+    PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j)
+  enddo ; enddo
+
+  do J=jsc-1,jec ; do i=isc,iec
+    ! Calculate terms related to the Coriolis force on the meridional velocity.
+    amer(I-1,j) = 0.25 * mi_u(I-1,j) * q(I-1,J)
+    bmer(I,j) = 0.25 * mi_u(I,j) * q(I,J)
+    cmer(I,j+1) = 0.25 * mi_u(I,j+1) * q(I,J)
+    dmer(I-1,j+1) = 0.25 * mi_u(I-1,j+1) * q(I-1,J)
+
+    f2dt_v(i,J) = dt * 4.0 * ((amer(I-1,j)**2 + cmer(I,j+1)**2) + &
+                              (bmer(I,j)**2 + dmer(I-1,j+1)**2))
+    I1_f2dt2_v(i,J) = 1.0 / ( 1.0 + dt * f2dt_v(i,J) )
+
+    ! Calculate the meridional acceleration due to the sea level slope.
+    PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J)
   enddo ; enddo
 
   if (CS%debug) then
@@ -553,91 +682,23 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     call check_redundant_C("ui/vi pre-steps ice_C_dynamics",ui, vi, G)
   endif
 
-  do J=jsc-1,jec ; do I=isc-1,iec
-    dx2B(I,J) = G%dxBu(I,J)*G%dxBu(I,J) ; dy2B(I,J) = G%dyBu(I,J)*G%dyBu(I,J)
-  enddo ; enddo
-  do J=jsc-2,jec+1 ; do I=isc-2,iec+1
-    dx_dyB(I,J) = G%dxBu(I,J)*G%IdyBu(I,J) ; dy_dxB(I,J) = G%dyBu(I,J)*G%IdxBu(I,J)
-  enddo ; enddo
-  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    dx2T(i,j) = G%dxT(i,j)*G%dxT(i,j) ; dy2T(i,j) = G%dyT(i,j)*G%dyT(i,j)
-    dx_dyT(i,j) = G%dxT(i,j)*G%IdyT(i,j) ; dy_dxT(i,j) = G%dyT(i,j)*G%IdxT(i,j)
-  enddo ; enddo
-
-  m_neglect = H_subroundoff*CS%Rho_ice
-  m_neglect3 = m_neglect**3 ; m_neglect4 = m_neglect**4
-  do J=jsc-1,jec ; do I=isc-1,iec
-    !   Determine an appropriately averaged mass on q-points. The following
-    ! expression for mi_q is mi when the masses are all equal, and goes to 4
-    ! times the smallest mass averaged onto the 4 adjacent velocity points.  It
-    ! comes from taking the harmonic means of the harmonic means of the
-    ! arithmetic mean masses at the velocity points.  mi_ratio goes from 4 times
-    ! the ratio of the smallest mass over the largest mass up to 1.
-   !### Redo this with masks...
-    muq2 = 0.25 * (mi(i,j) + mi(i+1,j)) * (mi(i,j+1) + mi(i+1,j+1))
-    mvq2 = 0.25 * (mi(i,j) + mi(i,j+1)) * (mi(i+1,j) + mi(i+1,j+1))
-    mi_q(I,J) = 8.0 * muq2 * mvq2 / (m_neglect3 + (muq2 + mvq2) * &
-               ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j))))
-    mi_ratio_q(I,J) = 32.0 * muq2 * mvq2 / (m_neglect4 + (muq2 + mvq2) * &
-               ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j)))**2)
-  enddo ; enddo
-
-  do j=jsc-1,jec+1 ; do I=isc-1,iec
-    mi_u(I,j) = 0.5*(mi(i+1,j) + mi(i,j)) ! + m_neglect
-    I_mi_u(I,j) = 1.0 / (mi_u(I,j) + m_neglect)
-  enddo ; enddo
-
-  do J=jsc-1,jec ; do i=isc-1,iec+1
-    mi_v(i,J) = 0.5*(mi(i,j+1) + mi(i,j)) ! + m_neglect
-    I_mi_v(i,J) = 1.0 / (mi_v(i,J) + m_neglect)
-  enddo ; enddo
-
-  do J=jsc-1,jec ; do I=isc-1,iec
-    tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
-    q(I,J) = G%CoriolisBu(I,J) * tot_area / &
-         (((G%areaT(i,j) * mi(i,j) + G%areaT(i+1,j+1) * mi(i+1,j+1)) + &
-           (G%areaT(i+1,j) * mi(i+1,j) + G%areaT(i,j+1) * mi(i,j+1))) + tot_area * m_neglect)
-  enddo ; enddo
-
-  do j=jsc,jec ; do I=isc-1,iec
-    azon(I,j) = 0.25 * mi_v(i+1,J) * q(I,J)
-    bzon(I,j) = 0.25 * mi_v(i,J) * q(I,J)
-    czon(I,j) = 0.25 * mi_v(i,J-1) * q(I,J-1)
-    dzon(I,j) = 0.25 * mi_v(i+1,J-1) * q(I,J-1)
-
-    f2dt_u(I,j) = dt * 4.0 * ((azon(I,j)**2 + czon(I,j)**2) + &
-                              (bzon(I,j)**2 + dzon(I,j)**2))
-    I1_f2dt2_u(I,j) = 1.0 / ( 1.0 + dt * f2dt_u(I,j) )
-  enddo ; enddo
-
-  do J=jsc-1,jec ; do i=isc,iec
-    amer(I-1,j) = 0.25 * mi_u(I-1,j) * q(I-1,J)
-    bmer(I,j) = 0.25 * mi_u(I,j) * q(I,J)
-    cmer(I,j+1) = 0.25 * mi_u(I,j+1) * q(I,J)
-    dmer(I-1,j+1) = 0.25 * mi_u(I-1,j+1) * q(I-1,J)
-
-    f2dt_v(i,J) = dt * 4.0 * ((amer(I-1,j)**2 + cmer(I,j+1)**2) + &
-                              (bmer(I,j)**2 + dmer(I-1,j+1)**2))
-    I1_f2dt2_v(i,J) = 1.0 / ( 1.0 + dt * f2dt_v(i,J) )
-  enddo ; enddo
-
-!  Idt = 1.0 / dt
-
+  ! Do the iterative time steps.
   do n=1,CS%evp_sub_steps
 
-! If there is a 2-point wide halo and symmetric memory, this is the only
-! halo update that is needed per iteration.  With a 1-point wide halo and
-! symmetric memory, an update is also needed for sh_Ds.
+    ! If there is a 2-point wide halo and symmetric memory, this is the only
+    ! halo update that is needed per iteration.  With a 1-point wide halo and
+    ! symmetric memory, an update is also needed for sh_Ds.
     call pass_vector(ui, vi, G%Domain, stagger=CGRID_NE)
 
-!    Calculate the strain tensor for viscosities and forcing elastic eqn.
-!  The following are the forms of the horizontal tension and hori-
-!  shearing strain advocated by Smagorinsky (1993) and discussed in
-!  Griffies and Hallberg (MWR, 2000).
+    !    Calculate the strain tensor for viscosities and forcing elastic eqn.
+    !  The following are the forms of the horizontal tension and hori-
+    !  shearing strain advocated by Smagorinsky (1993) and discussed in
+    !  Griffies and Hallberg (MWR, 2000).  Similar forms are used in the sea
+    !  ice model of Bouillon et al. (Ocean Modelling, 2009).
 
     !   The calculation of sh_Ds has the widest halo. The logic below avoids
     ! a halo update when possible.
-    !   With a halo of 2 this is:  do J=jsc-2,jec+1 ; do I=isc-2,iec+1
+    !   With a halo of >= 2 this is:  do J=jsc-2,jec+1 ; do I=isc-2,iec+1
     do J=jsc-halo_sh_Ds,jec+halo_sh_Ds-1 ; do I=isc-halo_sh_Ds,iec+halo_sh_Ds-1
       ! This uses a no-slip boundary condition.
       sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * &
@@ -663,44 +724,29 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
       ! Averaging the squared shearing strain is larger than squaring
       ! the averaged strain.  I don't know what is better. -RWH
       del_sh(i,j) = sqrt(sh_Dd(i,j)**2 + I_EC2 * (sh_Dt(i,j)**2 + &
-                  0.25 * ( (sh_Ds(I-1,J-1)**2 + sh_Ds(I,j)**2) + &
-                           (sh_Ds(I-1,J)**2 + sh_Ds(I-1,j)**2)) ) ) ! H&D eqn 9
+                   (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,j)) + &
+                            (sh_Ds(I-1,J) + sh_Ds(I-1,j))))**2 ) ) ! H&D eqn 9
 
       zeta(i,j) = 0.5*pres_ice(i,j) / max(del_sh(i,j), del_sh_min(i,j))
-
-! ###Is this needed with these numerics?
-!      if (zeta(i,j)<4e8) zeta(i,j) = 4e8 ! Hibler uses to prevent nonlinear instability
-
     enddo ; enddo
 
     ! Step the stress component equations semi-implicitly.
     I_1pdt_T = 1.0 / (1.0 + dt_2Tdamp)
     I_1pE2dt_T = 1.0 / (1.0 + EC2*dt_2Tdamp)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    !   if (CS%Tdamp < 0.0)
-    !     ! HD97 Eq. 44 with the variable E_0 = 0.25.
-    !     E_mi = (0.25)*2.0*min(G%dxT(i,j)**2,G%dyT(i,j)**2) * Idt**2
-    !     Tdamp = zeta_mi(i,j) / E_mi
-    !     E_mi = (0.25) * Idt**2 * (2.0*G%dxT(i,j)**2*G%dyT(i,j)**2) / &
-    !                            (G%dxT(i,j)**2 + G%dyT(i,j)**2)
-    !     Tdamp = zeta_mi(i,j) * dt2 * (G%dxT(i,j)**2 + G%dyT(i,j)**2) / &
-    !            ((0.25) * (2.0*G%dxT(i,j)**2*G%dyT(i,j)**2))
-    !     dt_2Tdamp = 0.5 * dt / Tdamp
-    !   endif
-      ! This expression uses that Pres=2*del_sh*zeta with an elliptic yeild curve.
+      ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
       CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
                   ( zeta(i,j) * (sh_Dd(i,j) - del_sh(i,j)) ) )
-!      CS%str_t(i,j) = I_1pE2dt_T * ( CS%str_t(i,j) + dt_Tdamp * &
       CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                   ( zeta(i,j) * sh_Dt(i,j) ) )
     enddo ; enddo
+
     do J=jsc-1,jec ; do I=isc-1,iec
-!      CS%str_s(I,J) = I_1pE2dt_T * ( CS%str_s(I,J) + dt_Tdamp * &
+      ! zeta is already set to 0 over land.
       CS%str_s(I,J) = I_1pdt_T * ( CS%str_s(I,J) + (I_EC2 * dt_2Tdamp) * &
-                  ( 0.25*((zeta(i,j) + zeta(i+1,j+1)) + &
-                          (zeta(i+1,j) + zeta(i,j+1))) * &
-                   mi_ratio_q(I,J) * sh_Ds(I,J) ) )
-      ! ### Alter this in the case of boundary points?
+                  ( ((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
+                     (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
+                   mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
     enddo ; enddo
 
 
@@ -715,12 +761,14 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
       Cor = ((azon(I,j) * vi(i+1,J) + czon(I,j) * vi(i,J-1)) + &
              (bzon(I,j) * vi(i,J) + dzon(I,j) * vi(i+1,J-1))) ! - Cor_ref_u(I,j)
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
-      !  for an orthogonal grid.
-      fxic_now = (G%IdyCu(I,j)*(dy2T(i+1,j)*(CS%str_d(i+1,j)+CS%str_t(i+1,j)) - &
-                                dy2T(i,j)  *(CS%str_d(i,j)+CS%str_t(i,j))) + &
-                  G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
-                                dx2B(I,J-1)*CS%str_s(I,J-1)) ) * &
-                 (G%IareaCu(I,j) * I_mi_u(i,j))
+      !  for an orthogonal grid.  The str_d term integrates out to no curl, while
+      !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
+      fxic_now = (G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
+            (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
+                           dy2T(i,j)  *CS%str_t(i,j)) + &
+             G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
+                           dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j) ) * &
+                  I_mi_u(i,j)
       drag_u = CS%cdw * CS%Rho_ocean * sqrt((ui(I,j)-uo(I,j))**2 + 0.25 * &
                   (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                    ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2)) + &
@@ -756,13 +804,15 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
                   (bmer(I,j) * u_tmp(I,j) + dmer(I-1,j+1) * u_tmp(I-1,j+1)))
-      !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
-      !  for an orthogonal grid.
-      fyic_now = (G%IdxCv(i,J)*(dx2T(i,j+1)*(CS%str_d(i,j+1)-CS%str_t(i,j+1)) - &
-                                dx2T(i,j)  *(CS%str_d(i,j)-CS%str_t(i,j))) + &
-                  G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
-                                dy2B(I-1,J)*CS%str_s(I-1,J)) ) * &
-                 (G%IareaCv(i,J) * I_mi_v(i,j))
+      !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
+      !  for an orthogonal grid.  The str_d term integrates out to no curl, while
+      !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
+      fyic_now = (G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
+            (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
+                            dx2T(i,j)  *CS%str_t(i,j)) + &
+              G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
+                            dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J) ) * &
+                  I_mi_v(i,j)
       drag_v = CS%cdw*CS%Rho_ocean * sqrt((vi(i,J)-vo(i,J))**2 + 0.25 * &
                   (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                    ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2)) + &
@@ -796,60 +846,6 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * &
                  (G%IareaCv(i,J) * I_mi_v(i,j)) )
     enddo ; enddo
-
-!### This is a multi-step version of the above.  Delete this if the previous stuff works.
-!   !  Evaluate 1/m x.Div(m Grad u).  These expressions include all metric terms
-!   !  for an orthogonal grid.
-!       do j=jsc-1,jec+1 ; do I=isc-1,iec
-!   !    do j=jsc,jec ; do I=isc-1,iec
-!          fxic_now = (G%IdyCu(I,j)*(dy2T(i+1,j)*(CS%str_d(i+1,j)+CS%str_t(i+1,j)) - &
-!                                    dy2T(i,j)  *(CS%str_d(i,j)+CS%str_t(i,j))) + &
-!                      G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
-!                                    dx2B(I,J-1)*CS%str_s(I,J-1)) ) * &
-!                     (G%IareaCu(I,j) * I_mi_u(i,j))
-!         drag_u(I,j) = CS%cdw*CS%Rho_ocean * sqrt((ui(I,j)-uo(I,j))**2 + 0.25 * &
-!                     (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
-!                      ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2)) + &
-!                     CS%drag_bg_vel2 ) * I_mi_u(I,j)
-
-!         I1_drag_u(I,j) = G%mask2dCu(I,j) / (1.0 + 0.5*dt*drag_u(I,j))
-
-!         u_tmp(I,j) = (ui(I,j) + dt * (PFu(I,j) + fxic_now) + &
-!                       0.5*dt*(fxat(I,j)*I_mi_u(I,j) + &
-!                               drag_u(I,j) * uo(I,j))) * I1_drag_u(I,j)
-!       enddo ; enddo
-!       do J=jsc-1,jec ; do i=isc-1,iec+1
-!   !    do J=jsc-1,jec ; do i=isc,iec
-!         fyic_now = (G%IdxCv(i,J)*(dx2T(i,j+1)*(CS%str_d(i,j+1)-CS%str_t(i,j+1)) - &
-!                                   dx2T(i,j)  *(CS%str_d(i,j)-CS%str_t(i,j))) + &
-!                     G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
-!                                   dy2B(I-1,J)*CS%str_s(I-1,J)) ) * &
-!                    (G%IareaCv(i,J) * I_mi_v(i,j))
-
-!         drag_v(i,J) = CS%cdw*CS%Rho_ocean * sqrt((vi(i,J)-vo(i,J))**2 + 0.25 * &
-!                     (((ui(I,j)-uo(I,j))**2 + (ui(I-1,j+1)-uo(I-1,j+1))**2) + &
-!                      ((ui(I,j+1)-uo(I,j+1))**2 + (ui(I-1,j)-uo(I-1,j))**2)) + &
-!                     CS%drag_bg_vel2 ) * I_mi_v(i,J)
-!         I1pdrag_v(i,J) = G%mask2dCv(i,J) / (1.0 + 0.5*dt*drag_v(i,J))
-
-!         v_tmp(i,J) = (vi(i,J) + dt * (PFv(i,J) + fyic_now) + &
-!                       0.5*dt*(fyat(i,J)*I_mi_v(i,J) + &
-!                               drag_v(i,J) * vo(i,J))) * I1pdrag_v(i,J)
-!       enddo ; enddo
-
-!       do j=jsc,jec ; do I=isc-1,iec
-!         ! This is a quasi-implicit timestep of Coriolis, followed by an implicit drag calculation.
-!         Cor = ((azon(I,j) * v_tmp(i+1,J) + czon(I,j) * v_tmp(i,J-1)) + &
-!                (bzon(I,j) * v_tmp(i,J) + dzon(I,j) * v_tmp(i+1,J-1))) ! - Cor_ref_u(I,j)
-!         ui(I,j) = ((u_tmp(I,j) + dt * Cor) * I1_f2dt2_u(I,j) + &
-!                    0.5*dt*(fxat(I,j)*I_mi_u(I,j) + drag_u(I,j) * uo(I,j))) * I1_drag_u(I,j)
-!       enddo ; enddo
-!       do J=jsc-1,jec ; do i=isc,iec
-!         Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + bmer(I,j) * u_tmp(I,j)) + &
-!                 (cmer(I,j+1) * u_tmp(I,j+1) + dmer(I-1,j+1) * u_tmp(I-1,j+1))) ! - Cor_ref_v(i,J)
-!         vi(i,J) = ((v_tmp(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
-!                    0.5*dt*(fyat(i,J)*I_mi_v(i,J) + drag_v(i,J) * vo(i,J))) * I1_drag_v(i,J)
-!       enddo ; enddo
 
     if (do_hifreq_output) then
       time_step_end = time_it_start + set_time(int(floor(n*dt+0.5)))
@@ -969,6 +965,14 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     if (CS%id_str_d>0) call post_SIS_data(CS%id_str_d, CS%str_d, CS%diag)
     if (CS%id_str_t>0) call post_SIS_data(CS%id_str_t, CS%str_t, CS%diag)
     if (CS%id_str_s>0) call post_SIS_data(CS%id_str_s, CS%str_s, CS%diag)
+
+    if (CS%id_sh_d>0) call post_SIS_data(CS%id_sh_d, sh_Dd, CS%diag)
+    if (CS%id_sh_t>0) call post_SIS_data(CS%id_sh_t, sh_Dt, CS%diag)
+    if (CS%id_sh_s>0) call post_SIS_data(CS%id_sh_s, sh_Ds, CS%diag)
+
+    if (CS%id_del_sh>0) call post_SIS_data(CS%id_del_sh, del_sh, CS%diag)
+    if (CS%id_del_sh_min>0) call post_SIS_data(CS%id_del_sh_min, del_sh_min, CS%diag)
+
   endif
 
 end subroutine ice_C_dynamics
@@ -983,15 +987,15 @@ subroutine find_sigI(hi, ci, str_d, sigI, G, CS)
   type(ice_C_dyn_CS),               pointer     :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strn ! The ice strength, in Pa.
+    strength ! The ice strength, in Pa.
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call find_ice_strength(hi, ci, strn, G, CS)
+  call find_ice_strength(hi, ci, strength, G, CS)
 
   do j=jsc,jec ; do i=isc,iec
     sigI(i,j) = 0.0
-    if (strn(i,j) > 0.0) sigI(i,j) = str_d(i,j) / strn(i,j)
+    if (strength(i,j) > 0.0) sigI(i,j) = 2.0 * str_d(i,j) / strength(i,j)
   enddo ; enddo
 
 end subroutine find_sigI
@@ -1007,16 +1011,11 @@ subroutine find_sigII(hi, ci, str_t, str_s, sigII, G, CS)
   type(ice_C_dyn_CS),                  pointer    :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-!    mi, &  ! The mass or volume of ice per unit cell area, in m.
     strength ! The ice strength, in Pa.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
   real :: strength_sum  ! The sum of the 4 neighboring strengths, in Pa.
-!  real :: strn_avg    ! The horizontal average of strn_mi times mi_avg.
-!  real :: huq2, hvq2  ! Temporary variables in units of H (i.e. m2 or kg2 m-4).
-!  real :: mi_avg      ! The harmonic mean of the harmonic means of the u- & v-
-                    ! point thicknesses, in H. This ensures that mi_avg/hu < 4.
-!  real :: h_neglect3,  h_neglect4 ! A tiny thickness cubed, in m3.
+  real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
   real, parameter :: H_subroundoff = 1e-30 ! A thickness that is so small it is
                     ! usually lost in roundoff and can be neglected, but can be
                     ! cubed without being lost to underflow, in H.
@@ -1025,28 +1024,17 @@ subroutine find_sigII(hi, ci, str_t, str_s, sigII, G, CS)
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     strength(i,j) = (hi(i,j)*ci(i,j)) * CS%p0*exp(-CS%c0*(1-ci(i,j)))
-!     mi(i,j) = hi(i,j)*ci(i,j)
   enddo ; enddo
 
-!  h_neglect3 = (H_subroundoff)**3
-!  h_neglect4 = (H_subroundoff)**4
   do J=jsc-1,jec ; do I=isc-1,iec
-    !   Determine an appropriately averaged mass on vorticity-points. The following
-    ! expression for mi_avg is mi when the volumes are all equal, and goes to 4
-    ! times the smallest volumes averaged onto the 4 adjacent velocity points.
-    ! It  comes from taking the harmonic means of the harmonic means of the
-    ! arithmetic mean volumes at the velocity points.
-!    huq2 = 0.25 * (mi(i,j) + mi(i+1,j)) * (mi(i,j+1) + mi(i+1,j+1))
-!    hvq2 = 0.25 * (mi(i,j) + mi(i,j+1)) * (mi(i+1,j) + mi(i+1,j+1))
-!    mi_avg = 8.0 * huq2 * hvq2 / (h_neglect3 + (huq2 + hvq2) * &
-!               ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j))))
-!    mi_rat = 32.0 * huq2 * hvq2 / (h_neglect4 + (huq2 + hvq2) * &
-!               ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j)))**2)
-
-    strength_sum = (strength(i+1,j+1) + strength(i,j)) + &
-                   (strength(i+1,j) + strength(i,j+1))
     str_s_ss(I,J) = 0.0
-    if (strength_sum > 0.0) str_s_ss(I,J) = str_s(I,J) / strength_sum
+    sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+               (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+    if (sum_area > 0.0) then
+      strength_sum = (G%areaT(i,j)*strength(i,j) + G%areaT(i+1,j+1)*strength(i+1,j+1)) + &
+                     (G%areaT(i+1,j)*strength(i+1,j) + G%areaT(i,j+1)*strength(i,j+1))
+      if (strength_sum > 0.0) str_s_ss(I,J) = str_s(I,J) * sum_area / strength_sum
+    endif
   enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
@@ -1054,9 +1042,9 @@ subroutine find_sigII(hi, ci, str_t, str_s, sigII, G, CS)
 
     ! This distributes str_s according to the strength of the neighboring cells.
     if (strength(i,j) > 0.0) &
-      sigII(i,j) = sqrt((str_t(i,j)/strength(i,j))**2 + 4.0 * &
-                        ((str_s_ss(I,J)**2 + str_s_ss(I-1,J-1)**2) + &
-                         (str_s_ss(I-1,J)**2 + str_s_ss(I,J-1)**2)) )
+      sigII(i,j) = sqrt((2.0*str_t(i,j)/strength(i,j))**2 + &
+                        (0.5*((str_s_ss(I,J) + str_s_ss(I-1,J-1)) + &
+                              (str_s_ss(I-1,J) + str_s_ss(I,J-1))))**2 )
   enddo ; enddo
 
 end subroutine find_sigII
