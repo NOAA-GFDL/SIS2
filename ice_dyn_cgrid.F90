@@ -339,7 +339,6 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     mi, &       ! Total snow and ice mass per unit area, in kg m-2.
     pres_ice, & ! The ice internal pressure, in N/kg.
     zeta, &     ! The ice bulk viscosity, in ???
-    rescale, &  ! An amount by which to decrease the initial stresses, ND.
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
     del_sh_min, &   ! The minimum value of del_sh that is used in the calculation
@@ -374,8 +373,6 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     mi_ratio_A_q, & ! A ratio of the masses interpolated to the faces around a
              ! vorticity point that ranges between (4 mi_min/mi_max) and 1,
              ! divided by the sum of the ocean areas around a point, in m-2.
-    str_s_pres, & ! A ratio of the shearing stress to the sum of the 4 internal
-             ! ice pressures aroung a point, in ???.
     q, &     ! A potential-vorticity-like field for the ice, the Coriolis
              ! parameter divided by a spatially averaged mass per unit area,
              ! in s-1 m2 kg-1.
@@ -399,6 +396,9 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
                       ! to a vorticity point on the coast, in kg m-2.
   real :: stress_mag  ! The magnitude of the stress at a point.
+  real :: str_d_q     ! CS%str_d interpolated to a vorticity point, in Pa m.
+  real :: str_t_q     ! CS%str_t interpolated to a vorticity point, in Pa m.
+  real :: rescale_str ! A factor by which to rescale the internal stresses, ND.
   real :: pr_vol      ! The internal ice pressure per unit volume, in Pa.
   real :: pres_sum    ! The sum of the internal ice pressures aroung a point, in Pa.
   real :: pres_avg    ! The average of the internal ice pressures around a point, in Pa.
@@ -504,34 +504,60 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   ! Ensure that the input stresses are not larger than could be justified by
   ! the ice pressure now, as the ice might have melted or been advected away
   ! during the thermodynamic and transport phases.
-  !   Perhaps this rescaling should be done for each component separately?
-! rescale(:,:) = 1.0
-! do J=jsc-1,jec ; do I=isc-1,iec
-!   pres_sum = (pres_ice(i+1,j+1) + pres_ice(i,j)) + &
-!              (pres_ice(i+1,j) + pres_ice(i,j+1))
-!   str_s_pres(I,J) = 0.0
-!   if (pres_sum > 0.0) str_s_pres(I,J) = CS%str_s(I,J) / pres_sum
-! enddo ; enddo
-! do j=jsc,jec ; do i=isc,iec
-!   ! Move the stress toward the yield curve, but do not increase the (negative)
-!   ! magnitude of str_d.
-!   stress_mag = sqrt((min(0.0,CS%str_d(i,j) + pres_ice(i,j)))**2 + EC2 * &
-!                     (CS%str_t(i,j)**2 + 4.0 * pres_ice(i,j)**2 * &
-!                     ((str_s_pres(I,J)**2 + str_s_pres(I-1,J-1)**2) + &
-!                      (str_s_pres(I-1,J)**2 + str_s_pres(I,J-1)**2)) ) )
-!   if ((stress_mag > pres_ice(i,j)) .and. G%Lmask2dT(i,j)) &
-!     rescale(i,j) = pres_ice(i,j) / stress_mag
-! enddo ; enddo
-! call pass_var(rescale, G%Domain)
-! do j=jsc-1,jec+1 ; do i=isc-1,iec+1 ; if (rescale(i,j) < 1.0) then
-!   CS%str_d(i,j) = CS%str_d(i,j) * rescale(i,j)
-!   CS%str_t(i,j) = CS%str_t(i,j) * rescale(i,j)
-! endif ; enddo ; enddo
-! do J=jsc-1,jec ; do I=isc-1,iec
-!   min_rescale = min(rescale(i,j), rescale(i+1,j), rescale(i,j+1), rescale(i+1,j+1))
-!   if (min_rescale < 1.0) CS%str_s(I,J) = CS%str_s(I,J) * min_rescale
-! enddo ; enddo
-  !   Perhaps this rescaling should be done for each component separately?
+ 
+!    This commented out version seems to work, but is not obviously better than
+! treating each component separately, and the later is simpler.
+!  do J=jsc-1,jec ; do I=isc-1,iec
+!    ! Rescale str_s based on interpolated values of str_d and str_t, which works
+!    ! because the ice strengths are also interpolated.
+!    if (CS%weak_coast_stress) then
+!      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+!    else
+!      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+!                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+!    endif
+!    if (sum_area > 0.0) then
+!      pres_avg = ((G%areaT(i,j)*pres_ice(i,j) + G%areaT(i+1,j+1)*pres_ice(i+1,j+1)) + &
+!                  (G%areaT(i+1,j)*pres_ice(i+1,j) + G%areaT(i,j+1)*pres_ice(i,j+1))) / &
+!                  sum_area
+!      if (pres_avg <= 0.0) then
+!        CS%str_s(I,J) = 0.0
+!      else
+!        str_d_q = 0.25 * ((CS%str_d(i,j) + CS%str_d(i+1,j+1)) + &
+!                          (CS%str_d(i+1,j) + CS%str_d(i,j+1)))
+!        str_t_q = 0.25 * ((CS%str_t(i,j) + CS%str_t(i+1,j+1)) + &
+!                          (CS%str_t(i+1,j) + CS%str_t(i,j+1)))
+!        ! The factor of 2 here arises because of the definitions of the str_#.
+!        stress_mag = 2.0 * sqrt(min(0.0, str_d_q + 0.5*pres_avg)**2 + &
+!                                EC2 * (CS%str_s(I,J)**2 + str_t_q**2))
+!        if ((stress_mag > pres_avg) .and. G%Lmask2dBu(I,j)) &
+!          CS%str_s(I,J) = CS%str_s(I,J) * (pres_avg / stress_mag)
+!      endif
+!    endif   
+!  enddo ; enddo
+
+!  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+!    ! Rescale str_d and str_t without regard to the values of str_s.
+!    if (pres_ice(i,j) <= 0.0) then
+!      CS%str_d(i,j) = 0.0 ; CS%str_t(i,j) = 0.0
+!    elseif (CS%str_d(i,j) < -0.5*pres_ice(i,j)) then
+!    ! The factor of 2 here arises because of the definitions of str_d and str_t.
+!      stress_mag = 2.0 * sqrt((CS%str_d(i,j) + 0.5*pres_ice(i,j))**2 + &
+!                              EC2 * CS%str_t(i,j)**2)
+!      if (stress_mag > pres_ice(i,j)) then
+!        rescale_str = pres_ice(i,j) / stress_mag
+!        CS%str_d(i,j) = rescale_str * (CS%str_d(i,j) + 0.5*pres_ice(i,j)) - &
+!                        0.5*pres_ice(i,j)
+!        CS%str_t(i,j) = CS%str_t(i,j) * rescale_str
+!      endif
+!    elseif (CS%EC*abs(CS%str_t(i,j)) > 0.5*pres_ice(i,j)) then
+!      ! Only reduce excessively large values of str_t, but do not increase the
+!      ! magnitude of str_d.
+!      CS%str_t(i,j) = sign(I_2EC*pres_ice(i,j), CS%str_t(i,j))
+!    endif
+!  enddo ; enddo
+
+  ! The rescaling here is done separately for each component.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     if (CS%str_d(i,j) < -pres_ice(i,j)) CS%str_d(i,j) = -pres_ice(i,j)
     if (CS%EC*CS%str_t(i,j) > 0.5*pres_ice(i,j)) CS%str_t(i,j) = I_2EC*pres_ice(i,j)
