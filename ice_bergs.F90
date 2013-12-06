@@ -842,24 +842,31 @@ end function bilin
 
 ! ##############################################################################
 
-subroutine icebergs_run(bergs, time, calving, uo, vo, ui, vi, tauxa, tauya, ssh, sst, calving_hflx, cn, hi)
+subroutine icebergs_run(bergs, time, calving, uo, vo, ui, vi, tauxa, tauya, &
+                        ssh, sst, calving_hflx, cn, hi, stagger)
 ! Arguments
 type(icebergs), pointer :: bergs
 type(time_type), intent(in) :: time
 real, dimension(:,:), intent(inout) :: calving, calving_hflx
 real, dimension(:,:), intent(in) :: uo, vo, ui, vi, tauxa, tauya, ssh, sst, cn, hi
-! Local variables
-integer :: iyr, imon, iday, ihr, imin, isec, k
-type(icebergs_gridded), pointer :: grd
-logical :: lerr, sample_traj, lbudget, lverbose
-real :: unused_calving, tmpsum, grdd_berg_mass, grdd_bergy_mass
-integer :: stderrunit
+integer,    optional, intent(in) :: stagger
+
+  ! Local variables
+  integer :: iyr, imon, iday, ihr, imin, isec, k
+  integer :: i, j, i2, j2, i_off, j_off
+  type(icebergs_gridded), pointer :: grd
+  logical :: lerr, sample_traj, lbudget, lverbose
+  real :: unused_calving, tmpsum, grdd_berg_mass, grdd_bergy_mass
+  integer :: stderrunit
+  integer :: vel_stagger
 
   ! Get the stderr unit number
   stderrunit = stderr()
 
   call mpp_clock_begin(bergs%clock)
   call mpp_clock_begin(bergs%clock_int)
+
+  vel_stagger = BGRID_NE ; if (present(stagger)) vel_stagger = stagger
 
   ! For convenience
   grd=>bergs%grd
@@ -916,17 +923,43 @@ integer :: stderrunit
   tmpsum=sum( grd%calving_hflx(grd%isc:grd%iec,grd%jsc:grd%jec)*grd%area(grd%isc:grd%iec,grd%jsc:grd%jec) )
   bergs%net_incoming_calving_heat=bergs%net_incoming_calving_heat+tmpsum*bergs%dt ! Units of J
 
-  ! Copy ocean flow (resides on B grid)
-  grd%uo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1)=uo(:,:)
-  grd%vo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1)=vo(:,:)
+  if (vel_stagger == BGRID_NE) then
+    ! Copy ocean flow, ice flow, and wind stress. All are on B-grid u-points.
+    grd%uo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = uo(:,:)
+    grd%vo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = vo(:,:)
+    call mpp_update_domains(grd%uo, grd%vo, grd%domain, gridtype=BGRID_NE)
+    grd%ui(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = ui(:,:)
+    grd%vi(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = vi(:,:)
+    call mpp_update_domains(grd%ui, grd%vi, grd%domain, gridtype=BGRID_NE)
+    grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec) = tauxa(:,:)
+    grd%va(grd%isc:grd%iec,grd%jsc:grd%jec) = tauya(:,:)
+  elseif (vel_stagger == CGRID_NE) then
+    i_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    j_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
+      ! Interpolate ocean flow, ice flow, and wind stress from C-grid u-points.
+      i2 = i + i_off ; j2 = j + j_off
+      grd%uo(I,J) = 0.5*(uo(I2,j2)+uo(I2,j2+1))
+      grd%ui(I,J) = 0.5*(ui(I2,j2)+ui(I2,j2+1))
+      grd%ua(I,J) = 0.5*(tauxa(I2,j2)+tauxa(I2,j2+1))
+    enddo ; enddo
+    ! The u- and v- points will have different offsets with symmetric memory.
+    i_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    j_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
+      ! Interpolate ocean flow, ice flow, and wind stress from C-grid v-points.
+      i2 = i + i_off ; j2 = j + j_off
+      grd%vo(I,J) = 0.5*(vo(i2,J2)+vo(i2+1,J2))
+      grd%vi(I,J) = 0.5*(vi(i2,J2)+vo(i2+1,J2))
+      grd%va(I,J) = 0.5*(tauya(i2,J2)+tauya(i2+1,J2))
+    enddo ; enddo
+  else
+    call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stagger!', FATAL)
+  endif
+
   call mpp_update_domains(grd%uo, grd%vo, grd%domain, gridtype=BGRID_NE)
-  ! Copy ice flow (resides on B grid)
-  grd%ui(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1)=ui(:,:)
-  grd%vi(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1)=vi(:,:)
   call mpp_update_domains(grd%ui, grd%vi, grd%domain, gridtype=BGRID_NE)
-  ! Copy atmospheric stress (resides on A grid)
-  grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec)=tauxa(:,:) ! Note rough conversion from stress to speed
-  grd%va(grd%isc:grd%iec,grd%jsc:grd%jec)=tauya(:,:) ! Note rough conversion from stress to speed
+
   call invert_tau_for_du(grd%ua, grd%va) ! Note rough conversion from stress to speed
  !grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec)=sign(sqrt(abs(tauxa(:,:))/0.01),tauxa(:,:))  ! Note rough conversion from stress to speed
  !grd%va(grd%isc:grd%iec,grd%jsc:grd%jec)=sign(sqrt(abs(tauya(:,:))/0.01),tauya(:,:))  ! Note rough conversion from stress to speed
