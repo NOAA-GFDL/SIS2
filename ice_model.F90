@@ -127,41 +127,6 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 end subroutine update_ice_model_slow_dn
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! zero_top_quantities - zero fluxes to begin summing in ice fast physics.      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine zero_top_quantities ( Ice, IST )
-  type(ice_data_type),  intent(inout)  :: Ice
-  type(ice_state_type), intent(inout) :: IST
-
-  integer :: n, m
-
-  IST%avg_count = 0
-
-  IST%flux_u_top(:,:,:) = 0.0
-  IST%flux_v_top(:,:,:) = 0.0
-
-  IST%flux_t_top(:,:,:)          = 0.0
-  IST%flux_q_top(:,:,:)          = 0.0
-  IST%flux_lw_top(:,:,:)         = 0.0
-  IST%flux_lh_top(:,:,:)         = 0.0
-  IST%flux_sw_nir_dir_top(:,:,:) = 0.0
-  IST%flux_sw_nir_dif_top(:,:,:) = 0.0
-  IST%flux_sw_vis_dir_top(:,:,:) = 0.0
-  IST%flux_sw_vis_dif_top(:,:,:) = 0.0
-  IST%lprec_top(:,:,:)           = 0.0
-  IST%fprec_top(:,:,:)           = 0.0
-  do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
-    do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
-      Ice%ocean_fluxes_top%bc(n)%field(m)%values(:,:,:) = 0.0
-    enddo  !} m
-  enddo  !} n
-
-  IST%lwdn(:,:) = 0.0
-  IST%swdn(:,:) = 0.0
-
-end subroutine zero_top_quantities
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics.     !
 !   Nothing here will be exposed to other modules.                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -185,7 +150,19 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
   i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
   j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
-  if (IST%avg_count == 0) call zero_top_quantities (Ice, IST)
+  if (IST%avg_count == 0) then
+    ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
+    IST%flux_u_top(:,:,:) = 0.0 ; IST%flux_v_top(:,:,:) = 0.0
+    IST%lwdn(:,:) = 0.0 ; IST%swdn(:,:) = 0.0
+    IST%flux_t_top(:,:,:) = 0.0 ; IST%flux_q_top(:,:,:) = 0.0
+    IST%flux_lw_top(:,:,:) = 0.0 ; IST%flux_lh_top(:,:,:) = 0.0
+    IST%flux_sw_nir_dir_top(:,:,:) = 0.0 ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0
+    IST%flux_sw_vis_dir_top(:,:,:) = 0.0 ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0
+    IST%lprec_top(:,:,:) = 0.0 ; IST%fprec_top(:,:,:) = 0.0
+    do n=1,Ice%ocean_fluxes_top%num_bcs ; do m=1,Ice%ocean_fluxes_top%bc(n)%num_fields
+      Ice%ocean_fluxes_top%bc(n)%field(m)%values(:,:,:) = 0.0
+    enddo ; enddo
+  endif
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%flux_u_top(i,j,k)  = IST%flux_u_top(i,j,k)  + flux_u(i,j,k)
@@ -438,7 +415,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock1)
-  call ice_bottom_to_ice_top(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
+  call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
                              Ocean_boundary%frazil, Ocean_boundary, Ice%G, &
                              Ocean_boundary%s, Ocean_boundary%sea_level )
   call mpp_clock_end(iceClock1)
@@ -447,9 +424,9 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 end subroutine update_ice_model_slow_up
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_bottom_to_ice_top - prepare surface state for atmosphere fast physics    !
+! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
+subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
                                  frazil_ice_bot, OIB, G, s_surf_ice_bot, sea_lev_ice_bot )
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
@@ -468,9 +445,8 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real, parameter                  :: LI = hlf
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-  !
+ 
   ! pass ocean state through ice on first partition
-  !
   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
@@ -511,23 +487,20 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   IST%first_time = .false.
 
   if (IST%debug) then
-    call IST_chksum("Start ice_bottom_to_ice_top", IST, G)
-    call Ice_public_type_chksum("Start ice_bottom_to_ice_top", Ice)
+    call IST_chksum("Start set_ice_surface_state", IST, G)
+    call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
     call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT u_surf_ice_bot")
     call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT v_surf_ice_bot")
   endif
 
   do j=jsc,jec ; do i=isc,iec
     sst(i,j) = IST%t_surf(i,j,0) - Tfreeze
-  enddo ; enddo
 
-  do j=jsc,jec ; do i=isc,iec
     IST%s_surf(i,j) = s_surf_ice_bot(i,j)
     IST%frazil(i,j) = frazil_ice_bot(i,j)
     IST%sea_lev(i,j) = sea_lev_ice_bot(i,j)
   enddo ; enddo
 
-  call pass_var(IST%sea_lev, G%Domain)
 
 ! Transfer the ocean state for extra tracer fluxes.
   do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
@@ -614,6 +587,8 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
   endif
 
+  call pass_var(IST%sea_lev, G%Domain)
+
   if (IST%debug) then
     call chksum(IST%u_ocn(isc:iec,jsc:jec), "Post-pass IST%u_ocn(0,0)")
     call chksum(IST%v_ocn(isc:iec,jsc:jec), "Post-pass IST%v_ocn(0,0)")
@@ -631,7 +606,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
   if (IST%Cgrid_dyn) then
-!    call SIS_error(FATAL, "ice_bottom_to_ice_top: Cgrid dynamics are not yet available.")
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       if (G%mask2dT(i,j) > 0.5 ) then
         Ice%u_surf(i2,j2,1) = 0.5*(IST%u_ocn_C(I,j) + IST%u_ocn_C(I-1,j))
@@ -686,7 +660,6 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     Ice%u_surf(i2,j2,k2) =  u*G%cos_rot(i,j)+v*G%sin_rot(i,j)
     Ice%v_surf(i2,j2,k2) =  v*G%cos_rot(i,j)-u*G%sin_rot(i,j)
   enddo ; enddo ; enddo
-
   do k2=3,ncat+1
     Ice%u_surf(:,:,k2) = Ice%u_surf(:,:,2)  ! same ice flow on all ice partitions
     Ice%v_surf(:,:,k2) = Ice%v_surf(:,:,2)  !
@@ -712,11 +685,11 @@ subroutine ice_bottom_to_ice_top(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   call disable_SIS_averaging(IST%diag)
 
   if (IST%debug) then
-    call IST_chksum("End ice_bottom_to_ice_top", IST, G)
-    call Ice_public_type_chksum("End ice_bottom_to_ice_top", Ice)
+    call IST_chksum("End set_ice_surface_state", IST, G)
+    call Ice_public_type_chksum("End set_ice_surface_state", Ice)
   endif
 
-end subroutine ice_bottom_to_ice_top
+end subroutine set_ice_surface_state
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_fast - records fluxes (in Ice) and calculates ice temp. on  !
@@ -1041,10 +1014,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%do_icebergs) &
     call icebergs_run( Ice%icebergs, IST%Time, &
             Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
-            IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
+            IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), &
+            IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
             Ice%flux_u(:,:), Ice%flux_v(:,:), &
             IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            Ice%calving_hflx(:,:), tmp1, hi_avg)
+            Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=BGRID_NE)
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
@@ -1166,10 +1140,13 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                     part_size_uv, IST%diag, G=G)
     if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
                                     part_size_uv, IST%diag, G=G)
+    if (IST%id_faix_C>0) call post_data(IST%id_faix_C, wind_stress_Cu, IST%diag)
+    if (IST%id_faiy_C>0) call post_data(IST%id_faiy_C, wind_stress_Cv, IST%diag)
 
+    !### See whether this is necessary.
     do J=jsc-1,jec ; do I=isc-1,iec
-      IST%u_ice(I,J) = G%mask2dBu(I,J) * &
-             0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I,j+1)) ! stress of ice on ocean
+      IST%u_ice(I,J) = G%mask2dBu(I,J) * &   ! Ice velocity as reported to ocean.
+             0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I,j+1))
       IST%v_ice(I,J) = G%mask2dBu(I,J) * &
              0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i+1,J))
     enddo ; enddo
@@ -1237,8 +1214,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !
     ! Dynamics diagnostics
     !
-    if (IST%id_faix_C>0) call post_data(IST%id_faix_C, wind_stress_x, IST%diag)
-    if (IST%id_faiy_C>0) call post_data(IST%id_faiy_C, wind_stress_y, IST%diag)
+    if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
+                                    part_size_uv, IST%diag, G=G)
+    if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
+                                    part_size_uv, IST%diag, G=G)
 
     do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
       IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
@@ -1956,7 +1935,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   IST%Time_step_fast = Time_step_fast
   IST%Time_step_slow = Time_step_slow
 
-  IST%avg_count      = 0
+  IST%avg_count = 0
 
   !
   ! read restart
