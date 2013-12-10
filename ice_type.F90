@@ -6,6 +6,7 @@ module ice_type_mod
 
 use mpp_mod,          only: mpp_sum, stdout, input_nml_file
 use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
+use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
 use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
@@ -224,51 +225,70 @@ type ice_data_type !  ice_public_type
      logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
   logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Used for k-size only?)
 
-  !### ADD COMMENTS DESCRIBING EACH FIELD.
-  real, pointer, dimension(:,:,:) :: part_size      =>NULL()
-  real, pointer, dimension(:,:,:) :: albedo         =>NULL()
-  real, pointer, dimension(:,:,:) :: albedo_vis_dir =>NULL()
-  real, pointer, dimension(:,:,:) :: albedo_nir_dir =>NULL()
-  real, pointer, dimension(:,:,:) :: albedo_vis_dif =>NULL()
-  real, pointer, dimension(:,:,:) :: albedo_nir_dif =>NULL()
-  real, pointer, dimension(:,:,:) :: rough_mom      =>NULL()
-  real, pointer, dimension(:,:,:) :: rough_heat     =>NULL()
-  real, pointer, dimension(:,:,:) :: rough_moist    =>NULL()
-  real, pointer, dimension(:,:,:) :: t_surf         =>NULL()
-  real, pointer, dimension(:,:,:) :: u_surf         =>NULL()
-  real, pointer, dimension(:,:,:) :: v_surf         =>NULL()
+  ! These fields are used to provide information about the ice surface to the
+  ! atmosphere, and contain separate values for each ice thickness category.
+  real, pointer, dimension(:,:,:) :: &
+    !### ADD COMMENTS DESCRIBING EACH FIELD.
+    part_size => NULL(), &
+    albedo    => NULL(), &
+    albedo_vis_dir => NULL(), &
+    albedo_nir_dir => NULL(), &
+    albedo_vis_dif => NULL(), &
+    albedo_nir_dif => NULL(), &
+    rough_mom   => NULL(), &
+    rough_heat  => NULL(), &
+    rough_moist => NULL(), &
+    t_surf      => NULL(), &
+    u_surf      => NULL(), &
+    v_surf      => NULL()
   real, pointer, dimension(:,:)   :: s_surf         =>NULL()
 
   ! These arrays will be used to set the forcing for the ocean.
-  real, pointer, dimension(:,:) :: flux_u       =>NULL()
-  real, pointer, dimension(:,:) :: flux_v       =>NULL()
-  real, pointer, dimension(:,:) :: flux_t       =>NULL()
-  real, pointer, dimension(:,:) :: flux_q       =>NULL()
-  real, pointer, dimension(:,:) :: flux_lw      =>NULL()
-  real, pointer, dimension(:,:) :: flux_sw_vis_dir =>NULL()
-  real, pointer, dimension(:,:) :: flux_sw_vis_dif =>NULL()
-  real, pointer, dimension(:,:) :: flux_sw_nir_dir =>NULL()
-  real, pointer, dimension(:,:) :: flux_sw_nir_dif =>NULL()
-  real, pointer, dimension(:,:) :: flux_lh      =>NULL()
-  real, pointer, dimension(:,:) :: lprec        =>NULL()
-  real, pointer, dimension(:,:) :: fprec        =>NULL()
-  real, pointer, dimension(:,:) :: p_surf       =>NULL()
-  real, pointer, dimension(:,:) :: runoff       =>NULL()
-  real, pointer, dimension(:,:) :: calving      =>NULL()
-  real, pointer, dimension(:,:) :: runoff_hflx  =>NULL()
-  real, pointer, dimension(:,:) :: calving_hflx =>NULL()
-  real, pointer, dimension(:,:) :: flux_salt    =>NULL()
+  real, pointer, dimension(:,:) :: &
+    flux_u => NULL(), &   ! The flux of x-momentum into the ocean, in Pa.
+    flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
+    flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
+    flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
+    flux_lw => NULL(), &  ! The sensible heat flux out of the ocena, in W m-2.
+    flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
+    flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
+    flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all 
+    flux_sw_nir_dif => NULL(), &  ! in W m-2.
+    flux_lh => NULL(), &  ! The latent heat flux out of the ocean, in W m-2.
+    lprec => NULL(), &    ! The liquid precipitation flux into the ocean, in kg m-2.
+    fprec => NULL(), &    ! The frozen precipitation flux into the ocean, in kg m-2.
+    p_surf => NULL(), &   ! The pressure at the ocean surface, in Pa.  This may
+                          ! or may not include atmospheric pressure.
+    runoff => NULL(), &   ! Liquid runoff into the ocean, in kg m-2.
+    calving => NULL(), &  ! Calving of ice or runoff of frozen fresh water into
+                          ! the ocean, in kg m-2.
+    runoff_hflx => NULL(), &  ! The heat flux associated with runoff, based on
+                              ! the temperature difference relative to a
+                              ! reference temperature, in ???.
+    calving_hflx => NULL(), & ! The heat flux associated with calving, based on
+                              ! the temperature difference relative to a
+                              ! reference temperature, in ???.
+    flux_salt  => NULL()  ! The flux of salt out of the ocean in kg m-2.
 
-  real, pointer, dimension(:,:)   :: area         =>NULL()
-  real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
+  real, pointer, dimension(:,:) :: area => NULL()
+  real, pointer, dimension(:,:) :: mi   => NULL() ! The total ice+snow mass, in kg m-2.
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
 			       ! removed, if the information on ice thickness can be derived from 
 			       ! eventually from h_ice outside the ice module.
-  integer, dimension(3)              :: axes
-  type(coupler_3d_bc_type)           :: ocean_fields       ! array of fields used for additional tracers
-  type(coupler_2d_bc_type)           :: ocean_fluxes       ! array of fluxes used for additional tracers
-  type(coupler_3d_bc_type)           :: ocean_fluxes_top   ! array of fluxes for averaging
+  integer, dimension(3)    :: axes
+  type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
+  type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
+  type(coupler_3d_bc_type) :: ocean_fluxes_top   ! array of fluxes for averaging
+  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
+                    ! points of the two wind stress components. Valid entries
+                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
+                    ! corresponding to the community-standard Arakawa notation. 
+                    ! (These are named integers taken from mpp_parameter_mod.)
+                    ! Following SIS, this is BGRID_NE by default when the sea
+                    ! ice is initialized, but here it is set to -999 so that a
+                    ! global max across ice and non-ice processors can be used
+                    ! to determine its value.
 
       type(icebergs), pointer     :: icebergs => NULL()
   type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
@@ -289,6 +309,7 @@ type :: ocean_ice_boundary_type
   real, dimension(:,:),   pointer :: frazil    =>NULL()
   real, dimension(:,:),   pointer :: sea_level =>NULL()
   real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
+  integer                         :: stagger = BGRID_NE
   integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
   type(coupler_2d_bc_type)        :: fields     ! array of fields used for additional tracers
 end type 
@@ -679,7 +700,7 @@ end subroutine ice_print_budget
 ! <DESCRIPTION>
 !  Write out restart files registered through register_restart_file
 ! </DESCRIPTION>
-subroutine ice_model_restart(time_stamp, Ice)
+subroutine ice_model_restart(Ice, time_stamp)
   type(ice_data_type), intent(inout), optional :: Ice
   character(len=*),    intent(in), optional :: time_stamp
 

@@ -56,6 +56,7 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
+use MOM_string_functions, only : uppercase
 
 use fms_mod, only: file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state
@@ -374,10 +375,22 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, part_size_uv, G)
     Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
   enddo ; enddo
 
+  if (Ice%flux_uv_stagger == AGRID) then
+    call SIS_error(FATAL, "ice_top_to_ice_bottom: AGRID stresses are not yet implemented.")
+  elseif (Ice%flux_uv_stagger == BGRID_NE) then
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1  ! Use these to correct for indexing differences.
+      Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(I,J,k) * part_size_uv(I,J,k)
+      Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(I,J,k) * part_size_uv(I,J,k)
+    enddo ; enddo ; enddo
+  elseif (Ice%flux_uv_stagger == CGRID_NE) then
+    call SIS_error(FATAL, "ice_top_to_ice_bottom: CGRID stresses are not yet implemented.")
+  else
+    call SIS_error(FATAL, "ice_top_to_ice_bottom: Unrecognized flux_uv_stagger.")
+  endif
+
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1  ! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(I,J,k) * part_size_uv(I,J,k)
-    Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(I,J,k) * part_size_uv(I,J,k)
     Ice%flux_t(i2,j2) = Ice%flux_t(i2,j2) + IST%flux_t_top(i,j,k) * part_size(i,j,k)
     Ice%flux_q(i2,j2) = Ice%flux_q(i2,j2) + IST%flux_q_top(i,j,k) * part_size(i,j,k)
     Ice%flux_sw_nir_dir(i2,j2) = Ice%flux_sw_nir_dir(i2,j2) + &
@@ -547,44 +560,73 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   endif ; enddo ; enddo ; enddo
 
-  if (G%symmetric) then  ! This is a place-holder until the Tikal release.
-    u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-    do j=jsc,jec ; do i=isc,iec
-      u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-    enddo ; enddo
-    call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+  if (Ice%flux_uv_stagger == AGRID) then
+    call SIS_error(FATAL, "set_ice_surface_state: AGRID ocean velocities are not yet implemented.")
+  elseif (OIB%stagger == BGRID_NE) then
+    if (G%symmetric) then  ! This is a place-holder until the Tikal release.
+      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+      do j=jsc,jec ; do i=isc,iec
+        u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+      enddo ; enddo
+      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
 
-    ! The under-ice current is needed for the water drag term.
-    do J=jsc-1,jec ; do I=isc-1,iec
-      IST%u_ocn(I,J) = u_nonsym(I,J) ; IST%v_ocn(I,J) = v_nonsym(I,J)
-    enddo ; enddo
+      ! The under-ice current is needed for the water drag term.
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IST%u_ocn(I,J) = u_nonsym(I,J) ; IST%v_ocn(I,J) = v_nonsym(I,J)
+      enddo ; enddo
+    else
+      do J=jsc,jec ; do I=isc,iec
+        IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+        IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+      enddo ; enddo
+    endif
+    !   This will be used with Tikal and later shared code.
+    ! if (G%symmetric) &
+    !   call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+
+    call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+
+    if (IST%Cgrid_dyn) then
+      do j=jsc,jec ; do I=isc-1,iec
+        IST%u_ocn_C(I,j) = 0.5*(IST%u_ocn(I,J) + IST%u_ocn(I,J-1))
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        IST%v_ocn_C(i,J) = 0.5*(IST%v_ocn(I,J) + IST%v_ocn(I-1,J))
+      enddo ; enddo
+      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    endif
+  elseif (OIB%stagger == CGRID_NE) then
+    call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities are not yet implemented.")
+
+    if (IST%Cgrid_dyn) then
+      if (G%symmetric) then  ! This is a place-holder until the Tikal release.
+        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+        do j=jsc,jec ; do i=isc,iec
+          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+        enddo ; enddo
+        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
+
+        do j=jsc,jec ; do I=isc-1,iec ; IST%u_ocn_C(I,j) = u_nonsym(I,j) ; enddo ; enddo
+        do J=jsc-1,jec ; do i=isc,iec ; IST%v_ocn_C(i,J) = v_nonsym(I,j) ; enddo ; enddo
+      else
+        do j=jsc,jec ; do I=isc,iec
+          IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
+        enddo ; enddo
+        do J=jsc,jec ; do i=isc,iec
+          IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
+        enddo ; enddo
+      endif
+
+      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    !   This will be used with Tikal and later shared code.
+    ! if (G%symmetric) &
+    !   call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    else
+      call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities "//&
+                     "are not yet implemented with BGRID sea-ice dynamics.")
+    endif
   else
-    do j=jsc,jec ; do i=isc,iec
-      IST%u_ocn(i,j) = u_surf_ice_bot(i,j) ! need under-ice current
-      IST%v_ocn(i,j) = v_surf_ice_bot(i,j) ! for water drag term
-    enddo ; enddo
-  endif
-  !   This will be used with Tikal and later shared code.
-  ! if (G%symmetric) &
-  !   call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
-
-  if (IST%debug) then
-    call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass u_surf_ice_bot")
-    call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Pre-pass v_surf_ice_bot")
-    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Pre-pass IST%u_ocn(0,0)")
-    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Pre-pass IST%v_ocn(0,0)")
-  endif
-
-  call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
-
-  if (IST%Cgrid_dyn) then
-    do j=jsc,jec ; do I=isc-1,iec
-      IST%u_ocn_C(I,j) = 0.5*(IST%u_ocn(I,J) + IST%u_ocn(I,J-1))
-    enddo ; enddo
-    do J=jsc-1,jec ; do i=isc,iec
-      IST%v_ocn_C(i,J) = 0.5*(IST%v_ocn(I,J) + IST%v_ocn(I-1,J))
-    enddo ; enddo
-    call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    call SIS_error(FATAL, "ice_top_to_ice_bottom: Unrecognized OIB%stagger.")
   endif
 
   call pass_var(IST%sea_lev, G%Domain)
@@ -1011,14 +1053,25 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   tmp1(:,:) = 1.-max(1.-sum(IST%part_size(:,:,1:ncat),dim=3),0.0)
   call get_avg(IST%h_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
-  if (IST%do_icebergs) &
-    call icebergs_run( Ice%icebergs, IST%Time, &
-            Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
-            IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), &
-            IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
-            Ice%flux_u(:,:), Ice%flux_v(:,:), &
-            IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=BGRID_NE)
+  if (IST%do_icebergs) then
+!   if (IST%Cgrid_dyn) then
+!   call icebergs_run( Ice%icebergs, IST%Time, &
+!           Ice%calving(:,:), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+!           IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+!           IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
+!           Ice%flux_u(:,:), Ice%flux_v(:,:), &
+!           IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+!           Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=CGRID_NE)
+!   else
+      call icebergs_run( Ice%icebergs, IST%Time, &
+              Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
+              Ice%flux_u(:,:), Ice%flux_v(:,:), &
+              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=BGRID_NE)
+!   endif
+  endif
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
@@ -1741,7 +1794,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
-
+  character(len=48)  :: stagger
 
   if (associated(Ice%Ice_state)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -1768,6 +1821,17 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  default=.false.)
   call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+
+  call get_param(param_file, mod, "ICE_OCEAN_STRESS_STAGGER", stagger, &
+                 "A case-insensitive character string to indicate the \n"//&
+                 "staggering of the stress field on the ocean that is \n"//&
+                 "returned to the coupler.  Valid values include \n"//&
+                 "'A', 'B', or 'C'.", default="B") !### CHANGE THE DEFAULT TO FOLLOW CGRID_ICE_DYNAMICS.
+  if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
+  elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
+  elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
+  else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "// &
+                        trim(stagger)//" is invalid.") ; endif
 
   call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
