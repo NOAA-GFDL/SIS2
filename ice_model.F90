@@ -52,7 +52,7 @@ use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : Get_SIS_input
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
-! use MOM_domains,       only : fill_symmetric_edges
+use MOM_domains,       only : fill_symmetric_edges
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
@@ -561,7 +561,32 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   endif ; enddo ; enddo ; enddo
 
   if (Ice%flux_uv_stagger == AGRID) then
-    call SIS_error(FATAL, "set_ice_surface_state: AGRID ocean velocities are not yet implemented.")
+    u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec
+      u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+    enddo ; enddo
+    call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=AGRID)
+
+    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IST%u_ocn(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
+                               (u_nonsym(i+1,j) + u_nonsym(i,j+1)))
+        IST%v_ocn(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
+                               (v_nonsym(i+1,j) + v_nonsym(i,j+1)))
+      enddo ; enddo
+      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+    endif
+
+    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
+      do j=jsc,jec ; do I=isc-1,iec
+        IST%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        IST%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
+      enddo ; enddo
+      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    endif
+
   elseif (OIB%stagger == BGRID_NE) then
     if (G%symmetric) then  ! This is a place-holder until the Tikal release.
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
@@ -580,9 +605,14 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
         IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
       enddo ; enddo
     endif
-    !   This will be used with Tikal and later shared code.
-    ! if (G%symmetric) &
-    !   call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+ !   This will be used with Tikal and later shared code.  However, it does
+ ! not appear to work properly yet.
+ !   do J=jsc,jec ; do I=isc,iec
+ !     IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+ !     IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+ !   enddo ; enddo
+ !   if (G%symmetric) &
+ !     call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
 
     call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
 
@@ -596,7 +626,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
     endif
   elseif (OIB%stagger == CGRID_NE) then
-    call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities are not yet implemented.")
+!###  call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities are not yet implemented.")
 
     if (IST%Cgrid_dyn) then
       if (G%symmetric) then  ! This is a place-holder until the Tikal release.
@@ -616,14 +646,37 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
           IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
         enddo ; enddo
       endif
+ !     do j=jsc,jec ; do I=isc,iec
+ !       IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
+ !     enddo ; enddo
+ !     do J=jsc,jec ; do i=isc,iec
+ !       IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
+ !     enddo ; enddo
+ !     ! This can only be used with Tikal and later shared code.  However, it does
+ ! not appear to work properly yet.
+ !     if (G%symmetric) &
+ !       call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
-    !   This will be used with Tikal and later shared code.
-    ! if (G%symmetric) &
-    !   call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+
+      if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
+        do J=jsc-1,jec ; do I=isc-1,iec
+          IST%u_ocn(I,J) = 0.5*(IST%u_ocn_C(I,j) + IST%u_ocn_C(I,j+1))
+          IST%v_ocn(I,J) = 0.5*(IST%v_ocn_C(i,J) + IST%v_ocn_C(i+1,J))
+        enddo ; enddo
+        call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+      endif
     else
-      call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities "//&
-                     "are not yet implemented with BGRID sea-ice dynamics.")
+      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+      do j=jsc,jec ; do i=isc,iec
+        u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+      enddo ; enddo
+      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IST%u_ocn(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
+        IST%v_ocn(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
+      enddo ; enddo
+      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
     endif
   else
     call SIS_error(FATAL, "ice_top_to_ice_bottom: Unrecognized OIB%stagger.")
@@ -632,8 +685,14 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   call pass_var(IST%sea_lev, G%Domain)
 
   if (IST%debug) then
-    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Post-pass IST%u_ocn(0,0)")
-    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Post-pass IST%v_ocn(0,0)")
+    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
+      call chksum(IST%u_ocn(isc:iec,jsc:jec), "Post-pass IST%u_ocn(0,0)")
+      call chksum(IST%v_ocn(isc:iec,jsc:jec), "Post-pass IST%v_ocn(0,0)")
+    endif
+    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
+      call chksum(IST%u_ocn_C(isc:iec,jsc:jec), "Post-pass IST%u_ocn_C(0,0)")
+      call chksum(IST%v_ocn_C(isc:iec,jsc:jec), "Post-pass IST%v_ocn_C(0,0)")
+    endif
   endif
 
   ! Copy the surface temperatures into the externally visible data type.

@@ -23,9 +23,10 @@ module ice_dyn_cgrid
 !                                                                              !
 ! C-grid SEA ICE DYNAMICS using ELASTIC-VISCOUS-PLASTIC RHEOLOGY adapted from  !
 ! Hunke and Dukowicz (JPO 1997, H&D hereafter) with some derivation from SIS1  !
-! and with guidance from the C-grid implementation of sea-ice in MITgcm as     !
-! documented in MITgcm user notes by Martin Losch. This code initially written !
-! by Robert Hallberg in 2013.                                                  !
+! and with guidance from the C-grid implementations of sea-ice in MITgcm as    !
+! documented in MITgcm user notes by Martin Losch and in LIM3 by S. Bouillon   !
+! et al. (Ocean Modelling, 2009 & 2013). This code initially written by        !
+! Robert Hallberg in 2013   .                                                  !
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
@@ -67,7 +68,10 @@ type, public :: ice_C_dyn_CS ; private
   real :: Tdamp   ! The damping timescale of the stress tensor components
                   ! toward their equilibrium solution due to the elastic terms,
                   ! in s.
-                              ! kg m-3.
+  real :: del_sh_min_scale = 2.0 ! A scaling factor for the minimum permitted
+                              ! value of minimum shears used in the denominator
+                              ! of the stress equations, nondim.  I suspect that
+                              ! this needs to be greater than 1.
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
@@ -165,6 +169,10 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "ICE_CDRAG_WATER", CS%cdw, &
                  "The drag coefficient between the sea ice and water.", &
                  units="nondim", default=3.24e-3)
+  call get_param(param_file, mod, "ICE_DEL_SH_MIN_SCALE", CS%del_sh_min_scale, &
+                 "A scaling factor for the lower bound on the shear rates \n"//&
+                 "used in the denominator of the stress calculation. This \n"//&
+                 "probably needs to be greater than 1.", units="nondim", default=2.0)
 
   call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
@@ -483,7 +491,6 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   endif
   dt_2Tdamp = dt / (2.0 * Tdamp)
 
-
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     ! Store the total snow and ice mass.
     mi(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
@@ -495,10 +502,11 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
     ! stability of the overall time-stepping for the velocities and stresses.
-    ! Setting a minimum value onf the shear magnitudes is equivalent to setting
+    ! Setting a minimum value of the shear magnitudes is equivalent to setting
     ! a maximum value of the effective lateral viscosities.
-    ! I think that the 4.0 here could be 2.0 and still be stable.  -RWH
-    del_sh_min(i,j) = (4.0 * pr_vol * dt**2) / (Tdamp * CS%Rho_ice * dxharm**2)
+    ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
+    del_sh_min(i,j) = (2.0 * CS%del_sh_min_scale * pr_vol * dt**2) / &
+                      (Tdamp * CS%Rho_ice * dxharm**2)
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
