@@ -411,7 +411,16 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   endif ! Not SIS1_transport.
 
-  ! Consider recalculating part_sz(:,:,0) here.
+  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
+  call pass_var(h_snow, G%Domain, complete=.false.)
+  call pass_var(h_ice, G%Domain, complete=.true.)
+
+  ! Recalculate part_sz(:,:,0) to ensure that the sum of part_sz adds up to 1.
+  part_sz(:,:,0) = 1.0
+  do k=1,G%CatIce ; part_sz(:,:,0) = part_sz(:,:,0) - part_sz(:,:,k) ; enddo
+!  ice_cover(:,:) = 0.0
+!  do k=1,G%CatIce ; ice_cover(:,:) = ice_cover(:,:) + part_sz(:,:,k) ; enddo
+!  part_sz(:,:,0) = 1.0 - ice_cover(:,:)
 
   if (CS%check_conservation) then
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -472,11 +481,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
                         t_ice(i,j,k,4),'cn=',part_sz(i,j,k)
   enddo ; enddo ; enddo
   
-
-  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
-  call pass_var(h_snow, G%Domain, complete=.false.)
-  call pass_var(h_ice, G%Domain, complete=.true.)
-
   if (CS%id_ix_trans>0) call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
   if (CS%id_ustar >0) call post_SIS_data(CS%id_ustar, ustar, CS%diag)

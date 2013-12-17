@@ -1177,8 +1177,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_ice,  IST%part_size(:,:,1:), hi_avg, wtd=.true.)
 
   if (IST%Cgrid_dyn) then
-!    call SIS_error(FATAL, "update_ice_model_slow: Cgrid dynamics are not yet available.")
-
     ! This is here because Ice%flux_u is derived from a partition weighted
     ! average of flux_u_top_bgrid in ice_top_to_ice_bottom.  ###CHANGE THIS?
     part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
@@ -1616,7 +1614,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
 
   if (IST%Cgrid_dyn) then
-!   call SIS_error(FATAL, "update_ice_model_slow: Cgrid dynamics are not yet available.")
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
                        IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp)
@@ -1680,10 +1677,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   ! The other thickness categories have been updated, now update the open-water
   ! partition.  This should already have been done in ice_transport.F90, but wasn't.
-  IST%part_size(:,:,0) = 1.0
-  do k=1,ncat
-    IST%part_size(:,:,0) = IST%part_size(:,:,0) - IST%part_size(:,:,k)
-  enddo
+!  IST%part_size(:,:,0) = 1.0
+!  do k=1,ncat
+!    IST%part_size(:,:,0) = IST%part_size(:,:,0) - IST%part_size(:,:,k)
+!  enddo
 
   ! Copy the fractional areas into the publicly visible type.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -2034,7 +2031,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                                    restart_file)
 
   if (IST%Cgrid_dyn) then
-!    call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
     call ice_C_dyn_register_restarts(G, param_file, IST%ice_C_dyn_CSp, &
                                      Ice%Ice_restart, restart_file)
   else
@@ -2109,7 +2105,6 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
   if (IST%Cgrid_dyn) then
-    ! call SIS_error(FATAL, "ice_model_init: Cgrid dynamics are not yet available.")
     call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp)
   else
     call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
@@ -2172,7 +2167,6 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
 
   if (IST%Cgrid_dyn) then
-    ! call SIS_error(FATAL, "ice_model_end: Cgrid dynamics are not yet available.")
     call ice_C_dyn_end(IST%ice_C_dyn_CSp)
   else
     call ice_B_dyn_end(IST%ice_B_dyn_CSp)
