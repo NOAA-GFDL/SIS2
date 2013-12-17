@@ -626,36 +626,34 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
     endif
   elseif (OIB%stagger == CGRID_NE) then
-!###  call SIS_error(FATAL, "set_ice_surface_state: CGRID ocean velocities are not yet implemented.")
-
     if (IST%Cgrid_dyn) then
-      if (G%symmetric) then  ! This is a place-holder until the Tikal release.
-        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-        do j=jsc,jec ; do i=isc,iec
-          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-        enddo ; enddo
-        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
+!     if (G%symmetric) then  ! This is a place-holder until the Tikal release.
+!       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+!       do j=jsc,jec ; do i=isc,iec
+!         u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+!       enddo ; enddo
+!       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
 
-        do j=jsc,jec ; do I=isc-1,iec ; IST%u_ocn_C(I,j) = u_nonsym(I,j) ; enddo ; enddo
-        do J=jsc-1,jec ; do i=isc,iec ; IST%v_ocn_C(i,J) = v_nonsym(I,j) ; enddo ; enddo
-      else
-        do j=jsc,jec ; do I=isc,iec
-          IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
-        enddo ; enddo
-        do J=jsc,jec ; do i=isc,iec
-          IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
-        enddo ; enddo
-      endif
- !     do j=jsc,jec ; do I=isc,iec
- !       IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
- !     enddo ; enddo
- !     do J=jsc,jec ; do i=isc,iec
- !       IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
- !     enddo ; enddo
- !     ! This can only be used with Tikal and later shared code.  However, it does
- ! not appear to work properly yet.
- !     if (G%symmetric) &
- !       call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+!       do j=jsc,jec ; do I=isc-1,iec ; IST%u_ocn_C(I,j) = u_nonsym(I,j) ; enddo ; enddo
+!       do J=jsc-1,jec ; do i=isc,iec ; IST%v_ocn_C(i,J) = v_nonsym(I,j) ; enddo ; enddo
+!     else
+!       do j=jsc,jec ; do I=isc,iec
+!         IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
+!       enddo ; enddo
+!       do J=jsc,jec ; do i=isc,iec
+!         IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
+!       enddo ; enddo
+!     endif
+
+      do j=jsc,jec ; do I=isc,iec
+        IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
+      enddo ; enddo
+      do J=jsc,jec ; do i=isc,iec
+        IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
+      enddo ; enddo
+      ! This can only be used with Tikal and later shared code.
+      if (G%symmetric) &
+        call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
@@ -989,6 +987,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    !   I do not know whether this is needed.  It should have been set in
+    ! set_ice_surface_state and not changed since.
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
@@ -1054,7 +1054,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: dum1, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: hs_avg, hi_avg
-  real, dimension(SZI_(G),SZJ_(G))   :: tmp1
+  real, dimension(SZI_(G),SZJ_(G))   :: ice_cover ! The fractional ice coverage, between 0 & 1.
   real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
   real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
   real, dimension(SZIB_(G),SZJ_(G)) :: wind_stress_Cu, fx_wat_C
@@ -1109,7 +1109,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !TOM> assume that open water area is not up to date:
   call mpp_clock_end(iceClock)
   call mpp_clock_end(iceClock2)
-  tmp1(:,:) = 1.-max(1.-sum(IST%part_size(:,:,1:ncat),dim=3),0.0)
+!  ice_cover(:,:) = min(sum(IST%part_size(:,:,1:ncat),dim=3),1.0)
+  ice_cover(:,:) = 1.-max(1.-sum(IST%part_size(:,:,1:ncat),dim=3),0.0)
   call get_avg(IST%h_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then
@@ -1120,7 +1121,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 !           IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
 !           Ice%flux_u(:,:), Ice%flux_v(:,:), &
 !           IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-!           Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=CGRID_NE)
+!           Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=CGRID_NE)
 !   else
       call icebergs_run( Ice%icebergs, IST%Time, &
               Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
@@ -1128,7 +1129,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
               IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              Ice%calving_hflx(:,:), tmp1, hi_avg, stagger=BGRID_NE)
+              Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE)
 !   endif
   endif
   call mpp_clock_begin(iceClock2)
@@ -1678,11 +1679,14 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call pass_var(IST%part_size, G%Domain)
   endif
 
+  ! The other thickness categories have been updated, now update the open-water
+  ! partition.  This should already have been done in ice_transport.F90, but wasn't.
   IST%part_size(:,:,0) = 1.0
-
   do k=1,ncat
     IST%part_size(:,:,0) = IST%part_size(:,:,0) - IST%part_size(:,:,k)
   enddo
+
+  ! Copy the fractional areas into the publicly visible type.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)

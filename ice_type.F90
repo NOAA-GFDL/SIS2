@@ -947,7 +947,7 @@ subroutine ice_stock_pe(Ice, index, value)
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
           if (IST%slab_ice) then
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                           IST%h_ice(i,j,2)*IST%Rho_ice*LI
+                           IST%h_ice(i,j,1)*IST%Rho_ice*LI
           else
             value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                             e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &

@@ -143,13 +143,13 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-    call slab_ice_advect(uc, vc, h_ice(:,:,2), 4.0, dt_slow, G, CS)
+    call slab_ice_advect(uc, vc, h_ice(:,:,1), 4.0, dt_slow, G, CS)
     call pass_var(h_ice(:,:,2), G%Domain)
     do j=G%jsd,G%jed ; do i=G%isd,G%ied
-      if (h_ice(i,j,2) > 0.0) then
-        part_sz(i,j,2) = 1.0
+      if (h_ice(i,j,1) > 0.0) then
+        part_sz(i,j,1) = 1.0
       else 
-        part_sz(i,j,2) = 0.0
+        part_sz(i,j,1) = 0.0
       endif
     enddo ; enddo
     return
@@ -164,7 +164,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! masking of velocities to zero in a single-cell wide channel.
     dt_adv = dt_slow/CS%adv_sub_steps
 
-    tmp1=1.-max(1.-sum(part_sz(:,:,1:G%CatIce),dim=3),0.0)
+    tmp1(:,:) = min(sum(part_sz(:,:,1:G%CatIce),dim=3),1.0)
     ustar(:,:)=0.; vstar(:,:)=0.
     ustaro(:,:)=0.; vstaro(:,:)=0.
     ustarv(:,:)=0.; vstarv(:,:)=0.
@@ -411,6 +411,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     enddo ; enddo ; enddo
 
   endif ! Not SIS1_transport.
+
+  ! Consider recalculating part_sz(:,:,0) here.
 
   if (CS%check_conservation) then
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
