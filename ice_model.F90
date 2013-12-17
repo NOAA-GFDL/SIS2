@@ -1109,8 +1109,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !TOM> assume that open water area is not up to date:
   call mpp_clock_end(iceClock)
   call mpp_clock_end(iceClock2)
-!  ice_cover(:,:) = min(sum(IST%part_size(:,:,1:ncat),dim=3),1.0)
-  ice_cover(:,:) = 1.-max(1.-sum(IST%part_size(:,:,1:ncat),dim=3),0.0)
+  ice_cover(:,:) = min(sum(IST%part_size(:,:,1:ncat),dim=3),1.0)
   call get_avg(IST%h_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then

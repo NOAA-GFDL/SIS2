@@ -129,7 +129,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)) :: &
 !    T_ice_d1, T_ice_d2
   
-  real, dimension(SZI_(G),SZJ_(G)) :: tmp1 ! Local variables, 2D ice concentration
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
@@ -164,7 +163,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! masking of velocities to zero in a single-cell wide channel.
     dt_adv = dt_slow/CS%adv_sub_steps
 
-    tmp1(:,:) = min(sum(part_sz(:,:,1:G%CatIce),dim=3),1.0)
+    ice_cover(:,:) = min(sum(part_sz(:,:,1:G%CatIce),dim=3),1.0)
     ustar(:,:)=0.; vstar(:,:)=0.
     ustaro(:,:)=0.; vstaro(:,:)=0.
     ustarv(:,:)=0.; vstarv(:,:)=0.
@@ -177,7 +176,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
                  *grad_eta                                                  ! d/dx eta
         u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
         u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-        cnn=max(tmp1(i,j),tmp1(i+1,j))**2. ! Use the larger concentration
+        cnn=max(ice_cover(i,j),ice_cover(i+1,j))**2. ! Use the larger concentration
         uc(I,j)=cnn*u_visc+(1.-cnn)*u_ocn
         ! Limit flow to be stable for fully divergent flow
         if (uc(I,j)>0.) then
@@ -199,7 +198,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
                 *grad_eta                                                  ! d/dx eta
         u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
         u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-        cnn=max(tmp1(i,j),tmp1(i,j+1))**2. ! Use the larger concentration
+        cnn=max(ice_cover(i,j),ice_cover(i,j+1))**2. ! Use the larger concentration
         vc(i,J)=cnn*u_visc+(1.-cnn)*u_ocn
         ! Limit flow to be stable for fully divergent flow
         if (vc(i,J)>0.) then
