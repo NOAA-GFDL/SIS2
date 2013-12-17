@@ -1068,11 +1068,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real :: Idt_slow, yr_dtslow
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
-    real                                  :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
-    real                                  :: heat_limit_ice, heat_res_ice
-    real                                  :: tot_heat, heating, tot_frazil
-    logical                               :: sent
-    real, parameter                       :: LI = hlf
+    real            :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
+    real            :: heat_limit_ice, heat_res_ice
+    real            :: tot_heat, heating, tot_frazil
+    logical         :: sent
+    real, parameter :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
@@ -1180,17 +1180,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     ! This is here because Ice%flux_u is derived from a partition weighted
     ! average of flux_u_top_bgrid in ice_top_to_ice_bottom.  ###CHANGE THIS?
     part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
-    do k=1,ncat
-      do J=jsc-1,jec ; do I=isc-1,iec
-        if (G%mask2dBu(I,J) > 0.5 ) then
-          part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
-                                      (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-        else
-          part_size_uv(I,J,k) = 0.0
-        endif
-        part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
-      enddo ; enddo
-    enddo
+    do J=jsc-1,jec ; do I=isc-1,iec
+      part_size_uv(I,J,0) = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
+          ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
+           (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
+    enddo ; enddo
+    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
+      part_size_uv(I,J,k) = 0.25*G%mask2dBu(I,J) * &
+          ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
+           (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
+    enddo ; enddo ; enddo
 
     part_size_u(:,:,0) = 1.0 ; part_size_u(:,:,1:) = 0.0
     part_size_v(:,:,0) = 1.0 ; part_size_v(:,:,1:) = 0.0
@@ -1272,17 +1271,28 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   else ! B-grid dynamics.
 
     part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
-    do k=1,ncat
-      do J=jsc-1,jec ; do I=isc-1,iec
-        if (G%mask2dBu(I,J) > 0.5 ) then
-          part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
-                                      (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-        else
-          part_size_uv(I,J,k) = 0.0
-        endif
-        part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
-      enddo ; enddo
-    enddo
+    do J=jsc-1,jec ; do I=isc-1,iec
+      part_size_uv(I,J,0) = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
+          ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
+           (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
+    enddo ; enddo
+    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
+      part_size_uv(I,J,k) = 0.25*G%mask2dBu(I,J) * &
+          ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
+           (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
+    enddo ; enddo ; enddo
+!   part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
+!   do k=1,ncat
+!     do J=jsc-1,jec ; do I=isc-1,iec
+!       if (G%mask2dBu(I,J) > 0.5 ) then
+!         part_size_uv(I,J,k) = 0.25*((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
+!                                     (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
+!       else
+!         part_size_uv(I,J,k) = 0.0
+!       endif
+!       part_size_uv(I,J,0) = part_size_uv(I,J,0) - part_size_uv(I,J,k)
+!     enddo ; enddo
+!   enddo
 
     wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
     call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
