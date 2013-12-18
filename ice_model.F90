@@ -250,27 +250,30 @@ subroutine avg_top_quantities(Ice, IST, G)
   ! Put wind stress on u,v points and change sign to +down
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
   sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
-  do k=0,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-    if ( G%mask2dBu(i,j) > 0.5 ) then
-      IST%flux_u_top_bgrid(I,J,k) = sign*0.25*( &
-            (IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i,j,k)) + &
-            (IST%flux_u_top(i+1,j,k) + IST%flux_u_top(i,j+1,k)) )
-      IST%flux_v_top_bgrid(I,J,k) = sign*0.25*( &
-            (IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i,j,k)) + &
-            (IST%flux_v_top(i+1,j,k) + IST%flux_v_top(i,j+1,k)) )
-    else
-      IST%flux_u_top_bgrid(I,J,k) = 0.0
-      IST%flux_v_top_bgrid(I,J,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
   if (IST%Cgrid_dyn) then
-    do k=0,ncat ; do j=jsc,jec ; do I=isc-1,iec
+    ! These have larger spatial extent than they usually would in case the
+    ! stresses are given to the ocean on a B-grid.
+    do k=0,ncat ; do j=jsc-1,jec+1 ; do I=isc-1,iec
       IST%flux_u_top_Cu(I,j,k) = sign * G%mask2dCu(I,j) * &
          0.5* (IST%flux_u_top(i,j,k) + IST%flux_u_top(i+1,j,k))
     enddo ; enddo ; enddo
-    do k=0,ncat ; do J=jsc-1,jec ; do i=isc,iec
+    do k=0,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
       IST%flux_v_top_Cv(i,J,k) = sign * G%mask2dCv(i,J) * &
          0.5*(IST%flux_v_top(i,j,k) + IST%flux_v_top(i,j+1,k))
+    enddo ; enddo ; enddo
+  else
+    do k=0,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
+      if ( G%mask2dBu(i,j) > 0.5 ) then
+        IST%flux_u_top_bgrid(I,J,k) = sign*0.25*( &
+              (IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i,j,k)) + &
+              (IST%flux_u_top(i+1,j,k) + IST%flux_u_top(i,j+1,k)) )
+        IST%flux_v_top_bgrid(I,J,k) = sign*0.25*( &
+              (IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i,j,k)) + &
+              (IST%flux_v_top(i+1,j,k) + IST%flux_v_top(i,j+1,k)) )
+      else
+        IST%flux_u_top_bgrid(I,J,k) = 0.0
+        IST%flux_v_top_bgrid(I,J,k) = 0.0
+      endif
     enddo ; enddo ; enddo
   endif
 
@@ -414,6 +417,28 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
       endif ; enddo ; enddo ; enddo
     endif
   elseif (Ice%flux_uv_stagger == BGRID_NE) then
+    if (IST%Cgrid_dyn) then
+      do j=jsc,jec ; do i=isc,iec
+        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+        ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
+                           0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
+                                 (part_size(i+1,j,0) + part_size(i,j+1,0)) )
+        ! Consider deleting the masks here?
+        Ice%flux_u(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
+                (IST%flux_u_top_Cu(I,j,0) + IST%flux_u_top_Cu(I,j+1,0))
+        Ice%flux_v(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
+                (IST%flux_v_top_Cv(I,j,0) + IST%flux_v_top_Cv(i+1,J,0))
+      enddo ; enddo
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
+        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+        ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
+                         (part_size(i+1,j,k) + part_size(i,j+1,k)) )
+        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * 0.5 * &
+                (IST%flux_u_top_Cu(I,j,k) + IST%flux_u_top_Cu(I,j+1,k))
+        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * 0.5 * &
+                (IST%flux_v_top_Cv(I,j,k) + IST%flux_v_top_Cv(i+1,J,k))
+      endif ; enddo ; enddo ; enddo
+    else
       do j=jsc,jec ; do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
         ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
@@ -429,6 +454,7 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(I,J,k) * ps_vel
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(I,J,k) * ps_vel
       endif ; enddo ; enddo ; enddo
+    endif ! Cgrid_dyn
   elseif (Ice%flux_uv_stagger == CGRID_NE) then
     if (IST%Cgrid_dyn) then
       do j=jsc,jec ; do i=isc,iec
@@ -1269,32 +1295,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_ice,  IST%part_size(:,:,1:), hi_avg, wtd=.true.)
 
   if (IST%Cgrid_dyn) then
-    ! This is here because Ice%flux_u is derived from a partition weighted
-    ! average of flux_u_top_bgrid in ice_top_to_ice_bottom.  ###CHANGE THIS?
-    part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
-    do J=jsc-1,jec ; do I=isc-1,iec
-      part_size_uv(I,J,0) = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
-          ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
-           (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
-    enddo ; enddo
-    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-      part_size_uv(I,J,k) = 0.25*G%mask2dBu(I,J) * &
-          ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
-           (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-    enddo ; enddo ; enddo
-
     part_size_u(:,:,0) = 1.0 ; part_size_u(:,:,1:) = 0.0
     part_size_v(:,:,0) = 1.0 ; part_size_v(:,:,1:) = 0.0
-    do k=1,ncat
+    do k=0,ncat
       do j=jsc,jec ; do I=isc-1,iec
         part_size_u(I,j,k) = 0.5*G%mask2dCu(I,j) * &
                              (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
-        part_size_u(I,j,0) = part_size_u(I,j,0) - part_size_u(I,j,k)
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
         part_size_v(i,J,k) = 0.5*G%mask2dCv(i,J) * &
                              (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-        part_size_v(i,J,0) = part_size_v(i,J,0) - part_size_v(i,J,k)
       enddo ; enddo
     enddo
 
@@ -1315,8 +1325,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call uchksum(wind_stress_Cu, "wind_stress_Cu before ice_C_dynamics", G)
       call vchksum(wind_stress_Cv, "wind_stress_Cv before ice_C_dynamics", G)
       call check_redundant_C("wind_stress before ice_C_dynamics", wind_stress_x, wind_stress_y, G)
-      call check_redundant_B("flux_u/v_top before ice_C_dynamics", IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
-      call check_redundant_C("part_size_uv before ice_C_dynamics", part_size_u, part_size_v, G)
+      call check_redundant_C("flux_u/v_top before ice_C_dynamics", IST%flux_u_top_Cu, IST%flux_v_top_Cv, G)
     endif
 
     call mpp_clock_begin(iceClocka)
@@ -1337,12 +1346,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !
     ! Dynamics diagnostics
     !
-    if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
-                                    part_size_uv, IST%diag, G=G)
-    if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
-                                    part_size_uv, IST%diag, G=G)
-    if (IST%id_faix_C>0) call post_data(IST%id_faix_C, wind_stress_Cu, IST%diag)
-    if (IST%id_faiy_C>0) call post_data(IST%id_faiy_C, wind_stress_Cv, IST%diag)
+    if (IST%id_fax>0) call post_data(IST%id_fax, wind_stress_Cu, IST%diag)
+    if (IST%id_fay>0) call post_data(IST%id_fay, wind_stress_Cv, IST%diag)
 
     !### See whether this is necessary.
     do J=jsc-1,jec ; do I=isc-1,iec
@@ -1356,12 +1361,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo ; enddo
     do k=1,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
       IST%flux_v_top_Cv(i,J,k) = fy_wat_C(i,J)
-    enddo ; enddo ; enddo
-    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-      IST%flux_u_top_bgrid(I,J,k) = G%mask2dBu(I,J) * &
-             0.5*(fx_wat_C(I,j) + fx_wat_C(I,j+1)) ! stress of ice on ocean
-      IST%flux_v_top_bgrid(I,J,k) = G%mask2dBu(I,J) * &
-             0.5*(fy_wat_C(i,J) + fy_wat_C(i+1,J))
     enddo ; enddo ; enddo
 
     call mpp_clock_end(iceClockc)

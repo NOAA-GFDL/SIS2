@@ -201,7 +201,6 @@ type ice_state_type
   integer :: id_iy_trans=-1, id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_mib=-1, id_coszen=-1
-  integer :: id_faix_C=-1, id_faiy_C=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
   integer :: id_abs_int=-1, id_sw_abs_snow=-1, id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
   integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_trn=-1
@@ -848,10 +847,6 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'Ice Limit heat flux', 'W/m^2', missing_value=missing)
   IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
                'strain angle', 'none', missing_value=missing)
-  IST%id_fax      = register_SIS_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
-               'air stress on ice - x component', 'Pa', missing_value=missing)
-  IST%id_fay      = register_SIS_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
-               'air stress on ice - y component', 'Pa', missing_value=missing)
   IST%id_uo       = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
                'surface current - x component', 'm/s', missing_value=missing)
   IST%id_vo       = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
@@ -894,10 +889,17 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   !
   ! diagnostics that are specific to C-grid dynamics of the ice model
   !
-  IST%id_faix_C = register_SIS_diag_field('ice_model', 'FA_XC', diag%axesCu1, Time, &
+  if (IST%Cgrid_dyn) then
+    IST%id_fax = register_SIS_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
                'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
-  IST%id_faiy_C = register_SIS_diag_field('ice_model', 'FA_YC', diag%axesCv1, Time, &
+    IST%id_fay = register_SIS_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
                'Air stress on ice on C-grid - y component', 'Pa', missing_value=missing)
+  else
+    IST%id_fax = register_SIS_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
+               'air stress on ice - x component', 'Pa', missing_value=missing)
+    IST%id_fay = register_SIS_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
+               'air stress on ice - y component', 'Pa', missing_value=missing)
+  endif
 
   if (id_sin_rot>0) call post_data(id_sin_rot, G%sin_rot, diag, is_static=.true.)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
