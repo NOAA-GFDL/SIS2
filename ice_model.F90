@@ -1163,24 +1163,24 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G),1:G%CatIce) :: snow_to_ice
   real, dimension(SZI_(G),SZJ_(G),0:G%CatIce) :: &
     part_save
-  real, dimension(SZIB_(G),SZJB_(G),0:G%CatIce) :: &
-    part_size_uv
-  real, dimension(SZIB_(G),SZJ_(G),0:G%CatIce) :: &
-    part_size_u
-  real, dimension(SZI_(G),SZJB_(G),0:G%CatIce) :: &
-    part_size_v
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: dum1, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: hs_avg, hi_avg
   real, dimension(SZI_(G),SZJ_(G))   :: ice_cover ! The fractional ice coverage, between 0 & 1.
   real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
   real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
-  real, dimension(SZIB_(G),SZJ_(G)) :: wind_stress_Cu, fx_wat_C
-  real, dimension(SZI_(G),SZJB_(G)) :: wind_stress_Cv, fy_wat_C
-  real, dimension(1:G%CatIce)       :: e2m
-  real, dimension(SZIB_(G),SZJ_(G)) :: uc ! Ice velocities interpolated onto
-  real, dimension(SZI_(G),SZJB_(G)) :: vc ! a C-grid, in m s-1.
-  real, dimension(SZI_(G),SZJ_(G))  :: diagVar ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJ_(G))  :: wind_stress_Cu, fx_wat_C
+  real, dimension(SZI_(G),SZJB_(G))  :: wind_stress_Cv, fy_wat_C
+  real, dimension(1:G%CatIce)        :: e2m
+  real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
+  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
+  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
+
+  real, dimension(SZIB_(G),SZJB_(G)) :: wts  ! A sum of the weights by category.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   real :: area_h, area_pt
   real :: Idt_slow, yr_dtslow
@@ -1295,24 +1295,25 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_ice,  IST%part_size(:,:,1:), hi_avg, wtd=.true.)
 
   if (IST%Cgrid_dyn) then
-    part_size_u(:,:,0) = 1.0 ; part_size_u(:,:,1:) = 0.0
-    part_size_v(:,:,0) = 1.0 ; part_size_v(:,:,1:) = 0.0
-    do k=0,ncat
-      do j=jsc,jec ; do I=isc-1,iec
-        part_size_u(I,j,k) = 0.5*G%mask2dCu(I,j) * &
-                             (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        part_size_v(i,J,k) = 0.5*G%mask2dCv(i,J) * &
-                             (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-      enddo ; enddo
-    enddo
+    wind_stress_Cu(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do I=isc-1,iec
+      ps_vel = 0.5*G%mask2dCu(I,j) * (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
+      wind_stress_Cu(I,j) = wind_stress_Cu(I,j) + ps_vel*IST%flux_u_top_Cu(I,j,k)
+      wts(I,J) = wts(I,J) + ps_vel
+    enddo ; enddo ; enddo
+    do j=jsc,jec ; do I=isc-1,iec
+      if (wts(I,j) > 0.) wind_stress_Cu(I,j) = wind_stress_Cu(I,j) / wts(I,j)
+    enddo ; enddo
 
-    wind_stress_Cu(:,:) = 0.0 ; wind_stress_Cv(:,:) = 0.0
-    call get_avg(IST%flux_u_top_Cu(isc-1:iec,jsc:jec,1:), part_size_u(isc-1:iec,jsc:jec,1:), &
-                 wind_stress_Cu(isc-1:iec,jsc:jec), wtd=.true.)
-    call get_avg(IST%flux_v_top_Cv(isc:iec,jsc-1:jec,1:), part_size_v(isc:iec,jsc-1:jec,1:), &
-                 wind_stress_Cv(isc:iec,jsc-1:jec), wtd=.true.)
+    wind_stress_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,ncat ; do J=jsc-1,jec ; do i=isc,iec
+      ps_vel = 0.5*G%mask2dCv(i,J) * (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
+      wind_stress_Cv(i,j) = wind_stress_Cv(i,J) + ps_vel*IST%flux_v_top_Cv(i,J,k)
+      wts(i,J) = wts(i,J) + ps_vel
+    enddo ; enddo ; enddo
+    do j=jsc,jec ; do I=isc-1,iec
+      if (wts(i,J) > 0.) wind_stress_Cv(i,J) = wind_stress_Cv(i,J) / wts(i,J)
+    enddo ; enddo
 
     if (IST%debug) then
       call IST_chksum("Before ice_C_dynamics", IST, G)
@@ -1356,6 +1357,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       IST%v_ice(I,J) = G%mask2dBu(I,J) * &
              0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i+1,J))
     enddo ; enddo
+
     do k=1,ncat ; do J=jsc-1,jec+1 ; do I=isc-1,iec
       IST%flux_u_top_Cu(I,j,k) = fx_wat_C(I,j) ! stress of ice on ocean
     enddo ; enddo ; enddo
@@ -1367,23 +1369,19 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   else ! B-grid dynamics.
 
-    part_size_uv(:,:,0) = 1.0 ; part_size_uv(:,:,1:) = 0.0
-    do J=jsc-1,jec ; do I=isc-1,iec
-      part_size_uv(I,J,0) = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
-          ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
-           (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
-    enddo ; enddo
+    wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0 ; wts(:,:) = 0.0
     do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-      part_size_uv(I,J,k) = 0.25*G%mask2dBu(I,J) * &
+      ps_vel = 0.25*G%mask2dBu(I,J) * &
           ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
            (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
+      wind_stress_x(I,J) = wind_stress_x(I,J) + ps_vel * IST%flux_u_top_bgrid(I,J,k)
+      wind_stress_y(I,J) = wind_stress_y(I,J) + ps_vel * IST%flux_v_top_bgrid(I,J,k)
+      wts(I,J) = wts(I,J) + ps_vel
     enddo ; enddo ; enddo
-
-    wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0
-    call get_avg(IST%flux_u_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
-                 wind_stress_x(isc-1:iec,jsc-1:jec), wtd=.true.)
-    call get_avg(IST%flux_v_top_bgrid(isc-1:iec,jsc-1:jec,1:), part_size_uv(isc-1:iec,jsc-1:jec,1:), &
-                 wind_stress_y(isc-1:iec,jsc-1:jec), wtd=.true.)
+    do J=jsc-1,jec ; do I=isc-1,iec ; if (wts(i,j) > 0.) then
+      wind_stress_x(I,J) = wind_stress_x(I,J) / wts(I,J)
+      wind_stress_y(I,J) = wind_stress_y(I,J) / wts(I,J)
+    endif ; enddo ; enddo
 
     if (IST%debug) then
       call IST_chksum("Before ice_dynamics", IST, G)
@@ -1397,7 +1395,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
       call check_redundant_B("wind_stress before ice_dynamics",wind_stress_x, wind_stress_y, G)
       call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
-      call check_redundant_B("part_size_uv before ice_dynamics",part_size_uv, G)
     endif
 
     call mpp_clock_begin(iceClocka)
@@ -1419,10 +1416,20 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !
     ! Dynamics diagnostics
     !
-    if (IST%id_fax>0) call post_avg(IST%id_fax, IST%flux_u_top_bgrid, &
-                                    part_size_uv, IST%diag, G=G)
-    if (IST%id_fay>0) call post_avg(IST%id_fay, IST%flux_v_top_bgrid, &
-                                    part_size_uv, IST%diag, G=G)
+    if ((IST%id_fax>0) .or. (IST%id_fay>0)) then
+      do J=jsc-1,jec ; do I=isc-1,iec
+        ps_vel = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
+              ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
+               (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
+        diagVarBx(I,J) = ps_vel * IST%flux_u_top_bgrid(I,J,0) + &
+                         (1.0-ps_vel) * wind_stress_x(I,J)
+        diagVarBy(I,J) = ps_vel * IST%flux_v_top_bgrid(I,J,0) + &
+                         (1.0-ps_vel) * wind_stress_y(I,J)
+      enddo ; enddo
+
+      if (IST%id_fax>0) call post_data(IST%id_fax, diagVarBx, IST%diag)
+      if (IST%id_fay>0) call post_data(IST%id_fay, diagVarBy, IST%diag)
+    endif
 
     do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
       IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
@@ -1461,8 +1468,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
       h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
       call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),&
-                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),              &
-                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4),              &
+                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),            &
+                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4),            &
                           IST%fprec_top(i,j,k) *dt_slow, 0.0,                &
                           IST%flux_q_top(i,j,k)*dt_slow,                     &
                           IST%tmelt (i,j,k), IST%bmelt(i,j,k),               &
