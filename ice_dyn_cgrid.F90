@@ -26,7 +26,7 @@ module ice_dyn_cgrid
 ! and with guidance from the C-grid implementations of sea-ice in MITgcm as    !
 ! documented in MITgcm user notes by Martin Losch and in LIM3 by S. Bouillon   !
 ! et al. (Ocean Modelling, 2009 & 2013). This code initially written by        !
-! Robert Hallberg in 2013   .                                                  !
+! Robert Hallberg in 2013.                                                     !
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
@@ -77,6 +77,7 @@ type, public :: ice_C_dyn_CS ; private
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
   logical :: debug_redundant  ! If true, debug redundant points.
   logical :: weak_coast_stress = .false.
+  logical :: weak_low_shear = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
@@ -152,6 +153,11 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
                  "The damping timescale associated with the elastic terms \n"//&
                  "in the sea-ice dynamics equations.", units = "s", default=0.0)
+  call get_param(param_file, mod, "WEAK_LOW_SHEAR_ICE", CS%weak_low_shear, &
+                 "If true, the divergent stresses go toward 0 in the C-grid \n"//&
+                 "dynamics when the shear magnitudes are very weak. \n"//&
+                 "Otherwise they go to -P_ice.  This setting is temporary.", &
+                 default=.false.)
 
   call get_param(param_file, mod, "ICE_YEILD_ELLIPTICITY", CS%EC, &
                  "The ellipticity coefficient for the plastic yeild curve \n"//&
@@ -767,13 +773,23 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     ! Step the stress component equations semi-implicitly.
     I_1pdt_T = 1.0 / (1.0 + dt_2Tdamp)
     I_1pE2dt_T = 1.0 / (1.0 + EC2*dt_2Tdamp)
-    do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-      ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
-      CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
-                  ( zeta(i,j) * (sh_Dd(i,j) - del_sh(i,j)) ) )
-      CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
-                  ( zeta(i,j) * sh_Dt(i,j) ) )
-    enddo ; enddo
+    if (CS%weak_low_shear) then
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
+        CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
+                    ( zeta(i,j) * (sh_Dd(i,j) - del_sh(i,j)) ) )
+        CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
+                    ( zeta(i,j) * sh_Dt(i,j) ) )
+      enddo ; enddo
+    else
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
+        CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
+                    ( zeta(i,j) * sh_Dd(i,j) - 0.5*pres_ice(i,j) ) )
+        CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
+                    ( zeta(i,j) * sh_Dt(i,j) ) )
+      enddo ; enddo
+    endif
 
     do J=jsc-1,jec ; do I=isc-1,iec
       ! zeta is already set to 0 over land.
