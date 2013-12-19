@@ -843,13 +843,13 @@ end function bilin
 ! ##############################################################################
 
 subroutine icebergs_run(bergs, time, calving, uo, vo, ui, vi, tauxa, tauya, &
-                        ssh, sst, calving_hflx, cn, hi, stagger)
+                        ssh, sst, calving_hflx, cn, hi, stagger, stress_stagger)
 ! Arguments
 type(icebergs), pointer :: bergs
 type(time_type), intent(in) :: time
 real, dimension(:,:), intent(inout) :: calving, calving_hflx
 real, dimension(:,:), intent(in) :: uo, vo, ui, vi, tauxa, tauya, ssh, sst, cn, hi
-integer,    optional, intent(in) :: stagger
+integer,    optional, intent(in) :: stagger, stress_stagger
 
   ! Local variables
   integer :: iyr, imon, iday, ihr, imin, isec, k
@@ -857,8 +857,9 @@ integer,    optional, intent(in) :: stagger
   type(icebergs_gridded), pointer :: grd
   logical :: lerr, sample_traj, lbudget, lverbose
   real :: unused_calving, tmpsum, grdd_berg_mass, grdd_bergy_mass
+  real :: mask
   integer :: stderrunit
-  integer :: vel_stagger
+  integer :: vel_stagger, str_stagger
 
   ! Get the stderr unit number
   stderrunit = stderr()
@@ -867,6 +868,7 @@ integer,    optional, intent(in) :: stagger
   call mpp_clock_begin(bergs%clock_int)
 
   vel_stagger = BGRID_NE ; if (present(stagger)) vel_stagger = stagger
+  str_stagger = vel_stagger ; if (present(stress_stagger)) str_stagger = stress_stagger
 
   ! For convenience
   grd=>bergs%grd
@@ -924,37 +926,59 @@ integer,    optional, intent(in) :: stagger
   bergs%net_incoming_calving_heat=bergs%net_incoming_calving_heat+tmpsum*bergs%dt ! Units of J
 
   if (vel_stagger == BGRID_NE) then
-    ! Copy ocean flow, ice flow, and wind stress. All are on B-grid u-points.
+    ! Copy ocean and ice velocities. They are already on B-grid u-points.
     grd%uo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = uo(:,:)
     grd%vo(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = vo(:,:)
     call mpp_update_domains(grd%uo, grd%vo, grd%domain, gridtype=BGRID_NE)
     grd%ui(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = ui(:,:)
     grd%vi(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = vi(:,:)
     call mpp_update_domains(grd%ui, grd%vi, grd%domain, gridtype=BGRID_NE)
-    grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec) = tauxa(:,:)
-    grd%va(grd%isc:grd%iec,grd%jsc:grd%jec) = tauya(:,:)
   elseif (vel_stagger == CGRID_NE) then
     i_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
     j_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate ocean flow, ice flow, and wind stress from C-grid u-points.
+      ! Interpolate x-direction ocean and ice velocities from C-grid u-points.
       i2 = i + i_off ; j2 = j + j_off
+      ! mask = min(grd%msk(i-1,j-1), grd%msk(i,j-1), grd%msk(i-1,j), grd%msk(i,j))
       grd%uo(I,J) = 0.5*(uo(I2,j2)+uo(I2,j2+1))
       grd%ui(I,J) = 0.5*(ui(I2,j2)+ui(I2,j2+1))
+    enddo ; enddo
+    ! The u- and v- points will have different offsets with symmetric memory.
+    i_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    j_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
+      ! Interpolate y-direction ocean and ice velocities from C-grid v-points.
+      i2 = i + i_off ; j2 = j + j_off
+      ! mask = min(grd%msk(i-1,j-1), grd%msk(i,j-1), grd%msk(i-1,j), grd%msk(i,j))
+      grd%vo(I,J) = 0.5*(vo(i2,J2)+vo(i2+1,J2))
+      grd%vi(I,J) = 0.5*(vi(i2,J2)+vo(i2+1,J2))
+    enddo ; enddo
+  else
+    call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stagger!', FATAL)
+  endif
+
+  if (str_stagger == BGRID_NE) then
+    ! Copy wind stress components on B-grid u-points.
+    grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec) = tauxa(:,:)
+    grd%va(grd%isc:grd%iec,grd%jsc:grd%jec) = tauya(:,:)
+  elseif (str_stagger == CGRID_NE) then
+    i_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    j_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
+      ! Interpolate wind stress from C-grid u-points.
+      i2 = i + i_off ; j2 = j + j_off
       grd%ua(I,J) = 0.5*(tauxa(I2,j2)+tauxa(I2,j2+1))
     enddo ; enddo
     ! The u- and v- points will have different offsets with symmetric memory.
     i_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
     j_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate ocean flow, ice flow, and wind stress from C-grid v-points.
+      ! Interpolate wind stress from C-grid v-points.
       i2 = i + i_off ; j2 = j + j_off
-      grd%vo(I,J) = 0.5*(vo(i2,J2)+vo(i2+1,J2))
-      grd%vi(I,J) = 0.5*(vi(i2,J2)+vo(i2+1,J2))
       grd%va(I,J) = 0.5*(tauya(i2,J2)+tauya(i2+1,J2))
     enddo ; enddo
   else
-    call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stagger!', FATAL)
+    call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stress_stagger!', FATAL)
   endif
 
   call mpp_update_domains(grd%uo, grd%vo, grd%domain, gridtype=BGRID_NE)

@@ -1189,7 +1189,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     real            :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
     real            :: heat_limit_ice, heat_res_ice
     real            :: tot_heat, heating, tot_frazil
-    logical         :: sent
     real, parameter :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
@@ -1231,29 +1230,30 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then
-!   if (IST%Cgrid_dyn) then
-!   call icebergs_run( Ice%icebergs, IST%Time, &
-!           Ice%calving(:,:), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-!           IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-!           IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-!           Ice%flux_u(:,:), Ice%flux_v(:,:), &
-!           IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-!           Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=CGRID_NE)
-!   else
+    if (IST%Cgrid_dyn) then
+      call icebergs_run( Ice%icebergs, IST%Time, &
+              Ice%calving(:,:), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
+              Ice%flux_u(:,:), Ice%flux_v(:,:), &
+              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=CGRID_NE, &
+              stress_stagger=Ice%flux_uv_stagger)
+    else
       call icebergs_run( Ice%icebergs, IST%Time, &
               Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE)
-!   endif
+              Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE, &
+              stress_stagger=Ice%flux_uv_stagger)
+    endif
   endif
   call mpp_clock_begin(iceClock2)
   call mpp_clock_begin(iceClock)
 
   call avg_top_quantities(Ice, IST, G) ! average fluxes from update_ice_model_fast
-
 
   do k=0,ncat ; do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     part_save(i,j,k) = IST%part_size(i,j,k)
@@ -1776,13 +1776,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                          IST%h_ice(isc:iec,jsc:jec,1))
     call pass_var(IST%part_size, G%Domain)
   endif
-
-  ! The other thickness categories have been updated, now update the open-water
-  ! partition.  This should already have been done in ice_transport.F90, but wasn't.
-!  IST%part_size(:,:,0) = 1.0
-!  do k=1,ncat
-!    IST%part_size(:,:,0) = IST%part_size(:,:,0) - IST%part_size(:,:,k)
-!  enddo
 
   ! Copy the fractional areas into the publicly visible type.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
