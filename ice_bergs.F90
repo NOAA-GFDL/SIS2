@@ -164,7 +164,7 @@ end type icebergs
 character(len=*), parameter :: version = '$Id: ice_bergs.F90,v 1.1.2.1.6.1.2.1.2.1 2013/06/18 22:24:14 nnz Exp $'
 character(len=*), parameter :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
 
-integer, parameter :: nclasses=10 ! Number of ice bergs classes
+integer, parameter :: nclasses=10 ! Number of iceberg classes
 integer, parameter :: file_format_major_version=0
 integer, parameter :: file_format_minor_version=1
 integer, parameter :: delta_buf=25 ! Size by which to increment buffers
@@ -853,7 +853,7 @@ integer,    optional, intent(in) :: stagger, stress_stagger
 
   ! Local variables
   integer :: iyr, imon, iday, ihr, imin, isec, k
-  integer :: i, j, i2, j2, i_off, j_off
+  integer :: i, j, Iu, ju, iv, Jv, Iu_off, ju_off, iv_off, Jv_off
   type(icebergs_gridded), pointer :: grd
   logical :: lerr, sample_traj, lbudget, lverbose
   real :: unused_calving, tmpsum, grdd_berg_mass, grdd_bergy_mass
@@ -934,24 +934,20 @@ integer,    optional, intent(in) :: stagger, stress_stagger
     grd%vi(grd%isc-1:grd%iec+1,grd%jsc-1:grd%jec+1) = vi(:,:)
     call mpp_update_domains(grd%ui, grd%vi, grd%domain, gridtype=BGRID_NE)
   elseif (vel_stagger == CGRID_NE) then
-    i_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
-    j_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
-    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate x-direction ocean and ice velocities from C-grid u-points.
-      i2 = i + i_off ; j2 = j + j_off
-      ! mask = min(grd%msk(i-1,j-1), grd%msk(i,j-1), grd%msk(i-1,j), grd%msk(i,j))
-      grd%uo(I,J) = 0.5*(uo(I2,j2)+uo(I2,j2+1))
-      grd%ui(I,J) = 0.5*(ui(I2,j2)+ui(I2,j2+1))
-    enddo ; enddo
     ! The u- and v- points will have different offsets with symmetric memory.
-    i_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
-    j_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    Iu_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    ju_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    iv_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    Jv_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate y-direction ocean and ice velocities from C-grid v-points.
-      i2 = i + i_off ; j2 = j + j_off
-      ! mask = min(grd%msk(i-1,j-1), grd%msk(i,j-1), grd%msk(i-1,j), grd%msk(i,j))
-      grd%vo(I,J) = 0.5*(vo(i2,J2)+vo(i2+1,J2))
-      grd%vi(I,J) = 0.5*(vi(i2,J2)+vo(i2+1,J2))
+      ! Interpolate ocean and ice velocities from C-grid velocity points.
+      Iu = i + Iu_off ; ju = j + ju_off ; iv = i + iv_off ; Jv = j + Jv_off
+      ! This masking is needed for now to prevent icebergs from running up on to land.
+      mask = min(grd%msk(i,j), grd%msk(i+1,j), grd%msk(i,j+1), grd%msk(i+1,j+1))
+      grd%uo(I,J) = mask * 0.5*(uo(Iu,ju)+uo(Iu,ju+1))
+      grd%ui(I,J) = mask * 0.5*(ui(Iu,ju)+ui(Iu,ju+1))
+      grd%vo(I,J) = mask * 0.5*(vo(iv,Jv)+vo(iv+1,Jv))
+      grd%vi(I,J) = mask * 0.5*(vi(iv,Jv)+vo(iv+1,Jv))
     enddo ; enddo
   else
     call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stagger!', FATAL)
@@ -962,20 +958,18 @@ integer,    optional, intent(in) :: stagger, stress_stagger
     grd%ua(grd%isc:grd%iec,grd%jsc:grd%jec) = tauxa(:,:)
     grd%va(grd%isc:grd%iec,grd%jsc:grd%jec) = tauya(:,:)
   elseif (str_stagger == CGRID_NE) then
-    i_off = (size(uo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
-    j_off = (size(uo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
-    do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate wind stress from C-grid u-points.
-      i2 = i + i_off ; j2 = j + j_off
-      grd%ua(I,J) = 0.5*(tauxa(I2,j2)+tauxa(I2,j2+1))
-    enddo ; enddo
     ! The u- and v- points will have different offsets with symmetric memory.
-    i_off = (size(vo,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
-    j_off = (size(vo,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    Iu_off = (size(tauxa,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    ju_off = (size(tauxa,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    iv_off = (size(tauya,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
+    Jv_off = (size(tauya,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
-      ! Interpolate wind stress from C-grid v-points.
-      i2 = i + i_off ; j2 = j + j_off
-      grd%va(I,J) = 0.5*(tauya(i2,J2)+tauya(i2+1,J2))
+      ! Interpolate wind stresses from C-grid velocity-points.
+      Iu = i + Iu_off ; ju = j + ju_off ; iv = i + iv_off ; Jv = j + Jv_off
+      ! This masking is needed for now to prevent icebergs from running up on to land.
+      mask = min(grd%msk(i,j), grd%msk(i+1,j), grd%msk(i,j+1), grd%msk(i+1,j+1))
+      grd%ua(I,J) = mask * 0.5*(tauxa(Iu,ju)+tauxa(Iu,ju+1))
+      grd%va(I,J) = mask * 0.5*(tauya(iv,Jv)+tauya(iv+1,Jv))
     enddo ; enddo
   else
     call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stress_stagger!', FATAL)
@@ -1035,7 +1029,7 @@ integer,    optional, intent(in) :: stagger, stress_stagger
   if (debug) call checksum_gridded(bergs%grd, 's/r run after exchange')
   call mpp_clock_end(bergs%clock_com)
 
-  ! Ice berg thermodynamics (melting) + rolling
+  ! Iceberg thermodynamics (melting) + rolling
   call mpp_clock_begin(bergs%clock_the)
   if (associated(bergs%first)) call thermodynamics(bergs)
   if (debug) call bergs_chksum(bergs, 'run bergs (thermo)')
