@@ -467,8 +467,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
   allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
-  allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
   allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
 
   allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
@@ -483,8 +481,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
   allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
   allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
 
   allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
@@ -501,8 +497,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
-  allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
-  allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
   allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
@@ -511,12 +505,18 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   if (IST%Cgrid_dyn) then
     allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
     allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
-    allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
-    allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+    allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
+    allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
     allocate(IST%flux_u_top_Cu(SZIB_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top_Cu(:,:,:) = 0.0 !NR
     allocate(IST%flux_v_top_Cv(SZI_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_Cv(:,:,:) = 0.0 !NR
+  else
+    allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
+    allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
+    allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
+    allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+    allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+    allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
   endif
-  
 
   ! Now register some of these arrays to be read from the restart files.
   domain => G%domain%mpp_domain
@@ -562,11 +562,13 @@ subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
 
   deallocate(IST%t_surf, IST%s_surf, IST%sea_lev)
-  deallocate(IST%part_size, IST%u_ocn, IST%v_ocn)
+  deallocate(IST%part_size)
   if (IST%Cgrid_dyn) then
-    deallocate(IST%u_ice_C, IST%v_ice_C)
-    deallocate(IST%u_ocn_C, IST%v_ocn_C)
+    deallocate(IST%u_ice_C, IST%v_ice_C, IST%u_ocn_C, IST%v_ocn_C)
     deallocate(IST%flux_u_top_Cu, IST%flux_v_top_Cv)
+  else
+    deallocate(IST%u_ocn, IST%v_ocn, IST%u_ice, IST%v_ice)
+    deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid)
   endif
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
@@ -576,12 +578,11 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_sw_nir_dir_top, IST%flux_sw_nir_dif_top)
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil)
-  deallocate(IST%bheat,IST%tmelt, IST%bmelt, IST%pen, IST%trn)
+  deallocate(IST%bheat, IST%tmelt, IST%bmelt, IST%pen, IST%trn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
-  deallocate(IST%u_ice, IST%v_ice, IST%h_snow, IST%t_snow)
-  deallocate(IST%h_ice, IST%t_ice)
+  deallocate(IST%h_snow, IST%t_snow, IST%h_ice, IST%t_ice)
 
 end subroutine dealloc_IST_arrays
 

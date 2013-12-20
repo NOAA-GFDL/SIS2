@@ -706,63 +706,52 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     endif
 
   elseif (OIB%stagger == BGRID_NE) then
-    if (G%symmetric) then  ! This is a place-holder until the Tikal release.
-      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-      do j=jsc,jec ; do i=isc,iec
-        u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-      enddo ; enddo
-      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
-
-      ! The under-ice current is needed for the water drag term.
-      do J=jsc-1,jec ; do I=isc-1,iec
-        IST%u_ocn(I,J) = u_nonsym(I,J) ; IST%v_ocn(I,J) = v_nonsym(I,J)
-      enddo ; enddo
-    else
-      do J=jsc,jec ; do I=isc,iec
-        IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
-        IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
-      enddo ; enddo
-    endif
- !   This will be used with Tikal and later shared code.  However, it does
- ! not appear to work properly yet.
- !   do J=jsc,jec ; do I=isc,iec
- !     IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
- !     IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
- !   enddo ; enddo
- !   if (G%symmetric) &
- !     call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
-
-    call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
-
     if (IST%Cgrid_dyn) then
+        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+        do j=jsc,jec ; do i=isc,iec
+          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+        enddo ; enddo
+        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+
       do j=jsc,jec ; do I=isc-1,iec
-        IST%u_ocn_C(I,j) = 0.5*(IST%u_ocn(I,J) + IST%u_ocn(I,J-1))
+        IST%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        IST%v_ocn_C(i,J) = 0.5*(IST%v_ocn(I,J) + IST%v_ocn(I-1,J))
+        IST%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
       enddo ; enddo
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    else
+      if (G%symmetric) then  ! This is a place-holder until the Tikal release.
+        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+        do j=jsc,jec ; do i=isc,iec
+          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+        enddo ; enddo
+        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+
+        ! The under-ice current is needed for the water drag term.
+        do J=jsc-1,jec ; do I=isc-1,iec
+          IST%u_ocn(I,J) = u_nonsym(I,J) ; IST%v_ocn(I,J) = v_nonsym(I,J)
+        enddo ; enddo
+      else
+        do J=jsc,jec ; do I=isc,iec
+          IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+          IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+        enddo ; enddo
+      endif
+   !   This will be used with Tikal and later shared code.  However, it does
+   ! not appear to work properly yet.
+   !   do J=jsc,jec ; do I=isc,iec
+   !     IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+   !     IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+   !   enddo ; enddo
+   !   if (G%symmetric) &
+   !     call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+
+      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
     endif
+
   elseif (OIB%stagger == CGRID_NE) then
     if (IST%Cgrid_dyn) then
-!     if (G%symmetric) then  ! This is a place-holder until the Tikal release.
-!       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-!       do j=jsc,jec ; do i=isc,iec
-!         u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-!       enddo ; enddo
-!       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
-
-!       do j=jsc,jec ; do I=isc-1,iec ; IST%u_ocn_C(I,j) = u_nonsym(I,j) ; enddo ; enddo
-!       do J=jsc-1,jec ; do i=isc,iec ; IST%v_ocn_C(i,J) = v_nonsym(I,j) ; enddo ; enddo
-!     else
-!       do j=jsc,jec ; do I=isc,iec
-!         IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
-!       enddo ; enddo
-!       do J=jsc,jec ; do i=isc,iec
-!         IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
-!       enddo ; enddo
-!     endif
-
       do j=jsc,jec ; do I=isc,iec
         IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
       enddo ; enddo
@@ -774,14 +763,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
         call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
-
-      if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
-        do J=jsc-1,jec ; do I=isc-1,iec
-          IST%u_ocn(I,J) = 0.5*(IST%u_ocn_C(I,j) + IST%u_ocn_C(I,j+1))
-          IST%v_ocn(I,J) = 0.5*(IST%v_ocn_C(i,J) + IST%v_ocn_C(i+1,J))
-        enddo ; enddo
-        call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
-      endif
     else
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec
@@ -858,14 +839,20 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
     call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
-    call chksum(IST%u_ocn(isc:iec,jsc:jec), "Intermed IST%u_ocn(0,0)")
-    call chksum(IST%u_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%u_ocn(-,0)")
-    call chksum(IST%u_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%u_ocn(0,-)")
-    call chksum(IST%u_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%u_ocn(-,-)")
-    call chksum(IST%v_ocn(isc:iec,jsc:jec), "Intermed IST%v_ocn(0,0)")
-    call chksum(IST%v_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%v_ocn(-,0)")
-    call chksum(IST%v_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%v_ocn(0,-)")
-    call chksum(IST%v_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%v_ocn(-,-)")
+    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
+      call chksum(IST%u_ocn_C(isc:iec,jsc:jec), "Intermed IST%u_ocn_C(0,0)")
+      call chksum(IST%v_ocn_C(isc:iec,jsc:jec), "Intermed IST%v_ocn_C(0,0)")
+    endif
+    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
+      call chksum(IST%u_ocn(isc:iec,jsc:jec), "Intermed IST%u_ocn(0,0)")
+      call chksum(IST%u_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%u_ocn(-,0)")
+      call chksum(IST%u_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%u_ocn(0,-)")
+      call chksum(IST%u_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%u_ocn(-,-)")
+      call chksum(IST%v_ocn(isc:iec,jsc:jec), "Intermed IST%v_ocn(0,0)")
+      call chksum(IST%v_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%v_ocn(-,0)")
+      call chksum(IST%v_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%v_ocn(0,-)")
+      call chksum(IST%v_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%v_ocn(-,-)")
+    endif
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
     call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
   endif
@@ -896,8 +883,13 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%id_sst>0) call post_data(IST%id_sst, sst(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   if (IST%id_sss>0) call post_data(IST%id_sss, IST%s_surf, IST%diag, mask=G%Lmask2dT)
   if (IST%id_ssh>0) call post_data(IST%id_ssh, IST%sea_lev, IST%diag, mask=G%Lmask2dT)
-  if (IST%id_uo >0) call post_data(IST%id_uo , IST%u_ocn, IST%diag, mask=G%Lmask2dBu)
-  if (IST%id_vo >0) call post_data(IST%id_vo , IST%v_ocn, IST%diag, mask=G%Lmask2dBu)
+  if (IST%Cgrid_dyn) then
+    if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn_C, IST%diag, mask=G%Lmask2dCu)
+    if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn_C, IST%diag, mask=G%Lmask2dCv)
+  else
+    if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn, IST%diag, mask=G%Lmask2dBu)
+    if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn, IST%diag, mask=G%Lmask2dBu)
+  endif
   if (IST%id_bheat>0) call post_data(IST%id_bheat, IST%bheat, IST%diag, mask=G%Lmask2dT)
   call disable_SIS_averaging(IST%diag)
 
@@ -1349,14 +1341,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !
     if (IST%id_fax>0) call post_data(IST%id_fax, wind_stress_Cu, IST%diag)
     if (IST%id_fay>0) call post_data(IST%id_fay, wind_stress_Cv, IST%diag)
-
-    !### See whether this is necessary.
-    do J=jsc-1,jec ; do I=isc-1,iec
-      IST%u_ice(I,J) = G%mask2dBu(I,J) * &   ! Ice velocity as reported to ocean.
-             0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I,j+1))
-      IST%v_ice(I,J) = G%mask2dBu(I,J) * &
-             0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i+1,J))
-    enddo ; enddo
 
     do k=1,ncat ; do J=jsc-1,jec+1 ; do I=isc-1,iec
       IST%flux_u_top_Cu(I,j,k) = fx_wat_C(I,j) ! stress of ice on ocean
@@ -2172,8 +2156,9 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
     if (IST%Cgrid_dyn) then
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
+    else
+      call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
     endif
-    call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
