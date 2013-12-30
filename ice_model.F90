@@ -59,7 +59,7 @@ use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_string_functions, only : uppercase
 
 use fms_mod, only: file_exist, clock_flag_default
-use fms_io_mod, only : set_domain, nullify_domain, restore_state
+use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
 use mpp_mod, only: mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only: CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
@@ -2144,6 +2144,17 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   restart_file = 'INPUT/ice_model.res.nc'
   if (file_exist(restart_file)) then
     call restore_state(Ice%Ice_restart)
+
+    ! Approximately initialize state fields that are not present
+    ! in SIS1 restart files.
+    if (.not.query_initialized(Ice%Ice_restart, 't_snow')) &
+      IST%t_snow(:,:,:) = IST%t_ice(:,:,:,1)
+    if (.not.query_initialized(Ice%Ice_restart, 't_ice2')) &
+      IST%t_ice(:,:,:,2) = IST%t_ice(:,:,:,1)
+    if (.not.query_initialized(Ice%Ice_restart, 't_ice3')) &
+      IST%t_ice(:,:,:,3) = IST%t_ice(:,:,:,2)
+    if (.not.query_initialized(Ice%Ice_restart, 't_ice4')) &
+      IST%t_ice(:,:,:,4) = IST%t_ice(:,:,:,3)
 
     !--- update the halo values.
     call pass_var(IST%part_size, G%Domain)

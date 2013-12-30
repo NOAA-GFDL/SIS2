@@ -1134,11 +1134,11 @@ subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
   allocate(CS%str_t(isd:ied, jsd:jed)) ; CS%str_t(:,:) = 0.0
   allocate(CS%str_s(G%IsdB:G%IedB, G%JsdB:G%JedB)) ; CS%str_s(:,:) = 0.0
   id = register_restart_field(Ice_restart, restart_file, 'str_d', CS%str_d, &
-                              domain=G%Domain%mpp_domain)
+                              domain=G%Domain%mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'str_t', CS%str_t, &
-                              domain=G%Domain%mpp_domain)
+                              domain=G%Domain%mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
-                              domain=G%Domain%mpp_domain, position=CORNER)
+               domain=G%Domain%mpp_domain, position=CORNER, mandatory=.false.)
 end subroutine ice_C_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

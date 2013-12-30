@@ -521,22 +521,35 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   ! Now register some of these arrays to be read from the restart files.
   domain => G%domain%mpp_domain
   idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_surf',    IST%t_surf,    domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_snow',    IST%h_snow,    domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_snow',    IST%t_snow,    domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',     IST%h_ice,     domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice1',    IST%t_ice(:,:,:,1), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice2',    IST%t_ice(:,:,:,2), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice3',    IST%t_ice(:,:,:,3), domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice4',    IST%t_ice(:,:,:,4), domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
+                               domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%h_snow, &
+                               domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_snow', IST%t_snow, &
+                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%h_ice, &
+                               domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice1', IST%t_ice(:,:,:,1), &
+                               domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice2', IST%t_ice(:,:,:,2), &
+                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice3', IST%t_ice(:,:,:,3), &
+                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 't_ice4', IST%t_ice(:,:,:,4), &
+                               domain=domain, mandatory=.false.)
   if (IST%Cgrid_dyn) then
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, domain=domain, position=EAST)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, domain=domain, position=NORTH)
+    idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
+                                 domain=domain, position=EAST, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
+                                 domain=domain, position=NORTH, mandatory=.false.)
   else
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice, domain=domain, position=CORNER)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice, domain=domain, position=CORNER)
+    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice, &
+                                 domain=domain, position=CORNER, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice, &
+                                 domain=domain, position=CORNER, mandatory=.false.)
   endif
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen',    IST%coszen, domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen, &
+                               domain=domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
 

@@ -629,11 +629,11 @@ subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
   allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
   allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
   id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                              domain=G%Domain%mpp_domain)
+                              domain=G%Domain%mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                              domain=G%Domain%mpp_domain)
+                              domain=G%Domain%mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                              domain=G%Domain%mpp_domain)
+                              domain=G%Domain%mpp_domain, mandatory=.false.)
 end subroutine ice_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
