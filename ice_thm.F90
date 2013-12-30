@@ -247,15 +247,19 @@ real, intent(in), dimension(NN) :: tice   ! ice temperature (deg-C)
 real, intent(in), dimension(NN) :: sice   ! ice salinity (ppt)
 real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C)
 
-  real :: kk, k10, k0a, tsf, ta, salt_part, rat, tsurf
+  real :: kk, k10, k0a, tsf, k0a_x_ta, salt_part, rat, tsurf
   real, dimension(0:NN) :: aa, bb, cc, ff ! tridiagonal coefficients
   real, dimension(0:NN) :: bb_new, ff_new ! modified by tridiag. algorithm
   integer :: k
 
   kk = NN*KI/hice                        ! full ice layer conductivity
-  k10 = 1/((hice/(2*NN*KI))+hsno/(2*KS)) ! coupling ice layer 1 to snow
-  k0a = 1/(hsno/(2*KS)+1/B)              ! coupling snow to "air"
-  ta  = A/B                              ! "air" temperature
+!  k10 = 1/((hice/(2*NN*KI))+hsno/(2*KS)) ! coupling ice layer 1 to snow
+!  k0a = 1/(hsno/(2*KS)+1/B)            ! coupling snow to "air"
+!  ta  = A/B                            ! "air" temperature
+  
+  k10 = 2.0*(KS*(NN*KI)) / (hice*KS + hsno*(NN*KI)) ! coupling ice layer 1 to snow
+  k0a = (KS*B) / (0.5*B*hsno + KS)       ! coupling snow to "air"
+  k0a_x_ta = (KS*A) / (0.5*B*hsno + KS)  ! coupling times "air" temperture
   tsf = -MU_TS*sice(1)                   ! surface freezing temperature
   if (hsno>0.0) tsf = 0.0
 
@@ -286,7 +290,7 @@ real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C
   aa(0) = -k10
   bb(0) = hsno*(DS/DT)*CI+k10+k0a    ! if melting, change this
   cc(0) = 0.0              ! snow is at bottom of matrix, cc=0
-  ff(0) = hsno*(DS/DT)*CI*tsn+k0a*ta ! if melting, change this
+  ff(0) = hsno*(DS/DT)*CI*tsn+k0a_x_ta ! if melting, change this
 
   !
   ! going UP the ice column (down the tridiagonal matrix)
@@ -377,7 +381,7 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   real, dimension(0:NN) :: temp_est
   real, dimension(NN) :: tfi, tice_est ! estimated new ice temperatures
   real :: mi, ms, e_extra
-  real :: kk, k10, k0a, tsf, ta, tsno_est,hie
+  real :: kk, k10, k0a, tsf, k0a_x_ta, tsno_est,hie
   integer :: k
 
   mi = DI*hice/NN           ! full ice layer mass
@@ -385,10 +389,14 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   tfi = -MU_TS*sice         ! freezing temperature of ice layers
   hie = max(hice, H_LO_LIM); ! prevent thin ice inaccuracy (mw)
   kk = NN*KI/hie                        ! full ice layer conductivity
-  k10 = 1/(hie/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
-  k0a = 1/(hsno/(2*KS)+1/B)              ! coupling snow to "air"
-  ta  = A/B                              ! "air" temperature
-  tsf = tfi(1)                           ! surface freezing temperature
+!  k10 = 1/(hie/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
+!  k0a = 1/(hsno/(2*KS)+1/B)            ! coupling snow to "air"
+!  ta  = A/B                            ! "air" temperature
+  
+  k10 = 2.0*(KS*(NN*KI)) / (hice*KS + hsno*(NN*KI)) ! coupling ice layer 1 to snow
+  k0a = (KS*B) / (0.5*B*hsno + KS)      ! coupling snow to "air"
+  k0a_x_ta = (KS*A) / (0.5*B*hsno + KS) ! coupling times "air" temperture
+  tsf = tfi(1)                          ! surface freezing temperature
   if (hsno>0.0) tsf = 0.0
 
   ! 1st get non-conservative estimate with implicit treatment of layer coupling
@@ -415,7 +423,7 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   enddo
   tice_est(1) = laytemp(mi, tfi(1), sol(1)+kk*tice_est(2)+k10*tsno_est, &
                                                               kk+k10, tice(1))
-  tsno_est = laytemp(ms, 0.0, sol(0)+k10*tice_est(1)+k0a*ta, k10+k0a, tsn)
+  tsno_est = laytemp(ms, 0.0, sol(0)+k10*tice_est(1)+k0a_x_ta, k10+k0a, tsn)
   tsurf = (A*hsno+2*KS*tsno_est)/(B*hsno+2*KS)  ! diagnose surface skin temp.
 
   if (tsurf > tsf) then ! surface is melting, redo with surf. at melt temp.
@@ -583,7 +591,7 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   if (frazil > 0.0 .and. hice == 0.0) then
     do k=1,NN
       tice(k) = min(tfw,-MU_TS*sice(k)-0.5) !was tfw
-      hlay(k) = hlay(k)+((frazil/NN)/emelt(tice(k), sice(k)))/DI
+      hlay(k) = hlay(k) + ((frazil/NN)/emelt(tice(k), sice(k)))/DI
     enddo
   endif
 
@@ -623,14 +631,14 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
       hsno = 0.0
       do k=1,NN
         if (melt_left < hlay(k)*DI*emelt(tice(k),sice(k))) then
-          hlay(k) = hlay(k)-(melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
+          hlay(k) = hlay(k) - (melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
           melt_left = 0.0
           exit
         endif
-        melt_left = melt_left-hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
+        melt_left = melt_left - hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
         hlay(k) = 0.0
       enddo
-      heat_to_ocn = heat_to_ocn+melt_left ! melt heat left after snow & ice gone
+      heat_to_ocn = heat_to_ocn + melt_left ! melt heat left after snow & ice gone
     endif
   endif
 
@@ -646,20 +654,20 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   if (melt_left>0.0) then ! melt ice from below
     do k=NN,1,-1
       if (melt_left < hlay(k)*DI*emelt(tice(k),sice(k))) then
-        hlay(k) = hlay(k)-(melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
+        hlay(k) = hlay(k) - (melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
         melt_left = 0.0
         exit
       endif
-      melt_left = melt_left-hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
+      melt_left = melt_left - hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
       hlay(k) = 0.0
     enddo
   
   endif
   if (melt_left > 0.0 ) then ! melt snow from below
     if (melt_left < hsno*DS*(LI-CI*tsn)) then
-      hsno = hsno-(melt_left/(LI-CI*tsn))/DS ! melt part of snow
+      hsno = hsno - (melt_left/(LI-CI*tsn))/DS ! melt part of snow
     else
-      heat_to_ocn = heat_to_ocn+melt_left-DS*hsno*(LI-CI*tsn)
+      heat_to_ocn = heat_to_ocn + melt_left - DS*hsno*(LI-CI*tsn)
       hsno = 0.0              ! melt heat left after snow & ice gone
     endif
   endif
@@ -852,6 +860,7 @@ subroutine ice_optics(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
           Iswabs,   albice,      &
           albsno,   albpnd)
 
+     ! ### ADD PARENTHESES AND MULTIPLY BY A RECIPROCAL.
      alb = 1-fswsfc(1,1)-fswint(1,1)-fswthru(1,1)
      abs_sfc  = fswsfc(1,1)  /(1-alb)
      abs_snow = Sswabs(1,1,1)/(1-alb)
@@ -957,10 +966,10 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
 
   if (SLAB_ICE) then
     hi_effective = hi + KI_over_eps     ! TK added
-    ts = (KI*tfw-A*hi_effective)/(KI+B*hi_effective)     ! TK mod
+    ts = (KI*tfw-A*hi_effective) / (KI+B*hi_effective)     ! TK mod
     if (ts > 0.0) then       ! surface melting conditions
        ts = 0.0
-       if (hi>0.0) tmelt = tmelt + (KI*tfw/hi_effective-A)*dt     ! TK mod
+       if (hi>0.0) tmelt = tmelt + (KI*tfw/hi_effective - A)*dt ! TK mod
     endif
     if (hi>0.0) then
        bmelt = bmelt + (fb-KI*(tfw-ts)/hi_effective)*dt     ! TK mod
