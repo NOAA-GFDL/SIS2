@@ -799,22 +799,20 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
                            trim(filename))
 
 ! Initialize everything to a small number
-  dxCu(:,:)=0.0; dyCu(:,:)=0.0
-  dxCv(:,:)=0.0; dyCv(:,:)=0.0
-  dxBu(:,:)=0.0; dyBu(:,:)=0.0; areaBu(:,:)=0.0
+  dxCu(:,:) = 0.0 ; dyCu(:,:) = 0.0
+  dxCv(:,:) = 0.0 ; dyCv(:,:) = 0.0
+  dxBu(:,:) = 0.0 ; dyBu(:,:) = 0.0 ; areaBu(:,:) = 0.0
 
 !<MISSING CODE TO READ REFINEMENT LEVEL>
-  ni=2*(G%iec-G%isc+1) ! i size of supergrid
-  nj=2*(G%jec-G%jsc+1) ! j size of supergrid
+  ni = 2*(G%iec-G%isc+1) ! i size of supergrid
+  nj = 2*(G%jec-G%jsc+1) ! j size of supergrid
 
 ! Define a domain for the supergrid (SGdom)
-  npei=G%domain%layout(1)
-  npej=G%domain%layout(2)
-  allocate(exni(npei))
-  allocate(exnj(npej))
+  npei = G%domain%layout(1) ; npej = G%domain%layout(2)
+  allocate(exni(npei)) ; allocate(exnj(npej))
   call mpp_get_domain_components(G%domain%mpp_domain, domx, domy)
-  call mpp_get_compute_domains(domx,size=exni)
-  call mpp_get_compute_domains(domy,size=exnj)
+  call mpp_get_compute_domains(domx, size=exni)
+  call mpp_get_compute_domains(domy, size=exnj)
   allocate(SGdom%mpp_domain)
   SGdom%nihalo = 2*G%domain%nihalo+1
   SGdom%njhalo = 2*G%domain%njhalo+1
@@ -827,7 +825,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   global_indices(2) = SGdom%niglobal+SGdom%nihalo
   global_indices(3) = 1+SGdom%njhalo
   global_indices(4) = SGdom%njglobal+SGdom%njhalo
-  exni(:)=2*exni(:); exnj(:)=2*exnj(:)
+  exni(:) = 2*exni(:) ; exnj(:) = 2*exnj(:)
   if(ASSOCIATED(G%domain%maskmap)) then
      call mpp_define_domains(global_indices, SGdom%layout, SGdom%mpp_domain, &
             xflags=G%domain%X_FLAGS, yflags=G%domain%Y_FLAGS, &
@@ -848,11 +846,11 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   deallocate(exnj)
 
 ! Read X from the supergrid
-  tmpZ(:,:)=999.
-  call read_data(filename,'x',tmpZ,domain=SGdom%mpp_domain,position=CORNER)
+  tmpZ(:,:) = 999.
+  call read_data(filename, 'x', tmpZ, domain=SGdom%mpp_domain, position=CORNER)
 
   call pass_var(tmpZ, SGdom, position=CORNER)
-  call extrapolate_metric(tmpZ,2*(G%jsc-G%jsd)+2)
+  call extrapolate_metric(tmpZ, 2*(G%jsc-G%jsd)+2, missing=999.)
   do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
     G%geoLonT(i,j) = tmpZ(i2-1,j2-1)
   enddo ; enddo
@@ -869,11 +867,11 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
  !   call pass_var(G%geoLonBu, G%domain, position=CORNER)
 
 ! Read Y from the supergrid
-  tmpZ(:,:)=999.
-  call read_data(filename,'y',tmpZ,domain=SGdom%mpp_domain,position=CORNER)
+  tmpZ(:,:) = 999.
+  call read_data(filename, 'y', tmpZ, domain=SGdom%mpp_domain, position=CORNER)
 
   call pass_var(tmpZ, SGdom, position=CORNER)
-  call extrapolate_metric(tmpZ,2*(G%jsc-G%jsd)+2)
+  call extrapolate_metric(tmpZ, 2*(G%jsc-G%jsd)+2, missing=999.)
   do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
     G%geoLatT(i,j) = tmpZ(i2-1,j2-1)
   enddo ; enddo
@@ -888,12 +886,12 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   enddo ; enddo
 
 ! Read DX,DY from the supergrid
-  tmpU(:,:)=0.; tmpV(:,:)=0.
+  tmpU(:,:) = 0. ; tmpV(:,:) = 0.
   call read_data(filename,'dx',tmpV,domain=SGdom%mpp_domain,position=NORTH_FACE)
   call read_data(filename,'dy',tmpU,domain=SGdom%mpp_domain,position=EAST_FACE)
-  call pass_vector(tmpU,tmpV,SGdom,To_All+Scalar_Pair,CGRID_NE)
-  call extrapolate_metric(tmpV,2*(G%jsc-G%jsd)+2)
-  call extrapolate_metric(tmpU,2*(G%jsc-G%jsd)+2)
+  call pass_vector(tmpU, tmpV, SGdom, To_All+Scalar_Pair, CGRID_NE)
+  call extrapolate_metric(tmpV, 2*(G%jsc-G%jsd)+2, missing=0.)
+  call extrapolate_metric(tmpU, 2*(G%jsc-G%jsd)+2, missing=0.)
 
   do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
     dxT(i,j) = tmpV(i2-1,j2-1) + tmpV(i2,j2-1)
@@ -916,10 +914,10 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   enddo ; enddo
 
 ! Read AREA from the supergrid
-  tmpT(:,:)=0.
-  call read_data(filename,'area',tmpT,domain=SGdom%mpp_domain)
+  tmpT(:,:) = 0.
+  call read_data(filename, 'area', tmpT, domain=SGdom%mpp_domain)
   call pass_var(tmpT, SGdom)
-  call extrapolate_metric(tmpT,2*(G%jsc-G%jsd)+2)
+  call extrapolate_metric(tmpT, 2*(G%jsc-G%jsd)+2, missing=0.)
 
   do j=G%jsd,G%jed ; do i=G%isd,G%ied ; i2 = 2*i ; j2 = 2*j
     areaT(i,j) = (tmpT(i2-1,j2-1) + tmpT(i2,j2)) + &
@@ -981,30 +979,33 @@ end subroutine set_grid_metrics_from_mosaic
 
 ! ------------------------------------------------------------------------------
 
-subroutine extrapolate_metric(var, jh)
+subroutine extrapolate_metric(var, jh, missing)
   real, dimension(:,:), intent(inout) ::  var
   integer, intent(in) :: jh
+  real, optional, intent(in) :: missing
+  real :: badval
   integer :: i,j
+  badval = 0.0 ; if (present(missing)) badval = missing
 
   ! Fill in southern halo by extrapolating from the computational domain
-  do j=lbound(var,2)+jh,lbound(var,2),-1; do i=lbound(var,1),ubound(var,1)
-    if (var(i,j)==0.) var(i,j)=2.0*var(i,j+1)-var(i,j+2)
-  enddo; enddo
+  do j=lbound(var,2)+jh,lbound(var,2),-1 ; do i=lbound(var,1),ubound(var,1)
+    if (var(i,j)==badval) var(i,j) = 2.0*var(i,j+1)-var(i,j+2)
+  enddo ; enddo
 
   ! Fill in northern halo by extrapolating from the computational domain
-  do j=ubound(var,2)-jh,ubound(var,2); do i=lbound(var,1),ubound(var,1)
-    if (var(i,j)==0.) var(i,j)=2.0*var(i,j-1)-var(i,j-2)
-  enddo; enddo
+  do j=ubound(var,2)-jh,ubound(var,2) ; do i=lbound(var,1),ubound(var,1)
+    if (var(i,j)==badval) var(i,j) = 2.0*var(i,j-1)-var(i,j-2)
+  enddo ; enddo
   
   ! Fill in western halo by extrapolating from the computational domain
-  do j=lbound(var,2),ubound(var,2); do i=lbound(var,1)+jh,lbound(var,1),-1
-    if (var(i,j)==0.) var(i,j)=2.0*var(i+1,j)-var(i+2,j)
-  enddo; enddo
+  do j=lbound(var,2),ubound(var,2) ; do i=lbound(var,1)+jh,lbound(var,1),-1
+    if (var(i,j)==badval) var(i,j) = 2.0*var(i+1,j)-var(i+2,j)
+  enddo ; enddo
 
   ! Fill in eastern halo by extrapolating from the computational domain
-  do j=lbound(var,2),ubound(var,2); do i=ubound(var,1)-jh,ubound(var,1)
-    if (var(i,j)==0.) var(i,j)=2.0*var(i-1,j)-var(i-2,j)
-  enddo; enddo
+  do j=lbound(var,2),ubound(var,2) ; do i=ubound(var,1)-jh,ubound(var,1)
+    if (var(i,j)==badval) var(i,j) = 2.0*var(i-1,j)-var(i-2,j)
+  enddo ; enddo
 
 end subroutine extrapolate_metric
 
