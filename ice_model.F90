@@ -2156,6 +2156,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
     if (.not.query_initialized(Ice%Ice_restart, 't_ice4')) &
       IST%t_ice(:,:,:,4) = IST%t_ice(:,:,:,3)
 
+    ! Deal with any ice thicknesses over land.
+    do k=1,G%CatIce
+      IST%h_snow(:,:,k) = IST%h_snow(:,:,k) * G%mask2dT(:,:) 
+      IST%h_ice(:,:,k) = IST%h_ice(:,:,k) * G%mask2dT(:,:)
+    enddo
+
     !--- update the halo values.
     call pass_var(IST%part_size, G%Domain)
     call pass_var(IST%h_ice, G%Domain, complete=.false.)
