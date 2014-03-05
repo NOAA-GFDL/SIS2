@@ -363,6 +363,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
   G%isd = isda-i_off ; G%ied = ieda-i_off ; G%jsd = jsda-j_off ; G%jed = jeda-j_off
   G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
+  G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
 
   G%symmetric = G%Domain%symmetric 
   G%nonblocking_updates = G%Domain%nonblocking_updates

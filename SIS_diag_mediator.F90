@@ -134,7 +134,7 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
   integer :: k, nz
-  real :: zlev(G%ks:G%ke), zinter(G%ks:G%ke+1)
+  real :: zlev_ice(G%NkIce), zinter_ice(G%NkIce+1)
   logical :: set_vert, Cartesian_grid
   character(len=80) :: grid_config, units_temp
 ! This include declares and sets the variable "version".
@@ -197,9 +197,11 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
               Domain2=G%Domain%mpp_domain)
 
   if (set_vert) then
-    id_zl = diag_axis_init('zl', zlev, 'layer', 'z', 'Cell depth', &
+    do k=1,G%NkIce+1 ; zinter_ice(k) = real(k-1) / real(G%NkIce) ; enddo
+    do k=1,G%NkIce ; zlev_ice(k) = (k-0.5) / real(G%NkIce) ; enddo
+    id_zl = diag_axis_init('zl', zlev_ice, 'layer', 'z', 'Cell depth', &
                            set_name='ice')
-    id_zi = diag_axis_init('zi', zinter, 'interface', 'z', &
+    id_zi = diag_axis_init('zi', zinter_ice, 'interface', 'z', &
                            'Cell interface depth', set_name='ice')
   else
     id_zl = -1 ; id_zi = -1
@@ -760,23 +762,23 @@ subroutine diag_masks_set(G, missing_value, diag)
   diag%mask2dCu => G%mask2dCu
   diag%mask2dCv => G%mask2dCv
 
-  allocate(diag%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%ke)) 
-  allocate(diag%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%ke)) 
-  allocate(diag%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%ke)) 
-  allocate(diag%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%ke)) 
-  do k = 1,G%ke
-    diag%mask3dTL(:,:,k) = diag%mask2dT (:,:)
+  allocate(diag%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce)) 
+  allocate(diag%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce)) 
+  allocate(diag%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce)) 
+  allocate(diag%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce)) 
+  do k=1,G%NkIce
+    diag%mask3dTL(:,:,k)  = diag%mask2dT(:,:)
     diag%mask3dBuL(:,:,k) = diag%mask2dBu(:,:)
     diag%mask3dCuL(:,:,k) = diag%mask2dCu(:,:)
     diag%mask3dCvL(:,:,k) = diag%mask2dCv(:,:)
   enddo
 
-  allocate(diag%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%ke+1)) 
-  allocate(diag%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%ke+1)) 
-  allocate(diag%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%ke+1)) 
-  allocate(diag%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%ke+1)) 
-  do k = 1,G%ke+1
-    diag%mask3dTi(:,:,k) = diag%mask2dT (:,:)
+  allocate(diag%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1)) 
+  allocate(diag%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1)) 
+  allocate(diag%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1)) 
+  allocate(diag%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1)) 
+  do k=1,G%NkIce+1
+    diag%mask3dTi(:,:,k)  = diag%mask2dT(:,:)
     diag%mask3dBui(:,:,k) = diag%mask2dBu(:,:)
     diag%mask3dCui(:,:,k) = diag%mask2dCu(:,:)
     diag%mask3dCvi(:,:,k) = diag%mask2dCv(:,:)
@@ -787,7 +789,7 @@ subroutine diag_masks_set(G, missing_value, diag)
   allocate(diag%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce)) 
   allocate(diag%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce)) 
   do k=1,G%CatIce
-    diag%mask3dTC(:,:,k) = diag%mask2dT (:,:)
+    diag%mask3dTC(:,:,k)  = diag%mask2dT(:,:)
     diag%mask3dBuC(:,:,k) = diag%mask2dBu(:,:)
     diag%mask3dCuC(:,:,k) = diag%mask2dCu(:,:)
     diag%mask3dCvC(:,:,k) = diag%mask2dCv(:,:)
