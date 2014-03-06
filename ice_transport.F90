@@ -418,9 +418,10 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! Recalculate part_sz(:,:,0) to ensure that the sum of part_sz adds up to 1.
   part_sz(:,:,0) = 1.0
   do k=1,G%CatIce ; part_sz(:,:,0) = part_sz(:,:,0) - part_sz(:,:,k) ; enddo
+!  This would handle roundoff in a slightly better way.
 !  ice_cover(:,:) = 0.0
 !  do k=1,G%CatIce ; ice_cover(:,:) = ice_cover(:,:) + part_sz(:,:,k) ; enddo
-!  part_sz(:,:,0) = 1.0 - ice_cover(:,:)
+!  part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
 
   if (CS%check_conservation) then
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -1221,7 +1222,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "If true, use the very old slab-style ice.", default=.false.)
   call get_param(param_file, mod, "SIS1_ICE_TRANSPORT", CS%SIS1_transport, &
                  "If true, use SIS1 code to solve the ice continuity \n"//&
-                 "equation and transport tracers.", default=.true.)
+                 "equation and transport tracers.", default=.false.)
   call get_param(param_file, mod, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow \n"//&
                  "mass conservation in the sea-ice transport code.  This \n"//&
