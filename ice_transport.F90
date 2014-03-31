@@ -228,6 +228,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! brine pockets will shrink or grow until their salinity gives a freezing
   ! point that matches the local temperature.
   ! This was prevously the subroutine thm_pack.
+  vol_ice(:,:,:) = 0.0 ; vol_snow(:,:,:) = 0.0
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (h_ice(i,j,k)>0.0) then
       vol_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
@@ -534,8 +535,8 @@ subroutine ice_continuity(u, v, h_in, h, uh, vh, dt, G, CS)
   do k=1,G%CatIce ; do J=js-1,je ; do i=is,ie
     if (v(i,J) >= 0.0) then ; h_up = h(i,j,k)
     else ; h_up = h(i,j+1,k) ; endif
-!###   vh(i,J,k) = G%dy_Cv(i,J) * v(i,J) * h_up
-    vh(i,J,k) = G%dyCv(i,J) * v(i,J) * h_up
+!###   vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
+    vh(i,J,k) = G%dxCv(i,J) * v(i,J) * h_up
   enddo ; enddo ; enddo
 
   do k=1,G%CatIce ; do j=js,je ; do i=is,ie
