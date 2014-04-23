@@ -111,13 +111,13 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     uh_ice, &  ! Zonal fluxes in m3 s-1 and kg s-1.
     uh_snow    ! Zonal fluxes in m3 s-1 and kg s-1.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
-    uf0, uf, & ! Zonal fluxes in m3 s-1 and kg s-1.
+    uf, & ! Zonal fluxes in m3 s-1 and kg s-1.
     ustar, ustaro, ustarv ! Local variables, transporting velocities
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)) :: &
     vh_ice, &  ! Meridional fluxes in m3 s-1 and kg s-1.
     vh_snow    ! Meridional fluxes in m3 s-1 and kg s-1.
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    vf0, vf, & ! Meridional fluxes in m3 s-1 and kg s-1.
+    vf, & ! Meridional fluxes in m3 s-1 and kg s-1.
     vstar, vstaro, vstarv ! Local variables, transporting velocities
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
     vol_ice, vol_snow, &  ! The total volume of snow and ice per unit area in a cell, in m.
@@ -222,37 +222,33 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
                             pocket_enth, G, enth_ice(1), enth_snow(1))
   endif
 
-  !   Convert from ice temperature (which is not conserved) to enthalpy, which
-  ! includes the heat requirements for melting of brine pockets associated with 
-  ! temperature changes.  These expressions stem from the assumptions that
-  ! brine pockets will shrink or grow until their salinity gives a freezing
-  ! point that matches the local temperature.
-  ! This was prevously the subroutine thm_pack.
+  !   Determine the volume of snow and ice.
   vol_ice(:,:,:) = 0.0 ; vol_snow(:,:,:) = 0.0
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (h_ice(i,j,k)>0.0) then
       vol_ice(i,j,k) = part_sz(i,j,k)*h_ice(i,j,k)
       vol_snow(i,j,k) = part_sz(i,j,k)*h_snow(i,j,k)
-      if (CS%SIS1_transport) then
-        do l=1,G%NkIce
-          t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l)) * &
-                            vol_ice(i,j,k)
-        enddo
-        t_snow(i,j,k) = t_snow(i,j,k)*vol_snow(i,j,k)
-      else
-        do l=1,G%NkIce
-          t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l))
-        enddo
-      endif
     else
       if (part_sz(i,j,k)*h_snow(i,j,k) > 0.0) then
         call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
       endif
       part_sz(i,j,k) = 0.0 ; vol_ice(i,j,k) = 0.0
       vol_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
 
+  !   Convert from ice temperature (which is not conserved) to enthalpy, which
+  ! includes the heat requirements for melting of brine pockets associated with 
+  ! temperature changes.  These expressions stem from the assumptions that
+  ! brine pockets will shrink or grow until their salinity gives a freezing
+  ! point that matches the local temperature.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (vol_ice(i,j,k)>0.0) then
+      do l=1,G%NkIce
+        t_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l))
+      enddo
+    else
       do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
-      t_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
 
@@ -269,16 +265,29 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   call pass_var(vol_snow, G%Domain, complete=.false.)
   call pass_var(h_ice, G%Domain, complete=.true.)
 
-  uf(:,:) = 0.0; vf(:,:) = 0.0
   if (CS%SIS1_transport) then
+    do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
+      vol0_ice(i,j,k) = vol_ice(i,j,k)
+      vol0_snow(i,j,k) = vol_snow(i,j,k)
+    enddo ; enddo ; enddo
+
     do k=1,G%CatIce
       call ice_advect(uc, vc, part_sz(:,:,k), dt_slow, G, CS)
-      call ice_advect(uc, vc, vol_snow(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf(:,:) = uf(:,:) + CS%Rho_snow*uf0(:,:)
-      vf(:,:) = vf(:,:) + CS%Rho_snow*vf0(:,:)
-      call ice_advect(uc, vc, vol_ice(:,:,k), dt_slow, G, CS, uf0, vf0)
-      uf(:,:) = uf(:,:) + CS%Rho_ice*uf0(:,:)
-      vf(:,:) = vf(:,:) + CS%Rho_ice*vf0(:,:)
+      call ice_advect(uc, vc, vol_snow(:,:,k), dt_slow, G, CS, uh_snow(:,:,k), vh_snow(:,:,k))
+
+      call ice_advect(uc, vc, vol_ice(:,:,k), dt_slow, G, CS, uh_ice(:,:,k), vh_ice(:,:,k))
+    enddo
+
+    do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
+      if (vol0_ice(i,j,k)>0.0) then
+        do l=1,G%NkIce ; t_ice(i,j,k,l) = t_ice(i,j,k,l) * vol0_ice(i,j,k) ; enddo
+        t_snow(i,j,k) = t_snow(i,j,k)*vol0_snow(i,j,k)
+      else
+        do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+        t_snow(i,j,k) = 0.0
+      endif
+    enddo ; enddo ; enddo
+    do k=1,G%CatIce
       call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
       do l=1,G%NkIce
         call ice_advect(uc, vc, t_ice(:,:,k,l), dt_slow, G, CS)
@@ -288,37 +297,41 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     do j=jsc,jec ; do i=isc,iec
       if (sum(vol_ice(i,j,:))>0) &
         call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
-           vol_snow(i,j,:), t_snow(i,j,:), vol_ice (i,j,:), &
+           vol_snow(i,j,:), t_snow(i,j,:), vol_ice(i,j,:), &
            t_ice(i,j,:,1), t_ice(i,j,:,2), &
            t_ice(i,j,:,3), t_ice(i,j,:,4), hlim)
     enddo ; enddo
 
-    !   Convert from enthalpy back to ice temperature. These expressions stem from
-    ! the assumptions that brine pockets will shrink or grow until their salinity
-    ! gives a freezing point that matches the local temperature.
-    ! This was prevously the subroutine thm_unpack.
+    !  Handle vanished categories and recalculate thickness.
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (part_sz(i,j,k)<1e-10) vol_ice(i,j,k) = 0.0
       if (vol_ice(i,j,k)>0.0) then
+        h_ice(i,j,k) = vol_ice(i,j,k)/part_sz(i,j,k)
+        h_snow(i,j,k) = vol_snow(i,j,k)/part_sz(i,j,k)
+      else
+        part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
+        h_snow(i,j,k) = 0.0
+      endif
+    enddo ; enddo ; enddo
+
+    !  Divide the volumes out of the tracers.
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      ! ### Change to multiply by reciprocals.
+      if (vol_ice(i,j,k)>0.0) then
         do l=1,G%NkIce
           t_ice(i,j,k,l) = t_ice(i,j,k,l) / vol_ice(i,j,k)
-          t_ice(i,j,k,l) = 0.5*(t_ice(i,j,k,l) - &
-                                sqrt(t_ice(i,j,k,l)*t_ice(i,j,k,l) + 4.0*pocket_enth(l)))
         enddo
-        h_ice(i,j,k) = vol_ice(i,j,k)/part_sz(i,j,k)
         if (vol_snow(i,j,k)>0.0) then
           t_snow(i,j,k) = t_snow(i,j,k)/vol_snow(i,j,k)
         else
           t_snow(i,j,k) = 0.0
         endif
-        h_snow(i,j,k) = vol_snow(i,j,k)/part_sz(i,j,k)
       else
-        part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
         do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
-        h_snow(i,j,k) = 0.0
         t_snow(i,j,k) = 0.0
       endif
     enddo ; enddo ; enddo
+
   else ! Not SIS1_transport.
     ! Do the transport via the continuity equations and tracer conservation
     ! equations for h_ice and tracers, inverting for the fractional size of
@@ -337,7 +350,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    T_snow_d1(:,:,:) = T_snow(:,:,:)
 !    T_ice_d1(:,:,:,:) = T_ice(:,:,:,:)
 
-    call adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, G, CS)
+    call adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
+                               t_ice, t_snow, G, CS)
 
     ! Copy the arrays for debugging purposes.
     ! ###
@@ -356,17 +370,26 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     call ice_continuity(uc, vc, vol0_snow, vol_snow, uh_snow, vh_snow, dt_slow, G, CS)
 
     call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, h_ice, dt_slow, G, CS)
+
     do l=1,G%NkIce
       call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, t_ice(:,:,:,l), dt_slow, G, CS)
     enddo
     call advect_ice_tracer(vol0_snow, vol_snow, uh_snow, vh_snow, t_snow, dt_slow, G, CS)
+
+
+    ! Add code to make sure that h_ice(i,j,1) > hlim(1).
+    do j=jsc,jec ; do i=isc,iec
+      if ((vol_ice(i,j,1) > 0.0) .and. (h_ice(i,j,1) < hlim(1))) then
+        h_ice(i,j,1) = hlim(1)
+      endif
+    enddo ; enddo
 
     ice_cover(:,:) = 0.0
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k) > 0.0) then
         part_sz(i,j,k) = vol_ice(i,j,k) / h_ice(i,j,k)
         h_snow(i,j,k) = vol_snow(i,j,k) / part_sz(i,j,k)
-!### Consider...        h_snow(i,j,k) = h_ice(i,j,k) * vol_snow(i,j,k) / vol_ice(i,j,k)
+!### Consider...     h_snow(i,j,k) = h_ice(i,j,k) * vol_snow(i,j,k) / vol_ice(i,j,k)
         ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
       else
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
@@ -384,25 +407,9 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     ! the thinnest categories.
     call compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, t_snow, G, CS)
 
-    if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
-      do j=jsc,jec ; do I=isc-1,iec
-        uf(I,j) = uf(I,j) + (CS%Rho_snow*uh_snow(I,j,k) + CS%Rho_ice*uh_ice(I,j,k))
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        vf(i,J) = vf(i,J) + (CS%Rho_snow*vh_snow(i,J,k) + CS%Rho_ice*vh_ice(i,J,k))
-      enddo ; enddo
-    enddo ; endif
-
-    !   Convert from enthalpy back to ice temperature. These expressions stem from
-    ! the assumptions that brine pockets will shrink or grow until their salinity
-    ! gives a freezing point that matches the local temperature.
+    !   Handle massless categories.
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      if (vol_ice(i,j,k)>0.0) then
-        do l=1,G%NkIce
-          t_ice(i,j,k,l) = 0.5*(t_ice(i,j,k,l) - &
-                                sqrt(t_ice(i,j,k,l)*t_ice(i,j,k,l) + 4.0*pocket_enth(l)))
-        enddo
-      else
+      if (vol_ice(i,j,k)<=0.0) then
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
         do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
         h_snow(i,j,k) = 0.0
@@ -410,7 +417,44 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       endif
     enddo ; enddo ; enddo
 
+    ! Is sum(part_sz) = 1 ?
+
   endif ! Not SIS1_transport.
+
+
+  !   Convert from enthalpy back to ice temperature. These expressions stem from
+  ! the assumptions that brine pockets will shrink or grow until their salinity
+  ! gives a freezing point that matches the local temperature.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (vol_ice(i,j,k)>0.0) then
+      do l=1,G%NkIce
+        t_ice(i,j,k,l) = 0.5*(t_ice(i,j,k,l) - &
+                              sqrt(t_ice(i,j,k,l)*t_ice(i,j,k,l) + 4.0*pocket_enth(l)))
+      enddo
+    else
+      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+    endif
+  enddo ; enddo ; enddo
+
+!   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
+!     do j=jsc,jec ; do I=isc-1,iec
+!       uf(I,j) = uf(I,j) + (CS%Rho_snow*uh_snow(I,j,k) + CS%Rho_ice*uh_ice(I,j,k))
+!     enddo ; enddo
+!     do J=jsc-1,jec ; do i=isc,iec
+!       vf(i,J) = vf(i,J) + (CS%Rho_snow*vh_snow(i,J,k) + CS%Rho_ice*vh_ice(i,J,k))
+!     enddo ; enddo
+!   enddo ; endif
+
+  uf(:,:) = 0.0; vf(:,:) = 0.0
+  if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
+    do j=jsc,jec ; do I=isc-1,iec
+      uf(I,j) = (uf(I,j) + CS%Rho_snow*uh_snow(I,j,k)) + CS%Rho_ice*uh_ice(I,j,k)
+    enddo ; enddo
+    do J=jsc-1,jec ; do i=isc,iec
+      vf(i,J) = (vf(i,J) + CS%Rho_snow*vh_snow(i,J,k)) + CS%Rho_ice*vh_ice(i,J,k)
+    enddo ; enddo
+  enddo ; endif
+
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
   call pass_var(h_snow, G%Domain, complete=.false.)
@@ -478,7 +522,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     enddo      
 !### USE BETTER ERROR HANDLING LATER.
     if (bad>0) &
-      print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',h_snow(i,j,k),h_ice(i,j,k),'tsn/tice=', &
+      print *, 'BAD ICE AFTER TRANSPORT ', 'hs/hi=',h_snow(i,j,k),h_ice(i,j,k),'tsn/tice=', &
                         t_snow(i,j,k),t_ice(i,j,k,1),t_ice(i,j,k,2),t_ice(i,j,k,3), &
                         t_ice(i,j,k,4),'cn=',part_sz(i,j,k)
   enddo ; enddo ; enddo
@@ -578,7 +622,7 @@ subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: flux_x
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)) :: flux_y
   real    :: tr_up
-  real    :: Ihnew
+  real    :: vol_end, Ivol_end
   integer :: i, j, k, m, is, ie, js, je !, isd, ied, jsd, jed
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 !  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -593,30 +637,30 @@ subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
     do j=js,je ; do I=is-1,ie
       if (uhtr(I,j,k) >= 0.0) then ; tr_up = tr(i,j,k)
       else ; tr_up = tr(i+1,j,k) ; endif
-      flux_x(I,j,k) = uhtr(I,j,k) * tr_up
+      flux_x(I,j,k) = (dt*uhtr(I,j,k)) * tr_up
     enddo ; enddo
 
     do J=js-1,je ; do i=is,ie
       if (vhtr(i,J,k) >= 0.0) then ; tr_up = tr(i,j,k)
       else ; tr_up = tr(i,j+1,k) ; endif
-      flux_y(i,J,k) = vhtr(i,J,k) * tr_up
+      flux_y(i,J,k) = (dt*vhtr(i,J,k)) * tr_up
     enddo ; enddo
 
     do j=js,je ; do i=is,ie
-      Ihnew = 0.0
-      if (h_end(i,j,k) > 0.0) Ihnew = 1.0 / h_end(i,j,k)
-      tr(i,j,k) = ( h_prev(i,j,k)*tr(i,j,k) - dt* G%IareaT(i,j) * &
-           ((flux_x(I,j,k) - flux_x(I-1,j,k)) + &
-            (flux_y(i,J,k) - flux_y(i,J-1,k))) ) * Ihnew
+      vol_end = (G%areaT(i,j) * h_end(i,j,k))
+      Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
+      tr(i,j,k) = ( (G%areaT(i,j)*h_prev(i,j,k))*tr(i,j,k) - &
+                   ((flux_x(I,j,k) - flux_x(I-1,j,k)) + &
+                    (flux_y(i,J,k) - flux_y(i,J-1,k))) ) * Ivol_end
     enddo ; enddo
   enddo
 
 end subroutine advect_ice_tracer
 
-subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, G, CS)
+subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, t_ice, t_snow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(:),                          intent(in)    :: hlim  ! Move to grid type?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice, part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: t_ice
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
   type(ice_transport_CS),                      pointer       :: CS
@@ -639,9 +683,11 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
   real :: vol_trans
+  real :: part_trans
   real :: snow_trans
   real :: Ivol_snow
   real :: Ivol_new
+  real :: I_hlim1
   integer :: i, j, k, m, is, ie, js, je, isd, ied, jsd, jed
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -651,7 +697,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       ! Move some or all of the ice to a thicker category.
       ! For now move all of it.
       vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k+1))
-      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
+      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
       ! This is upwind advection across categories.  Improve it later.
       do m=1,G%NkIce
@@ -663,6 +710,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       ! h should be the first thing to correct via a non-constant profile, and
       ! can be improved independent of T & S.
       h_ice(i,j,k) = hlim(k+1)
+      part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
+      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
 
       vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
       vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
@@ -682,7 +731,9 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       ! Move some or all of the ice to a thinner category.
       ! For now move all of it.
       vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k-1))
-      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
+!      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
+      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
       ! This is upwind advection across categories.  Improve it later.
       do m=1,G%NkIce
@@ -694,6 +745,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       ! h should be the first thing to correct via a non-constant profile, and
       ! can be improved independent of T & S.
       h_ice(i,j,k) = hlim(k)
+      part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
+      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
 
       vol_ice(i,j,k-1) = vol_ice(i,j,k-1) + vol_trans
       vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
@@ -707,6 +760,18 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, t_ice, t_snow, 
       endif
     endif
   enddo ; enddo ; enddo
+
+  ! Compress the ice in category 1 if it is thinner than the minimum.
+  if (hlim(1) > 0.0) then
+    I_hlim1 = 1.0 / hlim(1)
+    do j=jsd,jed ; do i=isd,ied
+      if ((vol_ice(i,j,1) > 0.0) .and. (h_ice(i,j,1) < hlim(1))) then
+        ! Compress the ice in this category to the minimum thickness.
+        part_sz(i,j,1) = part_sz(i,j,1) * (h_ice(i,j,1) * I_hlim1)
+        h_ice(i,j,1) = hlim(1)
+      endif
+    enddo ; enddo
+  endif
 
 end subroutine adjust_ice_categories
 
@@ -752,6 +817,7 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, t_ice, 
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
 
   do_j(:) = .false.
   do j=jsc,jec ; do i=isc,iec
