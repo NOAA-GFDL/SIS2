@@ -80,6 +80,7 @@ use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
+use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
@@ -617,6 +618,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   ! Any special first-time initialization must be completed before this point.
   IST%first_time = .false.
 
+  if (IST%bounds_check) &
+    call IST_bounds_check(IST, G, "Start of set_ice_surface_state")
+
   if (IST%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G)
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
@@ -792,6 +796,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     endif
   endif
 
+  if (IST%bounds_check) &
+    call IST_bounds_check(IST, G, "Midpoint set_ice_surface_state")
+
   ! Copy the surface temperatures into the externally visible data type.
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%s_surf(i2,j2) = IST%s_surf(i,j)
@@ -897,6 +904,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call IST_chksum("End set_ice_surface_state", IST, G)
     call Ice_public_type_chksum("End set_ice_surface_state", Ice)
   endif
+
+  if (IST%bounds_check) &
+    call Ice_public_type_bounds_check(Ice, G, "End set_ice_surface_state")
 
 end subroutine set_ice_surface_state
 
@@ -1136,6 +1146,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
   endif
 
+  if (IST%bounds_check) &
+    call Ice_public_type_bounds_check(Ice, G, "End update_ice_fast")
+  if (IST%bounds_check) &
+    call IST_bounds_check(IST, G, "End of update_ice_fast")
+
 end subroutine do_update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1178,6 +1193,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real :: Idt_slow, yr_dtslow
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
+  logical :: break_here = .false.
     real            :: dt_slow, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
     real            :: heat_limit_ice, heat_res_ice
     real            :: tot_heat, heating, tot_frazil
@@ -1191,6 +1207,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call IST_chksum("Start update_ice_model_slow", IST, G)
     call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
   endif
+
+  if (IST%bounds_check) &
+    call IST_bounds_check(IST, G, "Start of update_ice_model_slow")
 
   !
   ! Set up fluxes
@@ -1890,6 +1909,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call Ice_public_type_chksum("End UIMS", Ice)
   endif
 
+  if (IST%bounds_check) &
+    call IST_bounds_check(IST, G, "End of update_ice_slow")
+
+  if (IST%bounds_check) &
+    call Ice_public_type_bounds_check(Ice, G, "End update_ice_slow")
+
 end subroutine update_ice_model_slow
 
 
@@ -1906,7 +1931,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  real :: hlim_dflt(8) = (/ 0.0, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
+  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off
   integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
   character(len=128) :: restart_file
@@ -2017,6 +2042,12 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
                  "internal conservation of heat, salt, and water mass in \n"//&
                  "the sea ice model.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.true.)
+  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", IST%bounds_check, &
+                 "If true, periodically check the values of ice and snow \n"//&
+                 "temperatures and thicknesses to ensure that they are \n"//&
+                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "does not change answers, but can increase model run time.", &
+                 default=.true.)
   call get_param(param_file, mod, "DEBUG", IST%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
 

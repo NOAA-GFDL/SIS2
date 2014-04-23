@@ -24,7 +24,7 @@ use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_string_functions, only : slasher
 
-use fms_io_mod,        only : file_exist, parse_mask_table
+use fms_io_mod,      only : file_exist, parse_mask_table
 use fms_mod,         only: field_exist, field_size, read_data
 use fms_mod,         only: get_global_att_value, stderr
 use mosaic_mod,      only: get_mosaic_ntiles, get_mosaic_ncontacts
@@ -37,6 +37,7 @@ include 'netcdf.inc'
 #include <SIS2_memory.h>
 
 public :: set_ice_grid, ice_grid_end
+public :: isPointInCell
 public :: cell_area
 
 type, public :: sea_ice_grid_type
@@ -1088,6 +1089,38 @@ subroutine allocate_metrics(G)
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
 end subroutine allocate_metrics
+
+!> Returns true if the coordinates (x,y) are within the h-cell (i,j)
+logical function isPointInCell(G, i, j, x, y)
+  type(sea_ice_grid_type),   intent(in) :: G    !< Grid type
+  integer,                   intent(in) :: i, j !< i,j indices of cell to test
+  real,                      intent(in) :: x, y !< x,y coordinates of point
+! This is a crude calculation that assume a geographic coordinate system
+  real :: xNE, xNW, xSE, xSW, yNE, yNW, ySE, ySW
+  real :: p0, p1, p2, p3, l0, l1, l2, l3
+  isPointInCell = .false.
+  xNE = G%geoLonBu(i  ,j  ); yNE = G%geoLatBu(i  ,j  )
+  xNW = G%geoLonBu(i-1,j  ); yNW = G%geoLatBu(i-1,j  )
+  xSE = G%geoLonBu(i  ,j-1); ySE = G%geoLatBu(i  ,j-1)
+  xSW = G%geoLonBu(i-1,j-1); ySW = G%geoLatBu(i-1,j-1)
+  if (x<min(xNE,xNW,xSE,xSW) .or. x>max(xNE,xNW,xSE,xSW) .or. &
+      y<min(yNE,yNW,ySE,ySW) .or. y>max(yNE,yNW,ySE,ySW) ) then
+    return ! Avoid the more complicated calculation
+  endif
+  l0=(x-xSW)*(ySE-ySW)-(y-ySW)*(xSE-xSW)
+  l1=(x-xSE)*(yNE-ySE)-(y-ySE)*(xNE-xSE)
+  l2=(x-xNE)*(yNW-yNE)-(y-yNE)*(xNW-xNE)
+  l3=(x-xNW)*(ySW-yNW)-(y-yNW)*(xSW-xNW)
+
+  p0=sign(1., l0); if (l0.eq.0.) p0=0.
+  p1=sign(1., l1); if (l1.eq.0.) p1=0.
+  p2=sign(1., l2); if (l2.eq.0.) p2=0.
+  p3=sign(1., l3); if (l3.eq.0.) p3=0.
+
+  if ( (abs(p0)+abs(p2))+(abs(p1)+abs(p3)) .eq. abs((p0+p2)+(p1+p3)) ) then
+    isPointInCell=.true.
+  endif
+end function isPointInCell
 
 !---------------------------------------------------------------------
 !--- release memory

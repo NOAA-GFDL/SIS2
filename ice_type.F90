@@ -4,7 +4,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_type_mod
 
-use mpp_mod,          only: mpp_sum, stdout, input_nml_file
+use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
 use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
 use fms_mod,          only: open_namelist_file, check_nml_error, close_file
@@ -12,6 +12,7 @@ use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
+use constants_mod,    only: Tfreeze
 
 use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
@@ -22,8 +23,8 @@ use ice_transport_mod, only: ice_transport_CS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
-use MOM_file_parser, only : param_file_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
+use MOM_file_parser, only : param_file_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
@@ -41,7 +42,7 @@ public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
-public :: IST_chksum, Ice_public_type_chksum
+public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
 
 public  :: earth_area
 
@@ -152,6 +153,8 @@ type ice_state_type
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
+  logical :: bounds_check    ! If true, check for sensible values of thicknesses
+                             ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
 
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
@@ -680,6 +683,114 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
 
 end subroutine Ice_public_type_chksum
+
+subroutine Ice_public_type_bounds_check(Ice, G, msg)
+  type(ice_data_type),     intent(in) :: Ice
+  type(sea_ice_grid_type), intent(inout) :: G
+  character(len=*),        intent(in) :: msg
+
+  character(len=512) :: mesg1, mesg2
+  integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: n_bad, i_bad, j_bad, k_bad
+  real    :: t_min, t_max
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+
+  n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
+
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+    if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo
+  t_min = Tfreeze-100. ; t_max = Tfreeze+60.
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+    if ((Ice%t_surf(i2,j2,k2) < t_min) .or. (Ice%t_surf(i2,j2,k2) > t_max)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo ; enddo
+
+  if (n_bad > 0) then
+    i2 = i_bad+i_off ; j2 = j_bad+j_off ; k2 = k_bad+1
+    write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
+           G%geolonT(i_bad,j_bad), G%geolatT(i_bad,j_bad), i_bad, j_bad, k_bad, n_bad, pe_here()
+    write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &
+       Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%flux_t(i2,j2), Ice%flux_lw(i2,j2), Ice%flux_q(i2,j2)
+    call SIS_error(WARNING, "Bad ice data "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
+  endif
+
+end subroutine Ice_public_type_bounds_check
+
+subroutine IST_bounds_check(IST, G, msg)
+  type(ice_state_type),    intent(in) :: IST
+  type(sea_ice_grid_type), intent(inout) :: G
+  character(len=*),        intent(in) :: msg
+
+  character(len=512) :: mesg1, mesg2
+  integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: n_bad, i_bad, j_bad, k_bad
+  real    :: tsurf_min, tsurf_max, tice_min, tice_max
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+
+  n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
+
+  do j=jsc,jec ; do i=isc,iec
+    if ((IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo
+  tsurf_min = Tfreeze-100. ; tsurf_max = Tfreeze+60.
+  tice_min = -100. ; tice_max = 1.0
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo ; enddo
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    if ((IST%h_ice(i,j,k) > 1000.0) .or. (IST%h_snow(i,j,k) > 1000.0) .or. &
+        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo ; enddo
+
+  do l=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+    endif
+  enddo ; enddo ; enddo ; enddo
+
+  if (n_bad > 0) then
+    i = i_bad ; j=j_bad ; k = k_bad
+    write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
+           G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
+    write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
+    call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
+    if (k_bad > 0) then
+      write(mesg1,'("hi/hs = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
+             IST%h_ice(i,j,k), IST%h_snow(i,j,k), IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
+      do l=2,G%NkIce
+        write(mesg2,'(", ", 1pe12.4)') IST%T_ice(i,j,k,l)
+        mesg1 = trim(mesg1)//trim(mesg2)
+      enddo
+      call SIS_error(WARNING, mesg1, all_print=.true.)
+    endif
+  endif
+
+end subroutine IST_bounds_check
 
 subroutine ice_print_budget(IST)
   type(ice_state_type), intent(inout) :: IST
