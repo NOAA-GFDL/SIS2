@@ -52,6 +52,10 @@ type, public :: ice_transport_CS ; private
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
                               ! kg m-3.
+  real :: Roll_factor         ! A factor by which the propensity of small
+                              ! amounts of thick sea-ice to become thinner by
+                              ! rolling is increased, or 0 to disable rolling.
+                              ! Sensible values are 0 or larger than 1.
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: SIS1_transport   ! If true, use SIS1 code to solve the sea ice
@@ -135,6 +139,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
   real :: I_tot_ice, I_tot_snow
+  real :: C1_3 = 1.0/3.0
 
   real :: dt_adv
   character(len=200) :: mesg
@@ -391,9 +396,20 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     ice_cover(:,:) = 0.0
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k) > 0.0) then
+        if (CS%roll_factor * h_ice(i,j,k)**3 > vol_ice(i,j,k)*G%areaT(i,j)) then
+          ! This ice is thicker than it is wide even if all the ice in a grid
+          ! cell is collected into a single cube, so it will roll.  Any snow on
+          ! top will simply be redistributed into a thinner layer, although it
+          ! should probably be dumped into the ocean.  Rolling makes the ice
+          ! thinner so that it melts faster, but it should never be made thinner
+          ! than hlim(1).
+          h_ice(i,j,k) = max(sqrt((vol_ice(i,j,k)*G%areaT(i,j)) / &
+                                  (CS%roll_factor * h_ice(i,j,k)) ), hlim(1))
+        endif    
+
         part_sz(i,j,k) = vol_ice(i,j,k) / h_ice(i,j,k)
-        h_snow(i,j,k) = vol_snow(i,j,k) / part_sz(i,j,k)
-!### Consider...     h_snow(i,j,k) = h_ice(i,j,k) * vol_snow(i,j,k) / vol_ice(i,j,k)
+! This was...        h_snow(i,j,k) = vol_snow(i,j,k) / part_sz(i,j,k)
+        h_snow(i,j,k) = h_ice(i,j,k) * (vol_snow(i,j,k) / vol_ice(i,j,k))
         ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
       else
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
@@ -1288,6 +1304,14 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "RHO_SNOW", CS%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
+
+  call get_param(param_file, mod, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
+                 "A factor by which the propensity of small amounts of \n"//&
+                 "thick sea-ice to become thinner by rolling is increased \n"//&
+                 "or 0 to disable rolling.  This can be thought of as the \n"//&
+                 "minimum number of ice floes in a grid cell divided by \n"//&
+                 "the horizontal floe aspect ratio.  Sensible values are \n"//&
+                 "0 (no rolling) or larger than 1.", units="Nondim",default=1.0)
 
   call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
