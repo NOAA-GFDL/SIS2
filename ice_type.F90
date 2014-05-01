@@ -735,18 +735,26 @@ subroutine IST_bounds_check(IST, G, msg)
   character(len=*),        intent(in) :: msg
 
   character(len=512) :: mesg1, mesg2
+  real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
+  real    :: tsurf_min, tsurf_max, tice_min, tice_max
   integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
-  real    :: tsurf_min, tsurf_max, tice_min, tice_max
+
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
+  sum_part_sz(:,:) = 0.0
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    sum_part_sz(i,j) = sum_part_sz(i,j) + IST%part_size(i,j,k) 
+  enddo ; enddo ; enddo
+
   do j=jsc,jec ; do i=isc,iec
-    if ((IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0)) then
+    if ((abs(sum_part_sz(i,j) - 1.0) > 1.0e-5) .or. &
+        (IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
   enddo ; enddo
   tsurf_min = Tfreeze-100. ; tsurf_max = Tfreeze+60.
@@ -777,7 +785,11 @@ subroutine IST_bounds_check(IST, G, msg)
     i = i_bad ; j=j_bad ; k = k_bad
     write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
-    write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
+    if (k_bad > 0) then
+      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
+    else
+      write(mesg2,'("S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') IST%s_surf(i,j), sum_part_sz(i,j)
+    endif
     call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
       write(mesg1,'("hi/hs = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
