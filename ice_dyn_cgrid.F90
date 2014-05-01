@@ -37,7 +37,7 @@ use SIS_error_checking, only : chksum, Bchksum, uchksum, vchksum, hchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,      only : pass_var, pass_vector, BGRID_NE, CGRID_NE, CORNER
+use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER
 use ice_grid_mod,     only : sea_ice_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
@@ -83,6 +83,7 @@ type, public :: ice_C_dyn_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
+  logical :: FirstCall = .true.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_stren = -1, id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
@@ -473,6 +474,14 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 
   if (CS%evp_sub_steps==0) return
 
+  if (CS%FirstCall) then
+    !   These halo updates are only needed if the str_... arrays have just
+    ! been read from a restart file.  Otherwise the halos contain valid data.
+    call pass_var(CS%str_d, G%Domain) ; call pass_var(CS%str_t, G%Domain)
+    call pass_var(CS%str_s, G%Domain, position=CORNER)
+    CS%FirstCall = .false.
+  endif
+
   dt = dt_slow/CS%evp_sub_steps
   EC2 = CS%EC**2
   I_EC = 0.0 ; if (CS%EC > 0.0) I_EC = 1.0 / CS%EC
@@ -570,7 +579,6 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 !      CS%str_t(i,j) = sign(I_2EC*pres_ice(i,j), CS%str_t(i,j))
 !    endif
 !  enddo ; enddo
-
   ! The rescaling here is done separately for each component.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     if (CS%str_d(i,j) < -pres_ice(i,j)) CS%str_d(i,j) = -pres_ice(i,j)
@@ -639,7 +647,7 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
                  ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j)))**2) * &
                  sum_area)
     elseif ((G%mask2dCu(I,j) + G%mask2dCu(I,j+1)) + &
-            (G%mask2dCv(i,J) + G%mask2dCu(i+1,J)) > 1.5) then
+            (G%mask2dCv(i,J) + G%mask2dCv(i+1,J)) > 1.5) then
       !   This is a corner point, and there are 1 unmasked u-point and 1 v-point.
       ! The ratio below goes from 4 times the ratio of the smaller of the two
       ! masses at velocity points over the larger up to 1.
@@ -745,7 +753,7 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
           (dx_dyB(I,J)*(ui(I,j+1)*G%IdxCu(I,j+1) - ui(I,j)*G%IdxCu(I,j)) + &
            dy_dxB(I,J)*(vi(i+1,J)*G%IdyCv(i+1,J) - vi(i,J)*G%IdyCv(i,J)))
     enddo ; enddo
-    if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=BGRID_NE)
+    if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=CORNER)
 
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
       sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
@@ -764,8 +772,8 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
       ! Averaging the squared shearing strain is larger than squaring
       ! the averaged strain.  I don't know what is better. -RWH
       del_sh(i,j) = sqrt(sh_Dd(i,j)**2 + I_EC2 * (sh_Dt(i,j)**2 + &
-                   (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,j)) + &
-                            (sh_Ds(I-1,J) + sh_Ds(I-1,j))))**2 ) ) ! H&D eqn 9
+                   (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
+                            (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
       zeta(i,j) = 0.5*pres_ice(i,j) / max(del_sh(i,j), del_sh_min(i,j))
     enddo ; enddo
