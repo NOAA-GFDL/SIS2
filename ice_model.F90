@@ -350,10 +350,10 @@ subroutine avg_top_quantities(Ice, IST, G)
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_top_to_ice_bottom - Translate quantities from the ice model's internal   !
-!   state to the public ice data type for use by the ocean model.              !
+! set_ice_bottom_state - Translate ice-bottom quantities from the ice model's  !
+!   internal state to the public ice data type for use by the ocean model.     !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
+subroutine set_ice_bottom_state (Ice, IST, part_size, G)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
@@ -365,8 +365,8 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start ice_top_to_ice_bottom", IST, G)
-    call Ice_public_type_chksum("Start ice_top_to_ice_bottom", Ice)
+    call IST_chksum("Start set_ice_bottom_state", IST, G)
+    call Ice_public_type_chksum("Start set_ice_bottom_state", Ice)
   endif
 
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
@@ -505,7 +505,7 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
       enddo ; enddo ; enddo
     endif ! Cgrid_dyn
   else
-    call SIS_error(FATAL, "ice_top_to_ice_bottom: Unrecognized flux_uv_stagger.")
+    call SIS_error(FATAL, "set_ice_bottom_state: Unrecognized flux_uv_stagger.")
   endif
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -532,11 +532,11 @@ subroutine ice_top_to_ice_bottom (Ice, IST, part_size, G)
   enddo ; enddo ; enddo
 
   if (IST%debug) then
-    call IST_chksum("End ice_top_to_ice_bottom", IST, G)
-    call Ice_public_type_chksum("End ice_top_to_ice_bottom", Ice)
+    call IST_chksum("End set_ice_bottom_state", IST, G)
+    call Ice_public_type_chksum("End set_ice_bottom_state", Ice)
   endif
 
-end subroutine ice_top_to_ice_bottom
+end subroutine set_ice_bottom_state
 
 !
 ! Coupler interface to provide ocean surface data to atmosphere.
@@ -780,7 +780,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
     endif
   else
-    call SIS_error(FATAL, "ice_top_to_ice_bottom: Unrecognized OIB%stagger.")
+    call SIS_error(FATAL, "set_ice_bottom_state: Unrecognized OIB%stagger.")
   endif
 
   call pass_var(IST%sea_lev, G%Domain)
@@ -1662,12 +1662,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
   endif ! End of (IST%do_ice_restore .or. IST%do_ice_limit) block
   call mpp_clock_end(iceClock6)
-  !
-  ! Salt fluxes to ocean
-  !
-  call mpp_clock_begin(iceClock8)
+
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
+  ! Determine the salt fluxes to ocean
   ! Note that at this point hi_change and h2o_change are the negative of the masses.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     hi_change(i,j) = hi_change(i,J) + IST%h_ice(i,j,k)*IST%part_size(i,j,k)
@@ -1679,7 +1677,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     i2 = i+i_off ; j2 = j+j_off
     Ice%flux_salt(i2,j2) = IST%ice_bulk_salin*IST%Rho_ice*hi_change(i,j) * Idt_slow
   enddo ; enddo
-
 
   yr_dtslow = (864e2*365/dt_slow)
   if (IST%id_lsnk>0) then
@@ -1708,9 +1705,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_qfres>0) call post_data(IST%id_qfres, qflx_res_ice, IST%diag, mask=G%Lmask2dT)
 
 
+
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
   !
+  call mpp_clock_begin(iceClock8)
+
   if (IST%id_xprt>0) then
     h2o_change(:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -1835,7 +1835,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
 
   ! Set up the fluxes in the externally visible structure Ice.
-  call ice_top_to_ice_bottom(Ice, IST, part_save, G)
+  call set_ice_bottom_state(Ice, IST, part_save, G)
 
   !   Copy the surface properties, fractional areas and other variables to the
   ! externally visible structure Ice.
@@ -2255,7 +2255,7 @@ subroutine ice_model_init (Ice, Time_Init, Time, Time_step_fast, Time_step_slow 
   iceClockc = mpp_clock_id( '       slow: diags', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
-  iceClock8 = mpp_clock_id( '  Ice: slow: salt to ocean', flags=clock_flag_default, grain=CLOCK_LOOP )
+  iceClock8 = mpp_clock_id( '  Ice: slow: transport', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock9 = mpp_clock_id( '  Ice: slow: thermodyn diags', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
 
