@@ -1737,8 +1737,8 @@ subroutine SIS1_thermodynamics(Ice, IST, G, runoff, calving, &
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(sea_ice_grid_type),            intent(inout) :: G
-    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff, calving
-    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff_hflx, calving_hflx
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
  
   ! This subroutine does the thermodynamic calculations following SIS1.
  
@@ -2014,8 +2014,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(sea_ice_grid_type),            intent(inout) :: G
-    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff, calving
-    real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in), optional :: runoff_hflx, calving_hflx
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
  
   ! This subroutine does the thermodynamic calculations following SIS1.
  
@@ -2137,36 +2137,27 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       !
       ! calculate enthalpy
       !
-      if (IST%slab_ice) then
-        e2m(1) = IST%h_ice(i,j,1)*IST%Rho_ice*LI
-      else
-        do k=1,ncat
-          if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
-             e2m(k) = e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
-                      IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
-                      IST%t_ice(i,j,k,4)) * IST%part_size(i,j,k)
-          else
-             e2m(k) = 0.0
-          endif
-        enddo
-      endif
+      do k=1,ncat
+        if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
+          do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
+          e2m(k) = e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                             T_col, S_col) * IST%part_size(i,j,k)
+        else
+          e2m(k) = 0.0
+        endif
+      enddo
       !
       ! calculate heat needed to constrain ice enthalpy
       !
       if (IST%do_ice_restore) then
         ! Restore to observed enthalpy, implying restoring toward
         ! thickness * concentration.
-        if (IST%slab_ice) then
-          heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)-sum(e2m)) &
-                         *dt_slow/(86400*IST%ice_restore_timescale)
-        else
-          heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m)) &
-                         *dt_slow/(86400*IST%ice_restore_timescale)
-        endif
+        heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m(:))) &
+                       *dt_slow/(86400*IST%ice_restore_timescale)
       endif
 
       if (IST%do_ice_limit .and. (sum(e2m) > IST%max_ice_limit*IST%Rho_ice*LI)) then
-        heat_limit_ice = sum(e2m)-LI*IST%Rho_ice*IST%max_ice_limit
+        heat_limit_ice = sum(e2m(:)) - LI*IST%Rho_ice*IST%max_ice_limit
         ! should we "heat_ice_res = 0.0" ?
       endif
 
@@ -2174,9 +2165,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       ! apply constraining heat to ice
       !
       tot_heat = heat_res_ice+heat_limit_ice
-      if (IST%slab_ice) IST%h_ice(i,j,1) = IST%h_ice(i,j,1) - tot_heat/(IST%Rho_ice*LI)
 
-      if (.not. IST%slab_ice .and. (tot_heat>0.0)) then  ! add like ocean-ice heat
+      if (tot_heat>0.0) then  ! add like ocean-ice heat
         do k=0,ncat-1
           if (e2m(k) > 0.0) then
             heating = tot_heat/sum(IST%part_size(i,j,k:ncat))
@@ -2200,7 +2190,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       endif
 
       tot_heat = heat_res_ice+heat_limit_ice
-      if (.not. IST%slab_ice .and. (tot_heat<0.0)) then ! add like frazil
+      if (tot_heat<0.0) then ! add like frazil
         do k=1,ncat
           if (IST%part_size(i,j,0)+IST%part_size(i,j,k)>0) exit
         enddo
@@ -2229,16 +2219,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       !
       ! Check for energy conservation
       !
-      if (IST%slab_ice) then
-        e2m(1) = e2m(1) - IST%h_ice(i,j,1)*IST%Rho_ice*LI
-      else
-        do k=1,ncat
-          if (IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0) &
-            e2m(k) = e2m(k)-e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
-                     IST%h_ice(i,j,k), IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), &
-                     IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)) * IST%part_size(i,j,k)
-        enddo
-      endif
+      ! do k=1,ncat
+      !   if (IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0) then
+      !     do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
+      !     e2m(k) = e2m(k) - e_to_melt_TS(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
+      !              IST%h_ice(i,j,k), T_col, S_col) * IST%part_size(i,j,k)
+      !   endif
+      ! enddo
       ! if (abs(sum(e2m) - heat_res_ice - heat_limit_ice)>IST%Rho_ice*LI*1e-3) &
       !       print *, 'QFLUX conservation error at', i, j, 'heat2ice=',  &
       !             tot_heat, 'melted=', sum(e2m), 'h*part_size=', &

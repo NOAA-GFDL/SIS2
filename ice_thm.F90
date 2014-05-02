@@ -49,6 +49,10 @@ public :: ice_temp_SIS2, ice_resize_SIS2
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
 
+interface e_to_melt
+  module procedure e_to_melt_4, e_to_melt_TS
+end interface
+
 !
 ! properties of ice, snow, and seawater (NCAR CSM values)
 !
@@ -1089,18 +1093,18 @@ subroutine unpack_check(hs, tsn, hi, t_ice, NkIce, cn)
 end subroutine unpack_check
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! e_to_melt - energy needed to melt a given snow/ice configuration             !
+! e_to_melt - energy needed to melt a given 4-layer snow/ice configuration.    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function e_to_melt(hs, tsn, hi, t1, t2, t3, t4)
+function e_to_melt_4(hs, tsn, hi, t1, t2, t3, t4)
     real, intent(in) :: hs, tsn, hi, t1, t2, t3, t4
-    real             :: e_to_melt
+    real             :: e_to_melt_4
 
-  e_to_melt = DS*hs*(LI-CI*tsn) &
+  e_to_melt_4 = DS*hs*(LI-CI*tsn) &
                       +DI*hi*(CI-LI/t1)*(-MU_TS*SI1-t1)/4 &
                       +DI*hi*(CI-LI/t2)*(-MU_TS*SI2-t2)/4 &
                       +DI*hi*(CI-LI/t3)*(-MU_TS*SI3-t3)/4 &
                       +DI*hi*(CI-LI/t4)*(-MU_TS*SI4-t4)/4
-end function e_to_melt
+end function e_to_melt_4
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! e_to_melt - energy needed to melt a given snow/ice configuration             !
@@ -1116,8 +1120,10 @@ function e_to_melt_TS(hs, tsn, hi, T, S)
   nk_ice = size(T)
   I_nk_ice = 1.0 / real(nk_ice)
 
-  e_to_melt_TS = (DS*hs) * (LI - CI*tsn) 
+  e_to_melt_TS = (DS*hs) * (LI - CI*tsn)
   do k=1,nk_ice
+    ! The commented out lines are correct, but will cause a change in answers
+    ! from the previous solution.
     if (T(k) < -MU_TS*S(k)) then
       e_to_melt_TS = e_to_melt_TS + ((DI*hi)*I_nk_ice) * &
                      (LI - CI*T(k)) * (1.0 + MU_TS*S(k)/T(k))
