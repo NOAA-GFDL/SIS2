@@ -994,7 +994,7 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
 
   call ice_temp(-A, B, sol, ts, hs, tsn, hi, tice, sice, tfw, fb, tmelt, bmelt)
   t1 = tice(1); t2 = tice(2); t3 = tice(3); t4 = tice(4);
-  call temp_check_4(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
+  call temp_check(ts, hs, tsn, hi, tice(:), 4, bmelt, tmelt)
 
 end subroutine ice5lay_temp
 
@@ -1006,24 +1006,24 @@ end subroutine ice5lay_temp
 subroutine ice_temp_SIS2(hs, tsn, hi, t_ice, s_ice, A, B, &
                          sw_abs, tfw, fb, tsfc, dtt, NkIce, tmelt, bmelt)
 
-real, intent(in   ) :: hs    ! snow thickness (m)
-real, intent(inout) :: tsn   ! snow temperature (deg-C)
-real, intent(in   ) :: hi    ! ice thickness (m)
-real, dimension(NkIce), &
-      intent(inout) :: t_ice ! ice temperature by layer (deg-C)
-real, dimension(NkIce), &
-      intent(in)    :: S_ice ! ice salinity by layer (g/kg)
-real, intent(in   ) :: A     ! net surface heat flux (+ up) at ts=0 (W/m^2)
-real, intent(in   ) :: B     ! d(sfc heat flux)/d(ts) [W/(m^2 deg-C)]
-real, dimension(0:NkIce), &
-      intent(in)    :: sw_abs ! Solar heating of the snow and ice layers (W m-2)
-real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
-real, intent(in   ) :: fb    ! heat flux from ocean to ice bottom (W/m^2)
-real, intent(  out) :: tsfc  ! surface temperature (deg-C)
-real, intent(in   ) :: dtt   ! timestep (sec)
-integer, intent(in   ) :: NkIce ! The number of ice layers.
-real, intent(inout) :: tmelt ! accumulated top melting energy  (J/m^2)
-real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
+  real, intent(in   ) :: hs    ! snow thickness (m)
+  real, intent(inout) :: tsn   ! snow temperature (deg-C)
+  real, intent(in   ) :: hi    ! ice thickness (m)
+  real, dimension(NkIce), &
+        intent(inout) :: t_ice ! ice temperature by layer (deg-C)
+  real, dimension(NkIce), &
+        intent(in)    :: S_ice ! ice salinity by layer (g/kg)
+  real, intent(in   ) :: A     ! net surface heat flux (+ up) at ts=0 (W/m^2)
+  real, intent(in   ) :: B     ! d(sfc heat flux)/d(ts) [W/(m^2 deg-C)]
+  real, dimension(0:NkIce), &
+        intent(in)    :: sw_abs ! Solar heating of the snow and ice layers (W m-2)
+  real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
+  real, intent(in   ) :: fb    ! heat flux from ocean to ice bottom (W/m^2)
+  real, intent(  out) :: tsfc  ! surface temperature (deg-C)
+  real, intent(in   ) :: dtt   ! timestep (sec)
+  integer, intent(in   ) :: NkIce ! The number of ice layers.
+  real, intent(inout) :: tmelt ! accumulated top melting energy  (J/m^2)
+  real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 !
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
@@ -1036,15 +1036,6 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
   call temp_check(tsfc, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
 
 end subroutine ice_temp_SIS2
-
-subroutine temp_check_4(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
-  real, intent(in) :: ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt
-  real, dimension(4) :: t_ice
-
-  t_ice(1) = t1 ; t_ice(2) = t2 ;  t_ice(3) = t3 ;  t_ice(4) = t4
-
-  call temp_check(ts, hs, tsn, hi, t_ice, 4, bmelt, tmelt)
-end subroutine temp_check_4
 
 subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
   real, intent(in) :: ts, hs, tsn, hi, bmelt, tmelt
@@ -1063,40 +1054,38 @@ subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
   endif
 end subroutine temp_check
 
-subroutine resize_check(hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
-  real, intent(in) :: hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt
-  integer :: bad
+subroutine resize_check(hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
+  real, intent(in) :: hs, tsn, hi, bmelt, tmelt
+  real, dimension(NkIce), intent(in) :: t_ice
+  integer, intent(in) :: NkIce
+  integer :: k, bad
 
   bad = 0
   if (hs <0.0.or.hs > 1e3  ) bad = bad+1
   if (hi <0.0.or.hi > 1e3  ) bad = bad+1
   if (tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
+  do k=1,NkIce ; if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1 ; enddo
 
   if (bad>0) then
     print *, 'BAD ICE AFTER RESIZE ', 'hs/hi=',hs,hi,'tsn/tice=',&
-                      tsn,t1,t2,t3,t4,'tmelt/bmelt=',tmelt,bmelt
+                      tsn,t_ice(:),'tmelt/bmelt=',tmelt,bmelt
   endif
 end subroutine resize_check
 
-subroutine unpack_check(hs, tsn, hi, t1, t2, t3, t4, cn)
-  real, intent(in) :: hs, tsn, hi, t1, t2, t3, t4, cn
-  integer :: bad
+subroutine unpack_check(hs, tsn, hi, t_ice, NkIce, cn)
+  real, intent(in) :: hs, tsn, hi, cn
+  real, dimension(NkIce), intent(in) :: t_ice
+  integer, intent(in) :: NkIce
+  integer :: k, bad
 
   bad = 0
   if (hs <0.0.or.hs > 1e3  ) bad = bad+1
   if (hi <0.0.or.hi > 1e3  ) bad = bad+1
   if (tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
+  do k=1,NkIce ; if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1 ; enddo
 
   if (bad>0) print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',hs,hi,'tsn/tice=', &
-                      tsn,t1,t2,t3,t4,'cn=',cn
+                      tsn,t_ice(:),'cn=',cn
 end subroutine unpack_check
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1213,7 +1202,7 @@ real :: tmlt, bmlt
   call ice_resize(hs, tsn, hi, tice, sice, snow, frazil, evap, tmlt, bmlt, &
              tfw, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, snow_to_ice, bablt)
   t1 = tice(1); t2 = tice(2); t3 = tice(3); t4 = tice(4);
-  call resize_check(hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
+  call resize_check(hs, tsn, hi, tice, 4, bmelt, tmelt)
   return
 end subroutine ice5lay_resize
 
@@ -1221,22 +1210,23 @@ end subroutine ice5lay_resize
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(hs, tsn, hi, t1, t2, t3, t4, snow, frazil, evap, &
-                          tmelt, bmelt, tfw, heat_to_ocn, h2o_to_ocn,      &
-                          h2o_from_ocn, snow_to_ice, bablt                 )
+subroutine ice_resize_SIS2(hs, tsn, hi, t_ice, S_ice, snow, frazil, evap, &
+                          tmelt, bmelt, tfw, NkIce, heat_to_ocn, h2o_to_ocn, &
+                          h2o_from_ocn, snow_to_ice, bablt )
   real, intent(inout) :: hs          ! snow thickness (m-snow)
   real, intent(inout) :: tsn         ! snow temperature (deg-C)
   real, intent(inout) :: hi          ! ice thickness (m-ice)
-  real, intent(inout) :: t1          ! temperature of top ice (deg-C)
-  real, intent(inout) :: t2          ! temperature of second ice (deg-C)
-  real, intent(inout) :: t3          ! temperature of third ice (deg-C)
-  real, intent(inout) :: t4          ! temperature of bottom ice (deg-C)
+  real, dimension(NkIce), &
+        intent(inout) :: t_ice ! ice temperature by layer (deg-C)
+  real, dimension(NkIce), &
+        intent(in)    :: S_ice ! ice salinity by layer (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
   real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: evap        ! ice evaporation (kg/m^2)
   real, intent(in   ) :: tmelt       ! top melting energy (J/m^2)
   real, intent(in   ) :: bmelt       ! bottom melting energy (J/m^2)
   real, intent(in   ) :: tfw         ! seawater freezing temperature (deg-C)
+  integer, intent(in   ) :: NkIce ! The number of ice layers.
   real, intent(  out) :: heat_to_ocn ! energy left after ice all melted (J/m^2)
   real, intent(  out) :: h2o_to_ocn  ! liquid water flux to ocean (kg/m^2)
   real, intent(  out) :: h2o_from_ocn! evaporation flux from ocean (kg/m^2)
@@ -1251,13 +1241,11 @@ subroutine ice_resize_SIS2(hs, tsn, hi, t1, t2, t3, t4, snow, frazil, evap, &
   h2o_from_ocn = 0.0
   snow_to_ice  = 0.0
 
-  tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4;
-  sice(1) = SI1; sice(2) = SI2; sice(3) = SI3; sice(4) = SI4;
   tmlt = tmelt; bmlt = bmelt;
-  call ice_resize(hs, tsn, hi, tice, sice, snow, frazil, evap, tmlt, bmlt, &
+  call ice_resize(hs, tsn, hi, t_ice, s_ice, snow, frazil, evap, tmlt, bmlt, &
              tfw, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, snow_to_ice, bablt)
-  t1 = tice(1); t2 = tice(2); t3 = tice(3); t4 = tice(4);
-  call resize_check(hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
+
+  call resize_check(hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
 
 end subroutine ice_resize_SIS2
 

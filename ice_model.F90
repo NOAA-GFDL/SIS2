@@ -956,7 +956,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     sw_abs_ice1, sw_abs_ice2,sw_abs_ice3,sw_abs_ice4
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb
-  real, dimension(G%NkIce) :: T_col, S_col
+  real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
   real, dimension(0:G%NkIce) :: SW_abs_col
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
@@ -1050,7 +1050,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   !
   dt_fast = time_type_to_real(IST%Time_step_fast)
 
-  call get_thermo_coefs(ice_salinity=S_col(1:4))
+  call get_thermo_coefs(ice_salinity=S_col)
 
   if (IST%SIS1_thermo) then
 
@@ -2025,9 +2025,10 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
   real, dimension(1:G%CatIce)        :: e2m
+  real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
 
   real :: dt_slow, Idt_slow, yr_dtslow
-  integer :: i, j, k, l, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, k2, i_off, j_off
   real :: heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic, bablt
   real            :: heat_limit_ice, heat_res_ice
@@ -2035,8 +2036,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
   real, parameter :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  NkIce = G%NkIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
+
+  call get_thermo_coefs(ice_salinity=S_col)
 
   snow_to_ice(:,:,:) = 0.0
   bsnk(:,:) = 0.0
@@ -2057,15 +2061,15 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       ! reshape the ice based on fluxes
 
       h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
-      call ice_resize_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),&
-                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),            &
-                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4),            &
-                          IST%fprec_top(i,j,k) *dt_slow, 0.0,                &
-                          IST%flux_q_top(i,j,k)*dt_slow,                     &
-                          IST%tmelt (i,j,k), IST%bmelt(i,j,k),               &
-                          -MU_TS*IST%s_surf(i,j),                            &
-                          heat_to_ocn, h2o_to_ocn, h2o_from_ocn,             &
-                          snow_to_ice(i,j,k), bablt                          )
+      do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
+      call ice_resize_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                           T_col, S_col, IST%fprec_top(i,j,k) *dt_slow, 0.0, &
+                           IST%flux_q_top(i,j,k)*dt_slow,                    &
+                           IST%tmelt(i,j,k), IST%bmelt(i,j,k),               &
+                           -MU_TS*IST%s_surf(i,j), NkIce,                    &
+                           heat_to_ocn, h2o_to_ocn, h2o_from_ocn,            &
+                           snow_to_ice(i,j,k), bablt                         )
+      do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
 
       ! modify above-ice to under-ice fluxes for passing to ocean
       IST%flux_q_top(i,j,k) = h2o_from_ocn*Idt_slow ! no ice, evaporation left
@@ -2102,12 +2106,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
       IST%h_ice(i,j,k)  = IST%h_ice(i,j,k) / IST%part_size(i,j,k)
       IST%t_surf(i,j,k) = IST%t_surf(i,j,k) / IST%part_size(i,j,k)
 
+      do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
       call ice_resize_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
-                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),                &
-                          IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,           &
+                          T_col, S_col, 0.0,           &
                           IST%frazil(i,j) / IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
-                          -MU_TS*IST%s_surf(i,j),                              &
+                          -MU_TS*IST%s_surf(i,j), NkIce, &
                           heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
+      do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
       IST%frazil(i,j) = 0.0;
       !
       ! spread frazil salinification over all partitions
@@ -2181,13 +2186,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
               tot_heat = tot_heat - e2m(k)
             else
               h2o_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
+              do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
               call ice_resize_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
-                                  IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),   &
-                                  IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),  &
-                                  IST%t_ice(i,j,k,4),  0.0, 0.0, 0.0, 0.0,&
-                                  heating, -MU_TS*IST%s_surf(i,j),       &
+                                  IST%h_ice(i,j,k), T_col, S_col,  0.0, 0.0, 0.0, 0.0,&
+                                  heating, -MU_TS*IST%s_surf(i,j), NkIce, &
                                   heat_to_ocn, h2o_to_ocn, h2o_from_ocn, &
                                   snow_to_ice(i,j,k), bablt              )
+              do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
               tot_heat = tot_heat - heating*IST%part_size(i,j,k)
             endif
           endif
@@ -2210,12 +2215,12 @@ subroutine SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
         IST%h_ice(i,j,k) =  IST%h_ice(i,j,k)  / IST%part_size(i,j,k)
         IST%t_surf(i,j,k) = IST%t_surf(i,j,k) / IST%part_size(i,j,k)
 
+        do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
         call ice_resize_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
-                            IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),        &
-                            IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,   &
-                            -tot_heat/IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
-                            -MU_TS*IST%s_surf(i,j),                        &
+                            T_col, S_col, 0.0, -tot_heat/IST%part_size(i,j,k), &
+                            0.0, 0.0, 0.0, -MU_TS*IST%s_surf(i,j), NkIce, &
                             heat_to_ocn, h2o_to_ocn, h2o_from_ocn, sn2ic)
+        do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
       endif
 
       ! Convert constraining heat from energy (J/m^2) to flux (W/m^2)
