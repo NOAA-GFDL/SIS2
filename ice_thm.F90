@@ -389,7 +389,7 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
 
   mi = DI*hice/NN           ! full ice layer mass
   ms = DS*hsno              ! full snow layer mass
-  tfi = -MU_TS*sice         ! freezing temperature of ice layers
+  tfi(:) = -MU_TS*sice(:)   ! freezing temperature of ice layers
   hie = max(hice, H_LO_LIM); ! prevent thin ice inaccuracy (mw)
   kk = NN*KI/hie                        ! full ice layer conductivity
 !  k10 = 1/(hie/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
@@ -934,8 +934,6 @@ end subroutine ice_optics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice5lay_temp(hs, tsn, hi, t1, t2, t3, t4, ts, A, B, &
                         IS, I1, I2, I3, I4, tfw, fb, dtt, tmelt, bmelt)
-implicit none
-
 real, intent(in   ) :: hs    ! snow thickness (m)
 real, intent(inout) :: tsn   ! snow temperature (deg-C)
 real, intent(in   ) :: hi    ! ice thickness (m)
@@ -990,16 +988,14 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
 
   ef = exp(-hi/OPT_DEP_ICE)
   sol(0) = IS
-  sol(1) = I1
-  sol(2) = I2
-  sol(3) = I3
-  sol(4) = I4
-  tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4;
-  sice(1) = SI1; sice(2) = SI2; sice(3) = SI3; sice(4) = SI4;
+  sol(1) = I1 ;  sol(2) = I2 ;  sol(3) = I3 ;  sol(4) = I4
+  tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4
+  sice(1) = SI1; sice(2) = SI2; sice(3) = SI3; sice(4) = SI4
+
   call ice_temp(-A, B, sol, ts, hs, tsn, hi, tice, sice, tfw, fb, tmelt, bmelt)
   t1 = tice(1); t2 = tice(2); t3 = tice(3); t4 = tice(4);
-  call temp_check(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
-  return
+  call temp_check_4(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
+
 end subroutine ice5lay_temp
 
 
@@ -1007,28 +1003,25 @@ end subroutine ice5lay_temp
 ! ice5lay_temp - A subroutine that calculates the snow and ice enthalpy        !
 !    changes due to surface forcing.                                           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_temp_SIS2(hs, tsn, hi, t1, t2, t3, t4, ts, A, B, &
-                         IS, I1, I2, I3, I4, tfw, fb, dtt, tmelt, bmelt)
-implicit none
+subroutine ice_temp_SIS2(hs, tsn, hi, t_ice, s_ice, A, B, &
+                         sw_abs, tfw, fb, tsfc, dtt, NkIce, tmelt, bmelt)
 
 real, intent(in   ) :: hs    ! snow thickness (m)
 real, intent(inout) :: tsn   ! snow temperature (deg-C)
 real, intent(in   ) :: hi    ! ice thickness (m)
-real, intent(inout) :: t1    ! top ice temperature (deg-C)
-real, intent(inout) :: t2    ! second layer ice temperature (deg-C)
-real, intent(inout) :: t3    ! third layer ice temperature (deg-C)
-real, intent(inout) :: t4    ! bottom ice temperature (deg-C)
-real, intent(  out) :: ts    ! surface temperature (deg-C)
+real, dimension(NkIce), &
+      intent(inout) :: t_ice ! ice temperature by layer (deg-C)
+real, dimension(NkIce), &
+      intent(in)    :: S_ice ! ice salinity by layer (g/kg)
 real, intent(in   ) :: A     ! net surface heat flux (+ up) at ts=0 (W/m^2)
 real, intent(in   ) :: B     ! d(sfc heat flux)/d(ts) [W/(m^2 deg-C)]
-real, intent(in   ) :: IS    ! solar absorbed by snow layer (W/m^2)
-real, intent(in   ) :: I1    ! solar absorbed by ice layer 1 (W/m^2)
-real, intent(in   ) :: I2    ! solar absorbed by ice layer 1 (W/m^2)
-real, intent(in   ) :: I3    ! solar absorbed by ice layer 1 (W/m^2)
-real, intent(in   ) :: I4    ! solar absorbed by ice layer 1 (W/m^2)
+real, dimension(0:NkIce), &
+      intent(in)    :: sw_abs ! Solar heating of the snow and ice layers (W m-2)
 real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
 real, intent(in   ) :: fb    ! heat flux from ocean to ice bottom (W/m^2)
+real, intent(  out) :: tsfc  ! surface temperature (deg-C)
 real, intent(in   ) :: dtt   ! timestep (sec)
+integer, intent(in   ) :: NkIce ! The number of ice layers.
 real, intent(inout) :: tmelt ! accumulated top melting energy  (J/m^2)
 real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 !
@@ -1036,39 +1029,37 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
 !
 
-    real, dimension(NN) :: tice, sice
-    real, dimension(0:NN) :: sol ! layer 0 for snow, 1:NN for ice
-
   DT = dtt ! set timestep from argument - awkward, remove later
 
-  sol(0) = IS
-  sol(1) = I1
-  sol(2) = I2
-  sol(3) = I3
-  sol(4) = I4
-  tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4;
-  sice(1) = SI1; sice(2) = SI2; sice(3) = SI3; sice(4) = SI4;
-  call ice_temp(-A, B, sol, ts, hs, tsn, hi, tice, sice, tfw, fb, tmelt, bmelt)
-  t1 = tice(1); t2 = tice(2); t3 = tice(3); t4 = tice(4);
-  call temp_check(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
-  return
+  call ice_temp(-A, B, sw_abs, tsfc, hs, tsn, hi, t_ice, s_ice, tfw, fb, tmelt, bmelt)
+
+  call temp_check(tsfc, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
+
 end subroutine ice_temp_SIS2
 
-subroutine temp_check(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
+subroutine temp_check_4(ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt)
   real, intent(in) :: ts, hs, tsn, hi, t1, t2, t3, t4, bmelt, tmelt
-  integer :: bad
+  real, dimension(4) :: t_ice
+
+  t_ice(1) = t1 ; t_ice(2) = t2 ;  t_ice(3) = t3 ;  t_ice(4) = t4
+
+  call temp_check(ts, hs, tsn, hi, t_ice, 4, bmelt, tmelt)
+end subroutine temp_check_4
+
+subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
+  real, intent(in) :: ts, hs, tsn, hi, bmelt, tmelt
+  real, dimension(NkIce), intent(in) :: t_ice
+  integer, intent(in) :: NkIce
+  integer :: k, bad
 
   bad = 0
   if (ts >0.0.or.ts <-100.0) bad = bad+1
   if (tsn>0.0.or.tsn<-100.0) bad = bad+1
-  if (t1 >0.0.or.t1 <-100.0) bad = bad+1
-  if (t2 >0.0.or.t2 <-100.0) bad = bad+1
-  if (t3 >0.0.or.t3 <-100.0) bad = bad+1
-  if (t4 >0.0.or.t4 <-100.0) bad = bad+1
+  do k=1,NkIce ; if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1 ; enddo
 
   if (bad>0) then
     print *, 'BAD ICE AFTER TEMP ', 'hs/hi=',hs,hi,'ts/tsn/tice=',ts, &
-                      tsn,t1,t2,t3,t4,'tmelt/bmelt=',tmelt,bmelt
+                      tsn,t_ice(:),'tmelt/bmelt=',tmelt,bmelt
   endif
 end subroutine temp_check
 
@@ -1273,9 +1264,9 @@ end subroutine ice_resize_SIS2
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg)
+subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
   real, optional, intent(out) :: pocket_coef
-  real, dimension(:), optional, intent(out) :: layer_coefs
+  real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
   real, optional, intent(out) :: max_enthalpy_chg
 ! Arguments: pocket_coef - Minus the partial derivative of the freezing point
 !                          with salinity, times the latent heat of fusion over
@@ -1303,6 +1294,15 @@ subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg)
   endif
   
   if (present(max_enthalpy_chg)) max_enthalpy_chg = LI/CI
+
+  if (present(ice_salinity)) then
+    nk = size(ice_salinity)
+    if (nk >= 1) ice_salinity(1) = SI1
+    if (nk >= 2) ice_salinity(2) = SI2
+    if (nk >= 3) ice_salinity(3) = SI3
+    if (nk >= 4) ice_salinity(4) = SI4
+    do k=5,nk ;  ice_salinity(k) = SI4 ; enddo
+  endif
 
 end subroutine get_thermo_coefs
 

@@ -88,7 +88,7 @@ use ice_spec_mod, only: get_sea_surface
 
 use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
 use ice_thm_mod,      only: ice_temp_SIS2, ice_resize_SIS2
-  use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt
+  use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
@@ -956,6 +956,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     sw_abs_ice1, sw_abs_ice2,sw_abs_ice3,sw_abs_ice4
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb
+  real, dimension(G%NkIce) :: T_col, S_col
+  real, dimension(0:G%NkIce) :: SW_abs_col
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
@@ -964,10 +966,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: flux_sw ! sum over dir/dif vis/nir components
   type(time_type) :: Dt_ice
   logical :: sent
-  integer :: i, j, k, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
+  NkIce = G%NkIce
 
   rad = acos(-1.)/180.
 
@@ -1047,6 +1050,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   !
   dt_fast = time_type_to_real(IST%Time_step_fast)
 
+  call get_thermo_coefs(ice_salinity=S_col(1:4))
+
   if (IST%SIS1_thermo) then
 
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -1107,19 +1112,20 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         hf_0  = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
                  (flux_lw(i,j,k) + (1-IST%pen(i,j,k))*flux_sw)) - &
                 dhf_dt * (IST%t_surf(i,j,k)-Tfreeze)
+
+        SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
+        do m=1,NkIce
+          T_col(m) = IST%t_ice(i,j,k,m)
+          SW_abs_col(m) = IST%sw_abs_ice(i,j,k,m)*flux_sw
+        enddo
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
-        call ice_temp_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),    &
-                          IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),   &
-                          IST%t_ice(i,j,k,4), ts_new, hf_0, dhf_dt, &
-                          IST%sw_abs_snow(i,j,k)*flux_sw, &
-                          IST%sw_abs_ice(i,j,k,1)*flux_sw, &
-                          IST%sw_abs_ice(i,j,k,2)*flux_sw, &
-                          IST%sw_abs_ice(i,j,k,3)*flux_sw, &
-                          IST%sw_abs_ice(i,j,k,4)*flux_sw, &
-                          -MU_TS*IST%s_surf(i,j), IST%bheat(i,j), dt_fast, &
+        call ice_temp_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
+                          T_col, S_col, hf_0, dhf_dt, SW_abs_col, &
+                          -MU_TS*IST%s_surf(i,j), IST%bheat(i,j), ts_new, dt_fast, NkIce, &
                           IST%tmelt(i,j,k), IST%bmelt(i,j,k))
+        do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
         dts                = ts_new - (IST%t_surf(i,j,k)-Tfreeze)
         IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts
         flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
