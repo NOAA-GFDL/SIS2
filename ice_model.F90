@@ -942,7 +942,12 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     flux_sw_nir_dir, flux_sw_nir_dif, &
     flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_u, flux_v, lprec, fprec, &
-    dhdt, dedt, drdt, & ! d(flux)/d(surf_temp) (+ up)
+    dhdt, &   ! The derivative of the upward sensible heat flux with the surface
+              ! temperature in W m-2 K-1.
+    dedt, &   ! The derivative of the sublimation rate with the surface
+              ! temperature, in kg m-2 s-1 K-1 (I think).
+    drdt, &   ! The derivative of the upward radiative heat flux with surface
+              ! temperature (i.e. d(flux)/d(surf_temp) in W m-2 K-1.
     albedo_vis_dir, albedo_vis_dif, &
     albedo_nir_dir, albedo_nir_dif, &
     sw_abs_sfc,sw_abs_snow, &
@@ -952,6 +957,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb
   real :: dt_fast, ts_new, dts, hf, hfd, latent
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
   real :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
   real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
@@ -1095,16 +1102,17 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
-        !### ADD PARENTHESES.
-        hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
-        hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
-              - (1-IST%pen(i,j,k))*flux_sw - hfd*(IST%t_surf(i,j,k)-Tfreeze)
+
+        dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
+        hf_0  = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
+                 (flux_lw(i,j,k) + (1-IST%pen(i,j,k))*flux_sw)) - &
+                dhf_dt * (IST%t_surf(i,j,k)-Tfreeze)
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
         call ice_temp_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),    &
                           IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),   &
-                          IST%t_ice(i,j,k,4), ts_new, hf, hfd,                        &
+                          IST%t_ice(i,j,k,4), ts_new, hf_0, dhf_dt, &
                           IST%sw_abs_snow(i,j,k)*flux_sw, &
                           IST%sw_abs_ice(i,j,k,1)*flux_sw, &
                           IST%sw_abs_ice(i,j,k,2)*flux_sw, &
@@ -2311,7 +2319,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
-  character(len=48)  :: stagger
+  character(len=16)  :: stagger, dflt_stagger
 
   if (associated(Ice%Ice_state)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -2343,11 +2351,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "from SIS1. Otherwise, use the newer SIS2 version.", &
                  default=.false.)
 
+  dflt_stagger = "B" ; if (IST%Cgrid_dyn) dflt_stagger = "C"
   call get_param(param_file, mod, "ICE_OCEAN_STRESS_STAGGER", stagger, &
                  "A case-insensitive character string to indicate the \n"//&
                  "staggering of the stress field on the ocean that is \n"//&
                  "returned to the coupler.  Valid values include \n"//&
-                 "'A', 'B', or 'C'.", default="B") !### CHANGE THE DEFAULT TO FOLLOW CGRID_ICE_DYNAMICS.
+                 "'A', 'B', or 'C', with a default that follows the \n"//&
+                 "value of CGRID_ICE_DYNAMICS.", default=dflt_stagger)
   if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
   elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
