@@ -144,7 +144,9 @@ type ice_state_type
   real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.                            
+                       ! sea-ice dynamics.
+  logical :: SIS1_thermo ! If true, the thermodynamic calculations inhereted
+                       ! from SIS1. Otherwise, use the newer SIS2 version.                  
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
