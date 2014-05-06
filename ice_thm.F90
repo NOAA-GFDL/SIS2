@@ -84,6 +84,7 @@ real            :: OPT_DEP_ICE = 0.67   ! ice optical depth (m)
 real            :: T_RANGE_MELT = 1.0   ! melt albedos scaled in below melting T
 
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
+real            :: H_SUBROUNDOFF = 1e-30 ! A miniscule value compared with H_LO_LIM
 logical         :: SLAB_ICE = .false.   ! should we do old style GFDL slab ice?
 !
 ! slab ice specific parameters
@@ -191,7 +192,7 @@ real :: temp, salt
 !  else
 !    retval = CI*(tfi-temp) + LI*(1-tfi/temp) - CW*tfi  !bring ice to tfi, melt the unmelted portion then bring saline water to 0
 !  endif
-  return
+
 end function emelt
 
 !
@@ -214,7 +215,7 @@ real :: emelt, salt
   else
     retval = -(B+sqrt(B*B-4*A*C))/(2*A)
   endif
-  return
+
 end function emelt2temp
 
 !
@@ -235,7 +236,7 @@ real, dimension(NN) :: tice, sice
   do k=1,NN
     retval = retval-DI*(hice/NN)*emelt(tice(k), sice(k))
   enddo
-  return
+
 end function ecolumn
 
 function ice_temp_est(A, B, sol, hsno, tsn, hice, tice, sice, tfw) &
@@ -363,7 +364,12 @@ real :: tp   ! prior step temperature
     AA = mdt*CI+b
     BB = -(mdt*LI*tfi/tp+mdt*CI*tp+f)
     CC = mdt*LI*tfi
-    retval = -(BB+sqrt(BB*BB-4*AA*CC))/(2*AA)
+    ! This form avoids round-off errors.
+    !  if (BB >= 0) then
+    retval = -(BB + sqrt(BB*BB-4*AA*CC))/(2*AA)
+    !  else
+    !    retval = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
+    !  endif
   endif
   return
 end function laytemp
@@ -727,13 +733,13 @@ end subroutine ice_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
                          slab_ice_in, t_range_melt_in, ks_in, &
-                         h_lo_lim_in,deltaEdd                              )
-    real, intent(in)      :: alb_sno_in, alb_ice_in, pen_ice_in 
-    real, intent(in)      :: opt_dep_ice_in, t_range_melt_in
-logical, intent(in)   :: slab_ice_in
-    real, intent(in)   :: ks_in
-    real, intent(in)   :: h_lo_lim_in
-    logical, intent(in):: deltaEdd 
+                         h_lo_lim_in, deltaEdd )
+  real, intent(in)    :: alb_sno_in, alb_ice_in, pen_ice_in 
+  real, intent(in)    :: opt_dep_ice_in, t_range_melt_in
+  logical, intent(in) :: slab_ice_in
+  real, intent(in)    :: ks_in
+  real, intent(in)    :: h_lo_lim_in
+  logical, intent(in) :: deltaEdd 
 
   ALB_SNO     = alb_sno_in
   ALB_ICE     = alb_ice_in
@@ -744,6 +750,7 @@ logical, intent(in)   :: slab_ice_in
 
   KS          = ks_in
   H_LO_LIM    = h_lo_lim_in
+  H_SUBROUNDOFF = max(1e-35, 1e-20*H_LO_LIM)
   do_deltaEdd = deltaEdd
 
 end subroutine ice_thm_param
@@ -1038,9 +1045,11 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   real :: mi, ms, e_extra
   real :: kk, k10, k0a
   real :: tsf, k0a_x_ta, tsno_est, hie, salt_part, rat, tsurf_est
-  real, dimension(0:NkIce) :: aa, bb, bbb, cc, ff ! tridiagonal coefficients
+  real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
+  real, dimension(0:NkIce) :: bb, bbb, ff ! tridiagonal coefficients
   real, dimension(0:NkIce) :: bb_new, ff_new ! modified by tridiag. algorithm
- integer :: k
+  real :: cc_temp
+  integer :: k
 
   A = -sh_T0
   DT = dtt ! set timestep from argument - awkward, remove later
@@ -1062,43 +1071,42 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   ! initialize tridiagonal matrix coefficients
   
   ! This is the start of what was ice_temp_est.
-  do k=1,NN   ! load bb with heat capacity term (also used in ff)
+  do k=1,NkIce   ! load bb with heat capacity term (also used in ff)
     salt_part = 0.0
     if (sice(k)>0.0) salt_part = -MU_TS*sice(k)*LI/(tice(k)*tice(k))
-    bb(k) = (hice/NN)*(DI/DT)*(CI-salt_part) ! add coupling to this later
+    bb(k) = (hice/NkIce)*(DI/DT)*(CI-salt_part) ! add coupling to this later
   enddo
 
-  aa(NN) = 0.0              ! bottom of ice is at top of matrix, aa=0
-  cc(NN) = -kk
-  ff(NN) = sol(NN)+bb(NN)*tice(NN)+2*kk*tfw
-  bbb(NN) = bb(NN) + 3*kk    ! add coupling
+  cc(0) = k0a   ! Atmosphere-snow coupling
+  cc(1) = k10  ! Snow-ice coupling
+  do k=2,NkIce ; cc(k) = kk ; enddo
+  cc(NkIce+1) = 2*kk ! bottom of ice coupling with ocean at freezing point.
 
-  do k=2,NN-1
-    aa(k) = -kk; cc(k) = -kk;
+  ff(NkIce) = sol(NkIce) + bb(NkIce)*tice(NkIce)+2*kk*tfw
+  bbb(NkIce) = bb(NkIce) + 3*kk    ! add coupling
+
+  do k=2,NkIce-1
     ff(k) = sol(k)+bb(k)*tice(k)
-    bbb(k) = bb(k) + 2*kk  ! = bb(k) - aa(k) - cc(k)
+    bbb(k) = bb(k) + 2*kk  ! = bb(k) + cc(k+1) + cc(k)
   enddo
 
-  aa(1) = -kk
-  cc(1) = -k10
   ff(1) = sol(1)+bb(1)*tice(1)
-  bbb(1) = bb(1) + kk + k10  ! = bb(1) - aa(1) - cc(1)
+  bbb(1) = bb(1) + kk + k10  ! = bb(1) + cc(1+1) + cc(1)
 
-  ! if melting, change coefficients for fixed surf. temp. @ melting
-  aa(0) = -k10
-  bb(0) = hsno*(DS/DT)*CI+k0a 
-  bbb(0) = hsno*(DS/DT)*CI+k10+k0a    ! if melting, change this
-  cc(0) = 0.0              ! snow is at bottom of matrix, cc=0
-  ff(0) = hsno*(DS/DT)*CI*tsn+k0a_x_ta ! if melting, change this
+  ! If melting, change coefficients for fixed surf. temp. @ melting
+  bb(0) = hsno*(DS/DT)*CI ! + k0a 
+  bbb(0) = hsno*(DS/DT)*CI + k10 + k0a    ! if melting, change this
+  ff(0) = hsno*(DS/DT)*CI*tsn + k0a_x_ta ! if melting, change this
 
-  ! Notes:  aa(k) = cc(k+1) <= 0 ; bbb(k) = bb(k) - aa(k) - cc(k) ; bb(k) >= 0.0
+  ! Notes:  cc(k+1) = cc(k+1) >= 0 ; bbb(k) = bb(k) + cc(k+1) + cc(k) ; bb(k) >= 0.0
+  ! do k=0,NkIce ; bbb(k) = bb(k) + cc(k+1) + cc(k) : enddo
 
   ! going UP the ice column (down the tridiagonal matrix)
-  bb_new(NN) = bbb(NN) ; ff_new(NN) = ff(NN)
-  do k=NN-1,0,-1
-    rat = aa(k)/bb_new(k+1) ! -1 <= rat <= 0
+  bb_new(NkIce) = bbb(NkIce) ; ff_new(NkIce) = ff(NkIce)
+  do k=NkIce-1,0,-1
+    rat = cc(k+1)/bb_new(k+1) ! 0 <= rat <= 1
     bb_new(k) = bbb(k) - rat*cc(k+1)
-    ff_new(k) = ff(k) - rat*ff_new(k+1)
+    ff_new(k) = ff(k) + rat*ff_new(k+1)
   end do
   
   temp_est(0) = ff_new(0)/bb_new(0)
@@ -1106,30 +1114,29 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
 
   if (tsurf_est > tsf) then ! surface is melting, redo with surf. at melt temp.
     tsurf_est = tsf
-    aa(0) = -k10*hsno                      ! mult. thru by hsno for hsno==0 case
+    ! Multiply through by hsno to cover the hsno==0 case
     bbb(0) = hsno*(hsno*(DS/DT)*CI + k10) + 2*KS ! swap coupling to atmos out and
-    ff(0) = hsno*hsno*(DS/DT)*CI*tsn +2*KS*tsf  ! coupling to melting surface in
-    rat = aa(0)/bb_new(0+1)
-    bb_new(0) = bbb(0) - rat*cc(0+1)   ! reset, rat is left over from end of loop
-    ff_new(0) = ff(0) - rat*ff_new(0+1) ! rat=aa(1)/bb(2), so it's unchanged
-    temp_est(0) = ff_new(0)/bb_new(0)
+    ff(0) = hsno*hsno*(DS/DT)*CI*tsn +2*KS*tsf   ! coupling to melting surface in
+    rat = (cc(1)*hsno)/bb_new(1)
+    bb_new(0) = bbb(0) - rat*cc(1)    ! reset, rat is left over from end of loop
+    ff_new(0) = ff(0) + rat*ff_new(1) ! rat and ff(0) are multiplied by hsno.
+    temp_est(0) = ff_new(0)/bb_new(0) ! bb_new and ff_new are both multiplied by hsno.
   endif
-  ! going DOWN the ice column (up the tridiagonal matrix)
-  do k=1,NN
-    temp_est(k) = (ff_new(k) - cc(k)*temp_est(k-1)) / bb_new(k)
+  ! going back DOWN the ice column.
+  do k=1,NkIce
+    temp_est(k) = (ff_new(k) + cc(k)*temp_est(k-1)) / bb_new(k)
   end do
   ! This is the end of what was ice_temp_est.
 
- tice_est=temp_est(1:NkIce)
- tsno_est=temp_est(0)
+  tice_est(:) = temp_est(1:NkIce)
+  tsno_est = temp_est(0)
 !
-! following two lines disable implicit coupling estimate;  in a 10 year CORE
+! The following two lines disable implicit coupling estimate;  in a 10 year CORE
 ! test the skin temperature without implicit estimate was mostly within .05K
 ! but was cooler around topography in NH (up to 1K - Baffin Island).  Thickness
 ! looked very similar
 !
-! tice_est=tice
-! tsno_est=tsn
+! tice_est(:) = tice(:) ; tsno_est=tsn
 
   !
   ! conservative pass going UP the ice column
