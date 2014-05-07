@@ -84,7 +84,7 @@ real            :: OPT_DEP_ICE = 0.67   ! ice optical depth (m)
 real            :: T_RANGE_MELT = 1.0   ! melt albedos scaled in below melting T
 
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
-real            :: H_SUBROUNDOFF = 1e-30 ! A miniscule value compared with H_LO_LIM
+real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
 logical         :: SLAB_ICE = .false.   ! should we do old style GFDL slab ice?
 !
 ! slab ice specific parameters
@@ -1043,12 +1043,14 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   real, dimension(0:NkIce) :: temp_est
   real, dimension(NkIce) :: tfi, tice_est ! estimated new ice temperatures
   real :: mi, ms, e_extra
-  real :: kk, k10, k0a
+  real :: kk, k10, k0a, k0skin
+  real :: I_bb, b_denom_1
+  real :: comp_rat ! The complement of rat, going from 0 to 1.
   real :: tsf, k0a_x_ta, tsno_est, hie, salt_part, rat, tsurf_est
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
-  real, dimension(0:NkIce) :: bb, bbb, ff ! tridiagonal coefficients
-  real, dimension(0:NkIce) :: bb_new, ff_new ! modified by tridiag. algorithm
-  real :: cc_temp
+  real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
+  real, dimension(0:NkIce) :: cc_bb ! Remaining coupling ratios.
+  real :: hsnow_eff ! , Ks_h
   integer :: k
 
   A = -sh_T0
@@ -1059,72 +1061,83 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   ms = DS*hsno              ! full snow layer mass
   tfi(:) = -MU_TS*sice(:)   ! freezing temperature of ice layers
   hie = max(hice, H_LO_LIM); ! prevent thin ice inaccuracy (mw)
-  kk = NkIce*KI/hie                        ! full ice layer conductivity
-  
-  k10 = 2.0*(KS*(NkIce*KI)) / (hice*KS + hsno*(NkIce*KI)) ! coupling ice layer 1 to snow
-  k0a = (KS*B) / (0.5*B*hsno + KS)      ! coupling snow to "air"
-  k0a_x_ta = (KS*A) / (0.5*B*hsno + KS) ! coupling times "air" temperture
+  kk = NkIce*KI/hie                     ! full ice layer conductivity
+
   tsf = tfi(1)                          ! surface freezing temperature
   if (hsno>0.0) tsf = 0.0
+  hsnow_eff = hsno + H_SUBROUNDOFF
+  
+  k10 = 2.0*(KS*(NkIce*KI)) / (hice*KS + hsnow_eff*(NkIce*KI)) ! coupling ice layer 1 to snow
+  k0a = (KS*B) / (0.5*B*hsnow_eff + KS)      ! coupling snow to "air"
+  k0skin = 2.0*KS / hsnow_eff
+  k0a_x_ta = (KS*A) / (0.5*B*hsnow_eff + KS) ! coupling times "air" temperture
 
-  ! 1st get non-conservative estimate with implicit treatment of layer coupling
-  ! initialize tridiagonal matrix coefficients
+  ! First get non-conservative estimate with implicit treatment of layer coupling.
   
   ! This is the start of what was ice_temp_est.
-  do k=1,NkIce   ! load bb with heat capacity term (also used in ff)
+
+  ! Determine the effective layer heat capacities.
+  bb(0) = hsno*DS*CI
+  do k=1,NkIce   ! load bb with heat capacity term.
     salt_part = 0.0
     if (sice(k)>0.0) salt_part = -MU_TS*sice(k)*LI/(tice(k)*tice(k))
-    bb(k) = (hice/NkIce)*(DI/DT)*(CI-salt_part) ! add coupling to this later
+    bb(k) = (hice/NkIce)*DI*(CI-salt_part) ! add coupling to this later
   enddo
 
-  cc(0) = k0a   ! Atmosphere-snow coupling
-  cc(1) = k10  ! Snow-ice coupling
-  do k=2,NkIce ; cc(k) = kk ; enddo
-  cc(NkIce+1) = 2*kk ! bottom of ice coupling with ocean at freezing point.
+  cc(0) = k0a*dtt  ! Atmosphere-snow coupling
+  cc(1) = k10*dtt  ! Snow-ice coupling
+  do k=2,NkIce ; cc(k) = kk*dtt ; enddo
+  cc(NkIce+1) = 2*kk*dtt ! bottom of ice coupling with ocean at freezing point.
 
-  ff(NkIce) = sol(NkIce) + bb(NkIce)*tice(NkIce)+2*kk*tfw
-  bbb(NkIce) = bb(NkIce) + 3*kk    ! add coupling
+  !   This is a version of a tridiagonal solver where the relationship between
+  ! the diagonal elements and the coupling between layers has been used to
+  ! ensure that there are no differences ever taken, so there will be minimal
+  ! truncation errors.  This closely follows schemes that have previously been
+  ! found to work very well in GOLD and MOM6.
 
-  do k=2,NkIce-1
-    ff(k) = sol(k)+bb(k)*tice(k)
-    bbb(k) = bb(k) + 2*kk  ! = bb(k) + cc(k+1) + cc(k)
-  enddo
+  ! Go UP the ice column.
+  b_denom_1 = (bb(NkIce) + cc(NkIce+1))
+  I_bb = 1.0 / (b_denom_1 + cc(NkIce))
+  temp_est(NkIce) = ( (sol(NkIce)*dtt + bb(NkIce)*tice(NkIce)) + &
+                      cc(NkIce+1)*tfw ) * I_bb
+  comp_rat = b_denom_1 * I_bb
+  cc_bb(NkIce) = cc(NkIce) * I_bb
 
-  ff(1) = sol(1)+bb(1)*tice(1)
-  bbb(1) = bb(1) + kk + k10  ! = bb(1) + cc(1+1) + cc(1)
+  do k=NkIce-1,1,-1
+    b_denom_1 = bb(k) + comp_rat*cc(k+1)
+    I_bb =  1.0 / (b_denom_1 + cc(k))
+    temp_est(k) = ((sol(k)*dtt + bb(k)*tice(k)) + cc(k+1)*temp_est(k+1)) * I_bb
 
-  ! If melting, change coefficients for fixed surf. temp. @ melting
-  bb(0) = hsno*(DS/DT)*CI ! + k0a 
-  bbb(0) = hsno*(DS/DT)*CI + k10 + k0a    ! if melting, change this
-  ff(0) = hsno*(DS/DT)*CI*tsn + k0a_x_ta ! if melting, change this
-
-  ! Notes:  cc(k+1) = cc(k+1) >= 0 ; bbb(k) = bb(k) + cc(k+1) + cc(k) ; bb(k) >= 0.0
-  ! do k=0,NkIce ; bbb(k) = bb(k) + cc(k+1) + cc(k) : enddo
-
-  ! going UP the ice column (down the tridiagonal matrix)
-  bb_new(NkIce) = bbb(NkIce) ; ff_new(NkIce) = ff(NkIce)
-  do k=NkIce-1,0,-1
-    rat = cc(k+1)/bb_new(k+1) ! 0 <= rat <= 1
-    bb_new(k) = bbb(k) - rat*cc(k+1)
-    ff_new(k) = ff(k) + rat*ff_new(k+1)
+    comp_rat = b_denom_1 * I_bb ! 1.0 >= comp_rat >= 0.0
+    cc_bb(k) = cc(k) * I_bb
   end do
-  
-  temp_est(0) = ff_new(0)/bb_new(0)
-  tsurf_est = (A*hsno+2*KS*temp_est(0))/(B*hsno+2*KS) ! diagnose surface skin temp.
 
-  if (tsurf_est > tsf) then ! surface is melting, redo with surf. at melt temp.
+  b_denom_1 = bb(0) + comp_rat*cc(1)
+  I_bb =  1.0 / (b_denom_1 + cc(0))
+  !   This is a complete calculation of temp_est(0), assuming that the surface
+  ! flux is given by A - B*tsurf, with tsurf as estimated
+  temp_est(0) = ((bb(0)*tsn + k0a_x_ta*dtt) + cc(1)*temp_est(1)) * I_bb
+  ! Note that the SIS1 code omits sol(0) at its equivalent of this point.
+  temp_est(0) = temp_est(0) + (sol(0)*dtt) * I_bb
+  
+  ! Diagnose the surface skin temperature by matching the diffusive fluxes in
+  ! the snow with the atmospheric fluxes.  I.e. solve the following for tsurf_est:
+  !  (A - B*tsurf_est) = k0skin * (tsurf_est - temp_est(0))
+  tsurf_est = (A + k0skin*temp_est(0)) / (B + k0skin)
+
+  if (tsurf_est > tsf) then
+    ! The surface is melting, set tsurf to melt temp. and recalculate I_bb.
     tsurf_est = tsf
-    ! Multiply through by hsno to cover the hsno==0 case
-    bbb(0) = hsno*(hsno*(DS/DT)*CI + k10) + 2*KS ! swap coupling to atmos out and
-    ff(0) = hsno*hsno*(DS/DT)*CI*tsn +2*KS*tsf   ! coupling to melting surface in
-    rat = (cc(1)*hsno)/bb_new(1)
-    bb_new(0) = bbb(0) - rat*cc(1)    ! reset, rat is left over from end of loop
-    ff_new(0) = ff(0) + rat*ff_new(1) ! rat and ff(0) are multiplied by hsno.
-    temp_est(0) = ff_new(0)/bb_new(0) ! bb_new and ff_new are both multiplied by hsno.
+    ! cc(0) = k0skin*dtt
+
+    I_bb =  1.0 / (b_denom_1 + (k0skin*dtt))
+    temp_est(0) = ((bb(0)*tsn + k0skin*dtt*tsf) + cc(1)*temp_est(1)) * I_bb
+    ! Note that the SIS1 code omits sol(0) at its equivalent of this point.
+    temp_est(0) = temp_est(0) + (sol(0)*dtt) * I_bb
   endif
-  ! going back DOWN the ice column.
+  ! Go back DOWN the ice column to get the final temperatures.
   do k=1,NkIce
-    temp_est(k) = (ff_new(k) + cc(k)*temp_est(k-1)) / bb_new(k)
+    temp_est(k) = temp_est(k) + cc_bb(k) * temp_est(k-1)
   end do
   ! This is the end of what was ice_temp_est.
 
@@ -1141,21 +1154,21 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   !
   ! conservative pass going UP the ice column
   !
-  tice_est(NkIce) = laytemp(mi, tfi(NkIce), sol(NkIce)+kk*(2*tfw+tice_est(NkIce-1)), &
-                                                             3*kk, tice(NkIce))
+  tice_est(NkIce) = laytemp_SIS2(mi, tfi(NkIce), sol(NkIce) + kk*(2*tfw+tice_est(NkIce-1)), &
+                                 3*kk, tice(NkIce), dtt)
   do k=NkIce-1,2,-1
-    tice_est(k) = laytemp(mi, tfi(k), &
-                       sol(k)+kk*(tice_est(k-1)+tice_est(k+1)), 2*kk, tice(k))
+    tice_est(k) = laytemp_SIS2(mi, tfi(k), sol(k) + kk*(tice_est(k-1)+tice_est(k+1)), &
+                               2*kk, tice(k), dtt)
   enddo
-  tice_est(1) = laytemp(mi, tfi(1), sol(1)+kk*tice_est(2)+k10*tsno_est, &
-                                                              kk+k10, tice(1))
-  tsno_est = laytemp(ms, 0.0, sol(0)+k10*tice_est(1)+k0a_x_ta, k10+k0a, tsn)
-  tsurf = (A*hsno+2*KS*tsno_est)/(B*hsno+2*KS)  ! diagnose surface skin temp.
+  tice_est(1) = laytemp_SIS2(mi, tfi(1), sol(1) + (kk*tice_est(2) + k10*tsno_est), &
+                             kk + k10, tice(1), dtt)
+  tsno_est = laytemp_SIS2(ms, 0.0, sol(0) + (k10*tice_est(1)+k0a_x_ta), k10+k0a, tsn, dtt)
+  tsurf = (A + k0skin*tsno_est) / (B + k0skin)  ! diagnose surface skin temp.
 
   if (tsurf > tsf) then ! surface is melting, redo with surf. at melt temp.
     tsurf = tsf
-    tsno_est = laytemp(hsno*ms, 0.0, hsno*sol(0)+hsno*k10*tice_est(1)+2*KS*tsf,&
-                       hsno*k10+2*KS, tsn) ! note: mult. thru by hsno
+    tsno_est = laytemp_SIS2(ms, 0.0, sol(0) + k10*tice_est(1) + k0skin*tsf,&
+                            k10+k0skin, tsn, dtt)
     ! add in surf. melt
     if (hsno>0.0) then
       tmelt = tmelt+DT*((A-B*tsurf)-2*KS*(tsurf-tsno_est)/hsno)
@@ -1168,19 +1181,23 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   !
   ! conservative pass going DOWN the ice column
   !
-  tice(1)  = laytemp(mi, tfi(1), sol(1)+kk*tice_est(1+1) &
-                                       +k10*(tsno_est-tice_est(1)), kk, tice(1))
+  tice(1)  = laytemp_SIS2(mi, tfi(1), sol(1)+kk*tice_est(1+1) &
+                          + k10*(tsno_est-tice_est(1)), kk, tice(1), dtt)
   do k=2,NkIce-1 ! flux from above is fixed, only have downward feedback
-    tice(k) = laytemp(mi, tfi(k), sol(k)+kk*tice_est(k+1) &
-                                       +kk*(tice(k-1)-tice_est(k)), kk, tice(k))
+    tice(k) = laytemp_SIS2(mi, tfi(k), sol(k)+kk*tice_est(k+1) &
+                                       +kk*(tice(k-1)-tice_est(k)), kk, tice(k), dtt)
   enddo
-  tice(NkIce) = laytemp(mi, tfi(NkIce), sol(NkIce)+2*kk*tfw &
-                              +kk*(tice(NkIce-1)-tice_est(NkIce)), 2*kk, tice(NkIce))
+  tice(NkIce) = laytemp_SIS2(mi, tfi(NkIce), sol(NkIce)+2*kk*tfw &
+                             +kk*(tice(NkIce-1)-tice_est(NkIce)), 2*kk, tice(NkIce), dtt)
   !
   ! END conservative update
   !
   
-  bmelt = bmelt+DT*(fb-2*kk*(tfw-tice(NkIce))) ! add in bottom melting/freezing
+  ! The following is a dangerous calculation if kk is too large, in part because
+  ! all of the other fluxes are calculated implicitly for the layer above, so
+  ! the temperatures are well bounded.  Can this be rearranged or calculated
+  ! as a residual of the heat changes in the ice and snow?
+  bmelt = bmelt + DT*(fb - 2*kk*(tfw-tice(NkIce))) ! add in bottom melting/freezing
 
   if (tsn > 0.0) then ! put excess snow energy into top melt
     e_extra = CI*DS*hsno*tsn
@@ -1201,6 +1218,45 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   call temp_check(tsurf, hsno, tsn, hice, tice, NkIce, bmelt, tmelt)
 
 end subroutine ice_temp_SIS2
+
+!
+! laytemp_SIS2 - implicit calculation of new layer temperature
+!
+function laytemp_SIS2(m, tfi, f, b, tp, dtt) result (retval)
+  real retval
+  real, intent(in) :: m    ! mass of ice - kg/m2
+  real, intent(in) :: tfi  ! ice freezing temp. (determined by salinity)
+  real, intent(in) :: f    ! Inward forcing - W/m2
+  real, intent(in) :: b    ! response of outward heat flux to local temperature - W/m2/K
+  real, intent(in) :: tp   ! prior step temperature
+  real, intent(in) :: dtt  ! timestep in s.
+
+  real :: AA, BB, CC
+  ! solve quadratic equation for layer temperature, t:
+  !
+  !   m * {CI-LI*tfi/(t*tp)} * (t-tp) = dtt * (f - b*t)
+  !
+  !Niki: There could be a problem if tp==0 but tfi/=0 in which case the above equation is ill-defined 
+  !      but this code returns -f/b
+  !
+  !if( tp == 0.0 .and. tfi /= 0.0 ) print*, 'BAD laytemp INPUT ',tp,tfi
+  !
+
+  if ( tfi == 0.0 ) then
+    retval = (m*CI*tp + f*dtt) / (m*CI + b*dtt) ! = -BB/AA
+  else
+    AA = m*CI + b*dtt
+    BB = -(m*LI*tfi/tp + m*CI*tp + f*dtt)
+    CC = m*LI*tfi
+    ! This form avoids round-off errors.
+    if (BB >= 0) then
+      retval = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
+    else
+      retval = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
+    endif
+  endif
+
+end function laytemp_SIS2
 
 subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
   real, intent(in) :: ts, hs, tsn, hi, bmelt, tmelt
