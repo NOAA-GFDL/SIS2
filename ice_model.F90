@@ -87,8 +87,8 @@ use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 use ice_spec_mod, only: get_sea_surface
 
 use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-use ice_thm_mod,      only: ice_temp_SIS2, ice_resize_SIS2
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
+use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param, e_to_melt_TS
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
@@ -2606,6 +2606,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
   call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
                      t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
+  call SIS2_ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, &
+                          t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
 
   call close_param_file(param_file)
 
