@@ -631,8 +631,8 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   enddo
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
-  call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
-  call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
+  if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
+  if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
   if (IST%Cgrid_dyn) then
     call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C",G,haloshift=hs)
