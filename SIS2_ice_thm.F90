@@ -61,10 +61,7 @@ real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
 real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
 real            :: FRAZIL_TEMP_OFFSET = 0.5 ! A temperature offset between the 
 
-integer, parameter :: NN = 4
-real               :: DT = 1800.0
 
-!
 ! In the ice temperature calculation we place a limit to below (salinity
 ! dependent) freezing point on the prognosed temperatures.  For ice_resize
 ! it is better to make a slightly more restrictive limit that requires the
@@ -74,61 +71,6 @@ real, parameter :: liq_lim = .99
 
 ! for calling delta-Eddington shortwave from ice_optics
 logical :: do_deltaEdd = .true.
-integer (kind=int_kind) :: &
-   nx_block, ny_block, & ! block dimensions
-   icells                ! number of ice-covered grid cells
-
-integer (kind=int_kind), dimension (1) :: &
-   indxi   , & ! compressed indices for ice-covered cells
-   indxj
-
-! inputs
-real (kind=dbl_kind), dimension (1,1) :: &
-   aice   , & ! concentration of ice
-   vice   , & ! volume of ice
-   vsno   , & ! volume of snow
-   Tsfc   , & ! surface temperature
-   coszen , & ! cosine of solar zenith angle
-   tarea  , & ! cell area - not used
-   swvdr  , & ! sw down, visible, direct  (W/m^2)
-   swvdf  , & ! sw down, visible, diffuse (W/m^2)
-   swidr  , & ! sw down, near IR, direct  (W/m^2)
-   swidf      ! sw down, near IR, diffuse (W/m^2)
-
-
-! outputs
-real (kind=dbl_kind), dimension (1,1) :: &
-   fs     , & ! horizontal coverage of snow
-   fp     , & ! pond fractional coverage (0 to 1)
-   hp         ! pond depth (m)
-
-real (kind=dbl_kind), dimension (1,1,1) :: &
-   rhosnw , & ! density in snow layer (kg/m3)
-   rsnw       ! grain radius in snow layer (micro-meters)
-
-real (kind=dbl_kind), dimension (1,1,18) :: &
-         trcr        ! aerosol tracers
-
-
-real (kind=dbl_kind), dimension (1,1) :: &
-   alvdr   , & ! visible, direct, albedo (fraction) 
-   alvdf   , & ! visible, diffuse, albedo (fraction) 
-   alidr   , & ! near-ir, direct, albedo (fraction) 
-   alidf   , & ! near-ir, diffuse, albedo (fraction) 
-   fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
-   fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-   fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
-
-real (kind=dbl_kind), dimension (1,1,1) :: &
-   Sswabs      ! SW absorbed in snow layer (W m-2)
-
-real (kind=dbl_kind), dimension (1,1,nilyr) :: &
-   Iswabs      ! SW absorbed in ice layer (W m-2)
-
-real (kind=dbl_kind), dimension (1,1) :: &
-   albice  , & ! bare ice albedo, for history  
-   albsno  , & ! snow albedo, for history  
-   albpnd      ! pond albedo, for history  
 
 contains
 
@@ -201,7 +143,7 @@ function ecolumn_SIS2(hsno, hice, tice, sice, NkIce) result (retval)
   endif
 
   do k=1,NkIce
-    retval = retval-DI*(hice/NN)*emelt(tice(k), sice(k))
+    retval = retval-DI*(hice/NkIce)*emelt(tice(k), sice(k))
   enddo
 
 end function ecolumn_SIS2
@@ -259,7 +201,61 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
   real :: alb, as, ai, cs
   real :: thick_ice_alb, tcrit, fh
 
-  if(do_deltaEdd) then
+  integer (kind=int_kind) :: &
+    nx_block, ny_block, & ! block dimensions
+    icells                ! number of ice-covered grid cells
+
+  integer (kind=int_kind), dimension (1) :: &
+    indxi   , & ! compressed indices for ice-covered cells
+    indxj
+
+  ! inputs
+  real (kind=dbl_kind), dimension (1,1) :: &
+    aice   , & ! concentration of ice
+    vice   , & ! volume of ice
+    vsno   , & ! volume of snow
+    Tsfc   , & ! surface temperature
+    coszen , & ! cosine of solar zenith angle
+    tarea  , & ! cell area - not used
+    swvdr  , & ! sw down, visible, direct  (W/m^2)
+    swvdf  , & ! sw down, visible, diffuse (W/m^2)
+    swidr  , & ! sw down, near IR, direct  (W/m^2)
+    swidf      ! sw down, near IR, diffuse (W/m^2)
+
+  ! outputs
+  real (kind=dbl_kind), dimension (1,1) :: &
+    fs     , & ! horizontal coverage of snow
+    fp     , & ! pond fractional coverage (0 to 1)
+    hp         ! pond depth (m)
+
+  real (kind=dbl_kind), dimension (1,1,1) :: &
+    rhosnw , & ! density in snow layer (kg/m3)
+    rsnw       ! grain radius in snow layer (micro-meters)
+
+  real (kind=dbl_kind), dimension (1,1,18) :: &
+    trcr        ! aerosol tracers
+
+  real (kind=dbl_kind), dimension (1,1) :: &
+    alvdr   , & ! visible, direct, albedo (fraction) 
+    alvdf   , & ! visible, diffuse, albedo (fraction) 
+    alidr   , & ! near-ir, direct, albedo (fraction) 
+    alidf   , & ! near-ir, diffuse, albedo (fraction) 
+    fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+    fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
+    fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
+
+  real (kind=dbl_kind), dimension (1,1,1) :: &
+    Sswabs      ! SW absorbed in snow layer (W m-2)
+
+  real (kind=dbl_kind), dimension (1,1,nilyr) :: &
+    Iswabs      ! SW absorbed in ice layer (W m-2)
+
+  real (kind=dbl_kind), dimension (1,1) :: &
+    albice  , & ! bare ice albedo, for history  
+    albsno  , & ! snow albedo, for history  
+    albpnd      ! pond albedo, for history  
+
+  if (do_deltaEdd) then
 
      ! temporary for delta-Eddington shortwave call
      nx_block = 1
@@ -281,34 +277,16 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
      swidr(1,1) = 0.25
      swidf(1,1) = 0.25
 
-     call shortwave_dEdd0_set_snow(nx_block, ny_block, &
-          icells,             &
-          indxi,    indxj,    &
-          aice,     vsno,     &
-          Tsfc,     fs,       &
-          rhosnw,   rsnw) ! out: fs, rhosnw, rsnw
+     call shortwave_dEdd0_set_snow(nx_block, ny_block, icells, indxi, indxj, &
+              aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
 
-     call shortwave_dEdd0_set_pond(nx_block, ny_block, &
-          icells,             &
-          indxi,    indxj,    &
-          aice,     Tsfc,     &
-          fs,       fp,       &
-          hp) ! out: fp, hp
-     call shortwave_dEdd0  (nx_block, ny_block,    &
-          icells,   indxi,       &
-          indxj,    coszen,      &
-          aice,     vice,        &
-          vsno,     fs,          &
-          rhosnw,   rsnw,        &
-          fp,       hp,          &
-          swvdr,    swvdf,       &
-          swidr,    swidf,       &
-          alvdf,    alvdr,       & ! out: these and below
-          alidr,    alidf,       &
-          fswsfc,   fswint,      &
-          fswthru,  Sswabs,      &
-          Iswabs,   albice,      &
-          albsno,   albpnd)
+     call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
+              aice, Tsfc, fs, fp, hp) ! out: fp, hp
+     call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
+              aice, vice, vsno, fs, rhosnw, rsnw, fp, hp, swvdr, swvdf, &
+              swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
+              fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
+     ! out: alvdf, alvdr, and subsequent.
 
      ! ### ADD PARENTHESES AND MULTIPLY BY A RECIPROCAL.
      alb = 1-fswsfc(1,1)-fswint(1,1)-fswthru(1,1)
@@ -409,7 +387,6 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   integer :: k
 
   A = -sh_T0
-  DT = dtt ! set timestep from argument - awkward, remove later
 
 !   call ice_temp(A, B, sol, tsurf, hsno, tsn, hice, tice, sice, tfw, fb, tmelt, bmelt)
   mi = DI*hice/NkIce           ! full ice layer mass
@@ -526,9 +503,9 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
                             k10+k0skin, tsn, dtt)
     ! add in surf. melt
     if (hsno>0.0) then
-      tmelt = tmelt+DT*((A-B*tsurf)-2*KS*(tsurf-tsno_est)/hsno)
+      tmelt = tmelt+dtt*((A-B*tsurf)-2*KS*(tsurf-tsno_est)/hsno)
     else
-      tmelt = tmelt+DT*((sol(0)+A-B*tsurf)-k10*(tsurf-tice_est(1))) ! tsno = tsurf
+      tmelt = tmelt+dtt*((sol(0)+A-B*tsurf)-k10*(tsurf-tice_est(1))) ! tsno = tsurf
     endif
   endif
   tsn = tsno_est ! finalize snow temperature
@@ -552,7 +529,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   ! all of the other fluxes are calculated implicitly for the layer above, so
   ! the temperatures are well bounded.  Can this be rearranged or calculated
   ! as a residual of the heat changes in the ice and snow?
-  bmelt = bmelt + DT*(fb - 2*kk*(tfw-tice(NkIce))) ! add in bottom melting/freezing
+  bmelt = bmelt + dtt*(fb - 2*kk*(tfw-tice(NkIce))) ! add in bottom melting/freezing
 
   if (tsn > 0.0) then ! put excess snow energy into top melt
     e_extra = CI*DS*hsno*tsn
