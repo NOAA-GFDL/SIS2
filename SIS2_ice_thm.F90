@@ -2,9 +2,11 @@
 !                                                                              !
 !                       N-LAYER VERTICAL THERMODYNAMICS                        !
 !                                                                              !
-! Reference:                                                                   !
+! References:                                                                  !
+!   Hallberg, R., and M. Winton, 2014:  The SIS2.0 sea-ice model, in prep.     !
+!                                                                              !
 !   Winton, M., 2011:  A conservative non-iterative n-layer sea ice            !
-!   temperature solver, in prep.                                               !
+!     temperature solver, in prep.                                             !
 !                                                                              !
 !                                                                              !
 !         ->+---------+ <- ts - diagnostic surface temperature ( <= 0C )       !
@@ -13,7 +15,7 @@
 !        \  |         |                                                        !
 !         =>+---------+                                                        !
 !        /  |         |                                                        !
-!       /   |         | <- t1    Four salty ice layers with heat capacity      !
+!       /   |         | <- t1    N salty ice layers with heat capacity         !
 !      /    |         |                                                        !
 !     /     |         | <- t2                                                  !
 !   hi      |...ice...|                                                        !
@@ -23,7 +25,8 @@
 !        \  |         |                                                        !
 !         ->+---------+ <- base of ice fixed at seawater freezing temp.        !
 !                                                                              !
-!                                         Mike Winton (Michael.Winton@noaa.gov)!
+!                                       Bob Hallberg (Robert.Hallberg@noaa.gov)!
+!                                       Mike Winton  (Michael.Winton@noaa.gov) !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 module SIS2_ice_thm
@@ -37,10 +40,11 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none ; private
 
-public :: DS, DI, DW, MU_TS, CI, get_thermo_coefs
+public :: DS, DI, DW, MU_TS, CI, get_thermo_coefs, get_SIS2_thermo_coefs
 public :: SIS2_ice_thm_param, e_to_melt_TS, ice_optics_SIS2
 public :: ice_temp_SIS2, ice_resize_SIS2, ecolumn_SIS2
-
+public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
+public :: enthalpy_liquid_freeze
 
 !
 ! properties of ice, snow, and seawater (NCAR CSM values)
@@ -60,7 +64,9 @@ real            :: T_RANGE_MELT = 1.0   ! melt albedos scaled in below melting T
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
 real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
 real            :: FRAZIL_TEMP_OFFSET = 0.5 ! A temperature offset between the 
-
+real            :: ENTH_LIQ_0 = 0.0     ! The value of enthalpy for liquid fresh
+                                        ! water at 0 C, in J kg-1.
+real            :: ENTH_UNIT = 1.0      ! A rescaling factor for enthalpy from J kg-1.
 
 ! In the ice temperature calculation we place a limit to below (salinity
 ! dependent) freezing point on the prognosed temperatures.  For ice_resize
@@ -122,6 +128,12 @@ real :: emelt, salt
     retval = -B/A
   else
     retval = -(B+sqrt(B*B-4*A*C))/(2*A)
+    ! This should be...
+    ! if (B >= 0.0) then
+    !   retval = -(B+sqrt(B*B-4*A*C))/(2*A)
+    ! else
+    !   retval = 2*C / (-B + sqrt(B*B-4*A*C))
+    ! endif
   endif
 
 end function emelt2temp
@@ -153,12 +165,15 @@ end function ecolumn_SIS2
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS2_ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
-                         t_range_melt_in, ks_in, h_lo_lim_in, deltaEdd )
+                         t_range_melt_in, ks_in, h_lo_lim_in, deltaEdd, &
+                         enth_liquid_0, enthalpy_units )
   real, intent(in)    :: alb_sno_in, alb_ice_in, pen_ice_in 
   real, intent(in)    :: opt_dep_ice_in, t_range_melt_in
   real, intent(in)    :: ks_in
   real, intent(in)    :: h_lo_lim_in
   logical, intent(in) :: deltaEdd 
+  real, optional, intent(in) :: enth_liquid_0
+  real, optional, intent(in) :: enthalpy_units
 
   ALB_SNO     = alb_sno_in
   ALB_ICE     = alb_ice_in
@@ -170,6 +185,8 @@ subroutine SIS2_ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in
   H_LO_LIM    = h_lo_lim_in
   H_SUBROUNDOFF = max(1e-35, 1e-20*H_LO_LIM)
   do_deltaEdd = deltaEdd
+  enth_liq_0 = 0.0 ; if (present(enth_liquid_0)) enth_liq_0 = enth_liquid_0
+  enth_unit = 1.0 ; if (present(enthalpy_units)) enth_unit = enthalpy_units
 
 end subroutine SIS2_ice_thm_param
 
@@ -667,12 +684,148 @@ function e_to_melt_TS(hs, tsn, hi, T, S)
 end function e_to_melt_TS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_from_TS - Set a column of enthalpies from temperature and salinity. !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine enthalpy_from_TS(T, S, enthalpy)
+  real, dimension(:), intent(in) :: T, S
+  real, dimension(:), intent(out) :: enthalpy
+
+  integer :: k, nk_ice
+  nk_ice = size(T)
+ 
+  do k=1,nk_ice ; enthalpy(k) = enth_from_TS(T(k), S(k)) ; enddo
+
+end subroutine enthalpy_from_TS
+
+function enth_from_TS(T, S) result(enthalpy)
+  real, intent(in)  :: T, S
+  real :: enthalpy
+
+  ! This makes the assumption that all water in the ice and snow categories,
+  ! both fluid and in pockets, has the same heat capacity.
+  if ((S == 0.0) .and. (T <= 0.0)) then
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + CI*T)
+  elseif (T <= -MU_TS*S) then
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 + MU_TS*S/T)) + CI*T)
+  else  ! This layer is already melted, so just warm it to 0 C.
+    enthalpy = enth_unit * (ENTH_LIQ_0 + CI*T)
+  endif
+
+end function enth_from_TS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_liquid_freeze - Return the enthalpy of liquid water at the freezing !
+!    point for a given salinity.                                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function enthalpy_liquid_freeze(S)
+  real, intent(in)  :: S
+  real :: enthalpy_liquid_freeze
+
+  enthalpy_liquid_freeze = enth_unit * ((-CI*MU_TS)*S + ENTH_LIQ_0)
+
+end function enthalpy_liquid_freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! Temp_from_Enth_S - Set a column of temperatures from enthalpy and salinity.  !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine Temp_from_Enth_S(En, S, Temp)
+  real, dimension(:), intent(in) :: En, S
+  real, dimension(:), intent(out) :: Temp
+
+  integer :: k, nk_ice
+  real :: I_CI, BB
+  real :: I_enth_unit
+  real :: En_J  ! Enthalpy in Joules with 0 offset.
+  
+  nk_ice = size(Temp)
+!  I_CI = 1.0 / CI
+!  I_enth_unit = 1.0 / enth_unit
+ 
+  do k=1,nk_ice
+    Temp(k) = Temp_from_En_S(En(k), S(k))
+!   En_J = En(k) * I_enth_unit - ENTH_LIQ_0
+!   ! This makes the assumption that all water in the ice and snow categories,
+!   ! both fluid and in pockets, has the same heat capacity.
+!   if (S(k) <= 0.0) then ! There is a step function for fresh water.
+!     if (En_J >= 0.0) then ; Temp(k) = En_J * I_CI
+!     elseif (En_J >= -LI) then ; Temp(k) = 0.0
+!     else ; Temp(k) = I_CI * (En_J + LI) ; endif
+!   else
+!     if (En_J < -MU_TS*S(k)*CI) then
+!       BB = 0.5*(En_J + LI)
+!       Temp(k) = I_CI * (BB - sqrt(BB**2 + MU_TS*S(k)*CI*LI))
+!     else  ! This layer is already melted, so just warm it to 0 C.
+!       Temp(k) = En_J * I_CI
+!     endif
+!   endif
+  enddo
+
+end subroutine Temp_from_Enth_S
+
+function Temp_from_En_S(En, S) result(Temp)
+  real, intent(in)  :: En, S
+  real :: Temp
+
+  real :: I_CI, BB
+  real :: I_enth_unit
+  real :: En_J  ! Enthalpy in Joules with 0 offset.
+  
+  I_CI = 1.0 / CI ; I_enth_unit = 1.0 / enth_unit
+
+  En_J = En * I_enth_unit - ENTH_LIQ_0
+  ! This makes the assumption that all water in the ice and snow categories,
+  ! both fluid and in pockets, has the same heat capacity.
+  if (S <= 0.0) then ! There is a step function for fresh water.
+    if (En_J >= 0.0) then ; Temp = En_J * I_CI
+    elseif (En_J >= -LI) then ; Temp = 0.0
+    else ; Temp = I_CI * (En_J + LI) ; endif
+  else
+    if (En_J < -MU_TS*S*CI) then
+      BB = 0.5*(En_J + LI)
+      Temp = I_CI * (BB - sqrt(BB**2 + MU_TS*S*CI*LI))
+    else  ! This layer is already melted, so just warm it to 0 C.
+      Temp = En_J * I_CI
+    endif
+  endif
+
+end function Temp_from_En_S
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! get_thermo_coefs - return various thermodynamic coefficients.                !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine get_SIS2_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, &
+                   ice_salinity, enthalpy_units)
+  real, optional, intent(out) :: pocket_coef
+  real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
+  real, optional, intent(out) :: max_enthalpy_chg
+  real, optional, intent(out) :: enthalpy_units
+! Arguments: pocket_coef - Minus the partial derivative of the freezing point
+!                          with salinity, times the latent heat of fusion over
+!                          the heat capacity of ice, in degC^2/psu.  This term
+!                          is used in the conversion of heat into a form of
+!                          enthalpy that is conserved with brine pockets.
+!            layer_coefs - pocket_coef times a prescribed salinity for each of
+!                          up to 4 layers, in degC^2.  With more than 4 layers,
+!                          the prescribed salinity of layer 4 is used for all
+!                          subsequent layers.
+!            max_enth_chg - The maximum ethalpy change due to the presence of
+!                           brine pockets, LI/CI.
+!            enthalpy_units - A unit conversion factor for ethalpy from Joules.
+
+  call get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
+  
+  if (present(enthalpy_units)) enthalpy_units = enth_unit
+
+end subroutine get_SIS2_thermo_coefs
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, snow, frazil, evap, &
-                          tmlt, bmlt, tfw, NkIce, heat_to_ocn, h2o_to_ocn, &
-                          h2o_from_ocn, snow_to_ice, bablt )
+subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, evap, &
+                           tmlt, bmlt, tfw, NkIce, heat_to_ocn, h2o_ice_to_ocn, &
+                           h2o_ocn_to_ice, evap_from_ocn, snow_to_ice, bablt, &
+                           enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   real, intent(inout) :: hsno        ! snow thickness (m-snow)
   real, intent(inout) :: tsn         ! snow temperature (deg-C)
   real, intent(inout) :: hice        ! ice thickness (m-ice)
@@ -680,100 +833,148 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, snow, frazil, evap, &
         intent(inout) :: tice ! ice temperature by layer (deg-C)
   real, dimension(NkIce), &
         intent(in)    :: Sice ! ice salinity by layer (g/kg)
+  real, dimension(0:NkIce+1), &
+        intent(in)    :: Enthalpy    ! snow, ice, and ocean enthalpy by layer (J/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
   real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: evap        ! ice evaporation (kg/m^2)
-  real, intent(in   ) :: tmlt       ! top melting energy (J/m^2)
-  real, intent(in   ) :: bmlt       ! bottom melting energy (J/m^2)
+  real, intent(in   ) :: tmlt        ! top melting energy (J/m^2)
+  real, intent(in   ) :: bmlt        ! bottom melting energy (J/m^2)
   real, intent(in   ) :: tfw         ! seawater freezing temperature (deg-C)
-  integer, intent(in   ) :: NkIce ! The number of ice layers.
+  integer, intent(in) :: NkIce       ! The number of ice layers.
   real, intent(  out) :: heat_to_ocn ! energy left after ice all melted (J/m^2)
-  real, intent(  out) :: h2o_to_ocn  ! liquid water flux to ocean (kg/m^2)
-  real, intent(  out) :: h2o_from_ocn! evaporation flux from ocean (kg/m^2)
+  real, intent(  out) :: h2o_ice_to_ocn ! liquid water flux to ocean (kg/m^2)
+  real, intent(  out) :: h2o_ocn_to_ice ! liquid water flux from ocean (kg/m^2)
+  real, intent(  out) :: evap_from_ocn! evaporation flux from ocean (kg/m^2)
   real, intent(  out) :: snow_to_ice ! snow below waterline becomes ice
   real, intent(  out), optional :: bablt ! bottom ablation (kg/m^2)
-
+  real, intent(  out), optional :: enthalpy_evap ! The enthalpy loss due to the
+                                     ! mass loss by evaporation / sublimation.
+  real, intent(  out), optional :: enthalpy_melt ! The enthalpy loss due to the
+                                     ! mass loss by melting, in J m-2.
+  real, intent(  out), optional :: enthalpy_freeze ! The enthalpy gain due to the
+                                     ! mass gain by freezing, in J m-2.
   real :: tmelt, bmelt
   real, dimension(NkIce) :: hlay ! temporary ice layer thicknesses
   real, dimension(NkIce) :: lo_old, lo_new, hi_old, hi_new ! layer bounds
-  real, dimension(NkIce) :: ntice
+  real, dimension(NkIce) :: ntice ! The new integrated enthalpy, in J m-2.
+  real, dimension(NkIce) :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
+  real, dimension(NkIce) :: h_frazil  ! The newly-formed thickness of frazil ice, in m.
   real :: hw                  ! waterline height above ice base
+  real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
+  real :: M_melt              ! The ice mass lost to melting, in kg m-2.
   real :: evap_left, melt_left
+  real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: mass, etot
+  real :: h2o_to_ocn, h2o_orig, h2o_imb
   real :: overlap
-  integer :: k, kold, knew
-
-  heat_to_ocn  = 0.0
-  h2o_to_ocn   = DS*hsno + DI*hice + snow-evap ! - from ice at end gives ocean h2o flux
-  h2o_from_ocn = 0.0
-  snow_to_ice  = 0.0
+  integer :: k, k1, k2, kold, knew
 
   tmelt = tmlt ; bmelt = bmlt
 
 !  call ice_resize(hsno, tsn, hice, tice, sice, snow, frazil, evap, tmlt, bmlt, &
-!             tfw, heat_to_ocn, h2o_to_ocn, h2o_from_ocn, snow_to_ice, bablt)
+!             tfw, heat_to_ocn, h2o_to_ocn, evap_from_ocn, snow_to_ice, bablt)
   do k=1,NkIce ! break out individual layers
     hlay(k) = hice/NkIce
   enddo
   ! set mass mark; will subtract mass at end for melt flux to ocean
-  h2o_to_ocn = DS*hsno + DI*hice + snow - evap 
-  h2o_from_ocn = 0.0 ! for excess evap-melt
-  heat_to_ocn = 0.0  ! for excess melt energy
+  h2o_orig = DS*hsno + DI*hice
+  heat_to_ocn = 0.0   ! for excess melt energy
+
+  evap_from_ocn = 0.0 ! for excess evap-melt
+  h2o_ocn_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0 ; snow_to_ice  = 0.0
+  enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
+
+  enthM_snowfall = snow*enthalpy(0)
 
   if (hice == 0.0) hsno = 0.0
   if (hsno == 0.0) tsn = 0.0
   hsno = hsno+snow/DS ! add snow
 
   ! add frazil
+  ! Frazil mostly forms in leads, so add its heat uniformly over all of the
+  ! layers rather than just adding it to the ice bottom.
   if (frazil > 0.0 .and. hice == 0.0) then
     do k=1,NkIce
-      tice(k) = min(tfw,-MU_TS*sice(k)-Frazil_temp_offset) !was tfw  ! Why the 0.5?
-      hlay(k) = hlay(k) + ((frazil/NkIce)/emelt(tice(k), sice(k)))/DI
-    enddo
+      t_frazil(k) = min(tfw,-MU_TS*sice(k)-Frazil_temp_offset) !was tfw  ! Why the 0.5?
+      h_frazil(k) = ((frazil/NkIce)/emelt(t_frazil(k), sice(k)))/DI
+
+        tice(k) = T_frazil(k)
+        hlay(k) = hlay(k) + h_frazil(k)
+        h2o_ocn_to_ice = h2o_ocn_to_ice + h_frazil(k)*DI
+
+        ! This should be based on the enthalpy of ocean water.
+        m_freeze = h_frazil(k)*DI
+        enthM_freezing = enthM_freezing + m_freeze*enthalpy_liquid_freeze(sice(k))
+      enddo
   endif
 
   if (tmelt < 0.0) then  ! this shouldn't happen
     bmelt = bmelt+tmelt
     tmelt = 0.0
   endif
-  if (bmelt < 0.0 ) then ! add freezing to bottom layer
-    hlay(NkIce) = hlay(NkIce) + (-bmelt/emelt(tice(NkIce),sice(NkIce)))/DI
+
+  if (bmelt < 0.0 ) then ! add freezing to bottom layer at tice and sice.
+    m_freeze = (-bmelt/emelt(tice(NkIce),sice(NkIce)))
+    hlay(NkIce) = hlay(NkIce) + m_freeze/DI
+    h2o_ocn_to_ice = h2o_ocn_to_ice + m_freeze
+    ! This should be based on the enthalpy of ocean water.
+    enthM_freezing = enthM_freezing + m_freeze*enthalpy_liquid_freeze(sice(NkIce))
+
     bmelt = 0.0
   endif
 
+  ! Apply mass losses from evaporation.
+
   if (evap > 0.0) then ! apply evaporation mass flux
     if (evap < hsno*DS) then
+      enthM_evap = evap*enthalpy(0)
       hsno = hsno-evap/DS ! evaporate part of snow
     else ! evaporate ice
+      enthM_evap = (hsno*DS)*enthalpy(0)
       evap_left = evap - hsno*DS
       hsno = 0.0
       do k=1,NkIce
         if (evap_left < hlay(k)*DI) then
-          hlay(k) = hlay(k)-evap_left/DI
+          enthM_evap = enthM_evap + evap_left*enthalpy(k)
+          hlay(k) = hlay(k) - evap_left/DI
           evap_left = 0.0
           exit
+        else
+          enthM_evap = enthM_evap + (hlay(k)*DI)*enthalpy(k)
+          evap_left = evap_left - hlay(k)*DI
+          hlay(k) = 0.0
         endif
-        evap_left = evap_left-hlay(k)*DI
-        hlay(k) = 0.0
       enddo
-      h2o_from_ocn = evap_left
+      evap_from_ocn = evap_left
     endif
   endif
 
   if (tmelt > 0.0 ) then ! apply top melt heat flux
     if (tmelt < hsno*DS*(LI-CI*tsn)) then
-      hsno = hsno-(tmelt/(LI-CI*tsn))/DS ! melt part of snow
+      M_melt = tmelt/(LI-CI*tsn)
+      h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+      melt_left = 0.0
+      hsno = hsno - M_melt/DS ! melt part of snow
+      enthM_melt = enthM_melt + M_melt*enthalpy_liquid_freeze(0.0)
     else ! melt ice
+      h2o_ice_to_ocn = h2o_ice_to_ocn + hsno*DS
       melt_left = tmelt - hsno*DS*(LI-CI*tsn)
       hsno = 0.0
       do k=1,NkIce
         if (melt_left < hlay(k)*DI*emelt(tice(k),sice(k))) then
-          hlay(k) = hlay(k) - (melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
+          M_melt = melt_left/emelt(tice(k), sice(k))
           melt_left = 0.0
-          exit
+          hlay(k) = hlay(k) - M_melt/DI ! melt part of this layer
+        else
+          M_melt = hlay(k)*DI
+          melt_left = melt_left - M_melt*emelt(tice(k), sice(k)) ! melt whole layer
+          hlay(k) = 0.0
         endif
-        melt_left = melt_left - hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
-        hlay(k) = 0.0
+        h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+        enthM_melt = enthM_melt + M_melt*enthalpy_liquid_freeze(sice(k))
+
+        if (melt_left <= 0.0) exit ! All melt energy has been used.
       enddo
       heat_to_ocn = heat_to_ocn + melt_left ! melt heat left after snow & ice gone
     endif
@@ -791,22 +992,32 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, snow, frazil, evap, &
   if (melt_left>0.0) then ! melt ice from below
     do k=NkIce,1,-1
       if (melt_left < hlay(k)*DI*emelt(tice(k),sice(k))) then
-        hlay(k) = hlay(k) - (melt_left/emelt(tice(k), sice(k)))/DI ! melt part layer
+        M_melt = melt_left/emelt(tice(k), sice(k))
+        hlay(k) = hlay(k) - M_melt/DI ! melt part of this layer
         melt_left = 0.0
-        exit
+      else
+        M_melt = hlay(k)*DI
+        melt_left = melt_left - M_melt*emelt(tice(k), sice(k)) ! melt whole layer
+        hlay(k) = 0.0
       endif
-      melt_left = melt_left - hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
-      hlay(k) = 0.0
+      h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+      enthM_melt = enthM_melt + M_melt*enthalpy_liquid_freeze(sice(k))
+      if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
-  
   endif
   if (melt_left > 0.0 ) then ! melt snow from below
     if (melt_left < hsno*DS*(LI-CI*tsn)) then
-      hsno = hsno - (melt_left/(LI-CI*tsn))/DS ! melt part of snow
+      M_melt = melt_left / (LI-CI*tsn)
+      hsno = hsno - M_melt/DS ! melt part of snow
+      melt_left = 0.0
     else
-      heat_to_ocn = heat_to_ocn + melt_left - DS*hsno*(LI-CI*tsn)
+      M_melt = DS*hsno
+      melt_left = melt_left - M_melt*(LI-CI*tsn)
       hsno = 0.0              ! melt heat left after snow & ice gone
     endif
+    heat_to_ocn = heat_to_ocn + melt_left
+    h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+    enthM_melt = enthM_melt + M_melt*enthalpy_liquid_freeze(0.0)
   endif
 
   if (present(bablt)) then ! dif mark to capture bottom melt
@@ -815,6 +1026,11 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, snow, frazil, evap, &
       bablt = bablt-DI*hlay(k)
     enddo
   endif
+
+  ! There are no further heat or mass losses or gains by the ice+snow.
+  if (present(Enthalpy_evap)) Enthalpy_evap = enthM_evap
+  if (present(Enthalpy_melt)) Enthalpy_melt = enthM_melt
+  if (present(Enthalpy_freeze)) Enthalpy_freeze = enthM_freezing
 
   ! snow below waterline adjustment
   hice = 0.0
@@ -881,11 +1097,26 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, snow, frazil, evap, &
     enddo
   endif
 
-  h2o_to_ocn = h2o_to_ocn+h2o_from_ocn ! correct mark for leftover evap thru ice
-  h2o_to_ocn = h2o_to_ocn-DS*hsno-DI*hice
-
   call resize_check(hsno, tsn, hice, tice, NkIce, bmelt, tmelt)
 
 end subroutine ice_resize_SIS2
+
+function column_enthalpy(m_snow, m_ice, t_snow, t_ice, s_ice)
+  real, dimension(:), intent(in) :: m_ice, T_ice, S_ice
+  real, intent(in) :: m_snow, t_snow
+
+  real :: column_enthalpy
+
+  integer :: k, nk_ice
+  real :: I_nk_ice
+  
+  nk_ice = size(T_ice)
+
+  column_enthalpy = m_snow*enth_from_TS(t_snow, 0.0)
+  do k=1,nk_ice
+    column_enthalpy = column_enthalpy + m_ice(k)*enth_from_TS(t_ice(k), s_ice(k))
+  enddo
+
+end function column_enthalpy
 
 end module SIS2_ice_thm
