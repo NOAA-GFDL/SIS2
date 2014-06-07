@@ -294,6 +294,11 @@ subroutine avg_top_quantities(Ice, IST, G)
     IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   * divid
     IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   * divid
     IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) * divid
+    ! Convert frost forming atop sea ice into frozen precip.
+    if ((k>0) .and. (IST%flux_q_top(i,j,k) < 0.0)) then
+      IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) - IST%flux_q_top(i,j,k)
+      IST%flux_q_top(i,j,k) = 0.0
+    endif
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     do n=1,Ice%ocean_fluxes_top%num_bcs ; do m=1,Ice%ocean_fluxes_top%bc(n)%num_fields
       Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
@@ -1717,7 +1722,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
               Ice%flux_sw_nir_dir(i2,j2) + Ice%flux_sw_nir_dif(i2,j2)) + &
              ((Ice%flux_lw(i2,j2) - Ice%flux_t(i2,j2)) - Ice%flux_lh(i2,j2)) &
            - LI*(Ice%fprec(i2,j2) + Ice%calving(i2,j2)) )
-      IST%salt(3)  = IST%salt(3) + dt_slow*area_h * Ice%flux_salt(i2,j2) !Kg salt added since start
+      IST%salt(3)  = IST%salt(3) - dt_slow*area_h * Ice%flux_salt(i2,j2)
     enddo ; enddo
 
     IST%h2o(4)  = 0.0

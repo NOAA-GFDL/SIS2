@@ -586,6 +586,8 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   real, dimension(NN) :: hlay ! temporary ice layer thicknesses
   real :: hw                  ! waterline height above ice base
   real :: evap_left, melt_left
+  real, dimension(NN) :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
+  real, dimension(NN) :: h_frazil  ! The newly-formed thickness of frazil ice, in m.
   integer :: k
 
   do k=1,NN ! break out individual layers
@@ -601,11 +603,22 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   hsno = hsno+snow/DS ! add snow
 
   ! add frazil
-  if (frazil > 0.0 .and. hice == 0.0) then
+  if (frazil > 0.0) then
     do k=1,NN
-      tice(k) = min(tfw,-MU_TS*sice(k)-0.5) !was tfw  ! Why the 0.5?
-      hlay(k) = hlay(k) + ((frazil/NN)/emelt(tice(k), sice(k)))/DI
+      t_frazil(k) = min(tfw,-MU_TS*sice(k)-Frazil_temp_offset) !was tfw  ! Why the 0.5?
+      h_frazil(k) = ((frazil/NN)/emelt(t_frazil(k), sice(k)))/DI
     enddo
+    if (hice == 0.0) then
+      do k=1,NN
+        tice(k) = T_frazil(k)
+        hlay(k) = hlay(k) + h_frazil(k)
+      enddo
+    else
+      do k=1,NN
+        tice(k) = (hlay(k)*tice(k) + h_frazil(k)*T_frazil(k)) / (hlay(k) + h_frazil(k))
+        hlay(k) = hlay(k) + h_frazil(k)
+      enddo
+    endif
   endif
 
   if (tmelt < 0.0) then  ! this shouldn't happen

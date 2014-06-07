@@ -858,6 +858,7 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, 
   real, dimension(NkIce) :: hlay ! temporary ice layer thicknesses
   real, dimension(NkIce) :: lo_old, lo_new, hi_old, hi_new ! layer bounds
   real, dimension(NkIce) :: ntice ! The new integrated enthalpy, in J m-2.
+  real, dimension(NkIce) :: enth_ice, enth_fraz
   real, dimension(NkIce) :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
   real, dimension(NkIce) :: h_frazil  ! The newly-formed thickness of frazil ice, in m.
   real :: hw                  ! waterline height above ice base
@@ -885,20 +886,26 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, 
   h2o_ocn_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0 ; snow_to_ice  = 0.0
   enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
 
-  enthM_snowfall = snow*enthalpy(0)
+  if (hice == 0.0) hsno = 0.0  ! This should already be true! Trap an error?  Convert the snow to ice?
+!   if (hsno == 0.0) tsn = 0.0 ! Assume that tsn is always sensible.
 
-  if (hice == 0.0) hsno = 0.0
-  if (hsno == 0.0) tsn = 0.0
-  hsno = hsno+snow/DS ! add snow
+  hsno = hsno + snow/DS ! add snow
+  enthM_snowfall = snow*enthalpy(0)
+  if (evap < 0.0) then
+    hsno = hsno - evap/DS ! Treat frost formation like snow.
+    enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
+  endif
 
   ! add frazil
   ! Frazil mostly forms in leads, so add its heat uniformly over all of the
   ! layers rather than just adding it to the ice bottom.
-  if (frazil > 0.0 .and. hice == 0.0) then
+  if (frazil > 0.0) then
     do k=1,NkIce
       t_frazil(k) = min(tfw,-MU_TS*sice(k)-Frazil_temp_offset) !was tfw  ! Why the 0.5?
       h_frazil(k) = ((frazil/NkIce)/emelt(t_frazil(k), sice(k)))/DI
-
+    enddo
+    if (hice == 0.0) then
+      do k=1,NkIce
         tice(k) = T_frazil(k)
         hlay(k) = hlay(k) + h_frazil(k)
         h2o_ocn_to_ice = h2o_ocn_to_ice + h_frazil(k)*DI
@@ -907,6 +914,21 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, 
         m_freeze = h_frazil(k)*DI
         enthM_freezing = enthM_freezing + m_freeze*enthalpy_liquid_freeze(sice(k))
       enddo
+    else
+      call enthalpy_from_TS(tice, sice, enth_ice)
+      call enthalpy_from_TS(t_frazil, sice, enth_fraz)
+      do k=1,NkIce
+        enth_ice(k) = (hlay(k)*enth_ice(k) + h_frazil(k)*enth_fraz(k)) / &
+                      (hlay(k) + h_frazil(k))
+        hlay(k) = hlay(k) + h_frazil(k)
+        h2o_ocn_to_ice = h2o_ocn_to_ice + h_frazil(k)*DI
+
+        ! This should be based on the enthalpy of ocean water.
+        m_freeze = h_frazil(k)*DI
+        enthM_freezing = enthM_freezing + m_freeze*enthalpy_liquid_freeze(sice(k))
+      enddo
+      call Temp_from_Enth_S(enth_ice, sice, tice)
+    endif
   endif
 
   if (tmelt < 0.0) then  ! this shouldn't happen
