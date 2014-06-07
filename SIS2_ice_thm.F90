@@ -859,16 +859,17 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, 
   real, dimension(NkIce) :: lo_old, lo_new, hi_old, hi_new ! layer bounds
   real, dimension(NkIce) :: ntice ! The new integrated enthalpy, in J m-2.
   real, dimension(NkIce) :: enth_ice, enth_fraz
+  real, dimension(NkIce) :: hlay_new, enth_ice_new
   real, dimension(NkIce) :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
   real, dimension(NkIce) :: h_frazil  ! The newly-formed thickness of frazil ice, in m.
   real :: hw                  ! waterline height above ice base
+  real :: h_k1_to_k2, hice_avg
   real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
   real :: M_melt              ! The ice mass lost to melting, in kg m-2.
   real :: evap_left, melt_left
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: mass, etot
   real :: h2o_to_ocn, h2o_orig, h2o_imb
-  real :: overlap
   integer :: k, k1, k2, kold, knew
 
   tmelt = tmlt ; bmelt = bmlt
@@ -1062,61 +1063,69 @@ subroutine ice_resize_SIS2(hsno, tsn, hice, tice, Sice, Enthalpy, snow, frazil, 
   hw = (DI*hice+DS*hsno)/DW ! water height above ice base
   if (hw>hice) then ! convert snow to ice to maintain ice top at waterline
     snow_to_ice = (hw - hice)*DI ! need this much ice mass from snow
-    if (snow_to_ice <= hsno*DS) then
-      hsno = hsno - snow_to_ice/DS
-    else
-      ! snow_to_ice = (hw-hice)*DI = (((DI-DW)*hice+DS*hsno)/DW)*DI =
-      !             = (DI/DW)*(DS*hsno) - (DW/DI-1)*(DI*hice)
-      !             <= (DI/DW)*(DS*hsno)  (since DW > DI > 0 & hice >= 0)
-      !             <= (DS*hsno)         (since DW > DI > 0 & hsno >= 0) 
-      ! So this else branch can never happen.
-      hsno = 0.0
-    endif    
 
-! add ice to a layer (currently, salinity of target layer does not change).
-!    call add_ice(hlay, tice, sice, 1, snow_to_ice, &
-!                 emelt2temp(LI-CI*tsn, sice(1)), sice(1))
+    hsno = hsno - snow_to_ice/DS
+
+    ! Add ice to the topmost layer.  Currently, the salinity of the target layer
+    ! and the bulk ice salinity do not change.
+    enth_ice_new(1) = (hlay(1)*DI)*enth_from_TS(tice(1), sice(1)) + &
+                      snow_to_ice*enth_from_TS(tsn, 0.0)
     mass = hlay(1)*DI + snow_to_ice
-    etot = emelt(tice(1), sice(1)) * hlay(1)*DI + &
-           emelt(emelt2temp(LI-CI*tsn, sice(1)), sice(1)) * snow_to_ice
-    hlay(1) = mass/DI
-    tice(1) = emelt2temp(etot/mass, sice(1))
+    hlay(1) = hlay(1) + snow_to_ice/DI
+    tice(1) = Temp_from_En_S(enth_ice_new(1)/mass, sice(1))
   else
     snow_to_ice = 0.0;
   endif
 
-  ! even up ice layers
-  ! call even_up(hice, hlay, tice, sice)
-  hice = 0.0
-  do k=1,NkIce ! set old layer bounds while summing thickness
-    lo_old(k) = hice
-    hice = hice+hlay(k)
-    hi_old(k) = hice
-    ntice(k) = 0.0
-  enddo
-
-  if (hice==0.0) then ! no ice - don't bother with rest of evening process
-    tice(:) = -MU_TS*sice(:)
+  ! Even up ice layer thicknesses.
+  hice = 0.0 ; do k=1,NkIce ; hice = hice+hlay(k) ; enddo
+  if (hice == 0.0) then ! There is no ice, so quit.
+    do k=1,NkIce ; tice(k) = -MU_TS*sice(k) ; enddo
   else
-    do k=1,NkIce ! new layer bounds - evenly spaced
-      lo_new(k) = (k-1)*hice/NkIce
-      hi_new(k) = lo_new(k)+hice/NkIce
+    call enthalpy_from_TS(tice, sice, enth_ice)
+    do k=1,NkIce ; hlay_new(k) = 0.0 ; enth_ice_new(k) = 0.0 ; enddo
+    hice_avg = hice / NkIce
+    k1 = 1 ; k2 = 1
+    do  ! Add ice from k1 to k2 to even up layer thicknesses.
+      ! h_k1_to_k2 = min(hice_avg - hlay_new(k2), hlay(k1))
+      if (hlay_new(k2) >= hice_avg) then ; k2 = k2+1
+      elseif (hlay(k1) <= 0.0) then ; k1=k1+1
+      elseif ((hice_avg - hlay_new(k2)) > hlay(k1)) then
+        ! Move all remaining ice from k1 to k2.
+        h_k1_to_k2 = hlay(k1)
+        enth_ice_new(k2) = enth_ice_new(k2) + h_k1_to_k2 * enth_ice(k1)
+        hlay_new(k2) = hlay_new(k2) + h_k1_to_k2
+        hlay(k1) = 0.0 ! = hlay(k1) - h_k1_to_k2
+        k1=k1+1
+      else
+        ! Move some of the ice from k1 to k2.
+        h_k1_to_k2 = hice_avg - hlay_new(k2)
+        enth_ice_new(k2) = enth_ice_new(k2) + h_k1_to_k2 * enth_ice(k1)
+        hlay_new(k2) = hice_avg ! = hlay_new(k2) + h_k1_to_k2
+        hlay(k1) = hlay(k1) - h_k1_to_k2
+        k2=k2+1
+      endif
+      if ((k1 > NkIce) .or. (k2 > NkIce)) exit
     enddo
+    ! As a safety measure, add any remaining ice to the bottommost layer.
+    do k=k1,NkIce
+        ! h_k1_to_k2 = hlay(k)
+      enth_ice_new(NkIce) = enth_ice_new(NkIce) + hlay(k) * enth_ice(k)
+      hlay_new(NkIce) = hlay_new(NkIce) + hlay(k)
+      hlay(k) = 0.0 ! = hlay(k) - h_k1_to_k2
+    enddo
+    ! Now find the new temperature from the average enthalpy.
+    do k=1,NkIce ; if (hlay_new(k) > 0.0) then
+      tice(k) = Temp_from_En_S(enth_ice_new(k)/hlay_new(k), sice(k))
+    endif ; enddo
+  endif
+ 
+  h2o_to_ocn = h2o_orig + snow - (evap-evap_from_ocn) - (DS*hsno + DI*hice)
 
-    do kold=1,NkIce
-      do knew=1,NkIce
-        overlap = min(hi_old(kold),hi_new(knew))-max(lo_old(kold),lo_new(knew))
-        if (overlap > 0.0) then
-          ntice(knew) = ntice(knew)+overlap*emelt(tice(kold),sice(kold)) ! add in h*emelt
-        endif
-      enddo
-    enddo
-
-    do k=1,NkIce
-      tice(k) = emelt2temp(ntice(k)*NkIce/hice, sice(k))  ! retrieve temp.
-      if (tice(k)>-MU_TS*sice(k)+1.0d-10) print *, 'ERROR: ICE TEMP=',tice(k), &
-                                           '>' ,-MU_TS*sice(k)
-    enddo
+  h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
+  if (abs(h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)) > &
+      max(1e-10, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
+    h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
   endif
 
   call resize_check(hsno, tsn, hice, tice, NkIce, bmelt, tmelt)
