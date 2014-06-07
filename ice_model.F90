@@ -2093,6 +2093,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   call get_SIS2_thermo_coefs(ice_salinity=S_col, enthalpy_units=enth_units)
+  S_col0(0) = 0.0 ;  call get_thermo_coefs(ice_salinity=S_col0(1:))
   I_enth_units = 1.0 / enth_units
 
   snow_to_ice(:,:,:) = 0.0
