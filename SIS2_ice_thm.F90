@@ -83,57 +83,56 @@ contains
 !
 ! energy needed to melt kg of ice with given temp/salinity
 !
-function emelt(temp, salt) result (retval)
-real :: retval
-real :: temp, salt
+function emelt(temp, salt) ! result (emelt)
+  real, intent(in) :: temp, salt
+  real             :: emelt
 
   real :: tfi
 
   tfi = -MU_TS*salt
-  if (tfi == 0.0) then
-    retval = CI*(tfi-temp)+LI
+
+  ! This assumes that all water (both liquid and ice) within the ice and snow
+  ! model share the heat capacity CI.  This could be revised later. ###
+  if (tfi <= temp) then
+    emelt = CI*(tfi-temp) ! All ice is already melted. Bring the water back to freezing.
+  elseif (tfi == 0.0) then
+    emelt = CI*(tfi-temp) + LI
   else
-    retval = CI*(tfi-temp)+LI*(1-tfi/temp)
+    emelt = CI*(tfi-temp) + LI*(1-tfi/temp)
   endif
-!
-!Niki: The above formulation is not valid when temp>tfi and is causing problems,e.g. hlay(k)<0
-!      The following is a trial to fix the issue by changing the enthalpy reference point.
-!
-!  if (tfi <= temp) then
-!    retval = -CW*temp     !all ice already melted. bring saline water to 0
-!  elseif (tfi == 0.0) then
-!    retval = CI*(tfi-temp) + LI
-!  else
-!    retval = CI*(tfi-temp) + LI*(1-tfi/temp) - CW*tfi  !bring ice to tfi, melt the unmelted portion then bring saline water to 0
-!  endif
 
 end function emelt
 
 !
 ! convert enthalpy back to temp. (inverse of emelt)
 !
-function emelt2temp(emelt, salt) result (retval)
-real :: retval
-real :: emelt, salt
+function emelt2temp(emelt, salt) result (temp)
+  real, intent(in) :: emelt, salt
+  real             :: temp
 
   real :: tfi, A, B, C
 
   tfi = -MU_TS*salt
   A = CI
-  B = emelt - LI - CI*tfi !!!Niki: for modified emelt +CW*tfi
+  B = emelt - LI - CI*tfi
   C = LI*tfi
 
-!!!!  if (emelt < -CW*tfi) then ; retval = -emelt / CW
-  if ( tfi == 0.0 ) then
-    retval = -B/A
+  ! This assumes that all water (both liquid and ice) within the ice and snow
+  ! model share the heat capacity CI.  This could be revised later. ###
+  if (emelt <= -CI*tfi) then ; temp = tfi - emelt / CI
+  elseif ( tfi == 0.0 ) then
+    if (emelt < LI) then
+      temp = tfi  ! The temperature is at the freezing point.
+    else
+      temp = tfi - (emelt - LI) / CI
+    endif
   else
-    retval = -(B+sqrt(B*B-4*A*C))/(2*A)
-    ! This should be...
-    ! if (B >= 0.0) then
-    !   retval = -(B+sqrt(B*B-4*A*C))/(2*A)
-    ! else
-    !   retval = 2*C / (-B + sqrt(B*B-4*A*C))
-    ! endif
+!    temp = -(B+sqrt(B*B-4*A*C))/(2*A)
+    if (B >= 0.0) then
+      temp = -(B + sqrt(B*B-4*A*C)) / (2*A)
+    else
+      temp = 2*C / (-B + sqrt(B*B-4*A*C))
+    endif
   endif
 
 end function emelt2temp
