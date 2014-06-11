@@ -1156,7 +1156,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         call ice_temp_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
                           T_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                           -MU_TS*IST%s_surf(i,j), IST%bheat(i,j), ts_new, dt_fast, NkIce, &
-                          IST%tmelt(i,j,k), IST%bmelt(i,j,k))
+                          IST%tmelt(i,j,k), IST%bmelt(i,j,k), IST%column_check)
         do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
         dts                = ts_new - (IST%t_surf(i,j,k)-Tfreeze)
         IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts

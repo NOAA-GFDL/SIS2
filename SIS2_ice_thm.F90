@@ -363,8 +363,8 @@ end subroutine ice_optics_SIS2
 ! ice5lay_temp - A subroutine that calculates the snow and ice enthalpy        !
 !    changes due to surface forcing.                                           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
-                         sol, tfw, fb, tsurf, dtt, NkIce, tmelt, bmelt)
+subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
+                         tsurf, dtt, NkIce, tmelt, bmelt, check_conserve)
 
   real, intent(in   ) :: hsno  ! snow thickness (m)
   real, intent(inout) :: tsn   ! snow temperature (deg-C)
@@ -384,6 +384,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   integer, intent(in   ) :: NkIce ! The number of ice layers.
   real, intent(inout) :: tmelt ! accumulated top melting energy  (J/m^2)
   real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
+  logical, optional, intent(in) :: check_conserve ! If true, check for local heat conservation.
 !
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
@@ -392,6 +393,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   real, dimension(0:NkIce) :: temp_est
   real, dimension(NkIce) :: tfi, tice_est ! estimated new ice temperatures
   real :: mi, ms, e_extra
+  real, dimension(NkIce) :: m_lay
   real :: kk, k10, k0a, k0skin
   real :: I_bb, b_denom_1
   real :: comp_rat ! The complement of rat, going from 0 to 1.
@@ -399,12 +401,17 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
   real, dimension(0:NkIce) :: cc_bb ! Remaining coupling ratios.
+  real :: col_enth1, col_enth2, col_enth3
+  real :: d_e_extra, e_extra_sum
+  real :: tflux_bot, tflux_bot_diff, tflux_sfc, sum_sol, d_tflux_bot
   real :: hsnow_eff ! , Ks_h
+  logical :: col_check
   integer :: k
+
+  col_check = .false. ; if (present(check_conserve)) col_check = check_conserve
 
   A = -sh_T0
 
-!   call ice_temp(A, B, sol, tsurf, hsno, tsn, hice, tice, sice, tfw, fb, tmelt, bmelt)
   mi = DI*hice/NkIce           ! full ice layer mass
   ms = DS*hsno              ! full snow layer mass
   tfi(:) = -MU_TS*sice(:)   ! freezing temperature of ice layers
@@ -419,6 +426,12 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   k0a = (KS*B) / (0.5*B*hsnow_eff + KS)      ! coupling snow to "air"
   k0skin = 2.0*KS / hsnow_eff
   k0a_x_ta = (KS*A) / (0.5*B*hsnow_eff + KS) ! coupling times "air" temperture
+
+  ! Determine the enthalpy for conservation checks.
+  if (col_check) then
+    do k=1,NkIce ; m_lay(k) = hice*DI/NkIce ; enddo
+    col_enth1 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+  endif
 
   ! First get non-conservative estimate with implicit treatment of layer coupling.
   
@@ -520,9 +533,13 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
     ! add in surf. melt
     if (hsno>0.0) then
       tmelt = tmelt+dtt*((A-B*tsurf)-2*KS*(tsurf-tsno_est)/hsno)
+      tflux_sfc = dtt*2*KS*(tsurf-tsno_est)/hsno
     else
       tmelt = tmelt+dtt*((sol(0)+A-B*tsurf)-k10*(tsurf-tice_est(1))) ! tsno = tsurf
+      tflux_sfc = dtt*(k10*(tsurf-tice_est(1))-sol(0))
     endif
+  else
+    tflux_sfc = dtt*(A - B*tsurf)
   endif
   tsn = tsno_est ! finalize snow temperature
 
@@ -540,21 +557,36 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
   !
   ! END conservative update
   !
-  
+  if (col_check) then
+    col_enth2 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+    sum_sol = 0.0 ; do k=0,NkIce ; sum_sol = sum_sol + dtt*sol(k) ; enddo 
+    tflux_bot = (col_enth2 - col_enth1) - (sum_sol + tflux_sfc)
+    tflux_bot_diff = 2*kk*(tfw-tice(NkIce))*dtt
+
+    d_tflux_bot = tflux_bot_diff - tflux_bot
+    if (abs(d_tflux_bot) > 1.0e-9*(abs(tflux_bot) + abs(tflux_bot_diff) + &
+                                   abs(col_enth2 - col_enth1))) then
+      d_tflux_bot = tflux_bot_diff - tflux_bot
+    endif
+  endif
+
   ! The following is a dangerous calculation if kk is too large, in part because
   ! all of the other fluxes are calculated implicitly for the layer above, so
   ! the temperatures are well bounded.  Can this be rearranged or calculated
   ! as a residual of the heat changes in the ice and snow?
   bmelt = bmelt + dtt*(fb - 2*kk*(tfw-tice(NkIce))) ! add in bottom melting/freezing
 
+  e_extra_sum = 0.0
   if (tsn > 0.0) then ! put excess snow energy into top melt
     e_extra = CI*DS*hsno*tsn
     tmelt = tmelt + e_extra
+    e_extra_sum = e_extra_sum + e_extra
     tsn = 0.0
   endif
 
   do k=1,NkIce ; if (tice(k)>tfi(k)/liq_lim) then ! push excess energy to closer of top or bottom melt
     e_extra = (emelt(tfi(k)/liq_lim,sice(k))-emelt(tice(k),sice(k)))*DI*hie/NkIce
+    e_extra_sum = e_extra_sum + e_extra
     tice(k) = tfi(k)/liq_lim
     if (k<=NkIce/2) then
       tmelt = tmelt+e_extra
@@ -562,6 +594,16 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, &
       bmelt = bmelt+e_extra
     endif
   endif ; enddo
+  
+  if (col_check) then
+    col_enth3 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+
+    d_e_extra = col_enth3 - (col_enth2 - e_extra_sum)
+    if (abs(d_e_extra) > 1.0e-12*(abs(col_enth3) + abs(col_enth2) + &
+                                   abs(e_extra_sum))) then
+      d_e_extra = (col_enth3 - col_enth2) - e_extra_sum
+    endif
+  endif
 
   call temp_check(tsurf, hsno, tsn, hice, tice, NkIce, bmelt, tmelt)
 
@@ -570,8 +612,8 @@ end subroutine ice_temp_SIS2
 !
 ! laytemp_SIS2 - implicit calculation of new layer temperature
 !
-function laytemp_SIS2(m, tfi, f, b, tp, dtt) result (retval)
-  real retval
+function laytemp_SIS2(m, tfi, f, b, tp, dtt) result (new_temp)
+  real ::  new_temp
   real, intent(in) :: m    ! mass of ice - kg/m2
   real, intent(in) :: tfi  ! ice freezing temp. (determined by salinity)
   real, intent(in) :: f    ! Inward forcing - W/m2
@@ -579,23 +621,58 @@ function laytemp_SIS2(m, tfi, f, b, tp, dtt) result (retval)
   real, intent(in) :: tp   ! prior step temperature
   real, intent(in) :: dtt  ! timestep in s.
 
+  real :: E0   ! Starting heat relative to salinity dependent freezing.
   real :: AA, BB, CC
-  ! solve quadratic equation for layer temperature, t:
-  !
-  !   m * {CI-LI*tfi/(t*tp)} * (t-tp) = dtt * (f - b*t)
-  !
 
   if ( tfi == 0.0 ) then
-    retval = (m*CI*tp + f*dtt) / (m*CI + b*dtt) ! = -BB/AA
+    ! For fresh water, avoid the degeneracy of the enthalpy-temperature
+    ! relationship by extending the linear expression for frozen water.
+    !
+    !   m * {CI} * (tn-tp) = dtt * (f - b*tn)
+    !
+    new_temp = (m*CI*tp + f*dtt) / (m*CI + b*dtt) ! = -BB/AA
+    ! 
+    ! if (tp > 0.0) then
+    !   E0 = CI*tp + LI  ! >= LI
+    ! else
+    !   E0 = CI*tp  ! < 0
+    ! endif
+    ! ! Determine whether the new solution will be above, at, or below freezing.
+    ! if (m*E0 + dtt * (f - b*tfi) >= m*LI) then
+    !   new_temp = (m*(E0 - LI) + f*dtt) / (m*CI + b*dtt)
+    !   extra_heat = LI
+    ! elseif (m*E0 + dtt * (f - b*tfi) >= 0) then
+    !   new_temp = 0.0 ; extra_heat = m*E0 + ddt * (f - b*tfi)
+    ! else
+    !   new_temp = (m*E0 + f*dtt) / (m*CI + b*dtt)
+    !   extra_heat = 0.0
+    ! endif
   else
-    AA = m*CI + b*dtt
-    BB = -(m*LI*tfi/tp + m*CI*tp + f*dtt)
-    CC = m*LI*tfi
-    ! This form avoids round-off errors.
-    if (BB >= 0) then
-      retval = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
+    if (tp >= tfi) then
+      E0 = CI*(tp - tfi)  ! >= 0
     else
-      retval = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
+      E0 = CI*(tp - tfi) - LI*(1 - tfi/tp)  ! < 0
+    endif
+    ! Determine whether the new solution will be above or below freezing.
+    
+    if (m*E0 + dtt * (f - b*tfi) >= 0) then
+      ! This layer will be completely melted.
+      new_temp = tfi + (m*E0 + dtt* (f - b*tfi)) / (CI*m + dtt*b)
+    else
+      ! This layer will be partly melted.
+      ! Solve a quadratic equation for the new layer temperature, tn:
+      !
+      !   m * {CI-LI*tfi/(tn*tp)} * (tn-tp) = dtt * (f - b*tn)
+      !
+      AA = m*CI + b*dtt
+      BB = -(m*((E0 + LI) + CI*tfi) + f*dtt)
+      CC = m*LI*tfi
+      ! This form avoids round-off errors.
+      if (BB >= 0) then
+        new_temp = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
+      else
+        new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
+      endif
     endif
   endif
 
