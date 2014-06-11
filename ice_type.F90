@@ -181,6 +181,8 @@ type ice_state_type
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: column_check   ! If true, enable the heat check column by column.
+  real    :: imb_tol        ! The tolerance for imbalances to be flagged by
+                            ! column_check, nondim.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
@@ -215,7 +217,9 @@ type ice_state_type
                              ! 2 - h2o/heat flux down at top of ice
                              ! 3 - h2o/heat flux down at bottom of ice
                              ! 4 - final ice h2o/heat content
-  integer :: n_calls = 0     ! The number of thies update_ice_model_slow_down
+  integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
+                             ! has been called.
+  integer :: n_fast = 0      ! The number of times update_ice_model_fast
                              ! has been called.
   logical :: do_init = .false. ! If true, there is still some initialization
                                ! that needs to be done.

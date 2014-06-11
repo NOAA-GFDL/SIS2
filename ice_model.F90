@@ -1005,6 +1005,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
 
   rad = acos(-1.)/180.
 
+  IST%n_fast = IST%n_fast + 1
+
   if (IST%debug) then
     call IST_chksum("Start do_update_ice_model_fast", IST, G)
     call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
@@ -1182,8 +1184,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
           enddo
           tot_heat_in = enth_units * (IST%heat_in(i,j,k) - (IST%bmelt(i,j,k) + IST%tmelt(i,j,k)))
           enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
-          if (abs(enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)) > &
-             1e-9*(abs(enth_here) + abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
+          if (abs(enth_imb) > IST%imb_tol * &
+              (abs(enth_here) + abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
             norm_enth_imb = enth_imb / (abs(enth_here) + abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in))
             enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
           endif
@@ -2290,8 +2292,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
         enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
         mass_imb = mass_here - (mass_prev + mass_in)
-        if (abs(enth_here - (enth_prev(i,j,k) + tot_heat_in)) > &
-           1e-9*(abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
+        if (abs(enth_imb) > IST%imb_tol * &
+            (abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
           norm_enth_imb = enth_imb / (abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in))
           enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
         endif
@@ -2391,8 +2393,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         enddo
         enth_here = enth_here * IST%part_size(i,j,k)
         tot_heat_in = (enth_units * heat_in(i,j,k) + enth_ocn_to_ice) * IST%part_size(i,j,k)
-        if (abs(enth_here - (enth_prev(i,j,k) + tot_heat_in)) > &
-           1e-9*(abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
+        enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
+        if (abs(enth_imb) > IST%imb_tol * &
+            (abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
           enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
         endif
 
@@ -2557,14 +2560,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       tot_heat_in2 = enth_units*heat_in_col(i,j) + emic2
 
       enth_imb = enth_here - (enth_prev_col(i,j) + tot_heat_in)
-      if (abs(enth_imb) > &
-         1e-9*(abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in)) ) then
+      if (abs(enth_imb) > IST%imb_tol * &
+          (abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in)) ) then
         norm_enth_imb = enth_imb / (abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in))
         enth_imb = enth_here - (enth_prev_col(i,j) + tot_heat_in)
       endif
       enth_imb2 = enth_here - (enth_prev_col(i,j) + tot_heat_in2)
-      if (abs(enth_imb2) > &
-         1e-9*(abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in2)) ) then
+      if (abs(enth_imb2) > IST%imb_tol * &
+          (abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in2)) ) then
         norm_enth_imb = enth_imb2 / (abs(enth_here) + abs(enth_prev_col(i,j)) + abs(tot_heat_in2))
         enth_imb2 = enth_here - (enth_prev_col(i,j) + tot_heat_in2)
       endif
@@ -2753,6 +2756,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
+  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", IST%imb_tol, &
+                 "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
+                 units="nondim", default=1.0e-9)
   call get_param(param_file, mod, "ICE_BOUNDS_CHECK", IST%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
