@@ -42,7 +42,7 @@ public :: ice_data_type_register_restarts, ice_state_register_restarts
 public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
-public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
+public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
 
 public  :: earth_area
@@ -183,7 +183,6 @@ type ice_state_type
   logical :: column_check   ! If true, enable the heat check column by column.
   real    :: imb_tol        ! The tolerance for imbalances to be flagged by
                             ! column_check, nondim.
-  logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
@@ -212,11 +211,6 @@ type ice_state_type
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
 
-  real    :: h2o(4), heat(4), salt(4) ! for conservation analysis
-                             ! 1 - initial ice h2o/heat content
-                             ! 2 - h2o/heat flux down at top of ice
-                             ! 3 - h2o/heat flux down at bottom of ice
-                             ! 4 - final ice h2o/heat content
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
                              ! has been called.
   integer :: n_fast = 0      ! The number of times update_ice_model_fast
@@ -866,33 +860,6 @@ subroutine IST_bounds_check(IST, G, msg)
 
 end subroutine IST_bounds_check
 
-subroutine ice_print_budget(IST)
-  type(ice_state_type), intent(inout) :: IST
-  integer :: k
- 
-  do k=1,4
-    call mpp_sum(IST%h2o(k))
-    call mpp_sum(IST%heat(k))
-    call mpp_sum(IST%salt(k))
-!          call mpp_sum(tracer(k))
-  end do
-  if (is_root_pe()) then
-    print *, 'ICE MODEL BUDGET' ! PER EARTH AREA'
-    print '(a10,5a22)',   'ICE MODEL ','   AT START  ', &
-         ' TOP FLUX DN.', ' BOT FLUX DN.', '   AT END    ', '   ERROR     '
-    print '(a10,5es22.14)','WATER(Kg) ', IST%h2o(:), &
-                 -(IST%h2o(4) -IST%h2o(1) -IST%h2o(2) +IST%h2o(3))/(IST%h2o(4) +1.0) 
-    print '(a10,5es22.14)','HEAT(J)   ', IST%heat(:), &
-                                       -(IST%heat(4)-IST%heat(1)-IST%heat(2)+IST%heat(3))/(IST%heat(4)+1.0)
-    print '(a10,5es22.14)','SALT(sal) ', IST%salt(:), &
-                                       -(IST%salt(4)-IST%salt(1)-IST%salt(2)+IST%salt(3))/(IST%salt(4)+1.0)
-!          print '(a10,5es22.14)','TRACER      ', tracer, &
-!                            -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0)
-    print *
-  endif
-end subroutine ice_print_budget
-
-
 !#######################################################################
 ! <SUBROUTINE NAME="ice_model_restart">
 ! <DESCRIPTION>
@@ -1454,7 +1421,6 @@ subroutine check_ice_model_nml(param_file)
   call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, missing)
   call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, missing)
   call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, missing)
-  call archaic_nml_check(param_file, "ICE_CONSERVATION_CHECK", "conservation_check", conservation_check, .true.)
   call archaic_nml_check(param_file, "ICE_SEES_ATMOS_WINDS", "atmos_winds", atmos_winds, .true.)
   call archaic_nml_check(param_file, "DO_ICE_RESTORE", "do_ice_restore", do_ice_restore, .false.)
   call archaic_nml_check(param_file, "APPLY_ICE_LIMIT", "do_ice_limit", do_ice_limit, .false.)

@@ -81,7 +81,7 @@ use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_res
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
 use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
-use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
+use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
@@ -601,29 +601,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call pass_var(IST%part_size(:,:,1), G%Domain, complete=.false. )
     call pass_var(IST%h_ice(:,:,1), G%Domain, complete=.true. )
     IST%do_init = .false.
-  endif
-
-  if (IST%first_time .and. IST%conservation_check) then
-    IST%h2o(:) = 0.0
-    IST%salt(:) = 0.0
-    IST%heat(:) = 0.0
-
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
-      IST%h2o(1) = IST%h2o(1) + (IST%Rho_ice*IST%h_ice(i,j,k) + &
-                                 IST%Rho_snow*IST%h_snow(i,j,k)) * area_pt
-      IST%salt(1) = IST%salt(1) + (IST%Rho_ice*IST%ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
-
-      if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
-        if (IST%slab_ice) then
-          IST%heat(1) = IST%heat(1) - area_pt * IST%h_ice(i,j,1)*IST%Rho_ice*LI
-        else
-          IST%heat(1) = IST%heat(1) - area_pt * &
-                    e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),         &
-                    IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4))
-        endif
-      endif
-    enddo ; enddo ; enddo
   endif
 
   ! Any special first-time initialization must be completed before this point.
@@ -1418,30 +1395,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                               message="    Start of update")
 
 !  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
-
-  if (IST%conservation_check) then
-    ! These are integrals of fluxes from the atmosphere to the ice (or ocean).
-    tot_frazil = 0.0
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      area_h = G%areaT(i,j) * G%mask2dT(i,j)
-      IST%h2o(2) = IST%h2o(2) + (dt_slow * area_h) * &
-           (Ice%runoff(i2,j2) + Ice%calving(i2,j2))
-      IST%heat(2) = IST%heat(2) + (dt_slow * area_h) * &
-           (-LI * Ice%calving(i2,j2))
-      tot_frazil = tot_frazil + area_h*IST%frazil(i,j)
-    enddo ; enddo
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
-      IST%h2o(2) = IST%h2o(2) + (dt_slow * area_pt) * &
-          ( (IST%lprec_top(i,j,k) + IST%fprec_top(i,j,k)) - IST%flux_q_top(i,j,k) )
-      IST%heat(2) = IST%heat(2) + (dt_slow * area_pt) * &
-          ( ((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
-             (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) + &
-            (IST%flux_lw_top(i,j,k) - IST%flux_t_top(i,j,k)) + &
-            (-IST%flux_lh_top(i,j,k) - LI*IST%fprec_top(i,j,k)) )
-    enddo ; enddo ; enddo
-    ! Runoff and calving do not bring in salt, so salt(2) = 0.0
-  endif
   call mpp_clock_end(iceClock7)
 
   ! Dynamics
@@ -1768,48 +1721,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! This may not be needed here?
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
   enddo ; enddo ; enddo
-
-  !
-  ! conservation checks:  bottom fluxes and final
-  !
-
-  if (IST%conservation_check) then
-    ! These are integrals of fluxes from the ice (or atmosphere) to the ocean.
-    IST%heat(3) = IST%heat(3) + tot_frazil
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      area_h = G%areaT(i,j) * G%mask2dT(i,j)
-      IST%h2o(3) = IST%h2o(3) + dt_slow*area_h * &
-           ( (Ice%runoff(i2,j2) + Ice%calving(i2,j2)) + &
-             (Ice%lprec(i2,j2) + Ice%fprec(i2,j2)) - Ice%flux_q(i2,j2) )
-      IST%heat(3) = IST%heat(3) + dt_slow*area_h * &
-           ( (Ice%flux_sw_vis_dir(i2,j2) + Ice%flux_sw_vis_dif(i2,j2) + &
-              Ice%flux_sw_nir_dir(i2,j2) + Ice%flux_sw_nir_dif(i2,j2)) + &
-             ((Ice%flux_lw(i2,j2) - Ice%flux_t(i2,j2)) - Ice%flux_lh(i2,j2)) &
-           - LI*(Ice%fprec(i2,j2) + Ice%calving(i2,j2)) )
-      IST%salt(3)  = IST%salt(3) - dt_slow*area_h * Ice%flux_salt(i2,j2)
-    enddo ; enddo
-
-    IST%h2o(4)  = 0.0
-    IST%salt(4) = 0.0
-    IST%heat(4) = 0.0
-
-    do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
-      IST%h2o(4) = IST%h2o(4) + (IST%Rho_ice*IST%h_ice(i,j,k) + &
-                                 IST%Rho_snow*IST%h_snow(i,j,k)) * area_pt
-      IST%salt(4) = IST%salt(4) + (IST%Rho_ice*IST%ice_bulk_salin*IST%h_ice(i,j,k)) * area_pt
-
-      if ((IST%part_size(i,j,k)>0.0) .and. (IST%h_ice(i,j,k)>0.0)) then
-        if (IST%slab_ice) then
-          IST%heat(4) = IST%heat(4) - area_pt * IST%h_ice(i,j,1)*IST%Rho_ice*LI
-        else
-          IST%heat(4) = IST%heat(4) - area_pt * e_to_melt(IST%h_snow(i,j,k), &
-                    IST%t_snow(i,j,k), IST%h_ice(i,j,k), IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),   &
-                                                         IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4)    )
-        endif
-      endif
-    enddo ;  enddo ; enddo
-  endif
 
   if (IST%verbose) then
     call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
@@ -2747,11 +2658,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "The temperature range below freezing over which the \n"//&
                  "albedos are changed by partial melting.", units="degC", &
                  default=1.0)
-  call get_param(param_file, mod, "ICE_CONSERVATION_CHECK", IST%conservation_check, &
-                 "If true, do additional calculations to check for \n"//&
-                 "internal conservation of heat, salt, and water mass in \n"//&
-                 "the sea ice model.  This does not change answers, but \n"//&
-                 "can increase model run time.", default=.true.)
   call get_param(param_file, mod, "COLUMN_CHECK", IST%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
@@ -3034,7 +2940,6 @@ subroutine ice_model_end (Ice)
   type(ice_state_type), pointer :: IST => NULL()
 
   IST => Ice%Ice_state
-  if (IST%conservation_check) call ice_print_budget(IST)
 
   call ice_model_restart(Ice=Ice)
 
