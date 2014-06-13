@@ -1392,7 +1392,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call accumulate_input_1(IST, Ice, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
-                              message="    Start of update")
+                              message="    Start of update", check_column=.true.)
 
 !  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
 
@@ -1570,10 +1570,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Set up the fluxes in the externally visible structure Ice.
   call set_ice_bottom_state(Ice, IST, part_save, G)
 
-  call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+  call accumulate_bottom_input(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
-                              message="        Post_thermo")
+                              message="        Post_thermo", check_column=.true.)
 
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
@@ -2779,7 +2779,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "A constant that rescales enthalpy from J/kg to a \n"//&
                  "different scale in its internal representation.  Changing \n"//&
                  "this by a power of 2 is useful for debugging, as answers \n"//&
-                 "should not change.", units="J kg-1", default=1.0)
+                 "should not change.  A negative values is taken as an inverse.", &
+                 units="J kg-1", default=1.0)
+  if (enthalpy_units < 0.) enthalpy_units = -1.0 / enthalpy_units
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &

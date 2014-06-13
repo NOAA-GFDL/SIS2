@@ -137,7 +137,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
   call get_param(param_file, mod, "DT", CS%dt, &
                  "The sea ice dynamics time step.", units="s", &
                  default=-1.0)
-                 
+
   call get_param(param_file, mod, "STATISTICS_FILE", statsfile, &
                  "The file to use to write the globally integrated \n"//&
                  "statistics.", default="seaice.stats")
@@ -149,12 +149,24 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
                  "The time unit in seconds a number of input fields", &
                  units="s", default=86400.0)
   if (CS%Timeunit < 0.0) CS%Timeunit = 86400.0
+  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+                 "If true, add code to allow debugging of conservation \n"//&
+                 "column-by-column.  This does not change answers, but \n"//&
+                 "can increase model run time.", default=.false.)
+  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+                 "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
+                 units="nondim", default=1.0e-9)
 
   CS%Start_time = Input_start_time
 
   allocate(CS%water_in_col(G%isd:G%ied, G%jsd:G%jed)) ; CS%water_in_col(:,:) = 0.0
-  allocate(CS%heat_in_col(G%isd:G%ied, G%jsd:G%jed)) ; CS%heat_in_col(:,:) = 0.0
-  allocate(CS%salt_in_col(G%isd:G%ied, G%jsd:G%jed)) ; CS%salt_in_col(:,:) = 0.0
+  allocate(CS%heat_in_col(G%isd:G%ied, G%jsd:G%jed))  ; CS%heat_in_col(:,:) = 0.0
+  allocate(CS%salt_in_col(G%isd:G%ied, G%jsd:G%jed))  ; CS%salt_in_col(:,:) = 0.0
+  if (CS%column_check) then
+    allocate(CS%water_col_prev(G%isd:G%ied, G%jsd:G%jed)) ; CS%water_col_prev(:,:) = 0.0
+    allocate(CS%heat_col_prev(G%isd:G%ied, G%jsd:G%jed))  ; CS%heat_col_prev(:,:) = 0.0
+    allocate(CS%salt_col_prev(G%isd:G%ied, G%jsd:G%jed))  ; CS%salt_col_prev(:,:) = 0.0
+  endif
 
 end subroutine SIS_sum_output_init
 
@@ -169,7 +181,7 @@ subroutine SIS_sum_output_end(CS)
   endif
 end subroutine SIS_sum_output_end
 
-subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tracer_CSp)
   type(ice_state_type),    intent(inout) :: IST
 
   type(time_type),         intent(inout) :: day
@@ -177,6 +189,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
   type(sea_ice_grid_type), intent(inout) :: G
   type(SIS_sum_out_CS),    pointer       :: CS
   character(len=*), optional, intent(in) :: message
+  logical,          optional, intent(in) :: check_column
 !  type(tracer_flow_control_CS), optional, pointer       :: tracer_CSp
 
 !  This subroutine calculates and writes the total sea-ice mass by
@@ -193,6 +206,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
 !  (in)      G - The sea ice model's grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
+!  (in,opt)  message - A text message to use with this output.
+!  (in,opt)  check_column - If true, check for column-wise heat and mass conservation.
 
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
     ice_area, ice_extent, col_mass, col_heat, col_salt
@@ -236,6 +251,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
                        ! capacity of the ocean, in C.
   real :: Area         ! The total area of the sea ice in m2.
   real :: Extent       ! The total extent of the sea ice in m2.
+  real :: heat_imb     ! The column integrated heat imbalance in enth_units (J).
+  real :: mass_imb     ! The column integrated mass imbalance in kg.
   real :: I_nlay, area_pt
   real :: area_h       ! The masked area of a column.
   type(EFP_type) :: &
@@ -252,13 +269,14 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
     PE_pt
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int
+  logical :: check_col
   integer :: num_nc_fields  ! The number of fields that will actually go into
                             ! the NetCDF file.
   integer :: i, j, k, is, ie, js, je, L, m, nlay, ncat, hem
   integer :: start_of_day, num_days
   real    :: reday, var
   character(len=120) :: statspath_nc
-  character(len=200) :: mesg
+  character(len=300) :: mesg
   character(len=32)  :: mesg_intro, time_units, day_str, n_str, msg_start
 
   integer :: isc, iec, jsc, jec
@@ -291,7 +309,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = G%CatIce; nlay = G%NkIce
 !  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
-  
+  check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
+
   I_nlay = 1.0 / (1.0*nlay)
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
@@ -385,7 +404,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
       T_col(0) = IST%t_snow(i,j,k)
       do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
       call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:))
-      
+
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
           (IST%Rho_snow*IST%h_snow(i,j,k)) * enthalpy(0)
       do L=1,nlay
@@ -401,7 +420,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
   Heat = reproducing_sum(col_heat, sums=Heat_NS, EFP_sum=heat_EFP)
   Mass = reproducing_sum(col_mass, sums=Mass_NS, EFP_sum=mass_EFP)
   Salt = reproducing_sum(col_salt, sums=Salt_NS, EFP_sum=salt_EFP)
-  
+
   salinity_NS(:) = 0.0
   do hem=1,2
     if (mass_NS(hem) > 0.0) salinity_NS(hem) = salt_NS(hem) / mass_NS(hem)
@@ -498,10 +517,10 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
   elseif (n < 10000000)  then ; write(n_str, '(I7)')  n
   elseif (n < 100000000) then ; write(n_str, '(I8)')  n
   else                        ; write(n_str, '(I10)') n ; endif
-  
+
   msg_start = trim(n_str)//","//trim(day_str)
   if (present(message)) msg_start = trim(message)
-  
+
   if (is_root_pe()) then
     Heat_anom_norm = 0.0 ; if (Heat /= 0.0) Heat_anom_norm = Heat_anom/Heat
     Salt_anom_norm = 0.0 ; if (Salt /= 0.0) Salt_anom_norm = Salt_anom/Salt
@@ -548,7 +567,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
 
 !        write(*,'("      Total ",a,": ",ES24.16,X,a)') &
 !             trim(Tr_names(m)), Tr_stocks(m), trim(Tr_units(m))
-!      
+!
 !        if(Tr_minmax_got(m)) then
 !          write(*,'(64X,"Global Min:",ES24.16,X,"at: (", f7.2,","f7.2,","f8.2,")"  )') &
 !               Tr_min(m),Tr_min_x(m),Tr_min_y(m),Tr_min_z(m)
@@ -559,6 +578,24 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
 !     enddo
     endif ! write_stocks
   endif ! write_stdout
+
+  if (check_col .and. (CS%previous_calls > 0)) then ; do j=js,je ; do i=is,ie
+    hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
+    heat_imb = (col_heat(i,j,hem) - CS%heat_col_prev(i,j)) - CS%heat_in_col(i,j)
+    mass_imb = (col_mass(i,j,hem) - CS%water_col_prev(i,j)) - CS%water_in_col(i,j)
+    if (abs(mass_imb) > CS%imb_tol*abs(Mass)) then
+      write(mesg,'("Mass imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
+                  &" Lon/Lat = ",2(f8.2))') mass_imb, mass_imb/mass, i, j, &
+                  G%geolonT(i,j), G%geolatT(i,j)
+      call SIS_error(WARNING, mesg, all_print=.true.)
+    endif
+    if (abs(heat_imb) > CS%imb_tol*abs(Heat)) then
+      write(mesg,'("Heat imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
+                  &" Lon/Lat = ",2(f8.2))') heat_imb, heat_imb/heat, i, j, &
+                  G%geolonT(i,j), G%geolatT(i,j)
+      call SIS_error(WARNING, mesg, all_print=.true.)
+    endif
+  enddo ; enddo ; endif
 
 ! var = real(CS%ntrunc)
 ! call write_field(CS%statsfile_nc, CS%fields(1), var, reday)
@@ -587,8 +624,13 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
 ! call flush_file(CS%statsfile_nc)
 
   CS%previous_calls = CS%previous_calls + 1
+  if (CS%column_check) then ; do j=js,je ; do i=is,ie
+    CS%water_col_prev(i,j) = col_mass(i,j,1) + col_mass(i,j,2)
+    CS%heat_col_prev(i,j) = col_heat(i,j,1) + col_heat(i,j,2)
+    CS%salt_col_prev(i,j) = col_salt(i,j,1) + col_salt(i,j,2)
+  enddo ; enddo ; endif
   CS%mass_prev = Mass ; CS%fresh_water_input = 0.0
-  CS%salt_prev = Salt ; CS%net_salt_input = 0.0 
+  CS%salt_prev = Salt ; CS%net_salt_input = 0.0
   CS%heat_prev = Heat ; CS%net_heat_input = 0.0
 
   CS%water_in_col(:,:) = 0.0
@@ -601,7 +643,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message) !, tracer_CSp)
 end subroutine write_ice_statistics
 
 
-subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
+subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the bottom of the sea-ice for conservation checks.
 ! Arguments: Ice - The publicly visible sea ice data type.
@@ -610,10 +652,11 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 !  (in)      G - The sea ice model's grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
+  type(sea_ice_grid_type), intent(inout) :: G
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_size
   real,                    intent(in)    :: dt
-  type(sea_ice_grid_type), intent(inout) :: G
   type(SIS_sum_out_CS),    pointer       :: CS
 
   real :: Flux_SW, enth_units
@@ -626,6 +669,13 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
   call get_SIS2_thermo_coefs(enthalpy_units=enth_units)
 
   if (CS%dt < 0.0) CS%dt = dt
+
+  ! In cases where the ice evaporates entirely, there may be additional
+  ! evaporative (latent heat) fluxes that are passed through the ice.
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
+          part_size(i,j,k) * IST%flux_lh_top(i,j,k)
+  enddo ; enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
@@ -679,9 +729,9 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
   real :: area_h, area_pt, Flux_SW
   real :: enth_units
   type(EFP_type) :: &
-    FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and 
+    FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and
     salt_in_EFP, & ! heat_input, in kg, PSU kg, and Joules.
-    heat_in_EFP    ! 
+    heat_in_EFP    !
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
@@ -721,7 +771,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_size
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_size
   real,                    intent(in) :: dt
   type(SIS_sum_out_CS),    pointer    :: CS
 
@@ -768,6 +818,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
         ( (IST%lprec_top(i,j,k) + IST%fprec_top(i,j,k)) - IST%flux_q_top(i,j,k) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
          ( pen_frac*Flux_SW )
+
     if (k>0) &
       CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
          ((IST%bmelt(i,j,k) + IST%tmelt(i,j,k)) - dt*IST%bheat(i,j))

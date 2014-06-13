@@ -31,8 +31,13 @@ type, public :: SIS_sum_out_CS ! ; private
   real, dimension(:,:), pointer :: &
     water_in_col, &             !   The water, heat, and salt that have been
     heat_in_col, &              ! input to the ice and snow in a column since
-    salt_in_col                 ! the last time that write_ice_statistics was
+    salt_in_col, &              ! the last time that write_ice_statistics was
                                 ! called, in kg m-2, J m-2, and kg m-2.
+    water_col_prev, &           !   The column integrated water, heat, and salt
+    heat_col_prev, &            ! that were in the ice and snow the last time
+    salt_col_prev               ! that write_ice_statistics was called,
+                                ! in kg m-2, J m-2, and kg m-2.
+         
   type(EFP_type) :: &
     fresh_water_in_EFP, &       ! These are extended fixed point versions of the
     net_salt_in_EFP, &          ! correspondingly named variables above.
@@ -42,6 +47,10 @@ type, public :: SIS_sum_out_CS ! ; private
                                 ! axis, in s.
   type(time_type) :: Start_time ! The start time of the simulation.
                                 ! Start_time is set in MOM_initialization.F90
+  logical :: column_check       ! If true, enable the column by column heat and
+                                ! mass conservation check
+  real    :: imb_tol            ! The tolerance for imbalances to be flagged by
+                                ! column_check, nondim.
   logical :: write_stdout       ! If true, periodically write sea ice statistics
                                 ! to stdout to allow the progress to be seen.
   logical :: write_stocks       ! If true, write the integrated tracer amounts
