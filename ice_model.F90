@@ -1003,7 +1003,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     flux_v(i,j,k)  = Atmos_boundary%v_flux(i2,j2,k2)
     flux_t(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
     flux_q(i,j,k)  = Atmos_boundary%q_flux(i2,j2,k2)
-    flux_lh(i,j,k) = hlv * Atmos_boundary%q_flux(i2,j2,k2)
     flux_lw(i,j,k) = Atmos_boundary%lw_flux(i2,j2,k2)
     flux_sw_nir_dir(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
     flux_sw_nir_dif(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
@@ -1055,6 +1054,10 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     enddo ; enddo ; enddo
   endif
 
+  do j=jsc,jec ; do i=isc,iec
+    flux_lh(i,j,0) = hlv * flux_q(i,j,0)
+  enddo ; enddo
+
   !
   ! implicit update of ice surface temperature
   !
@@ -1068,14 +1071,14 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       if (IST%h_ice(i,j,k) > 0.0) then
         if (IST%slab_ice) then
-          flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
-          latent             = hlv+hlf
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + hlf * flux_q(i,j,k)
+          latent         = hlv+hlf
         elseif (IST%h_snow(i,j,k)>0.0) then
-          flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
-          latent             = hlv + (hlf-CI*IST%t_snow(i,j,k))
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
+          latent         = hlv + (hlf-CI*IST%t_snow(i,j,k))
         else
-          flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
-          latent             = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
+          latent         = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
@@ -1101,21 +1104,23 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
         flux_lh(i,j,k) = flux_lh(i,j,k) + dts * dedt(i,j,k) * latent
         flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
+      else
+        flux_lh(i,j,k) = hlv * flux_q(i,j,k)
       endif
     enddo ; enddo ; enddo
   else
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       if (IST%h_ice(i,j,k) > 0.0) then
         if (IST%slab_ice) then
-          flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + hlf*flux_q(i,j,k)
           latent         = hlv + hlf
         elseif (IST%h_snow(i,j,k)>0.0) then
-          flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
           latent         = hlv + (hlf-CI*IST%t_snow(i,j,k))
         else
           !### This appears to be inconsistent with the expression above for snow,
           !### in that it is missing a term like -CI*IST%t_ice(i,j,k)*flux_q(i,j,k).
-          flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
+          flux_lh(i,j,k) = hlv * flux_q(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
           latent         = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
@@ -1169,6 +1174,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
             enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
           endif
         endif
+      else ! IST%h_ice <= 0
+        flux_lh(i,j,k) = hlv * flux_q(i,j,k)
       endif
     enddo ; enddo ; enddo
 
