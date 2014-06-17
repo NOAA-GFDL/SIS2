@@ -91,7 +91,7 @@ use ice_spec_mod, only: get_sea_surface
 
 use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
-use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param, e_to_melt_TS
+use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param
 use SIS2_ice_thm,     only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
@@ -1003,7 +1003,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     flux_v(i,j,k)  = Atmos_boundary%v_flux(i2,j2,k2)
     flux_t(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
     flux_q(i,j,k)  = Atmos_boundary%q_flux(i2,j2,k2)
-    flux_lh(i,j,k) = hlv*Atmos_boundary%q_flux(i2,j2,k2)
+    flux_lh(i,j,k) = hlv * Atmos_boundary%q_flux(i2,j2,k2)
     flux_lw(i,j,k) = Atmos_boundary%lw_flux(i2,j2,k2)
     flux_sw_nir_dir(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
     flux_sw_nir_dif(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
@@ -1108,11 +1108,13 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
       if (IST%h_ice(i,j,k) > 0.0) then
         if (IST%slab_ice) then
           flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)
-          latent             = hlv+hlf
+          latent         = hlv + hlf
         elseif (IST%h_snow(i,j,k)>0.0) then
           flux_lh(i,j,k) = flux_lh(i,j,k) + (hlf-CI*IST%t_snow(i,j,k))*flux_q(i,j,k)
           latent         = hlv + (hlf-CI*IST%t_snow(i,j,k))
         else
+          !### This appears to be inconsistent with the expression above for snow,
+          !### in that it is missing a term like -CI*IST%t_ice(i,j,k)*flux_q(i,j,k).
           flux_lh(i,j,k) = flux_lh(i,j,k) + hlf*flux_q(i,j,k)*(1-TFI/IST%t_ice(i,j,k,1))
           latent         = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
         endif
@@ -2466,20 +2468,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       ! Convert constraining heat from energy (J/m^2) to flux (W/m^2)
       qflx_lim_ice(i,j) = heat_limit_ice / dt_slow
       qflx_res_ice(i,j) = heat_res_ice / dt_slow
-      !
-      ! Check for energy conservation
-      !
-      ! do k=1,ncat
-      !   if (IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0) then
-      !     do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; enddo
-      !     e2m(k) = e2m(k) - e_to_melt_TS(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
-      !              IST%h_ice(i,j,k), T_col, S_col) * IST%part_size(i,j,k)
-      !   endif
-      ! enddo
-      ! if (abs(sum(e2m) - heat_res_ice - heat_limit_ice)>IST%Rho_ice*LI*1e-3) &
-      !       print *, 'QFLUX conservation error at', i, j, 'heat2ice=',  &
-      !             tot_heat, 'melted=', sum(e2m), 'h*part_size=', &
-      !             IST%h_ice(i,j,:)*IST%part_size(i,j,:)
 
     enddo ; enddo
   endif ! End of (IST%do_ice_restore .or. IST%do_ice_limit) block

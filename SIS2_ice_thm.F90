@@ -41,8 +41,7 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 implicit none ; private
 
 public :: DS, DI, DW, MU_TS, CI, get_thermo_coefs, get_SIS2_thermo_coefs
-public :: SIS2_ice_thm_param, e_to_melt_TS, ice_optics_SIS2
-public :: ice_temp_SIS2, ice_resize_SIS2
+public :: SIS2_ice_thm_param, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze
 
@@ -52,7 +51,7 @@ public :: enthalpy_liquid_freeze
 
 real            :: KS    = 0.31      ! conductivity of snow - 0.31 W/(mK)
 real, parameter :: KI    = 2.03      ! conductivity of ice  - 2.03 W/(mK)
-real, parameter :: CW    = 4.2e3     ! heat capacity of seawater 4200 J/(kg K)
+real, parameter :: CP_Water = 4.2e3  ! heat capacity of liquid seawater 4200 J/(kg K)
 
 ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
 real            :: ALB_SNO = 0.85       ! albedo of snow (not melting)
@@ -79,29 +78,6 @@ real, parameter :: liq_lim = .99
 logical :: do_deltaEdd = .true.
 
 contains
-
-!
-! energy needed to melt kg of ice with given temp/salinity
-!
-function emelt(temp, salt) ! result (emelt)
-  real, intent(in) :: temp, salt
-  real             :: emelt
-
-  real :: tfi
-
-  tfi = -MU_TS*salt
-
-  ! This assumes that all water (both liquid and ice) within the ice and snow
-  ! model share the heat capacity CI.  This could be revised later. ###
-  if (tfi <= temp) then
-    emelt = CI*(tfi-temp) ! All ice is already melted. Bring the water back to freezing.
-  elseif (tfi == 0.0) then
-    emelt = CI*(tfi-temp) + LI
-  else
-    emelt = CI*(tfi-temp) + LI*(1-tfi/temp)
-  endif
-
-end function emelt
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_thm_param - set ice thermodynamic parameters                             !
@@ -521,14 +497,15 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   e_extra_sum = 0.0
   if (tsn > 0.0) then ! put excess snow energy into top melt
-    e_extra = CI*DS*hsno*tsn
+    e_extra = CI*tsn * (DS*hsno)
     tmelt = tmelt + e_extra
     e_extra_sum = e_extra_sum + e_extra
     tsn = 0.0
   endif
 
   do k=1,NkIce ; if (tice(k)>tfi(k)/liq_lim) then ! push excess energy to closer of top or bottom melt
-    e_extra = (emelt(tfi(k)/liq_lim,sice(k))-emelt(tice(k),sice(k)))*DI*hie/NkIce
+    e_extra = (enth_from_TS(tice(k),sice(k)) - enth_from_TS(tfi(k)/liq_lim,sice(k))) * &
+              (DI*hie / (enth_unit*NkIce))
     e_extra_sum = e_extra_sum + e_extra
     tice(k) = tfi(k)/liq_lim
     if (k<=NkIce/2) then
@@ -681,36 +658,6 @@ subroutine unpack_check(hs, tsn, hi, t_ice, NkIce, cn)
                       tsn,t_ice(:),'cn=',cn
 end subroutine unpack_check
 
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! e_to_melt_TS - energy needed to melt a given snow/ice configuration.         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function e_to_melt_TS(hs, tsn, hi, T, S)
-  real, intent(in) :: hs, tsn, hi
-  real, dimension(:), intent(in) :: T, S
-  real             :: e_to_melt_TS
-
-  integer :: k, nk_ice
-  real :: I_nk_ice
-  
-  nk_ice = size(T)
-  I_nk_ice = 1.0 / real(nk_ice)
-
-  e_to_melt_TS = (DS*hs) * (LI - CI*tsn)
-  do k=1,nk_ice
-    ! The commented out lines are correct, but will cause a change in answers
-    ! from the previous solution.
-    if (T(k) < -MU_TS*S(k)) then
-      e_to_melt_TS = e_to_melt_TS + ((DI*hi)*I_nk_ice) * &
-                     (LI - CI*T(k)) * (1.0 + MU_TS*S(k)/T(k))
-    else  ! This layer is already melted and has excess heat.
-      e_to_melt_TS = e_to_melt_TS + ((DI*hi)*I_nk_ice) * &
-                     CW * (-T(k) - MU_TS*S(k))
-    endif
-  enddo
-
-end function e_to_melt_TS
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! enthalpy_from_TS - Set a column of enthalpies from temperature and salinity. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -735,8 +682,9 @@ function enth_from_TS(T, S) result(enthalpy)
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + CI*T)
   elseif (T <= -MU_TS*S) then
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 + MU_TS*S/T)) + CI*T)
+       !### + enth_unit * (-MU_TS*S) * (CP_Water - CI)
   else  ! This layer is already melted, so just warm it to 0 C.
-    enthalpy = enth_unit * (ENTH_LIQ_0 + CI*T)
+    enthalpy = enth_unit * (ENTH_LIQ_0 + CI*T)  !### Change CI to CP_Water.
   endif
 
 end function enth_from_TS
@@ -749,9 +697,21 @@ function enthalpy_liquid_freeze(S)
   real, intent(in)  :: S
   real :: enthalpy_liquid_freeze
 
-  enthalpy_liquid_freeze = enth_unit * ((-CI*MU_TS)*S + ENTH_LIQ_0)
+  enthalpy_liquid_freeze = enth_unit * ((-CI*MU_TS)*S + ENTH_LIQ_0)  !### Change CI to CP_Water.
 
 end function enthalpy_liquid_freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_liquid_freeze - Returns the enthalpy of liquid water at the given   !
+!     temperature and salinity, in enth_unit.                                  !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function enthalpy_liquid(T, S)
+  real, intent(in)  :: T, S
+  real :: enthalpy_liquid
+
+  enthalpy_liquid = enth_unit * (ENTH_LIQ_0 + CP_Water*T)
+
+end function enthalpy_liquid
 
 ! This returns the enthalpy change associated with melting water of
 ! a given temperature (T, in C) and salinity (S), in enth_unit.
@@ -808,20 +768,21 @@ function Temp_from_En_S(En, S) result(Temp)
   real :: En_J  ! Enthalpy in Joules with 0 offset.
   
   I_CI = 1.0 / CI ; I_enth_unit = 1.0 / enth_unit
+  ! I_Cp_Water = 1.0 / CP_Water
 
   En_J = En * I_enth_unit - ENTH_LIQ_0
   ! This makes the assumption that all water in the ice and snow categories,
   ! both fluid and in pockets, has the same heat capacity.
   if (S <= 0.0) then ! There is a step function for fresh water.
-    if (En_J >= 0.0) then ; Temp = En_J * I_CI
+    if (En_J >= 0.0) then ; Temp = En_J * I_CI  ! ### Change to I_Cp_Water
     elseif (En_J >= -LI) then ; Temp = 0.0
     else ; Temp = I_CI * (En_J + LI) ; endif
   else
-    if (En_J < -MU_TS*S*CI) then
-      BB = 0.5*(En_J + LI)
+    if (En_J < -MU_TS*S*CI) then  ! ### Change CI to Cp_Water
+      BB = 0.5*(En_J + LI)        ! ### Change En_J to En_J - (-MU_TS*S) * (CP_Water - CI)
       Temp = I_CI * (BB - sqrt(BB**2 + MU_TS*S*CI*LI))
     else  ! This layer is already melted, so just warm it to 0 C.
-      Temp = En_J * I_CI
+      Temp = En_J * I_CI          ! ### Change to I_Cp_Water
     endif
   endif
 
