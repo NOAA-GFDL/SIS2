@@ -238,9 +238,10 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
      alb_nir_dir = alidr(1,1)
      alb_nir_dif = alidf(1,1)
 
-     ! pen = (fswint(1,1)+fswthru(1,1))/(fswsfc(1,1)+fswint(1,1)+fswthru(1,1))
+     ! pen = (fswint(1,1)+fswthru(1,1)) / (fswsfc(1,1) + (fswint(1,1)+fswthru(1,1)))
      pen = abs_snow + abs_ice1 + abs_ice2 + abs_ice3 + abs_ice4 + abs_ocn
-     ! trn = fswthru(1,1)/(fswint(1,1)+fswthru(1,1))
+     ! trn = fswthru(1,1) / (fswint(1,1) + fswthru(1,1))
+     ! abs_int = fswint(1,1) / (fswint(1,1) + fswthru(1,1))
      trn = 0.0
      if(pen > 0.0) trn = abs_ocn/pen
      abs_int = 1.0 - trn
@@ -311,7 +312,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   real :: A ! Net downward surface heat flux from the atmosphere at 0C (W/m^2)
   real, dimension(0:NkIce) :: temp_est
   real, dimension(NkIce) :: tfi, tice_est ! estimated new ice temperatures
-  real :: mi, ms, e_extra
+  real :: m_ice, m_snow, e_extra
   real, dimension(NkIce) :: m_lay
   real :: kk, k10, k0a, k0skin
   real :: I_bb, b_denom_1
@@ -331,9 +332,9 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   A = -sh_T0
 
-  mi = DI*hice/NkIce           ! full ice layer mass
-  ms = DS*hsno              ! full snow layer mass
-  tfi(:) = -MU_TS*sice(:)   ! freezing temperature of ice layers
+  m_ice = DI*hice/NkIce      ! ice mass of each layer
+  m_snow = DS*hsno           ! full snow layer mass
+  tfi(:) = -MU_TS*sice(:)    ! freezing temperature of ice layers
   hie = max(hice, H_LO_LIM); ! prevent thin ice inaccuracy (mw)
   kk = NkIce*KI/hie                     ! full ice layer conductivity
 
@@ -348,8 +349,8 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   ! Determine the enthalpy for conservation checks.
   if (col_check) then
-    do k=1,NkIce ; m_lay(k) = hice*DI/NkIce ; enddo
-    col_enth1 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+    do k=1,NkIce ; m_lay(k) = m_ice ; enddo
+    col_enth1 = column_enthalpy(m_snow, m_lay, tsn, tice, sice)
   endif
 
   ! First get non-conservative estimate with implicit treatment of layer coupling.
@@ -357,11 +358,12 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   ! This is the start of what was ice_temp_est.
 
   ! Determine the effective layer heat capacities.
-  bb(0) = hsno*DS*CI
+  !   bb = dheat/dTemp.  It should be a proper linearization of the enthalpy equation.
+  bb(0) = m_snow*CI
   do k=1,NkIce   ! load bb with heat capacity term.
     salt_part = 0.0
     if (sice(k)>0.0) salt_part = -MU_TS*sice(k)*LI/(tice(k)*tice(k))
-    bb(k) = (hice/NkIce)*DI*(CI-salt_part) ! add coupling to this later
+    bb(k) = m_ice*(CI-salt_part) ! add coupling to this later
   enddo
 
   cc(0) = k0a*dtt  ! Atmosphere-snow coupling
@@ -395,7 +397,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   b_denom_1 = bb(0) + comp_rat*cc(1)
   I_bb =  1.0 / (b_denom_1 + cc(0))
   !   This is a complete calculation of temp_est(0), assuming that the surface
-  ! flux is given by A - B*tsurf, with tsurf as estimated
+  ! flux is given by A - B*tsurf, with tsurf estimated as part of this calculation.
   temp_est(0) = ((bb(0)*tsn + k0a_x_ta*dtt) + cc(1)*temp_est(1)) * I_bb
   ! Note that the SIS1 code omits sol(0) at its equivalent of this point.
   temp_est(0) = temp_est(0) + (sol(0)*dtt) * I_bb
@@ -417,6 +419,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   endif
   ! Go back DOWN the ice column to get the final temperatures.
   do k=1,NkIce
+    ! Probably this should be limited so that temp_est(k) <= t_freeze(k)
     temp_est(k) = temp_est(k) + cc_bb(k) * temp_est(k-1)
   end do
   ! This is the end of what was ice_temp_est.
@@ -424,30 +427,30 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   tice_est(:) = temp_est(1:NkIce)
   tsno_est = temp_est(0)
 !
-! The following two lines disable implicit coupling estimate;  in a 10 year CORE
-! test the skin temperature without implicit estimate was mostly within .05K
-! but was cooler around topography in NH (up to 1K - Baffin Island).  Thickness
-! looked very similar
+! The following line disables the implicit coupling estimate; in a 10 year CORE
+! test the skin temperature without implicit estimate was mostly within .05K,
+! but was cooler around topography in the NH (up to 1K near Baffin Island).
+! The thickness looked very similar.
 !
 ! tice_est(:) = tice(:) ; tsno_est=tsn
 
   !
   ! conservative pass going UP the ice column
   !
-  tice_est(NkIce) = laytemp_SIS2(mi, tfi(NkIce), sol(NkIce) + kk*(2*tfw+tice_est(NkIce-1)), &
+  tice_est(NkIce) = laytemp_SIS2(m_ice, tfi(NkIce), sol(NkIce) + kk*(2*tfw+tice_est(NkIce-1)), &
                                  3*kk, tice(NkIce), dtt)
   do k=NkIce-1,2,-1
-    tice_est(k) = laytemp_SIS2(mi, tfi(k), sol(k) + kk*(tice_est(k-1)+tice_est(k+1)), &
+    tice_est(k) = laytemp_SIS2(m_ice, tfi(k), sol(k) + kk*(tice_est(k-1)+tice_est(k+1)), &
                                2*kk, tice(k), dtt)
   enddo
-  tice_est(1) = laytemp_SIS2(mi, tfi(1), sol(1) + (kk*tice_est(2) + k10*tsno_est), &
+  tice_est(1) = laytemp_SIS2(m_ice, tfi(1), sol(1) + (kk*tice_est(2) + k10*tsno_est), &
                              kk + k10, tice(1), dtt)
-  tsno_est = laytemp_SIS2(ms, 0.0, sol(0) + (k10*tice_est(1)+k0a_x_ta), k10+k0a, tsn, dtt)
+  tsno_est = laytemp_SIS2(m_snow, 0.0, sol(0) + (k10*tice_est(1)+k0a_x_ta), k10+k0a, tsn, dtt)
   tsurf = (A + k0skin*tsno_est) / (B + k0skin)  ! diagnose surface skin temp.
 
   if (tsurf > tsf) then ! surface is melting, redo with surf. at melt temp.
     tsurf = tsf
-    tsno_est = laytemp_SIS2(ms, 0.0, sol(0) + k10*tice_est(1) + k0skin*tsf,&
+    tsno_est = laytemp_SIS2(m_snow, 0.0, sol(0) + k10*tice_est(1) + k0skin*tsf,&
                             k10+k0skin, tsn, dtt)
     ! add in surf. melt
     if (hsno>0.0) then
@@ -465,19 +468,19 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   !
   ! conservative pass going DOWN the ice column
   !
-  tice(1)  = laytemp_SIS2(mi, tfi(1), sol(1)+kk*tice_est(1+1) &
+  tice(1)  = laytemp_SIS2(m_ice, tfi(1), sol(1)+kk*tice_est(1+1) &
                           + k10*(tsno_est-tice_est(1)), kk, tice(1), dtt)
   do k=2,NkIce-1 ! flux from above is fixed, only have downward feedback
-    tice(k) = laytemp_SIS2(mi, tfi(k), sol(k)+kk*tice_est(k+1) &
+    tice(k) = laytemp_SIS2(m_ice, tfi(k), sol(k)+kk*tice_est(k+1) &
                                        +kk*(tice(k-1)-tice_est(k)), kk, tice(k), dtt)
   enddo
-  tice(NkIce) = laytemp_SIS2(mi, tfi(NkIce), sol(NkIce)+2*kk*tfw &
+  tice(NkIce) = laytemp_SIS2(m_ice, tfi(NkIce), sol(NkIce)+2*kk*tfw &
                              +kk*(tice(NkIce-1)-tice_est(NkIce)), 2*kk, tice(NkIce), dtt)
   !
   ! END conservative update
   !
   if (col_check) then
-    col_enth2 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+    col_enth2 = column_enthalpy(m_snow, m_lay, tsn, tice, sice)
     sum_sol = 0.0 ; do k=0,NkIce ; sum_sol = sum_sol + dtt*sol(k) ; enddo 
     tflux_bot = (col_enth2 - col_enth1) - (sum_sol + tflux_sfc)
     tflux_bot_diff = 2*kk*(tfw-tice(NkIce))*dtt
@@ -497,7 +500,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   e_extra_sum = 0.0
   if (tsn > 0.0) then ! put excess snow energy into top melt
-    e_extra = CI*tsn * (DS*hsno)
+    e_extra = CI*tsn * m_snow
     tmelt = tmelt + e_extra
     e_extra_sum = e_extra_sum + e_extra
     tsn = 0.0
@@ -505,7 +508,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   do k=1,NkIce ; if (tice(k)>tfi(k)/liq_lim) then ! push excess energy to closer of top or bottom melt
     e_extra = (enth_from_TS(tice(k),sice(k)) - enth_from_TS(tfi(k)/liq_lim,sice(k))) * &
-              (DI*hie / (enth_unit*NkIce))
+              (m_ice / enth_unit)
     e_extra_sum = e_extra_sum + e_extra
     tice(k) = tfi(k)/liq_lim
     if (k<=NkIce/2) then
@@ -516,7 +519,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   endif ; enddo
   
   if (col_check) then
-    col_enth3 = column_enthalpy(DS*hsno, m_lay, tsn, tice, sice)
+    col_enth3 = column_enthalpy(m_snow, m_lay, tsn, tice, sice)
 
     d_e_extra = col_enth3 - (col_enth2 - e_extra_sum)
     if (abs(d_e_extra) > 1.0e-12*(abs(col_enth3) + abs(col_enth2) + &
