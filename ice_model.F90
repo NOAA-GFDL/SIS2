@@ -89,7 +89,7 @@ use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 use ice_spec_mod, only: get_sea_surface
 
-use ice_thm_mod,      only: ice_optics, slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
+use ice_thm_mod,      only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param
 use SIS2_ice_thm,     only: ice_optics_SIS2
