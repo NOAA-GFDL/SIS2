@@ -43,7 +43,7 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none ; private
 
-public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, get_thermo_coefs
+public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, slab_ice_optics, get_thermo_coefs
 public :: ice5lay_temp, ice5lay_resize, ice_thm_param, e_to_melt
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
@@ -952,6 +952,32 @@ subroutine ice_optics(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
   return
 
 end subroutine ice_optics
+
+subroutine slab_ice_optics(hs, hi, ts, tfw, albedo)
+  real, intent(in   ) :: hs  ! snow thickness (m-snow)
+  real, intent(in   ) :: hi  ! ice thickness (m-ice)
+  real, intent(in   ) :: ts  ! surface temperature
+  real, intent(in   ) :: tfw ! seawater freezing temperature
+  real, intent(  out) :: albedo ! ice surface albedo (0-1)
+  real :: alb, as, ai, cs
+  real :: thick_ice_alb, tcrit, fh
+
+  tcrit = tfw - T_RANGE
+  if (ts <= tcrit) then
+    thick_ice_alb = MAX_ICE_ALB
+  else if (ts >= tfw) then
+    thick_ice_alb = MIN_ICE_ALB
+  else
+    thick_ice_alb = MAX_ICE_ALB + (MIN_ICE_ALB-MAX_ICE_ALB)*(ts-tcrit)/T_RANGE
+  endif
+
+  if (hi >= crit_thickness) then
+    albedo = THICK_ICE_ALB
+  else
+    albedo = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
+  endif
+
+end subroutine slab_ice_optics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice5lay_temp - ice & snow temp. change [Winton (2000) section 2.a]           !

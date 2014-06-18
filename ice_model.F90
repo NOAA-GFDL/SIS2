@@ -89,7 +89,7 @@ use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 use ice_spec_mod, only: get_sea_surface
 
-use ice_thm_mod,      only: ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
+use ice_thm_mod,      only: ice_optics, slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param
 use SIS2_ice_thm,     only: ice_optics_SIS2
@@ -653,23 +653,19 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   enddo ; enddo ; enddo
 
   if (IST%slab_ice) then
+    IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
+    IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
+    IST%sw_abs_int(:,:,:)= 0.0  ; IST%pen(:,:,:)= 0.0 ; IST%trn(:,:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      call ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
+      call slab_ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
                IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), &
-               Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
-               Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
-               IST%sw_abs_sfc(i,j,k), &
-               IST%sw_abs_snow(i,j,k), IST%sw_abs_ice(i,j,k,1), &
-               IST%sw_abs_ice(i,j,k,2), IST%sw_abs_ice(i,j,k,3), &
-               IST%sw_abs_ice(i,j,k,4), IST%sw_abs_ocn(i,j,k) , &
-               IST%sw_abs_int(i,j,k),  IST%pen(i,j,k), IST%trn(i,j,k), &
-               coszen_in=IST%coszen(i,j))
-      !
-      !Niki: Is the following correct for diagnostics?
-      Ice%albedo(i2,j2,k2)=(Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
-                        +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
+               Ice%albedo(i2,j2,k2))
 
+      Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
+      Ice%albedo_vis_dif(i2,j2,k2) = Ice%albedo(i2,j2,k2)
+      Ice%albedo_nir_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
+      Ice%albedo_nir_dif(i2,j2,k2) = Ice%albedo(i2,j2,k2)
     endif ; enddo ; enddo ; enddo
   else
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
