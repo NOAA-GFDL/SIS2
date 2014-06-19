@@ -1093,7 +1093,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
         hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
         hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
-              - (1-IST%pen(i,j,k))*flux_sw - hfd*(IST%t_surf(i,j,k)-Tfreeze)
+              - IST%sw_abs_sfc(i,j,k)*flux_sw - hfd*(IST%t_surf(i,j,k)-Tfreeze)
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
@@ -1134,7 +1134,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
 
         dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
         hf_0  = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-                 (flux_lw(i,j,k) + (1-IST%pen(i,j,k))*flux_sw)) - &
+                 (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
                 dhf_dt * (IST%t_surf(i,j,k)-Tfreeze)
 
         SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
@@ -1161,7 +1161,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
           SW_absorbed = SW_abs_col(0)
           do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
           IST%heat_in(i,j,k) = IST%heat_in(i,j,k) + dt_fast * &
-            ((flux_lw(i,j,k) + (1-IST%pen(i,j,k))*flux_sw) + SW_absorbed + IST%bheat(i,j) - &
+            ((flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + IST%bheat(i,j) - &
              (flux_t(i,j,k) + flux_lh(i,j,k)))
         
           T_col0(0) = IST%t_snow(i,j,k)
@@ -1233,6 +1233,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
 
+  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
+                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_ice1>0) call post_avg(IST%id_sw_abs_ice1, IST%sw_abs_ice(:,:,:,1), &
@@ -1243,10 +1245,10 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_ice4>0) call post_avg(IST%id_sw_abs_ice4, IST%sw_abs_ice(:,:,:,4), &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
+                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
 
   if (IST%id_sw_pen>0) call post_avg(IST%id_sw_pen, IST%pen, IST%part_size, &
-                                     IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_trn>0) call post_avg(IST%id_sw_trn, IST%trn, IST%part_size, &
                                      IST%diag, G=G, mask=G%Lmask2dT)
 
   if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag, mask=G%Lmask2dT)
@@ -1837,7 +1839,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
             (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
       IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
-            IST%flux_sw_nir_dif_top(i,j,k))*IST%pen(i,j,k)*IST%trn(i,j,k)
+            IST%flux_sw_nir_dif_top(i,j,k)) * IST%sw_abs_ocn(i,j,k)
       IST%flux_sw_nir_dir_top(i,j,k) = 0.0
       IST%flux_sw_nir_dif_top(i,j,k) = 0.0
       IST%flux_sw_vis_dir_top(i,j,k) = 0.0
@@ -2255,7 +2257,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
             (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
       IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
-            IST%flux_sw_nir_dif_top(i,j,k))*IST%pen(i,j,k)*IST%trn(i,j,k)
+            IST%flux_sw_nir_dif_top(i,j,k)) * IST%sw_abs_ocn(i,j,k)
       IST%flux_sw_nir_dir_top(i,j,k) = 0.0
       IST%flux_sw_nir_dif_top(i,j,k) = 0.0
       IST%flux_sw_vis_dir_top(i,j,k) = 0.0

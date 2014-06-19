@@ -747,7 +747,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
     Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
               (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
-        ( Flux_SW * (1.0 - IST%pen(i,j,k)*IST%trn(i,j,k)) + &
+        ( Flux_SW * (1.0 - IST%sw_abs_ocn(i,j,k)) + &
           ((IST%flux_lw_top(i,j,k) - IST%flux_t_top(i,j,k)) )  + &
            (-IST%flux_lh_top(i,j,k)) + IST%bheat(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
@@ -810,7 +810,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
   ! directly on into the ocean.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     area_pt = part_size(i,j,k)
-    pen_frac = 1.0 ; if (k>0) pen_frac = IST%pen(i,j,k)*IST%trn(i,j,k)
+    pen_frac = 1.0 ; if (k>0) pen_frac = IST%sw_abs_ocn(i,j,k)
     Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
               (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
 

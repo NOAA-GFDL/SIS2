@@ -237,8 +237,9 @@ type ice_state_type
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_mib=-1, id_coszen=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
-  integer :: id_abs_int=-1, id_sw_abs_snow=-1, id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
-  integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_trn=-1
+  integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
+  integer :: id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
+  integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
 
   type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
   type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
@@ -975,6 +976,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'surface albedo','0-1', missing_value=missing )
   IST%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
                'cosine of zenith','-1:1', missing_value=missing )
+  IST%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
+               'SW frac. abs. at the ice surface','0:1', missing_value=missing )
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
   IST%id_sw_abs_ice1= register_SIS_diag_field('ice_model','sw_abs_ice1',diag%axesT1, Time, &
@@ -987,8 +990,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'SW frac. abs. in ice4','0:1', missing_value=missing )
   IST%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
                'SW frac. pen. surf.','0:1', missing_value=missing )
-  IST%id_sw_trn= register_SIS_diag_field('ice_model','sw_trn',diag%axesT1, Time, &
-               'SW frac. trans. to ice bot.','0:1', missing_value=missing )
+  IST%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
+               'SW frac. sent to the ocean','0:1', missing_value=missing )
 
 
   IST%id_alb_vis_dir = register_SIS_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time, &
