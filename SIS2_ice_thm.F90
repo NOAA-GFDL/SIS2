@@ -35,6 +35,7 @@ module SIS2_ice_thm
 use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond, &
                               shortwave_dEdd0, dbl_kind, int_kind, nilyr, nslyr
 use ice_thm_mod, only : DS, DI, DW, TFI, MU_TS, CI, get_thermo_coefs
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 
 use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
@@ -111,31 +112,34 @@ end subroutine SIS2_ice_thm_param
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
-     alb_nir_dif, abs_sfc, abs_snow, abs_ice1, abs_ice2, &
-     abs_ice3, abs_ice4, abs_ocn, abs_int, pen, trn, coszen_in)
+subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
+                    alb_nir_dir, alb_nir_dif, abs_sfc, abs_snow, abs_ice_lay, &
+                    abs_ocn, abs_int, pen, trn, coszen_in)
   real, intent(in   ) :: hs  ! snow thickness (m-snow)
   real, intent(in   ) :: hi  ! ice thickness (m-ice)
   real, intent(in   ) :: ts  ! surface temperature
   real, intent(in   ) :: tfw ! seawater freezing temperature
+  integer, intent(in) :: NkIce
   real, intent(  out) :: alb_vis_dir ! ice surface albedo (0-1)
   real, intent(  out) :: alb_vis_dif ! ice surface albedo (0-1)
   real, intent(  out) :: alb_nir_dir ! ice surface albedo (0-1)
   real, intent(  out) :: alb_nir_dif ! ice surface albedo (0-1)
   real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
   real, intent(  out) :: abs_snow ! frac abs sw abs in snow
-  real, intent(  out) :: abs_ice1 ! frac abs sw abs at ice layer 1
-  real, intent(  out) :: abs_ice2 ! frac abs sw abs at ice layer 2
-  real, intent(  out) :: abs_ice3 ! frac abs sw abs at ice layer 3
-  real, intent(  out) :: abs_ice4 ! frac abs sw abs at ice layer 4
+  real, intent(  out) :: abs_ice_lay(NkIce) ! frac abs sw abs by each ice layer
   real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
   real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  real, intent(  out) :: pen      ! frac     sw passed below the surface (frac 1-pen absorbed at the surface)
-  real, intent(  out) :: trn      ! frac     sw passed below the bottom  (frac 1-trn absorbed at the interior)
+  real, intent(  out) :: pen      ! frac sw passed below the surface (frac 1-pen absorbed at the surface)
+  real, intent(  out) :: trn      ! frac sw passed below the bottom  (frac 1-trn absorbed at the interior)
   real, intent(in),optional :: coszen_in
-  real :: alb, as, ai, cs
+
+  real :: alb, as, ai, cs, fh
   real :: coalb, I_coalb  ! The coalbedo and its reciprocal.
-  real :: thick_ice_alb, tcrit, fh
+  real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
+                          ! is still present at the top of each ice layer (ND).
+  real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
+  integer :: m
+  character(len=200) :: mesg
 
   integer (kind=int_kind) :: &
     nx_block, ny_block, & ! block dimensions
@@ -193,6 +197,12 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
 
   if (do_deltaEdd) then
 
+    if (nilyr /= NkIce) then
+      write(mesg, '("The Delta-Eddington sea-ice radiation is hard-coded to use ",(I4),&
+                   &" ice layers, not ",(I4),".")') nilyr, NkIce
+      call SIS_error(FATAL, mesg)
+    endif
+
     ! temporary for delta-Eddington shortwave call
     nx_block = 1 ; ny_block = 1
     icells = 1 ; indxi(1) = 1 ; indxj(1) = 1
@@ -227,10 +237,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
     I_coalb = 0.0 ; if (coalb > 0.0) I_coalb = 1.0 / coalb
     abs_sfc  = fswsfc(1,1)   * I_coalb
     abs_snow = Sswabs(1,1,1) * I_coalb
-    abs_ice1 = Iswabs(1,1,1) * I_coalb
-    abs_ice2 = Iswabs(1,1,2) * I_coalb
-    abs_ice3 = Iswabs(1,1,3) * I_coalb
-    abs_ice4 = Iswabs(1,1,4) * I_coalb
+    do m=1,NkIce ; abs_ice_lay(m) = Iswabs(1,1,m) * I_coalb ; enddo
     abs_ocn  = fswthru(1,1)  * I_coalb
 
     alb_vis_dir = alvdr(1,1)
@@ -261,13 +268,15 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
 
     pen = (1-cs)*PEN_ICE
     trn = exp(-hi/OPT_DEP_ICE);
+    opt_decay_lay = exp(-hi/(NkIce*OPT_DEP_ICE))
     abs_ocn = trn*pen
     abs_sfc  = 1.0 - pen
     abs_snow = 0.0
-    abs_ice1 = (1.0 - exp(-0.25*hi/OPT_DEP_ICE)) * pen
-    abs_ice2 = (exp(-0.25*hi/OPT_DEP_ICE) - exp(-0.5*hi/OPT_DEP_ICE)) * pen
-    abs_ice3 = (exp(-0.5*hi/OPT_DEP_ICE) - exp(-0.75*hi/OPT_DEP_ICE)) * pen
-    abs_ice4 = (exp(-0.75*hi/OPT_DEP_ICE) - exp(-hi/OPT_DEP_ICE)) * pen
+    SW_frac_top = pen
+    do m=1,NkIce
+      abs_ice_lay(m) = SW_frac_top * (1.0 - opt_decay_lay)
+      SW_frac_top = SW_frac_top * opt_decay_lay
+    enddo
     abs_int = 1.0 - trn
 
      !! check for ice albedos out of range (0 to 1)

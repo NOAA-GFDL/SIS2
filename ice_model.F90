@@ -581,6 +581,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp
   real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
+  real, dimension(G%NkIce) :: sw_abs_lay
   real :: u, v
   real :: area_pt
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -671,16 +672,15 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
-               IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), &
+               IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), G%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
-               IST%sw_abs_sfc(i,j,k), &
-               IST%sw_abs_snow(i,j,k), IST%sw_abs_ice(i,j,k,1), &
-               IST%sw_abs_ice(i,j,k,2), IST%sw_abs_ice(i,j,k,3), &
-               IST%sw_abs_ice(i,j,k,4), IST%sw_abs_ocn(i,j,k) , &
-               IST%sw_abs_int(i,j,k),  IST%pen(i,j,k), IST%trn(i,j,k), &
-               coszen_in=IST%coszen(i,j))
-      !
+               IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
+               sw_abs_lay, IST%sw_abs_ocn(i,j,k), IST%sw_abs_int(i,j,k), &
+               IST%pen(i,j,k), IST%trn(i,j,k), coszen_in=IST%coszen(i,j))
+
+      do m=1,G%NkIce ; IST%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+
       !Niki: Is the following correct for diagnostics?
       Ice%albedo(i2,j2,k2)=(Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
                         +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
@@ -967,14 +967,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
               ! temperature in W m-2 K-1.
     dedt, &   ! The derivative of the sublimation rate with the surface
               ! temperature, in kg m-2 s-1 K-1 (I think).
-    drdt, &   ! The derivative of the upward radiative heat flux with surface
+    drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp) in W m-2 K-1.
-    albedo_vis_dir, albedo_vis_dif, &
-    albedo_nir_dir, albedo_nir_dif, &
-    sw_abs_sfc,sw_abs_snow, &
-    sw_abs_ocn, sw_abs_int, pen, trn
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:G%CatIce) :: &
-    sw_abs_ice1, sw_abs_ice2,sw_abs_ice3,sw_abs_ice4
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb
   real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
@@ -1243,9 +1237,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_ice1>0) call post_avg(IST%id_sw_abs_ice1, IST%sw_abs_ice(:,:,:,1), &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice2>0) call post_avg(IST%id_sw_abs_ice4, IST%sw_abs_ice(:,:,:,2), &
+  if (IST%id_sw_abs_ice2>0) call post_avg(IST%id_sw_abs_ice2, IST%sw_abs_ice(:,:,:,2), &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice3>0) call post_avg(IST%id_sw_abs_ice4, IST%sw_abs_ice(:,:,:,3), &
+  if (IST%id_sw_abs_ice3>0) call post_avg(IST%id_sw_abs_ice3, IST%sw_abs_ice(:,:,:,3), &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_ice4>0) call post_avg(IST%id_sw_abs_ice4, IST%sw_abs_ice(:,:,:,4), &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
