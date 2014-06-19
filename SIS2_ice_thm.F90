@@ -130,10 +130,11 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
   real, intent(  out) :: abs_ice4 ! frac abs sw abs at ice layer 4
   real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
   real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  real, intent(  out) :: pen      ! frac     sw passed below the surface (frac 1-pen absrobed at the surface)
+  real, intent(  out) :: pen      ! frac     sw passed below the surface (frac 1-pen absorbed at the surface)
   real, intent(  out) :: trn      ! frac     sw passed below the bottom  (frac 1-trn absorbed at the interior)
   real, intent(in),optional :: coszen_in
   real :: alb, as, ai, cs
+  real :: coalb, I_coalb  ! The coalbedo and its reciprocal.
   real :: thick_ice_alb, tcrit, fh
 
   integer (kind=int_kind) :: &
@@ -192,82 +193,84 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_di
 
   if (do_deltaEdd) then
 
-     ! temporary for delta-Eddington shortwave call
-     nx_block = 1
-     ny_block = 1
-     icells = 1
-     indxi(1) = 1
-     indxj(1) = 1
-     aice(1,1) = 1.0
-     tarea(1,1) = 1.0 ! not used
+    ! temporary for delta-Eddington shortwave call
+    nx_block = 1 ; ny_block = 1
+    icells = 1 ; indxi(1) = 1 ; indxj(1) = 1
+    aice(1,1) = 1.0
+    tarea(1,1) = 1.0 ! not used
 
-     ! stuff that matters
-     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
-     if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
-     Tsfc(1,1) = ts
-     vsno(1,1) = hs
-     vice(1,1) = hi
-     swvdr(1,1) = 0.25
-     swvdf(1,1) = 0.25
-     swidr(1,1) = 0.25
-     swidf(1,1) = 0.25
+    ! stuff that matters
+    coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
+    if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
+    Tsfc(1,1) = ts
+    vsno(1,1) = hs
+    vice(1,1) = hi
+    swvdr(1,1) = 0.25
+    swvdf(1,1) = 0.25
+    swidr(1,1) = 0.25
+    swidf(1,1) = 0.25
 
-     call shortwave_dEdd0_set_snow(nx_block, ny_block, icells, indxi, indxj, &
-              aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
+    call shortwave_dEdd0_set_snow(nx_block, ny_block, icells, indxi, indxj, &
+             aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
 
-     call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
-              aice, Tsfc, fs, fp, hp) ! out: fp, hp
-     call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
-              aice, vice, vsno, fs, rhosnw, rsnw, fp, hp, swvdr, swvdf, &
-              swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
-              fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
-     ! out: alvdf, alvdr, and subsequent.
+    call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
+             aice, Tsfc, fs, fp, hp) ! out: fp, hp
+    call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
+             aice, vice, vsno, fs, rhosnw, rsnw, fp, hp, swvdr, swvdf, &
+             swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
+             fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
+    ! out: alvdf, alvdr, and subsequent.
 
-     ! ### ADD PARENTHESES AND MULTIPLY BY A RECIPROCAL.
-     alb = 1-fswsfc(1,1)-fswint(1,1)-fswthru(1,1)
-     abs_sfc  = fswsfc(1,1)  /(1-alb)
-     abs_snow = Sswabs(1,1,1)/(1-alb)
-     abs_ice1 = Iswabs(1,1,1)/(1-alb)
-     abs_ice2 = Iswabs(1,1,2)/(1-alb)
-     abs_ice3 = Iswabs(1,1,3)/(1-alb)
-     abs_ice4 = Iswabs(1,1,4)/(1-alb)
-     abs_ocn  = fswthru(1,1) /(1-alb)
+    ! Note: fswint = Sswabs + sum(Iswabs)
+    alb = 1.0 - (fswsfc(1,1) + (fswint(1,1) + fswthru(1,1)))
+    coalb = fswsfc(1,1) + (fswint(1,1) + fswthru(1,1))
+    I_coalb = 0.0 ; if (coalb > 0.0) I_coalb = 1.0 / coalb
+    abs_sfc  = fswsfc(1,1)   * I_coalb
+    abs_snow = Sswabs(1,1,1) * I_coalb
+    abs_ice1 = Iswabs(1,1,1) * I_coalb
+    abs_ice2 = Iswabs(1,1,2) * I_coalb
+    abs_ice3 = Iswabs(1,1,3) * I_coalb
+    abs_ice4 = Iswabs(1,1,4) * I_coalb
+    abs_ocn  = fswthru(1,1)  * I_coalb
 
-     alb_vis_dir = alvdr(1,1)
-     alb_vis_dif = alvdf(1,1)
-     alb_nir_dir = alidr(1,1)
-     alb_nir_dif = alidf(1,1)
+    alb_vis_dir = alvdr(1,1)
+    alb_vis_dif = alvdf(1,1)
+    alb_nir_dir = alidr(1,1)
+    alb_nir_dif = alidf(1,1)
 
-     ! pen = (fswint(1,1)+fswthru(1,1)) / (fswsfc(1,1) + (fswint(1,1)+fswthru(1,1)))
-     pen = abs_snow + abs_ice1 + abs_ice2 + abs_ice3 + abs_ice4 + abs_ocn
-     ! trn = fswthru(1,1) / (fswint(1,1) + fswthru(1,1))
-     ! abs_int = fswint(1,1) / (fswint(1,1) + fswthru(1,1))
-     trn = 0.0
-     if(pen > 0.0) trn = abs_ocn/pen
-     abs_int = 1.0 - trn
+    pen = (fswint(1,1) + fswthru(1,1)) * I_coalb
+    trn = 0.0 ; if (pen > 0.0) trn = abs_ocn / pen
+    abs_int = 1.0 - trn
 
   else
-     as = ALB_SNO; ai = ALB_ICE
-     cs = hs/(hs+0.02)                        ! thin snow partially covers ice
+    as = ALB_SNO; ai = ALB_ICE
+    cs = hs/(hs+0.02)                        ! thin snow partially covers ice
 
-     fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
-     ! reduce albedo for thin ice
-      if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-         ! CSIM4 assuming 0.53/0.47 vis/ir
-         as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-         ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-      endif
-      ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
+    fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
+    ! reduce albedo for thin ice
+    if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
+       ! CSIM4 assuming 0.53/0.47 vis/ir
+       as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+       ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
+    endif
+    ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
 
-     alb = cs*as+(1-cs)*ai
-     pen = (1-cs)*PEN_ICE
-     trn = exp(-hi/OPT_DEP_ICE);
-     alb_vis_dir = alb
-     alb_vis_dif = alb
-     alb_nir_dir = alb
-     alb_nir_dif = alb
+    alb = cs*as + (1-cs)*ai
+    alb_vis_dir = alb ; alb_vis_dif = alb
+    alb_nir_dir = alb ; alb_nir_dif = alb
 
-     !! check for ice albdeos out of range (0 to 1)
+    pen = (1-cs)*PEN_ICE
+    trn = exp(-hi/OPT_DEP_ICE);
+    abs_ocn = trn*pen
+    abs_sfc  = 1.0 - pen
+    abs_snow = 0.0
+    abs_ice1 = (1.0 - exp(-0.25*hi/OPT_DEP_ICE)) * pen
+    abs_ice2 = (exp(-0.25*hi/OPT_DEP_ICE) - exp(-0.5*hi/OPT_DEP_ICE)) * pen
+    abs_ice3 = (exp(-0.5*hi/OPT_DEP_ICE) - exp(-0.75*hi/OPT_DEP_ICE)) * pen
+    abs_ice4 = (exp(-0.75*hi/OPT_DEP_ICE) - exp(-hi/OPT_DEP_ICE)) * pen
+    abs_int = 1.0 - trn
+
+     !! check for ice albedos out of range (0 to 1)
      ! if (alb.lt.0.0 .or. alb.gt.1.0) then
      !    print *,'ice_optics: albedo out of range, alb=',alb
      !    print *,'cs=',cs,  'as=',as, 'ai=',ai
