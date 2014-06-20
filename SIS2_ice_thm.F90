@@ -810,11 +810,12 @@ end function Temp_from_En_S
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_SIS2_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, &
-                   ice_salinity, enthalpy_units)
+                   ice_salinity, enthalpy_units, specified_thermo_salinity)
   real, optional, intent(out) :: pocket_coef
   real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
   real, optional, intent(out) :: max_enthalpy_chg
   real, optional, intent(out) :: enthalpy_units
+  logical, optional, intent(out) :: specified_thermo_salinity
 ! Arguments: pocket_coef - Minus the partial derivative of the freezing point
 !                          with salinity, times the latent heat of fusion over
 !                          the heat capacity of ice, in degC^2/psu.  This term
@@ -826,11 +827,14 @@ subroutine get_SIS2_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, &
 !                          subsequent layers.
 !            max_enth_chg - The maximum ethalpy change due to the presence of
 !                           brine pockets, LI/Cp_Ice.
+!            ice_salinity - The specified salinity of each layer when the
+!                           thermodynamic salinities are pre-specified.
 !            enthalpy_units - A unit conversion factor for ethalpy from Joules.
 
   call get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
   
   if (present(enthalpy_units)) enthalpy_units = enth_unit
+  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
 
 end subroutine get_SIS2_thermo_coefs
 
