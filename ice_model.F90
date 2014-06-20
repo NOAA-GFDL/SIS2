@@ -92,7 +92,7 @@ use ice_spec_mod, only: get_sea_surface
 use ice_thm_mod,      only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_param
-use SIS2_ice_thm,     only: ice_optics_SIS2
+use SIS2_ice_thm,     only: ice_optics_SIS2, Cp_Ice
 use SIS2_ice_thm,     only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
@@ -1123,10 +1123,10 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         if (IST%slab_ice) then
           latent         = hlv + hlf
         elseif (IST%h_snow(i,j,k)>0.0) then
-          latent         = hlv + (hlf-CI*IST%t_snow(i,j,k))
+          latent         = hlv + (hlf - Cp_Ice*IST%t_snow(i,j,k))
         else
           !### This appears to be inconsistent with the expression above for snow,
-          !### in that it is missing a term like -CI*IST%t_ice(i,j,k).
+          !### in that it is missing a term like -Cp_Ice*IST%t_ice(i,j,k).
           latent         = hlv + hlf*(1-TFI/IST%t_ice(i,j,k,1))
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
