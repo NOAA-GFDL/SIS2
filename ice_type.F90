@@ -12,7 +12,7 @@ use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
-use constants_mod,    only: Tfreeze
+use constants_mod,    only: T_0degC=>Tfreeze
 
 use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
@@ -766,7 +766,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo
-  t_min = Tfreeze-100. ; t_max = Tfreeze+60.
+  t_min = T_0degC-100. ; t_max = T_0degC+60.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     if ((Ice%t_surf(i2,j2,k2) < t_min) .or. (Ice%t_surf(i2,j2,k2) > t_max)) then
@@ -816,7 +816,7 @@ subroutine IST_bounds_check(IST, G, msg)
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
   enddo ; enddo
-  tsurf_min = tOcn_min + Tfreeze ; tsurf_max = tOcn_max + Tfreeze
+  tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
   tice_min = -100. ; tice_max = 1.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then

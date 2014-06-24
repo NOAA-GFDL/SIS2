@@ -71,7 +71,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
   use coupler_types_mod,only: coupler_3d_bc_type
-  use constants_mod,    only: hlv, hlf, Tfreeze, grav, STEFAN
+  use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, grav, STEFAN
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 
@@ -93,6 +93,7 @@ use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_r
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: ice_optics_SIS2, get_SIS2_thermo_coefs
 use SIS2_ice_thm,  only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
+use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
@@ -618,7 +619,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   endif
 
   do j=jsc,jec ; do i=isc,iec
-    IST%t_ocn(i,j) = t_surf_ice_bot(i,j) - Tfreeze
+    IST%t_ocn(i,j) = t_surf_ice_bot(i,j) - T_0degC
 
     IST%s_surf(i,j) = s_surf_ice_bot(i,j)
     IST%frazil(i,j) = frazil_ice_bot(i,j)
@@ -640,9 +641,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
                tmp(isc:iec,jsc:jec), wtd=.true.)
   do j=jsc,jec ; do i=isc,iec
     if ( tmp(i,j) > 0.0) then
-       IST%bheat(i,j) = IST%kmelt*(IST%t_ocn(i,j) + MU_TS*IST%s_surf(i,j))
+      IST%bheat(i,j) = IST%kmelt*(IST%t_ocn(i,j) - T_Freeze(IST%s_surf(i,j), IST%ITV))
     else
-       IST%bheat(i,j) = 0.0
+      IST%bheat(i,j) = 0.0
     endif
   enddo ; enddo
 
@@ -659,7 +660,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
-               IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), &
+               IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -671,7 +672,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
-               IST%t_surf(i,j,k)-Tfreeze, -MU_TS*IST%s_surf(i,j), G%NkIce, &
+               IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), G%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
@@ -980,6 +981,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: Cp_Ice  ! The heat capacity of ice, in J kg-1 K-1.
+  real :: T_freeze_surf ! The freezing temperature at the surface salinity of
+                        ! the ocean, in deg C.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
@@ -1082,6 +1085,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   if (IST%SIS1_5L_thermo) then
 
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
       if (IST%h_ice(i,j,k) > 0.0) then
         if (IST%slab_ice) then
           latent         = hlv+hlf
@@ -1094,7 +1098,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
         hfd = dhdt(i,j,k) + dedt(i,j,k)*latent + drdt(i,j,k)
         hf  = flux_t(i,j,k) + flux_q(i,j,k)*latent - flux_lw(i,j,k)   &
-              - IST%sw_abs_sfc(i,j,k)*flux_sw - hfd*(IST%t_surf(i,j,k)-Tfreeze)
+              - IST%sw_abs_sfc(i,j,k)*flux_sw - hfd*(IST%t_surf(i,j,k)-T_0degC)
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
@@ -1106,9 +1110,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                           IST%sw_abs_ice(i,j,k,2)*flux_sw, &
                           IST%sw_abs_ice(i,j,k,3)*flux_sw, &
                           IST%sw_abs_ice(i,j,k,4)*flux_sw, &
-                          -MU_TS*IST%s_surf(i,j), IST%bheat(i,j), dt_fast, &
+                          T_Freeze_surf, IST%bheat(i,j), dt_fast, &
                           IST%tmelt(i,j,k), IST%bmelt(i,j,k))
-        dts                = ts_new - (IST%t_surf(i,j,k)-Tfreeze)
+        dts                = ts_new - (IST%t_surf(i,j,k)-T_0degC)
         IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts
         flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
         flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
@@ -1121,6 +1125,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   else
     call get_SIS2_thermo_coefs(IST%ITV, Cp_Ice=Cp_Ice)
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
       if (IST%h_ice(i,j,k) > 0.0) then
         if (IST%slab_ice) then
           latent         = hlv + hlf
@@ -1137,7 +1142,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
         hf_0  = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
                  (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
-                dhf_dt * (IST%t_surf(i,j,k)-Tfreeze)
+                dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
         SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
         do m=1,NkIce
@@ -1149,11 +1154,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         ! actually lose or gain any mass from freezing or melting.
         call ice_temp_SIS2(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k), &
                           T_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                          -MU_TS*IST%s_surf(i,j), IST%bheat(i,j), ts_new, &
+                          T_Freeze_surf, IST%bheat(i,j), ts_new, &
                           dt_fast, NkIce, IST%tmelt(i,j,k), IST%bmelt(i,j,k), &
                           IST%ice_thm_CSp, IST%ITV, IST%column_check)
         do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
-        dts                = ts_new - (IST%t_surf(i,j,k)-Tfreeze)
+        dts                = ts_new - (IST%t_surf(i,j,k)-T_0degC)
         IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts
         flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
         flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
@@ -1634,7 +1639,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   ! Set appropriate surface quantities in categories with no ice.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
-    IST%t_surf(i,j,k) = Tfreeze - MU_TS*IST%s_surf(i,j)
+    IST%t_surf(i,j,k) = T_0degC + T_Freeze(IST%s_surf(i,j),IST%ITV)
   enddo ; enddo ; enddo
 
   if (IST%debug) then
@@ -1691,7 +1696,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_hio>0) call post_avg(IST%id_hio, IST%h_ice, IST%part_size(:,:,1:), &
                                  IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_ts>0) call post_avg(IST%id_ts, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 IST%diag, G=G, mask=G%Lmask2dT, offset=-Tfreeze, wtd=.true.)
+                                 IST%diag, G=G, mask=G%Lmask2dT, offset=-T_0degC, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, IST%t_snow, IST%part_size(:,:,1:), &
                                  IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_t1>0) call post_avg(IST%id_t1, IST%t_ice(:,:,:,1), IST%part_size(:,:,1:), &
@@ -1747,7 +1752,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(IST%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                              IST%t_surf(:,:,0)-Tfreeze, G)
+                              IST%t_surf(:,:,0)-T_0degC, G)
   endif
 
   call mpp_clock_end(iceClock9)
@@ -1793,6 +1798,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real :: heat_to_ocn, h2o_to_ocn, evap_from_ocn, sn2ic, bablt
   real            :: heat_limit_ice, heat_res_ice
   real            :: tot_heat, heating, tot_frazil
+  real :: T_Freeze_surf
   real, parameter :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
@@ -1819,6 +1825,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
       ! reshape the ice based on fluxes
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
 
       evap_from_ocn = 0.0; h2o_to_ocn = 0.0; heat_to_ocn = 0.0
       call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k), IST%h_ice(i,j,k),&
@@ -1827,7 +1834,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
                           IST%fprec_top(i,j,k) *dt_slow, 0.0,                &
                           IST%flux_q_top(i,j,k)*dt_slow,                     &
                           IST%tmelt (i,j,k), IST%bmelt(i,j,k),               &
-                          -MU_TS*IST%s_surf(i,j),                            &
+                          T_Freeze_surf,                                     &
                           heat_to_ocn, h2o_to_ocn, evap_from_ocn,            &
                           snow_to_ice(i,j,k), bablt                          )
 
@@ -1860,10 +1867,11 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
       !                                                           was ...>0.0
       ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
       !
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
       IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * IST%part_size(i,j,k)
       IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * IST%part_size(i,j,k)
-      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
-                           +(Tfreeze - MU_TS*IST%s_surf(i,j))*IST%part_size(i,j,0))
+      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
+                           (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0))
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
       IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / IST%part_size(i,j,k)
@@ -1874,7 +1882,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
                           IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),                &
                           IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,           &
                           IST%frazil(i,j) / IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
-                          -MU_TS*IST%s_surf(i,j),                              &
+                          T_Freeze_surf, &
                           heat_to_ocn, h2o_to_ocn, evap_from_ocn, sn2ic)
       IST%frazil(i,j) = 0.0;
       !
@@ -1901,6 +1909,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
     do j=jsc,jec ; do i=isc,iec
       heat_res_ice   = 0.0
       heat_limit_ice = 0.0
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
       !
       ! calculate enthalpy
       !
@@ -1956,8 +1965,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
               call ice5lay_resize(IST%h_snow(i,j,k), IST%t_snow(i,j,k),  &
                                   IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),   &
                                   IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),  &
-                                  IST%t_ice(i,j,k,4),  0.0, 0.0, 0.0, 0.0,&
-                                  heating, -MU_TS*IST%s_surf(i,j),       &
+                                  IST%t_ice(i,j,k,4),  0.0, 0.0, 0.0, 0.0, &
+                                  heating, T_Freeze_surf, &
                                   heat_to_ocn, h2o_to_ocn, evap_from_ocn, &
                                   snow_to_ice(i,j,k), bablt              )
               tot_heat = tot_heat - heating*IST%part_size(i,j,k)
@@ -1975,7 +1984,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
         IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * IST%part_size(i,j,k)
         IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * IST%part_size(i,j,k)
         IST%t_surf(i,j,k) = IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
-                       + (Tfreeze - MU_TS*IST%s_surf(i,j))*IST%part_size(i,j,0)
+                       + (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)
         IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
         IST%part_size(i,j,0) = 0.0
         IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / IST%part_size(i,j,k)
@@ -1986,7 +1995,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
                             IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2),        &
                             IST%t_ice(i,j,k,3), IST%t_ice(i,j,k,4), 0.0,   &
                             -tot_heat/IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
-                            -MU_TS*IST%s_surf(i,j),                        &
+                            T_Freeze_surf,                        &
                             heat_to_ocn, h2o_to_ocn, evap_from_ocn, sn2ic)
       endif
 
@@ -2080,6 +2089,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   real :: m_snow   ! The mass of snow per unit area, in kg m-2.
   real :: m_ice    ! The mass of sea ice per unit area, in kg m-2.
+  real :: T_freeze_surf ! The freezing temperature at the surface salinity of
+                        ! the ocean, in deg C.
 
   real :: dt_slow, Idt_slow, yr_dtslow
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
@@ -2092,7 +2103,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real :: enth_units, I_enth_units
   real, parameter :: LI = hlf
 
-  real, dimension(0:G%NkIce+1) :: T_col0, S_col0, enthalpy
+  real, dimension(0:G%NkIce+1) :: T_col0, S_col0, Tfr_col0, enthalpy
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
@@ -2102,6 +2113,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units)
   S_col0(0) = 0.0 ; do m=1,G%NkIce ; S_col0(m) = S_col(m) ; enddo
+  call calculate_T_Freeze(S_col0(0:G%NkIce), Tfr_col0(0:G%NkIce), IST%ITV)
   I_enth_units = 1.0 / enth_units
 
   if (IST%column_check) then
@@ -2178,7 +2190,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; T_col0(m) = T_col(m) ; enddo
       ! Set the effective ocean temperature to be at least the freezing point of
       ! at the "freezing salinity".
-      T_col0(NkIce+1) = max(IST%t_ocn(i,j), -MU_TS*S_col0(NkIce+1))
+      T_col0(NkIce+1) = max(IST%t_ocn(i,j), T_freeze(S_col0(NkIce+1), IST%ITV))
       call enthalpy_from_TS(T_col0(:), S_col0(:), enthalpy(:), IST%ITV)
 
       m_snow = IST%rho_snow * IST%h_snow(i,j,k)
@@ -2186,13 +2198,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       call ice_resize_SIS2(m_snow, m_ice, enthalpy, S_col, &
                    IST%fprec_top(i,j,k)*dt_slow, 0.0, &
                    IST%flux_q_top(i,j,k)*dt_slow, IST%tmelt(i,j,k), &
-                   IST%bmelt(i,j,k), -MU_TS*IST%s_surf(i,j), NkIce, &
+                   IST%bmelt(i,j,k), T_Freeze(IST%s_surf(i,j),IST%ITV), NkIce, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    snow_to_ice(i,j,k), IST%ITV, IST%ice_thm_CSp, bablt, &
                    Enthalpy_evap=enth_evap, Enthalpy_melt=enth_ice_to_ocn, &
                    Enthalpy_freeze=enth_ocn_to_ice)
       if (m_ice == 0.0) then
-        do m=1,NkIce ; IST%t_ice(i,j,k,m) = -MU_TS*S_col(m) ; enddo
+        do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_Freeze(S_col(m), IST%ITV) ; enddo
       else
         do m=1,NkIce ; IST%t_ice(i,j,k,m) = Temp_from_En_S(enthalpy(m), S_col(m), IST%ITV) ; enddo
       endif
@@ -2270,16 +2282,16 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt ! bot. melt. ablation
 
     endif
-!  enddo ; enddo ; enddo   ! i-, j-, and k-loops
 
     !
     ! absorb frazil in thinest ice partition available
     !
-!  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (IST%frazil(i,j)>0 .and. IST%part_size(i,j,0)+IST%part_size(i,j,k)>0.01) then
       !                                                           was ...>0.0
       ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
-      !
+
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
+
       if (IST%column_check) then
         enth_prev(i,j,k) = 0.0 ; heat_in(i,j,k) = 0.0
 
@@ -2300,7 +2312,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * IST%part_size(i,j,k)
       IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * IST%part_size(i,j,k)
       IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
-                           +(Tfreeze - MU_TS*IST%s_surf(i,j))*IST%part_size(i,j,0))
+                           +(T_0degC + T_Freeze_surf)*IST%part_size(i,j,0))
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
       IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / IST%part_size(i,j,k)
@@ -2311,18 +2323,18 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       do m=1,NkIce ; T_col(m) = IST%t_ice(i,j,k,m) ; T_col0(m) = T_col(m) ; enddo
       ! Set the effective ocean temperature to be higher than the freezing point
       ! at the "freezing salinity".
-      T_col0(NkIce+1) = max(IST%t_ocn(i,j), -MU_TS*S_col0(NkIce+1))
+      T_col0(NkIce+1) = max(IST%t_ocn(i,j), T_Freeze(S_col0(NkIce+1), IST%ITV))
       call enthalpy_from_TS(T_col0(:), S_col0(:), enthalpy(:), IST%ITV)
 
       m_snow = IST%rho_snow * IST%h_snow(i,j,k)
       m_ice = IST%rho_ice * IST%h_ice(i,j,k)
       call ice_resize_SIS2(m_snow, m_ice, enthalpy, S_col, &
                    0.0, IST%frazil(i,j) / IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
-                   -MU_TS*IST%s_surf(i,j), NkIce, &
+                   T_Freeze_surf, NkIce, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    sn2ic, IST%ITV, IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
       if (m_ice == 0.0) then
-        do m=1,NkIce ; IST%t_ice(i,j,k,m) = -MU_TS*S_col(m) ; enddo
+        do m=1,NkIce ; IST%t_ice(i,j,k,m) = Tfr_col0(m) ; enddo
       else
         do m=1,NkIce ; IST%t_ice(i,j,k,m) = Temp_from_En_S(enthalpy(m), S_col(m), IST%ITV) ; enddo
       endif
@@ -2381,6 +2393,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
     do j=jsc,jec ; do i=isc,iec
       heat_res_ice   = 0.0
       heat_limit_ice = 0.0
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
       !
       ! calculate enthalpy
       !
@@ -2429,11 +2442,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
               m_snow = IST%rho_snow * IST%h_snow(i,j,k)
               m_ice = IST%rho_ice * IST%h_ice(i,j,k)
               call ice_resize_SIS2(m_snow, m_ice, enthalpy, S_col, 0.0, 0.0, 0.0, 0.0, &
-                                  heating, -MU_TS*IST%s_surf(i,j), NkIce, &
+                                  heating, T_Freeze_surf, NkIce, &
                                   heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                                   snow_to_ice(i,j,k), IST%ITV, IST%ice_thm_CSp, bablt )
               if (m_ice == 0.0) then
-                do m=1,NkIce ; IST%t_ice(i,j,k,m) = -MU_TS*S_col(m) ; enddo
+                do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_Freeze(S_col(m), IST%ITV) ; enddo
               else
                 do m=1,NkIce ; IST%t_ice(i,j,k,m) = Temp_from_En_S(enthalpy(m), S_col(m), IST%ITV) ; enddo
               endif
@@ -2456,7 +2469,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         IST%h_snow(i,j,k) = IST%h_snow(i,j,k) * IST%part_size(i,j,k)
         IST%h_ice(i,j,k)  = IST%h_ice(i,j,k)  * IST%part_size(i,j,k)
         IST%t_surf(i,j,k) = IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
-                       + (Tfreeze - MU_TS*IST%s_surf(i,j))*IST%part_size(i,j,0)
+                       + (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)
         IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
         IST%part_size(i,j,0) = 0.0
         IST%h_snow(i,j,k) = IST%h_snow(i,j,k) / IST%part_size(i,j,k)
@@ -2470,11 +2483,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         m_ice = IST%rho_ice * IST%h_ice(i,j,k)
         call ice_resize_SIS2(m_snow, m_ice, enthalpy, S_col, 0.0, &
                             -tot_heat/IST%part_size(i,j,k), &
-                            0.0, 0.0, 0.0, -MU_TS*IST%s_surf(i,j), NkIce, &
+                            0.0, 0.0, 0.0, T_Freeze_surf, NkIce, &
                             heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, &
                             evap_from_ocn, sn2ic, IST%ITV, IST%ice_thm_CSp)
         if (m_ice == 0.0) then
-          do m=1,NkIce ; IST%t_ice(i,j,k,m) = -MU_TS*S_col(m) ; enddo
+          do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_Freeze(S_col(m), IST%ITV) ; enddo
         else
           do m=1,NkIce ; IST%t_ice(i,j,k,m) = Temp_from_En_S(enthalpy(m), S_col(m), IST%ITV) ; enddo
         endif
@@ -2850,7 +2863,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%rough_mom(:,:,:)   = mom_rough_ice
     Ice%rough_heat(:,:,:)  = heat_rough_ice
     Ice%rough_moist(:,:,:) = heat_rough_ice
-    IST%t_surf(:,:,:) = Tfreeze-5.0
+    IST%t_surf(:,:,:) = T_0degC-5.0
     IST%t_snow(:,:,:) = -5.0
     IST%t_ice(:,:,:,:) = -5.0
 

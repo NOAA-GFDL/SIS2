@@ -45,7 +45,7 @@ implicit none ; private
 public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
 public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
-public :: enthalpy_liquid_freeze
+public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze
 
 ! In the ice temperature calculation we place a limit to below (salinity
 ! dependent) freezing point on the prognosed temperatures.  For ice_resize
@@ -59,6 +59,8 @@ type, public :: ice_thermo_type ; private
   real :: Cp_Water = 4.2e3  ! The heat capacity of liquid seawater 4200 J/(kg K)
   real :: rho_ice, rho_snow, rho_water  ! The nominal densities of ice and water in kg m-3.
   real :: LI                ! The latent heat of fusion, in J kg-1.
+  real :: dTf_dS            ! The derivative of the freezing point with salinity, 
+                            ! in degC per PSU.  (dTf_dS is negative.)
   real :: mu_TS             ! Negative the derivative of the freezing point with
                             ! salinity, in degC per PSU.
 
@@ -112,8 +114,6 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: dTFr_dS         ! The derivative of the freezing temperature with
-                          ! salinity, in degC PSU-1.
   character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
@@ -140,10 +140,10 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
                  "The heat capacity of fresh ice, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=2100.0)
-  call get_param(param_file, mod, "DTFREEZE_DS", dTFr_dS, &
+  call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
-  ITV%mu_TS = -dTFr_dS
+  ITV%mu_TS = -ITV%dTf_dS
 
   call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
                  "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
@@ -453,7 +453,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
 
   m_ice = ITV%Rho_ice*hice/NkIce ! ice mass of each layer
   m_snow = ITV%Rho_snow*hsno     ! full snow layer mass
-  tfi(:) = -ITV%mu_TS*sice(:)    ! freezing temperature of ice layers
+  call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
   hie = max(hice, CS%H_LO_LIM); ! prevent thin ice inaccuracy (mw)
   kk = NkIce*CS%KI/hie                     ! full ice layer conductivity
 
@@ -481,7 +481,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   bb(0) = m_snow*ITV%Cp_ice
   do k=1,NkIce   ! load bb with heat capacity term.
     salt_part = 0.0
-    if (sice(k)>0.0) salt_part = -ITV%MU_TS*sice(k)*ITV%LI/(tice(k)*tice(k))
+    if (sice(k)>0.0) salt_part = tfi(k)*ITV%LI/(tice(k)*tice(k))
     bb(k) = m_ice*(ITV%Cp_ice-salt_part) ! add coupling to this later
   enddo
 
@@ -782,6 +782,35 @@ subroutine unpack_check(hs, tsn, hi, t_ice, NkIce, cn)
   if (bad>0) print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',hs,hi,'tsn/tice=', &
                       tsn,t_ice(:),'cn=',cn
 end subroutine unpack_check
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! T_Freeze - Return the freezing temperature as a function of salinity (and    !
+!            possibly later pressure).                                         !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function T_Freeze(S, ITV)
+  real, intent(in) :: S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: T_Freeze
+
+  T_Freeze = 0.0 + ITV%dTf_dS * S
+
+end function T_Freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! calculate_T_Freeze - Calculate an array of freezing temperatures for an      !
+!            an array of salinities (and maybe later pressures).               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine calculate_T_Freeze(S, T_Freeze, ITV)
+  real, dimension(:), intent(in) :: S
+  real, dimension(:), intent(out) :: T_Freeze
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  integer :: k, nk_ice
+  nk_ice = size(S)
+
+  do k=1,nk_ice ; T_Freeze(k) = 0.0 + ITV%dTf_dS * S(k) ; enddo
+
+end subroutine calculate_T_Freeze
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! enthalpy_from_TS - Set a column of enthalpies from temperature and salinity. !
