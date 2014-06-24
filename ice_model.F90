@@ -86,14 +86,13 @@ use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
-use ice_shortwave_dEdd, only: shortwave_dEdd0_set_params
 use ice_spec_mod, only: get_sea_surface
 
-use ice_thm_mod,      only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
+use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
-use SIS2_ice_thm,     only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init
-use SIS2_ice_thm,     only: ice_optics_SIS2, get_SIS2_thermo_coefs
-use SIS2_ice_thm,     only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
+use SIS2_ice_thm,  only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,  only: ice_optics_SIS2, get_SIS2_thermo_coefs
+use SIS2_ice_thm,  only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
@@ -2605,23 +2604,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! other modules had control states, these would be moved to those modules.
   real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
   real :: heat_rough_ice ! heat roughness length, in m.
-    ! Parameters that properly belong exclusively to ice_thm.
-  real :: alb_snow       ! snow albedo (less if melting), nondim.
-  real :: alb_ice        ! ice albedo (less if melting), nondim.
+
+  ! Parameters that properly belong exclusively to ice_thm.
   real :: k_snow         ! snow conductivity (W/mK)
-  real :: pen_ice      ! part unreflected solar penetrates ice, nondim.
-  real :: opt_dep_ice  ! ice optical depth, in m-1.
-  real :: t_range_melt ! melt albedos scaled in over T range, in deg C.
-  real :: h_lo_lim     ! The min ice thickness for temp. calc, in m.
-  real :: enthalpy_liquid_0 ! The value of enthalpy for liquid fresh
-                            ! water at 0 C, in J kg-1.
-  real :: enthalpy_units  ! A conversion factor for enthalpy from Joules kg-1.
+  real :: h_lo_lim       ! The min ice thickness for temp. calc, in m.
   real :: Time_unit       ! The time unit in seconds for ICE_STATS_INTERVAL.
-  logical :: do_deltaEdd  ! If true, a delta-Eddington radiative transfer calculation
-                          ! for the shortwave radiation within the sea-ice.
-  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
   character(len=16)  :: stagger, dflt_stagger
 
   if (associated(Ice%Ice_state)) then
@@ -2692,22 +2679,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "SNOW_CONDUCT", k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-  call get_param(param_file, mod, "SNOW_ALBEDO", alb_snow, &
-                 "The albedo of dry snow atop sea ice.", units="nondim", &
-                 default=0.85)
-  call get_param(param_file, mod, "ICE_ALBEDO", alb_ice, &
-                 "The albedo of dry bare sea ice.", units="nondim", &
-                 default=0.5826)
-  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", pen_ice, &
-                 "The fraction of the unreflected shortwave radiation that \n"//&
-                 "penetrates into the ice.", units="Nondimensional", default=0.3)
-  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", opt_dep_ice, &
-                 "The optical depth of shortwave radiation in sea ice.", &
-                 units="m", default=0.67)
-  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", t_range_melt, &
-                 "The temperature range below freezing over which the \n"//&
-                 "albedos are changed by partial melting.", units="degC", &
-                 default=1.0)
   call get_param(param_file, mod, "COLUMN_CHECK", IST%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
@@ -2760,36 +2731,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", IST%do_sun_angle_for_alb, &
                  "If true, find the sun angle for calculating the ocean \n"//&
                  "albedo within the sea ice model.", default=.false.)
-  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", do_deltaEdd, &
-                 "If true, a delta-Eddington radiative transfer calculation \n"//&
-                 "for the shortwave radiation within the sea-ice.", default=.true.)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of sea ice with the delta-Eddington radiative \n"//&
-                 "transfer calculation.", units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of snow on sea ice with the delta-Eddington \n"//&
-                 "radiative transfer calculation.", &
-                 units="perhaps nondimensional?", default=0.0)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
-                 "A dreadfully documented tuning parameter for the radiative \n"//&
-                 "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
-                 "radiative transfer calculation.", units="perhaps nondimensional?", &
-                 default=0.0)
-  call get_param(param_file, mod, "ENTHALPY_LIQUID_0", enthalpy_liquid_0, &
-                 "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
-                 "should be physically consistent when this is adjusted, \n"//&
-                 "because only the relative value is of physical meaning, \n"//&
-                 "but roundoff errors can change the solution.", units="J kg-1", &
-                 default=0.0)
-  call get_param(param_file, mod, "ENTHALPY_UNITS", enthalpy_units, &
-                 "A constant that rescales enthalpy from J/kg to a \n"//&
-                 "different scale in its internal representation.  Changing \n"//&
-                 "this by a power of 2 is useful for debugging, as answers \n"//&
-                 "should not change.  A negative values is taken as an inverse.", &
-                 units="J kg-1", default=1.0)
-  if (enthalpy_units < 0.) enthalpy_units = -1.0 / enthalpy_units
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
@@ -2927,11 +2868,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
-  call ice_thm_param(alb_snow, alb_ice, pen_ice, opt_dep_ice, IST%slab_ice, &
-                     t_range_melt, k_snow, h_lo_lim, do_deltaEdd)
-  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, alb_snow, alb_ice, &
-                         pen_ice, opt_dep_ice, t_range_melt, k_snow, h_lo_lim, &
-                         do_deltaEdd, enthalpy_liquid_0, enthalpy_units)
+  call ice_thm_param(IST%slab_ice, k_snow, h_lo_lim)
+  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV)
 
   if (IST%Cgrid_dyn) then
     call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp)
@@ -2967,9 +2905,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
 
-  if (do_deltaEdd) &
-    call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
-
   call nullify_domain()
 
   ! Do any error checking here.
@@ -3004,6 +2939,7 @@ subroutine ice_model_end (Ice)
     call ice_B_dyn_end(IST%ice_B_dyn_CSp)
   endif
   call ice_transport_end(IST%ice_transport_CSp)
+  call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 
   call ice_grid_end(Ice%G)
   call dealloc_Ice_arrays(Ice)

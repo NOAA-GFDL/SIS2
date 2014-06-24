@@ -72,11 +72,6 @@ real, parameter :: CW    = 4.2e3     ! heat capacity of seawater 4200 J/(kg K)
 real, parameter :: DW    = 1030.0    ! density of water for waterline - kg/(m^3)
 
 ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-real            :: ALB_SNO = 0.85       ! albedo of snow (not melting)
-real            :: ALB_ICE = 0.5826     ! albedo of ice (not melting)
-real            :: PEN_ICE = 0.3        ! ice surface penetrating solar fraction
-real            :: OPT_DEP_ICE = 0.67   ! ice optical depth (m)
-real            :: T_RANGE_MELT = 1.0   ! melt albedos scaled in below melting T
 
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
 real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
@@ -101,9 +96,6 @@ real               :: DT = 1800.0
 ! temperature to be such that the brine content is less than "liq_lim" of
 ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
 real, parameter :: liq_lim = .99
-
-! for calling delta-Eddington shortwave from ice_optics
-logical :: do_deltaEdd = .true.
 
 contains
 
@@ -685,27 +677,17 @@ end subroutine ice_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
-                         slab_ice_in, t_range_melt_in, ks_in, &
-                         h_lo_lim_in, deltaEdd )
-  real, intent(in)    :: alb_sno_in, alb_ice_in, pen_ice_in 
-  real, intent(in)    :: opt_dep_ice_in, t_range_melt_in
+subroutine ice_thm_param(slab_ice_in, ks_in, h_lo_lim_in )
   logical, intent(in) :: slab_ice_in
   real, intent(in)    :: ks_in
   real, intent(in)    :: h_lo_lim_in
-  logical, intent(in) :: deltaEdd 
 
-  ALB_SNO     = alb_sno_in
-  ALB_ICE     = alb_ice_in
-  PEN_ICE     = pen_ice_in
-  OPT_DEP_ICE = opt_dep_ice_in
+
   SLAB_ICE    = slab_ice_in
-  T_RANGE_MELT = t_range_melt_in
 
   KS          = ks_in
   H_LO_LIM    = h_lo_lim_in
   H_SUBROUNDOFF = max(1e-35, 1e-20*H_LO_LIM)
-  do_deltaEdd = deltaEdd
 
 end subroutine ice_thm_param
 
@@ -728,7 +710,7 @@ subroutine slab_ice_optics(hs, hi, ts, tfw, albedo)
   endif
 
   if (hi >= crit_thickness) then
-    albedo = THICK_ICE_ALB
+    albedo = thick_ice_alb
   else
     albedo = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
   endif
@@ -764,8 +746,6 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
 !
-    real :: ef ! for Beer's law partitioning of radiation among layers
-
     real, dimension(NN) :: tice, sice
     real, dimension(0:NN) :: sol ! layer 0 for snow, 1:NN for ice
 
@@ -792,7 +772,6 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
     return
   endif
 
-  ef = exp(-hi/OPT_DEP_ICE)
   sol(0) = IS
   sol(1) = I1 ;  sol(2) = I2 ;  sol(3) = I3 ;  sol(4) = I4
   tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4
@@ -979,36 +958,11 @@ end subroutine ice5lay_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
-  real, optional, intent(out) :: pocket_coef
-  real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
-  real, optional, intent(out) :: max_enthalpy_chg
-! Arguments: pocket_coef - Minus the partial derivative of the freezing point
-!                          with salinity, times the latent heat of fusion over
-!                          the heat capacity of ice, in degC^2/psu.  This term
-!                          is used in the conversion of heat into a form of
-!                          enthalpy that is conserved with brine pockets.
-!            layer_coefs - pocket_coef times a prescribed salinity for each of
-!                          up to 4 layers, in degC^2.  With more than 4 layers,
-!                          the prescribed salinity of layer 4 is used for all
-!                          subsequent layers.
-!            max_enth_chg - The maximum ethalpy change due to the presence of
-!                           brine pockets, LI/CI.
+subroutine get_thermo_coefs(ice_salinity)
+  real, dimension(:), optional, intent(out) :: ice_salinity
+! Arguments: ice_salinity - The specified salinity of each layer when the
+!                           thermodynamic salinities are pre-specified.
   integer k, nk
-
-  ! Enthalpy = T + pocket_coef*S / T
-  if (present(pocket_coef)) pocket_coef = MU_TS*LI/CI
-
-  if (present(layer_coefs)) then  
-    nk = size(layer_coefs)
-    if (nk >= 1) layer_coefs(1) = MU_TS*SI1*LI/CI
-    if (nk >= 2) layer_coefs(2) = MU_TS*SI2*LI/CI
-    if (nk >= 3) layer_coefs(3) = MU_TS*SI3*LI/CI
-    if (nk >= 4) layer_coefs(4) = MU_TS*SI4*LI/CI
-    do k=5,nk ; layer_coefs(k) = MU_TS*SI4*LI/CI ; enddo
-  endif
-  
-  if (present(max_enthalpy_chg)) max_enthalpy_chg = LI/CI
 
   if (present(ice_salinity)) then
     nk = size(ice_salinity)

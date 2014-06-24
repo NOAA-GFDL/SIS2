@@ -32,8 +32,9 @@
 module SIS2_ice_thm
 
 ! for calling delta-Eddington shortwave from ice_optics
-use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond, &
-                               shortwave_dEdd0, dbl_kind, int_kind, nilyr, nslyr
+use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond
+use ice_shortwave_dEdd, only : shortwave_dEdd0, shortwave_dEdd0_set_params
+use ice_shortwave_dEdd, only : dbl_kind, int_kind, nilyr, nslyr
 use ice_thm_mod, only : get_thermo_coefs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
@@ -41,7 +42,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 
 implicit none ; private
 
-public :: get_thermo_coefs, get_SIS2_thermo_coefs
+public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
 public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze
@@ -63,23 +64,23 @@ type, public :: ice_thermo_type ; private
 
   real :: enth_liq_0 = 0.0     ! The value of enthalpy for liquid fresh
                                ! water at 0 C, in J kg-1.
-  real :: enth_unit = 1.0      ! A rescaling factor for enthalpy from J kg-1.
+  real :: enth_unit = 1.0      ! A conversion factor for enthalpy from Joules kg-1.
 end type ice_thermo_type
 
 type, public :: SIS2_ice_thm_CS ; private
   ! properties of ice, snow, and seawater (NCAR CSM values)
-  real :: KS    = 0.31      ! conductivity of snow - 0.31 W/(mK)
-  real :: KI    = 2.03      ! conductivity of ice  - 2.03 W/(mK)
+  real :: KS   ! conductivity of snow, often 0.31 W/(mK)
+  real :: KI   ! conductivity of ice, often 2.03 W/(mK)
 
   ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-  real :: alb_sno = 0.85       ! albedo of snow (not melting)
-  real :: alb_ice = 0.5826     ! albedo of ice (not melting)
-  real :: pen_ice = 0.3        ! ice surface penetrating solar fraction
-  real :: opt_dep_ice = 0.67   ! ice optical depth (m)
-  real :: t_range_melt = 1.0   ! melt albedos scaled in below melting T
-  real :: temp_ice_freeze      ! The freezing temperature of the top ice layer, in C.
+  real :: alb_snow        ! albedo of snow (not melting)
+  real :: alb_ice         ! albedo of ice (not melting)
+  real :: pen_ice         ! ice surface penetrating solar fraction
+  real :: opt_dep_ice     ! ice optical depth (m)
+  real :: t_range_melt    ! melt albedos scaled in below melting T
+  real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
 
-  real :: h_lo_lim = 0.0       ! hi/hs lower limit for temp. calc.
+  real :: h_lo_lim        ! hi/hs lower limit for temp. calc.
   real :: frazil_temp_offset = 0.5 ! A temperature offset between the 
 
   ! In the ice temperature calculation we place a limit to below (salinity
@@ -89,8 +90,9 @@ type, public :: SIS2_ice_thm_CS ; private
   ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
   real :: liq_lim = .99
 
-  ! for calling delta-Eddington shortwave from ice_optics
-  logical :: do_deltaEdd = .true.
+  logical :: do_deltaEdd = .true.  ! If true, use a delta-Eddington radiative
+                          ! transfer calculation for the shortwave radiation
+                          ! within the sea-ice and snow.
 end type SIS2_ice_thm_CS
 
 contains
@@ -98,46 +100,115 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS2_ice_thm_init(param_file, CS, ITV, alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
-                         t_range_melt_in, ks_in, h_lo_lim_in, deltaEdd, &
-                         enth_liquid_0, enthalpy_units )
+subroutine SIS2_ice_thm_init(param_file, CS, ITV )
 
-  use ice_thm_mod, only : DS, DI, DW, CI, MU_TS, TFI
+  use ice_thm_mod, only : TFI
   use constants_mod, only : hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
-   type(param_file_type),       intent(in)    :: param_file
+  type(param_file_type),       intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
-  real, intent(in)    :: alb_sno_in, alb_ice_in, pen_ice_in 
-  real, intent(in)    :: opt_dep_ice_in, t_range_melt_in
-  real, intent(in)    :: ks_in
-  real, intent(in)    :: h_lo_lim_in
-  logical, intent(in) :: deltaEdd 
-  real, optional, intent(in) :: enth_liquid_0
-  real, optional, intent(in) :: enthalpy_units
+
+  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
+  real :: dTFr_dS         ! The derivative of the freezing temperature with
+                          ! salinity, in degC PSU-1.
+  character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
   if (.not.associated(ITV)) allocate(ITV)
 
-  CS%alb_sno     = alb_sno_in
-  CS%alb_ice     = alb_ice_in
-  CS%pen_ice     = pen_ice_in
-  CS%opt_dep_ice = opt_dep_ice_in
-  CS%t_range_melt = t_range_melt_in
   CS%temp_ice_freeze = TFI
 
-  CS%KS          = ks_in
-  CS%H_LO_LIM    = h_lo_lim_in
-
-  CS%do_deltaEdd = deltaEdd
-
-! ITV%Cp_water = ...
+  ! LI must be taken from the constants mod for internal consistency in the
+  ! coupled climate model.
   ITV%LI = hlf
-  ITV%rho_ice = DI ; ITV%rho_snow = DS ; ITV%rho_water = DW
-  ITV%Cp_ice = CI ; ITV%mu_TS = MU_TS
 
-  ITV%enth_liq_0 = 0.0 ; if (present(enth_liquid_0)) ITV%enth_liq_0 = enth_liquid_0
-  ITV%enth_unit = 1.0 ; if (present(enthalpy_units)) ITV%enth_unit = enthalpy_units
+  call get_param(param_file, mod, "RHO_OCEAN", ITV%Rho_water, &
+                 "The nominal density of sea water as used by SIS.", &
+                 units="kg m-3", default=1030.0)
+  call get_param(param_file, mod, "RHO_ICE", ITV%Rho_ice, &
+                 "The nominal density of sea ice as used by SIS.", &
+                 units="kg m-3", default=905.0)
+  call get_param(param_file, mod, "RHO_SNOW", ITV%Rho_snow, &
+                 "The nominal density of snow as used by SIS.", &
+                 units="kg m-3", default=330.0)
+  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
+                 "The heat capacity of sea water, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=4200.0)
+  call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
+                 "The heat capacity of fresh ice, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=2100.0)
+  call get_param(param_file, mod, "DTFREEZE_DS", dTFr_dS, &
+                 "The derivative of the freezing temperature with salinity.", &
+                 units="deg C PSU-1", default=-0.054)
+  ITV%mu_TS = -dTFr_dS
+
+  call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
+                 "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
+                 "should be physically consistent when this is adjusted, \n"//&
+                 "because only the relative value is of physical meaning, \n"//&
+                 "but roundoff errors can change the solution.", units="J kg-1", &
+                 default=0.0)
+  call get_param(param_file, mod, "ENTHALPY_UNITS", ITV%enth_unit, &
+                 "A constant that rescales enthalpy from J/kg to a \n"//&
+                 "different scale in its internal representation.  Changing \n"//&
+                 "this by a power of 2 is useful for debugging, as answers \n"//&
+                 "should not change.  A negative values is taken as an inverse.", &
+                 units="J kg-1", default=1.0)
+  if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
+
+
+  call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
+                 "The conductivity of heat in snow.", units="W m-1 K-1", &
+                 default=0.31)
+  call get_param(param_file, mod, "ICE_CONDUCTIVITY", CS%Ki, &
+                 "The conductivity of heat in ice.", units="W m-1 K-1", &
+                 default=2.03)
+  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", CS%h_lo_lim, &
+                 "The minimum ice thickness at which to do temperature \n"//&
+                 "calculations.", units="m", default=0.0)
+ 
+  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
+                 "If true, a delta-Eddington radiative transfer calculation \n"//&
+                 "for the shortwave radiation within the sea-ice.", default=.true.)
+
+  if (CS%do_deltaEdd) then
+    call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
+                   "A dreadfully documented tuning parameter for the radiative \n"//&
+                   "propeties of sea ice with the delta-Eddington radiative \n"//&
+                   "transfer calculation.", units="perhaps nondimensional?", default=0.0)
+    call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
+                   "A dreadfully documented tuning parameter for the radiative \n"//&
+                   "propeties of snow on sea ice with the delta-Eddington \n"//&
+                   "radiative transfer calculation.", &
+                   units="perhaps nondimensional?", default=0.0)
+    call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
+                   "A dreadfully documented tuning parameter for the radiative \n"//&
+                   "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
+                   "radiative transfer calculation.", units="perhaps nondimensional?", &
+                   default=0.0)
+    call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
+
+  else
+    call get_param(param_file, mod, "SNOW_ALBEDO", CS%alb_snow, &
+                   "The albedo of dry snow atop sea ice.", units="nondim", &
+                   default=0.85)
+    call get_param(param_file, mod, "ICE_ALBEDO", CS%alb_ice, &
+                   "The albedo of dry bare sea ice.", units="nondim", &
+                   default=0.5826)
+    call get_param(param_file, mod, "ICE_SW_PEN_FRAC", CS%pen_ice, &
+                   "The fraction of the unreflected shortwave radiation that \n"//&
+                   "penetrates into the ice.", units="Nondimensional", default=0.3)
+    call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", CS%opt_dep_ice, &
+                   "The optical depth of shortwave radiation in sea ice.", &
+                   units="m", default=0.67)
+    call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
+                   "The temperature range below freezing over which the \n"//&
+                   "albedos are changed by partial melting.", units="degC", &
+                   default=1.0)
+  endif
 
 end subroutine SIS2_ice_thm_init
 
@@ -284,7 +355,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
     abs_int = 1.0 - trn
 
   else
-    as = CS%alb_sno ; ai = CS%alb_ice
+    as = CS%alb_snow ; ai = CS%alb_ice
     snow_cover = hs/(hs+0.02)                ! thin snow partially covers ice
 
     fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
@@ -859,31 +930,23 @@ end function Temp_from_En_S
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_SIS2_thermo_coefs(ITV, pocket_coef, layer_coefs, max_enthalpy_chg, &
-                   ice_salinity, Cp_Ice, enthalpy_units, specified_thermo_salinity)
+subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
+                                 specified_thermo_salinity)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real, optional, intent(out) :: pocket_coef
-  real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
-  real, optional, intent(out) :: max_enthalpy_chg
+  real, dimension(:), optional, intent(out) :: ice_salinity
   real, optional, intent(out) :: Cp_Ice, enthalpy_units
   logical, optional, intent(out) :: specified_thermo_salinity
-! Arguments: pocket_coef - Minus the partial derivative of the freezing point
-!                          with salinity, times the latent heat of fusion over
-!                          the heat capacity of ice, in degC^2/psu.  This term
-!                          is used in the conversion of heat into a form of
-!                          enthalpy that is conserved with brine pockets.
-!            layer_coefs - pocket_coef times a prescribed salinity for each of
-!                          up to 4 layers, in degC^2.  With more than 4 layers,
-!                          the prescribed salinity of layer 4 is used for all
-!                          subsequent layers.
-!            max_enth_chg - The maximum ethalpy change due to the presence of
-!                           brine pockets, LI/Cp_Ice.
+! Arguments: ITV - The ice_thermo_type that contains all sea-ice thermodynamic
+!                  parameters.
 !            ice_salinity - The specified salinity of each layer when the
 !                           thermodynamic salinities are pre-specified.
 !            enthalpy_units - A unit conversion factor for ethalpy from Joules.
 !            Cp_Ice - The heat capacity of ice in J kg-1 K-1.
+!            specified_thermo_salinity - If true, all thermodynamic calculations
+!                  are done with a specified salinity profile that may be
+!                  independent of the ice bulk salinity.
 
-  call get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
+  call get_thermo_coefs(ice_salinity=ice_salinity)
   
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
@@ -1172,5 +1235,13 @@ function column_enthalpy(m_snow, m_ice, t_snow, t_ice, s_ice, ITV)
   enddo
 
 end function column_enthalpy
+
+subroutine SIS2_ice_thm_end(CS, ITV)
+  type(SIS2_ice_thm_CS), pointer :: CS
+  type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
+
+  deallocate(ITV)
+  deallocate(CS)
+end subroutine SIS2_ice_thm_end
 
 end module SIS2_ice_thm
