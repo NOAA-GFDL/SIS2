@@ -149,7 +149,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   real :: dt_adv
   character(len=200) :: mesg
-  integer :: i, j, k, l, bad, isc, iec, jsc, jec, isd, ied, jsd, jed
+  integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
@@ -259,11 +259,11 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     heat_ice(:,:,:,:) = heat_fill_val
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k)>0.0) then
-        do l=1,G%NkIce
-          heat_ice(i,j,k,l) = Enth_from_TS(t_ice(i,j,k,L), S_col(L), ITV)
+        do m=1,G%NkIce
+          heat_ice(i,j,k,m) = Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV)
         enddo
       else
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = heat_fill_val ; enddo
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = heat_fill_val ; enddo
       endif
     enddo ; enddo ; enddo
   else
@@ -276,8 +276,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   endif
   
   call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
-  do l=1,G%NkIce ! The do loop allows these to be combined with the following.
-    call pass_var(heat_ice(:,:,:,l), G%Domain, complete=.false.)
+  do m=1,G%NkIce ! The do loop allows these to be combined with the following.
+    call pass_var(heat_ice(:,:,:,m), G%Domain, complete=.false.)
   enddo
   call pass_var(t_snow, G%Domain, complete=.false.)
   call pass_var(vol_ice,  G%Domain, complete=.false.)
@@ -299,17 +299,17 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
       if (vol0_ice(i,j,k)>0.0) then
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = heat_ice(i,j,k,l) * vol0_ice(i,j,k) ; enddo
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = heat_ice(i,j,k,m) * vol0_ice(i,j,k) ; enddo
         t_snow(i,j,k) = t_snow(i,j,k)*vol0_snow(i,j,k)
       else
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = 0.0 ; enddo
         t_snow(i,j,k) = 0.0
       endif
     enddo ; enddo ; enddo
     do k=1,G%CatIce
       call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
-      do l=1,G%NkIce
-        call ice_advect(uc, vc, heat_ice(:,:,k,l), dt_slow, G, CS)
+      do m=1,G%NkIce
+        call ice_advect(uc, vc, heat_ice(:,:,k,m), dt_slow, G, CS)
       enddo
     enddo
 
@@ -337,8 +337,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k)>0.0) then
         I_vol_ice = 1.0 / vol_ice(i,j,k)
-        do l=1,G%NkIce
-          heat_ice(i,j,k,l) = heat_ice(i,j,k,l) * I_vol_ice
+        do m=1,G%NkIce
+          heat_ice(i,j,k,m) = heat_ice(i,j,k,m) * I_vol_ice
         enddo
         if (vol_snow(i,j,k)>0.0) then
           t_snow(i,j,k) = t_snow(i,j,k)/vol_snow(i,j,k)
@@ -346,7 +346,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
           t_snow(i,j,k) = 0.0
         endif
       else
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = 0.0 ; enddo
         t_snow(i,j,k) = 0.0
       endif
     enddo ; enddo ; enddo
@@ -390,8 +390,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, h_ice, dt_slow, G, CS)
 
-    do l=1,G%NkIce
-      call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, heat_ice(:,:,:,l), dt_slow, G, CS)
+    do m=1,G%NkIce
+      call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, heat_ice(:,:,:,m), dt_slow, G, CS)
     enddo
 
     call advect_ice_tracer(vol0_snow, vol_snow, uh_snow, vh_snow, t_snow, dt_slow, G, CS)
@@ -442,7 +442,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k)<=0.0) then
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = 0.0 ; enddo
         h_snow(i,j,k) = 0.0
         t_snow(i,j,k) = 0.0
       endif
@@ -458,11 +458,11 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! gives a freezing point that matches the local temperature.
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (vol_ice(i,j,k)>0.0) then
-      do l=1,G%NkIce
-        t_ice(i,j,k,l) = temp_from_En_S(heat_ice(i,j,k,l), S_col(l), ITV)
+      do m=1,G%NkIce
+        t_ice(i,j,k,m) = temp_from_En_S(heat_ice(i,j,k,m), S_col(m), ITV)
       enddo
     else
-      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
+      do m=1,G%NkIce ; t_ice(i,j,k,m) = 0.0 ; enddo
     endif
   enddo ; enddo ; enddo
 
@@ -536,8 +536,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     if ((bad == 0) .and. (h_ice(i,j,k) == 0.0)) cycle
     if (t_snow(i,j,k)>0.0.or.t_snow(i,j,k)<-100.0) &
       bad = bad+1
-    do l=1,G%NkIce
-      if (t_ice(i,j,k,l) > 0.0 .or. t_ice(i,j,k,l) < -100.0) &
+    do m=1,G%NkIce
+      if (t_ice(i,j,k,m) > 0.0 .or. t_ice(i,j,k,m) < -100.0) &
         bad = bad+1
     enddo      
 !### USE BETTER ERROR HANDLING LATER.
@@ -1175,7 +1175,7 @@ subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
 !  (out)     tot_snow - The globally integrated total snow, in m3.
 
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
-  real :: total
+  real :: total, I_Nk
   real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec
@@ -1187,9 +1187,11 @@ subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
   sum_enth_ice(:,:) = 0.0 ; sum_enth_snow(:,:) = 0.0
 
   if (spec_thermo_sal) then
+    I_Nk = 1.0 / G%NkIce
     do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * (h_ice(i,j,k)*part_sz(i,j,k))) * &
-                          Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV) !### / G%NkIce ?
+      sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
+                          ((h_ice(i,j,k)*part_sz(i,j,k))*I_Nk)) * &
+                          Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV)
     enddo ; enddo ; enddo ; enddo
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * (h_snow(i,j,k)*part_sz(i,j,k))) * &
