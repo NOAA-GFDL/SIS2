@@ -42,7 +42,7 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 
 use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_grid_mod, only : sea_ice_grid_type
-use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs
+use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 
 use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
@@ -387,7 +387,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   col_heat(:,:,:) = 0.0
   col_salt(:,:,:) = 0.0
 
-  S_col(0) = 0.0 ; call get_SIS2_thermo_coefs(ice_salinity=S_col(1:))
+  S_col(0) = 0.0 ; call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col(1:))
 
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
@@ -403,7 +403,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 
       T_col(0) = IST%t_snow(i,j,k)
       do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
-      call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:))
+      call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:), IST%ITV)
 
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
           (IST%Rho_snow*IST%h_snow(i,j,k)) * enthalpy(0)
@@ -666,7 +666,7 @@ subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(enthalpy_units=enth_units)
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   if (CS%dt < 0.0) CS%dt = dt
 
@@ -738,7 +738,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(enthalpy_units=enth_units)
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
 
@@ -789,7 +789,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
   ! not include the enthalpy changes due to net mass changes in the ice,
   ! as these are not yet known.
 
-  call get_SIS2_thermo_coefs(enthalpy_units=enth_units)
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     ! Runoff and calving are passed directly on to the ocean.

@@ -34,6 +34,7 @@ use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 
 use ice_grid_mod, only : sea_ice_grid_type
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, Enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm, only : ice_thermo_type
 
 implicit none ; private
 
@@ -77,7 +78,7 @@ contains
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
-                          sea_lev, hlim, dt_slow, G, CS)
+                          sea_lev, hlim, dt_slow, G, ITV, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
@@ -86,9 +87,10 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
   real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
-  real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
-  real,                    intent(in) :: dt_slow
-  type(ice_transport_CS), pointer :: CS
+  real, dimension(:),    intent(in) :: hlim  ! Move to grid type?
+  real,                  intent(in) :: dt_slow
+  type(ice_thermo_type), intent(in) :: ITV
+  type(ice_transport_CS), pointer   :: CS
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1, in/out.
 !  (inout)   h_ice - The thickness of the ice in each category in m.
@@ -106,6 +108,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !  (in)      dt_slow - The amount of time over which the ice dynamics are to be
 !                      advanced, in s.
 !  (in)      G - The ocean's grid structure.
+!  (in)      ITV - The ice thermodynamic parameter structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
   
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
@@ -225,12 +228,12 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
-  call get_SIS2_thermo_coefs(ice_salinity=S_col, &
+  call get_SIS2_thermo_coefs(ITV, ice_salinity=S_col, &
                              specified_thermo_salinity=spec_thermo_sal)
 
   if (CS%check_conservation) then
     call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                            G, enth_ice(1), enth_snow(1))
+                            G, ITV, enth_ice(1), enth_snow(1))
   endif
 
   !   Determine the volume of snow and ice.
@@ -252,12 +255,12 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   ! includes the heat requirements for melting of brine pockets associated with 
   ! temperature changes.
   if (spec_thermo_sal) then
-    heat_fill_val = Enth_from_TS(0.0,0.0)
+    heat_fill_val = Enth_from_TS(0.0, 0.0, ITV)
     heat_ice(:,:,:,:) = heat_fill_val
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k)>0.0) then
         do l=1,G%NkIce
-          heat_ice(i,j,k,l) = Enth_from_TS(t_ice(i,j,k,L), S_col(L))
+          heat_ice(i,j,k,l) = Enth_from_TS(t_ice(i,j,k,L), S_col(L), ITV)
         enddo
       else
         do l=1,G%NkIce ; heat_ice(i,j,k,l) = heat_fill_val ; enddo
@@ -456,7 +459,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (vol_ice(i,j,k)>0.0) then
       do l=1,G%NkIce
-        t_ice(i,j,k,l) = temp_from_En_S(heat_ice(i,j,k,l), S_col(l))
+        t_ice(i,j,k,l) = temp_from_En_S(heat_ice(i,j,k,l), S_col(l), ITV)
       enddo
     else
       do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
@@ -494,7 +497,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(2), tot_snow(2))
 
     call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                            G, enth_ice(2), enth_snow(2))
+                            G, ITV, enth_ice(2), enth_snow(2))
     
     if (is_root_pe()) then
       I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
@@ -1154,11 +1157,12 @@ subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
 end subroutine get_total_amounts
 
 subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                              G, enth_ice, enth_snow)
+                              G, ITV, enth_ice, enth_snow)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_ice, h_snow, t_snow
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)),  intent(in) :: t_ice
+  type(ice_thermo_type), intent(in) :: ITV
   type(EFP_type), intent(out) :: enth_ice, enth_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
@@ -1166,28 +1170,30 @@ subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
 !                      category in m.
 !  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
 !                       ice in each category in m.
+!  (in)      ITV - A type containing thermodynamic parameters.
 !  (out)     tot_ice - The globally integrated total ice, in m3.
 !  (out)     tot_snow - The globally integrated total snow, in m3.
 
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
-  real :: total, LI_CI, enth_chg
+  real :: total
   real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call get_SIS2_thermo_coefs(ice_salinity=S_col, specified_thermo_salinity=spec_thermo_sal)
+  call get_SIS2_thermo_coefs(ITV, ice_salinity=S_col, &
+             specified_thermo_salinity=spec_thermo_sal)
 
   sum_enth_ice(:,:) = 0.0 ; sum_enth_snow(:,:) = 0.0
 
   if (spec_thermo_sal) then
     do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * (h_ice(i,j,k)*part_sz(i,j,k))) * &
-                                              Enth_from_TS(t_ice(i,j,k,m),S_col(m)) 
+                          Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV) !### / G%NkIce ?
     enddo ; enddo ; enddo ; enddo
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * (h_snow(i,j,k)*part_sz(i,j,k))) * &
-                           Enth_from_TS(T_snow(i,j,k), 0.0) 
+                           Enth_from_TS(T_snow(i,j,k), 0.0, ITV) 
     enddo ; enddo ; enddo
   else
     call SIS_error(FATAL, "get_total_enthalpy needs to be extended for "//&
