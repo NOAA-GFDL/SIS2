@@ -217,7 +217,7 @@ end subroutine SIS2_ice_thm_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
                     alb_nir_dir, alb_nir_dif, abs_sfc, abs_snow, abs_ice_lay, &
-                    abs_ocn, abs_int, pen, trn, CS, ITV, coszen_in)
+                    abs_ocn, abs_int, CS, coszen_in)
   real, intent(in   ) :: hs  ! snow thickness (m-snow)
   real, intent(in   ) :: hi  ! ice thickness (m-ice)
   real, intent(in   ) :: ts  ! surface temperature
@@ -232,10 +232,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
   real, intent(  out) :: abs_ice_lay(NkIce) ! frac abs sw abs by each ice layer
   real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
   real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  real, intent(  out) :: pen      ! frac sw passed below the surface (frac 1-pen absorbed at the surface)
-  real, intent(  out) :: trn      ! frac sw passed below the bottom  (frac 1-trn absorbed at the interior)
   type(SIS2_ice_thm_CS), intent(in) :: CS
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, intent(in),optional :: coszen_in
 
   real :: alb, as, ai, snow_cover, fh
@@ -243,6 +240,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
                           ! is still present at the top of each ice layer (ND).
   real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
+  real :: pen      ! frac sw passed below the surface (frac 1-pen absorbed at the surface)
   integer :: m
   character(len=200) :: mesg
 
@@ -351,8 +349,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
     alb_nir_dif = alidf(1,1)
 
     pen = (fswint(1,1) + fswthru(1,1)) * I_coalb
-    trn = 0.0 ; if (pen > 0.0) trn = abs_ocn / pen
-    abs_int = 1.0 - trn
+    abs_int = fswint(1,1) * I_coalb
 
   else
     as = CS%alb_snow ; ai = CS%alb_ice
@@ -372,9 +369,8 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
     alb_nir_dir = alb ; alb_nir_dif = alb
 
     pen = (1-snow_cover)*CS%pen_ice
-    trn = exp(-hi/CS%opt_dep_ice);
     opt_decay_lay = exp(-hi/(NkIce*CS%opt_dep_ice))
-    abs_ocn = trn*pen
+    abs_ocn = pen * exp(-hi/CS%opt_dep_ice)
     abs_sfc  = 1.0 - pen
     abs_snow = 0.0
     SW_frac_top = pen
@@ -382,7 +378,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
       abs_ice_lay(m) = SW_frac_top * (1.0 - opt_decay_lay)
       SW_frac_top = SW_frac_top * opt_decay_lay
     enddo
-    abs_int = 1.0 - trn
+    abs_int = pen - SW_frac_top
 
      !! check for ice albedos out of range (0 to 1)
      ! if (alb.lt.0.0 .or. alb.gt.1.0) then

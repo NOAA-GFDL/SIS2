@@ -656,7 +656,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%slab_ice) then
     IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
     IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-    IST%sw_abs_int(:,:,:)= 0.0  ; IST%pen(:,:,:)= 0.0 ; IST%trn(:,:,:) = 0.0
+    IST%sw_abs_int(:,:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%h_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
@@ -677,8 +677,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
                sw_abs_lay, IST%sw_abs_ocn(i,j,k), IST%sw_abs_int(i,j,k), &
-               IST%pen(i,j,k), IST%trn(i,j,k), IST%ice_thm_CSp, IST%ITV, &
-               coszen_in=IST%coszen(i,j))
+               IST%ice_thm_CSp, coszen_in=IST%coszen(i,j))
 
       do m=1,G%NkIce ; IST%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -971,7 +970,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp) in W m-2 K-1.
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    diurnal_factor, cosz_alb
+    diurnal_factor, cosz_alb, tmp_diag
   real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
   real, dimension(0:G%NkIce) :: SW_abs_col
   real :: dt_fast, ts_new, dts, hf, hfd, latent
@@ -1256,8 +1255,14 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
 
-  if (IST%id_sw_pen>0) call post_avg(IST%id_sw_pen, IST%pen, IST%part_size, &
-                                     IST%diag, G=G, mask=G%Lmask2dT)
+  if (IST%id_sw_pen>0) then
+    tmp_diag(:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
+                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
+    enddo ; enddo ; enddo
+    call post_data(IST%id_sw_pen, tmp_diag, IST%diag, mask=G%Lmask2dT)
+  endif
 
   if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag, mask=G%Lmask2dT)
   call disable_SIS_averaging(IST%diag)

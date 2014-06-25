@@ -153,11 +153,7 @@ type ice_state_type
   !  ### ADD BETTER COMMENTS, WITH UNITS.
     lwdn         =>NULL(), &      ! Accumulated diagnostics of downward long-
     swdn         =>NULL()         ! and short-wave radiation <WHERE?> in <UNITS?>.
-  real, pointer, dimension(:,:,:) :: &
-    pen          =>NULL(), &      !   The fraction of the SW that penetrates
-                                  ! into the snow ice and ocean combined. ND.
-    trn          =>NULL()         !   The fraction of the penetrating SW that
-                                  !  is transmitted to the ocean. ND.                     
+
   real, pointer, dimension(:,:,:) :: sw_abs_sfc   =>NULL() ! frac abs sw abs @ surf.
   real, pointer, dimension(:,:,:) :: sw_abs_snow  =>NULL() ! frac abs sw abs in snow
   real, pointer, dimension(:,:,:,:) :: sw_abs_ice =>NULL() ! frac abs sw abs in ice layers
@@ -544,8 +540,6 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
   allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
-  allocate(IST%pen(SZI_(G), SZJ_(G), CatIce)) ; IST%pen(:,:,:) = 0.0 !NI
-  allocate(IST%trn(SZI_(G), SZJ_(G), CatIce)) ; IST%trn(:,:,:) = 0.0 !NI
   allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
@@ -656,7 +650,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_t_ocn_top, IST%flux_q_ocn_top)
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
-  deallocate(IST%bheat, IST%tmelt, IST%bmelt, IST%pen, IST%trn)
+  deallocate(IST%bheat, IST%tmelt, IST%bmelt)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
@@ -1225,8 +1219,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 ! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
 !  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(IST%lwdn               )
 !  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
-!  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(IST%pen                )
-!  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(IST%trn                )
 !  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(IST%tmelt              )
 !  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(IST%bmelt              )
 !  write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(IST%h_snow             )
