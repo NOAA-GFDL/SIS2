@@ -154,6 +154,30 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
+  !   Convert from ice temperature (which is not conserved) to enthalpy, which
+  ! includes the heat requirements for melting of brine pockets associated with 
+  ! temperature changes.
+  call get_SIS2_thermo_coefs(ITV, ice_salinity=S_col, &
+                             specified_thermo_salinity=spec_thermo_sal)
+  if (spec_thermo_sal) then
+    heat_fill_val = Enth_from_TS(0.0, 0.0, ITV)
+    heat_ice(:,:,:,:) = heat_fill_val
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      if (part_sz(i,j,k)*h_ice(i,j,k) > 0.0) then
+        do m=1,G%NkIce
+          heat_ice(i,j,k,m) = Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV)
+        enddo
+        heat_snow(i,j,k) = Enth_from_TS(t_snow(i,j,k), 0.0, ITV)
+      else
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = heat_fill_val ; enddo
+        heat_snow(i,j,k) = heat_fill_val
+      endif
+    enddo ; enddo ; enddo
+  else
+    call SIS_error(FATAL, "ice_transport needs to be extended for "//&
+                          "evolving thermodynamic ice salinity.")
+  endif
+
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
     call slab_ice_advect(uc, vc, h_ice(:,:,1), 4.0, dt_slow, G, CS)
@@ -229,11 +253,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
-  call get_SIS2_thermo_coefs(ITV, ice_salinity=S_col, &
-                             specified_thermo_salinity=spec_thermo_sal)
-
   if (CS%check_conservation) then
-    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+    call get_total_enthalpy(h_ice, h_snow, part_sz, heat_ice, heat_snow, &
                             G, ITV, enth_ice(1), enth_snow(1))
   endif
 
@@ -251,28 +272,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
       vol_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
-
-  !   Convert from ice temperature (which is not conserved) to enthalpy, which
-  ! includes the heat requirements for melting of brine pockets associated with 
-  ! temperature changes.
-  if (spec_thermo_sal) then
-    heat_fill_val = Enth_from_TS(0.0, 0.0, ITV)
-    heat_ice(:,:,:,:) = heat_fill_val
-    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      if (vol_ice(i,j,k)>0.0) then
-        do m=1,G%NkIce
-          heat_ice(i,j,k,m) = Enth_from_TS(t_ice(i,j,k,m), S_col(m), ITV)
-        enddo
-        heat_snow(i,j,k) = Enth_from_TS(t_snow(i,j,k), 0.0, ITV)
-      else
-        do m=1,G%NkIce ; heat_ice(i,j,k,m) = heat_fill_val ; enddo
-        heat_snow(i,j,k) = heat_fill_val
-      endif
-    enddo ; enddo ; enddo
-  else
-    call SIS_error(FATAL, "ice_transport needs to be extended for "//&
-                          "evolving thermodynamic ice salinity.")
-  endif
 
   if (CS%check_conservation) then
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
@@ -455,25 +454,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   endif ! Not SIS1_transport.
 
-
-  !   Convert from enthalpy back to ice temperature. These expressions stem from
-  ! the assumptions that brine pockets will shrink or grow until their salinity
-  ! gives a freezing point that matches the local temperature.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (vol_ice(i,j,k)>0.0) then
-      do m=1,G%NkIce
-        t_ice(i,j,k,m) = temp_from_En_S(heat_ice(i,j,k,m), S_col(m), ITV)
-      enddo
-    else
-      do m=1,G%NkIce ; t_ice(i,j,k,m) = 0.0 ; enddo
-    endif
-    if (vol_snow(i,j,k) > 0.0) then
-      t_snow(i,j,k) = temp_from_En_S(heat_snow(i,j,k), 0.0, ITV)
-    else
-      t_snow(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
-
   uf(:,:) = 0.0; vf(:,:) = 0.0
   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
     do j=jsc,jec ; do I=isc-1,iec
@@ -504,7 +484,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(2), tot_snow(2))
 
-    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+    call get_total_enthalpy(h_ice, h_snow, part_sz, heat_ice, heat_snow, &
                             G, ITV, enth_ice(2), enth_snow(2))
     
     if (is_root_pe()) then
@@ -563,6 +543,25 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
   if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
   if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
+
+
+  !   Convert from enthalpy back to ice temperature. These expressions stem from
+  ! the assumptions that brine pockets will shrink or grow until their salinity
+  ! gives a freezing point that matches the local temperature.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (part_sz(i,j,k)*h_ice(i,j,k) > 0.0) then
+      do m=1,G%NkIce
+        t_ice(i,j,k,m) = temp_from_En_S(heat_ice(i,j,k,m), S_col(m), ITV)
+      enddo
+    else
+      do m=1,G%NkIce ; t_ice(i,j,k,m) = 0.0 ; enddo
+    endif
+    if (part_sz(i,j,k)*h_snow(i,j,k) > 0.0) then
+      t_snow(i,j,k) = temp_from_En_S(heat_snow(i,j,k), 0.0, ITV)
+    else
+      t_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
 
 end subroutine ice_transport
 
@@ -1165,7 +1164,57 @@ subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
 
 end subroutine get_total_amounts
 
-subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
+subroutine get_total_enthalpy(h_ice, h_snow, part_sz, heat_ice, heat_snow, &
+                              G, ITV, enth_ice, enth_snow)
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_ice, h_snow, heat_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)),  intent(in) :: heat_ice
+  type(ice_thermo_type), intent(in) :: ITV
+  type(EFP_type), intent(out) :: enth_ice, enth_snow
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1 at the end, in/out.
+!  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
+!                      category in m.
+!  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
+!                       ice in each category in m.
+!  (in)      ITV - A type containing thermodynamic parameters.
+!  (out)     tot_ice - The globally integrated total ice, in m3.
+!  (out)     tot_snow - The globally integrated total snow, in m3.
+
+  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
+  real :: total, I_Nk
+  real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
+  logical :: spec_thermo_sal
+  integer :: i, j, k, m, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  call get_SIS2_thermo_coefs(ITV, ice_salinity=S_col, &
+             specified_thermo_salinity=spec_thermo_sal)
+
+  sum_enth_ice(:,:) = 0.0 ; sum_enth_snow(:,:) = 0.0
+
+  if (spec_thermo_sal) then
+    I_Nk = 1.0 / G%NkIce
+    do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
+                ((h_ice(i,j,k)*part_sz(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
+    enddo ; enddo ; enddo ; enddo
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
+                (h_snow(i,j,k)*part_sz(i,j,k))) * heat_snow(i,j,k)
+    enddo ; enddo ; enddo
+  else
+    call SIS_error(FATAL, "get_total_enthalpy needs to be extended for "//&
+                          "evolving thermodynamic ice salinity.")
+  endif
+
+  total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
+  total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
+
+end subroutine get_total_enthalpy
+
+subroutine get_total_enthalpy_from_T(h_ice, h_snow, part_sz, t_ice, t_snow, &
                               G, ITV, enth_ice, enth_snow)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_ice, h_snow, t_snow
@@ -1207,14 +1256,14 @@ subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
                            Enth_from_TS(T_snow(i,j,k), 0.0, ITV) 
     enddo ; enddo ; enddo
   else
-    call SIS_error(FATAL, "get_total_enthalpy needs to be extended for "//&
+    call SIS_error(FATAL, "get_total_enthalpy_from_T needs to be extended for "//&
                           "evolving thermodynamic ice salinity.")
   endif
 
   total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
   total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
 
-end subroutine get_total_enthalpy
+end subroutine get_total_enthalpy_from_T
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_transport_init - initialize the ice transport and set parameters.        !
