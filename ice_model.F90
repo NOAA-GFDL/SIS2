@@ -92,7 +92,7 @@ use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_r
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: ice_optics_SIS2, get_SIS2_thermo_coefs
-use SIS2_ice_thm,  only: enthalpy_from_TS, temp_from_En_S, get_SIS2_thermo_coefs
+use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, temp_from_En_S
 use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
@@ -1314,6 +1314,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   integer :: i2, j2, k2, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
 
+  real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
+  real :: heat_fill_val
+  logical :: spec_thermo_sal
+
   real, dimension(0:G%NkIce) :: T_col0, S_col0, enthalpy
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb
   real :: tot_heat_in2, tot_heat_in3, dth2, dth3, Flux_SW
@@ -1617,10 +1621,34 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call IST_chksum("Before ice_transport", IST, G)
   endif
 
+  !   Convert from ice temperature (which is not conserved) to enthalpy, which
+  ! includes the heat requirements for melting of brine pockets associated with 
+  ! temperature changes.
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
+                             specified_thermo_salinity=spec_thermo_sal)
+  if (spec_thermo_sal) then
+    heat_fill_val = Enth_from_TS(0.0, 0.0, IST%ITV)
+    IST%enth_ice(:,:,:,:) = heat_fill_val
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      if (IST%part_size(i,j,k)*IST%h_ice(i,j,k) > 0.0) then
+        do m=1,G%NkIce
+          IST%enth_ice(i,j,k,m) = Enth_from_TS(IST%t_ice(i,j,k,m), S_col(m), IST%ITV)
+        enddo
+        IST%enth_snow(i,j,k) = Enth_from_TS(IST%t_snow(i,j,k), 0.0, IST%ITV)
+      else
+        do m=1,G%NkIce ; IST%enth_ice(i,j,k,m) = heat_fill_val ; enddo
+        IST%enth_snow(i,j,k) = heat_fill_val
+      endif
+    enddo ; enddo ; enddo
+  else
+    call SIS_error(FATAL, "ice_model needs to be extended for "//&
+                          "evolving thermodynamic ice salinity.")
+  endif
+
   if (IST%Cgrid_dyn) then
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
-                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
-                       G, IST%ITV, IST%ice_transport_CSp)
+                       IST%enth_ice, IST%enth_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+                       G, IST%ice_transport_CSp)
   else
     ! B-grid transport 
     ! Convert the velocities to C-grid points for transport.
@@ -1633,18 +1661,33 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
 
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
-                       G, IST%ITV, IST%ice_transport_CSp)
+                       IST%enth_ice, IST%enth_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+                       G, IST%ice_transport_CSp)
   endif
+  !   Convert from ice and snow enthalpy back to temperature.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (IST%part_size(i,j,k)*IST%h_ice(i,j,k) > 0.0) then
+      do m=1,G%NkIce
+        IST%t_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
+      enddo
+    else
+      do m=1,G%NkIce ; IST%t_ice(i,j,k,m) = 0.0 ; enddo
+    endif
+    if (IST%part_size(i,j,k)*IST%h_snow(i,j,k) > 0.0) then
+      IST%t_snow(i,j,k) = temp_from_En_S(IST%enth_snow(i,j,k), 0.0, IST%ITV)
+    else
+      IST%t_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
+
 
   ! Set appropriate surface quantities in categories with no ice.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(IST%s_surf(i,j),IST%ITV)
   enddo ; enddo ; enddo
 
-  if (IST%debug) then
-    call IST_chksum("After ice_transport", IST, G)
-  endif
+  if (IST%bounds_check) call IST_bounds_check(IST, G, "After ice_transport")
+  if (IST%debug) call IST_chksum("After ice_transport", IST, G)
 
   ! Convert thickness and concentration to mass.
   mass(:,:) = 0.0
@@ -1762,11 +1805,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call Ice_public_type_chksum("End UIMS", Ice)
   endif
 
-  if (IST%bounds_check) &
+  if (IST%bounds_check) then
     call IST_bounds_check(IST, G, "End of update_ice_slow")
-
-  if (IST%bounds_check) &
     call Ice_public_type_bounds_check(Ice, G, "End update_ice_slow")
+  endif
 
   if (IST%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp)

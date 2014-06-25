@@ -20,7 +20,7 @@ use ice_thm_mod,      only: e_to_melt
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS
+use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -83,10 +83,13 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: &
     h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
     h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
-    t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
+    t_snow =>NULL(), &  ! The temperture of the snow in each category, in degC.
+    enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
   real, pointer, dimension(:,:,:,:) :: &
-    t_ice =>NULL()      ! The temperature of the sea ice in each category and
+    t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
+    enth_ice =>NULL()   ! The enthalpy of the sea ice in each category and
+                        ! fractional thickness layer, in enth_unit (J or rescaled).
   
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
@@ -551,8 +554,10 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
 
   allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_snow(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+  allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
 
   allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
@@ -656,6 +661,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
   deallocate(IST%h_snow, IST%t_snow, IST%h_ice, IST%t_ice)
+  deallocate(IST%enth_snow, IST%enth_ice)
 
 end subroutine dealloc_IST_arrays
 
@@ -679,13 +685,15 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
   call hchksum(IST%h_ice, trim(mesg)//" IST%h_ice",G,haloshift=hs)
-  do k=1,4
+  do k=1,G%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%h_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
   enddo
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
+  call hchksum(IST%t_snow, trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
   if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
@@ -794,6 +802,7 @@ subroutine IST_bounds_check(IST, G, msg)
   character(len=512) :: mesg1, mesg2
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
+  real    :: enth_min, enth_max
   integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
 
@@ -818,6 +827,8 @@ subroutine IST_bounds_check(IST, G, msg)
   enddo ; enddo
   tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
   tice_min = -100. ; tice_max = 1.0
+  enth_min = enth_from_TS(tice_min, 0., IST%ITV)
+  enth_max = enth_from_TS(tice_max, 0., IST%ITV)
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then
       n_bad = n_bad + 1
@@ -827,14 +838,16 @@ subroutine IST_bounds_check(IST, G, msg)
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%h_ice(i,j,k) > 1000.0) .or. (IST%h_snow(i,j,k) > 1000.0) .or. &
-        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max)) then
+        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
+        (IST%enth_snow(i,j,k) < enth_min) .or. (IST%enth_snow(i,j,k) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo ; enddo
 
   do l=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max)) then
+    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max) .or. &
+        (IST%enth_ice(i,j,k,l) < enth_min) .or. (IST%enth_ice(i,j,k,l) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
