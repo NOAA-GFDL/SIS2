@@ -47,13 +47,6 @@ public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze
 
-! In the ice temperature calculation we place a limit to below (salinity
-! dependent) freezing point on the prognosed temperatures.  For ice_resize
-! it is better to make a slightly more restrictive limit that requires the
-! temperature to be such that the brine content is less than "liq_lim" of
-! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
-real, parameter :: liq_lim = .99
-
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
   real :: Cp_Water = 4.2e3  ! The heat capacity of liquid seawater 4200 J/(kg K)
@@ -436,6 +429,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
   real, dimension(0:NkIce) :: cc_bb ! Remaining coupling ratios.
+  real :: I_liq_lim     ! The inverse of CS%liq_lim.
   real :: col_enth1, col_enth2, col_enth3
   real :: d_e_extra, e_extra_sum
   real :: tflux_bot, tflux_bot_diff, tflux_sfc, sum_sol, d_tflux_bot
@@ -620,11 +614,12 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
     tsn = 0.0
   endif
 
-  do k=1,NkIce ; if (tice(k)>tfi(k)/liq_lim) then ! push excess energy to closer of top or bottom melt
+  I_liq_lim = 1.0 / CS%liq_lim
+  do k=1,NkIce ; if (tice(k)>tfi(k)*I_liq_lim) then ! push excess energy to closer of top or bottom melt
     e_extra = (enth_from_TS(tice(k),sice(k), ITV) - &
-               enth_from_TS(tfi(k)/liq_lim,sice(k), ITV)) * (m_ice / ITV%enth_unit)
+               enth_from_TS(tfi(k)*I_liq_lim,sice(k), ITV)) * (m_ice / ITV%enth_unit)
     e_extra_sum = e_extra_sum + e_extra
-    tice(k) = tfi(k)/liq_lim
+    tice(k) = tfi(k)*I_liq_lim
     if (k<=NkIce/2) then
       tmelt = tmelt+e_extra
     else

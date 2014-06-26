@@ -680,7 +680,7 @@ subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((Ice%runoff(i2,j2) + Ice%calving(i2,j2)) + &
-              (Ice%lprec(i2,j2) + IST%fprec_ocn_top(i,j))) - IST%flux_q_ocn_top(i,j) )
+              (IST%lprec_ocn_top(i,j) + IST%fprec_ocn_top(i,j))) - IST%flux_q_ocn_top(i,j) )
     Flux_SW = (IST%flux_sw_vis_dir_ocn(i,j) + IST%flux_sw_vis_dif_ocn(i,j)) + &
               (IST%flux_sw_nir_dir_ocn(i,j) + IST%flux_sw_nir_dif_ocn(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
