@@ -680,13 +680,13 @@ subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((Ice%runoff(i2,j2) + Ice%calving(i2,j2)) + &
-              (Ice%lprec(i2,j2) + Ice%fprec(i2,j2))) - Ice%flux_q(i2,j2) )
-    Flux_SW = (Ice%flux_sw_vis_dir(i2,j2) + Ice%flux_sw_vis_dif(i2,j2)) + &
-              (Ice%flux_sw_nir_dir(i2,j2) + Ice%flux_sw_nir_dif(i2,j2))
+              (Ice%lprec(i2,j2) + IST%fprec_ocn_top(i,j))) - IST%flux_q_ocn_top(i,j) )
+    Flux_SW = (IST%flux_sw_vis_dir_ocn(i,j) + IST%flux_sw_vis_dif_ocn(i,j)) + &
+              (IST%flux_sw_nir_dir_ocn(i,j) + IST%flux_sw_nir_dif_ocn(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
-           ((Ice%flux_lw(i2,j2) - Ice%flux_lh(i2,j2)) - IST%flux_t_ocn_top(i,j)) + &
-            (-LI)*(Ice%fprec(i2,j2) + Ice%calving(i2,j2)) )
+           ((IST%flux_lw_ocn_top(i,j) - IST%flux_lh_ocn_top(i,j)) - IST%flux_t_ocn_top(i,j)) + &
+            (-LI)*(IST%fprec_ocn_top(i,j) + Ice%calving(i2,j2)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
            (IST%frazil_input(i,j)-IST%frazil(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &

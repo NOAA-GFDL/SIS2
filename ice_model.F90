@@ -519,21 +519,21 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
     call SIS_error(FATAL, "set_ice_bottom_state: Unrecognized flux_uv_stagger.")
   endif
 
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%flux_t(i2,j2) = IST%flux_t_ocn_top(i,j)
+    Ice%flux_q(i2,j2) = IST%flux_q_ocn_top(i,j)
+    Ice%flux_sw_vis_dir(i2,j2) = IST%flux_sw_vis_dir_ocn(i,j)
+    Ice%flux_sw_vis_dif(i2,j2) = IST%flux_sw_vis_dif_ocn(i,j)
+    Ice%flux_sw_nir_dir(i2,j2) = IST%flux_sw_nir_dir_ocn(i,j)
+    Ice%flux_sw_nir_dif(i2,j2) = IST%flux_sw_nir_dif_ocn(i,j)
+    Ice%flux_lw(i2,j2) = IST%flux_lw_ocn_top(i,j)
+    Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
+    Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
+!    Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j) !### lprec_ocn_top differs at roundoff.
+  enddo ; enddo
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1  ! Use these to correct for indexing differences.
-    Ice%flux_t(i2,j2) = Ice%flux_t(i2,j2) + IST%flux_t_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_q(i2,j2) = Ice%flux_q(i2,j2) + IST%flux_q_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_sw_nir_dir(i2,j2) = Ice%flux_sw_nir_dir(i2,j2) + &
-            IST%flux_sw_nir_dir_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_sw_nir_dif(i2,j2) = Ice%flux_sw_nir_dif(i2,j2) + &
-            IST%flux_sw_nir_dif_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_sw_vis_dir(i2,j2) = Ice%flux_sw_vis_dir(i2,j2) + &
-            IST%flux_sw_vis_dir_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_sw_vis_dif(i2,j2) = Ice%flux_sw_vis_dif(i2,j2) + &
-            IST%flux_sw_vis_dif_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_lw(i2,j2) = Ice%flux_lw(i2,j2) + IST%flux_lw_top(i,j,k) * part_size(i,j,k)
-    Ice%flux_lh(i2,j2) = Ice%flux_lh(i2,j2) + IST%flux_lh_top(i,j,k) * part_size(i,j,k)
-    Ice%fprec(i2,j2) = Ice%fprec(i2,j2) + IST%fprec_top(i,j,k) * part_size(i,j,k)
     Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IST%lprec_top(i,j,k) * part_size(i,j,k)
 
     do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
@@ -1867,7 +1867,18 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   do j=jsc,jec ; do i=isc,iec
     IST%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_t_top(i,j,0)
     IST%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_q_top(i,j,0)
+    IST%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lw_top(i,j,0)
+    IST%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lh_top(i,j,0)
+    IST%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dir_top(i,j,0)
+    IST%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dif_top(i,j,0)
+    IST%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dir_top(i,j,0)
+    IST%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dif_top(i,j,0)
+    IST%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%lprec_top(i,j,0)
+    IST%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%fprec_top(i,j,0)
   enddo ; enddo
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
+  enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
@@ -1885,15 +1896,24 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
                           heat_to_ocn, h2o_to_ocn, evap_from_ocn,            &
                           snow_to_ice(i,j,k), bablt                          )
 
-      ! modify above-ice to under-ice fluxes for passing to ocean
-      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
+      IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
+                                 hlv*(evap_from_ocn*Idt_slow)
+      IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
+            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
+      IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
+             ((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) + &
+               IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k)) * &
+               IST%sw_abs_ocn(i,j,k))
+      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * &
+              (h2o_to_ocn*Idt_slow)
+
+      ! modify above-ice to under-ice fluxes for passing to ocean
+      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
       IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
       IST%flux_lw_top(i,j,k) = 0.0
       IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
-      IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
       IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
             IST%flux_sw_nir_dif_top(i,j,k)) * IST%sw_abs_ocn(i,j,k)
@@ -1936,6 +1956,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
       ! spread frazil salinification over all partitions
       !
       IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + h2o_to_ocn*IST%part_size(i,j,k)/dt_slow
+      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + &
+                               (h2o_to_ocn*IST%part_size(i,j,k)) / dt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops
@@ -2215,11 +2237,22 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                   (IST%Rho_snow*IST%h_snow(i,j,k) + IST%Rho_ice*IST%h_ice(i,j,k))
   enddo ; enddo ; enddo
 
-  ! Start accumulating certain fluxes at the ocean's surface.
+  ! Start accumulating the fluxes at the ocean's surface.
   do j=jsc,jec ; do i=isc,iec
     IST%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_t_top(i,j,0)
     IST%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_q_top(i,j,0)
+    IST%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lw_top(i,j,0)
+    IST%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lh_top(i,j,0)
+    IST%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dir_top(i,j,0)
+    IST%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dif_top(i,j,0)
+    IST%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dir_top(i,j,0)
+    IST%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dif_top(i,j,0)
+    IST%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%lprec_top(i,j,0)
+    IST%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%fprec_top(i,j,0)
   enddo ; enddo
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
+  enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
@@ -2308,15 +2341,25 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           (enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap)
       endif
 
-      ! modify above-ice to under-ice fluxes for passing to ocean
-      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
+      IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
+                                 hlv*(evap_from_ocn*Idt_slow)
+      IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
+            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
+      ! ### ADD PARENTHESES.
+      IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
+             ((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k) + &
+               IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k)) * &
+               IST%sw_abs_ocn(i,j,k))
+      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * &
+              ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
+
+      ! modify above-ice to under-ice fluxes for passing to ocean
+      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
       IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
       IST%flux_lw_top(i,j,k) = 0.0
       IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
-      IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
       IST%flux_sw_vis_dif_top(i,j,k) = (IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)+IST%flux_sw_nir_dir_top(i,j,k)+   &
             IST%flux_sw_nir_dif_top(i,j,k)) * IST%sw_abs_ocn(i,j,k)
@@ -2420,6 +2463,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       ! spread frazil salinification of the ocean over all partitions
       !
       IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + (h2o_ice_to_ocn-h2o_ocn_to_ice)*IST%part_size(i,j,k)/dt_slow
+      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + &
+             ((h2o_ice_to_ocn-h2o_ocn_to_ice) * IST%part_size(i,j,k)) / dt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops

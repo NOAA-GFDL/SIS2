@@ -150,6 +150,18 @@ type ice_state_type
                                   ! to the ice or atmosphere, in W m-2.
     flux_q_ocn_top => NULL(), &   ! The upward evaporative moisture flux at
                                   ! the ocean surface, in kg m-2 s-1.
+    flux_lw_ocn_top =>NULL(), &   ! The downward flux of longwave radiation at
+                                  ! the ocean surface, in W m-2.
+    flux_sw_vis_dir_ocn =>NULL(), & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif_ocn =>NULL(), & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir_ocn =>NULL(), & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif_ocn =>NULL(), & ! bands at the ocean surface, in W m-2.
+    flux_lh_ocn_top =>NULL(), &   ! The upward flux of latent heat at the
+                                  ! ocean surface, in W m-2.
+    lprec_ocn_top => NULL(), &    ! The downward flux of liquid precipitation at
+                                  ! the ocena surface, in kg m-2 s-1.
+    fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
+                                  ! the ocena surface, in kg m-2 s-1.
   !  ### ADD BETTER COMMENTS, WITH UNITS.
     lwdn         =>NULL(), &      ! Accumulated diagnostics of downward long-
     swdn         =>NULL()         ! and short-wave radiation <WHERE?> in <UNITS?>.
@@ -531,6 +543,14 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%Enth_Mass_out_ocn(SZI_(G), SZJ_(G))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
   allocate(IST%flux_t_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_t_ocn_top(:,:) = 0.0 !NI
   allocate(IST%flux_q_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_q_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lw_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lw_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lh_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lh_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%lprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%fprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
 
   allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
@@ -648,6 +668,10 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
   deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%flux_t_ocn_top, IST%flux_q_ocn_top)
+  deallocate(IST%flux_lw_ocn_top, IST%flux_lh_ocn_top)
+  deallocate(IST%flux_sw_vis_dir_ocn, IST%flux_sw_vis_dif_ocn)
+  deallocate(IST%flux_sw_nir_dir_ocn, IST%flux_sw_nir_dif_ocn)
+  deallocate(IST%lprec_ocn_top, IST%fprec_ocn_top)
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
   deallocate(IST%bheat, IST%tmelt, IST%bmelt)
