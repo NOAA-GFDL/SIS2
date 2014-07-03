@@ -85,8 +85,10 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use ice_grid_mod, only: sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
-use ice_spec_mod, only: get_sea_surface
+use ice_grid_mod, only : sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
+use ice_spec_mod, only : get_sea_surface
+
+use SIS_tracer_registry, only : register_SIS_tracer
 
 use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
@@ -1637,10 +1639,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         do m=1,G%NkIce
           IST%enth_ice(i,j,k,m) = Enth_from_TS(IST%t_ice(i,j,k,m), S_col(m), IST%ITV)
         enddo
-        IST%enth_snow(i,j,k) = Enth_from_TS(IST%t_snow(i,j,k), 0.0, IST%ITV)
+        IST%enth_snow(i,j,k,1) = Enth_from_TS(IST%t_snow(i,j,k), 0.0, IST%ITV)
       else
         do m=1,G%NkIce ; IST%enth_ice(i,j,k,m) = heat_fill_val ; enddo
-        IST%enth_snow(i,j,k) = heat_fill_val
+        IST%enth_snow(i,j,k,1) = heat_fill_val
       endif
     enddo ; enddo ; enddo
   else
@@ -1677,7 +1679,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       do m=1,G%NkIce ; IST%t_ice(i,j,k,m) = 0.0 ; enddo
     endif
     if (IST%part_size(i,j,k)*IST%h_snow(i,j,k) > 0.0) then
-      IST%t_snow(i,j,k) = temp_from_En_S(IST%enth_snow(i,j,k), 0.0, IST%ITV)
+      IST%t_snow(i,j,k) = temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
     else
       IST%t_snow(i,j,k) = 0.0
     endif
@@ -2955,6 +2957,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
   endif
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
+
+  ! Register tracers that will be advected around.
+  call register_SIS_tracer(IST%enth_ice, G%NkIce, "enth_ice", param_file, &
+                           IST%TrReg, snow_tracer=.false.)
+  call register_SIS_tracer(IST%enth_snow, 1, "enth_snow", param_file, &
+                           IST%TrReg, snow_tracer=.true.)
 
   call SIS_sum_output_init(G, param_file, "./", Time_Init, IST%sum_output_CSp)
 

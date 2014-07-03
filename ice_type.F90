@@ -32,6 +32,7 @@ use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : archaic_nml_check
 use SIS_sum_output_type, only : SIS_sum_out_CS
+use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 implicit none ; private
 
@@ -83,13 +84,13 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: &
     h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
     h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
-    t_snow =>NULL(), &  ! The temperture of the snow in each category, in degC.
-    enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
+    t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
   real, pointer, dimension(:,:,:,:) :: &
     t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
-    enth_ice =>NULL()   ! The enthalpy of the sea ice in each category and
+    enth_ice =>NULL(), & ! The enthalpy of the sea ice in each category and
                         ! fractional thickness layer, in enth_unit (J or rescaled).
+    enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
   
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
@@ -252,6 +253,8 @@ type ice_state_type
   integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
   integer :: id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
   integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
+
+  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
   type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
@@ -568,7 +571,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
 
   allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
-  allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
@@ -711,7 +714,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   enddo
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
-  call hchksum(IST%t_snow, trim(mesg)//" IST%enth_snow",G,haloshift=hs)
+  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
   if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
@@ -857,7 +860,7 @@ subroutine IST_bounds_check(IST, G, msg)
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%h_ice(i,j,k) > 1000.0) .or. (IST%h_snow(i,j,k) > 1000.0) .or. &
         (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
-        (IST%enth_snow(i,j,k) < enth_min) .or. (IST%enth_snow(i,j,k) > enth_max)) then
+        (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
