@@ -1907,20 +1907,6 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * &
               (h2o_to_ocn*Idt_slow)
 
-      ! modify above-ice to under-ice fluxes for passing to ocean
-      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
-!      IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
-      IST%flux_lw_top(i,j,k) = 0.0
-      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
-      IST%flux_sw_vis_dif_top(i,j,k) = ((IST%flux_sw_vis_dir_top(i,j,k)+      &
-            IST%flux_sw_vis_dif_top(i,j,k)) + (IST%flux_sw_nir_dir_top(i,j,k)+   &
-            IST%flux_sw_nir_dif_top(i,j,k))) * IST%sw_abs_ocn(i,j,k)
-      IST%flux_sw_nir_dir_top(i,j,k) = 0.0
-      IST%flux_sw_nir_dif_top(i,j,k) = 0.0
-      IST%flux_sw_vis_dir_top(i,j,k) = 0.0
-      IST%fprec_top(i,j,k) = 0.0
-      IST%lprec_top(i,j,k) = IST%lprec_top(i,j,k) + h2o_to_ocn*Idt_slow
-
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt ! bot. melt. ablation
 
     endif
@@ -2353,20 +2339,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                IST%sw_abs_ocn(i,j,k))
       IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
-
-      ! modify above-ice to under-ice fluxes for passing to ocean
-      IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
-!      IST%flux_lh_top(i,j,k) = 0.0 ! hlv*(evap_from_ocn*Idt_slow)
-      IST%flux_lw_top(i,j,k) = 0.0
-      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - (heat_to_ocn - (hlv+hlf)*evap_from_ocn)*Idt_slow
-      IST%flux_sw_vis_dif_top(i,j,k) = ((IST%flux_sw_vis_dir_top(i,j,k)+      &
-            IST%flux_sw_vis_dif_top(i,j,k)) + (IST%flux_sw_nir_dir_top(i,j,k)+   &
-            IST%flux_sw_nir_dif_top(i,j,k))) * IST%sw_abs_ocn(i,j,k)
-      IST%flux_sw_nir_dir_top(i,j,k) = 0.0
-      IST%flux_sw_nir_dif_top(i,j,k) = 0.0
-      IST%flux_sw_vis_dir_top(i,j,k) = 0.0
-      IST%fprec_top(i,j,k) = 0.0
-      IST%lprec_top(i,j,k) = IST%lprec_top(i,j,k) + (h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow
 
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt ! bot. melt. ablation
 
