@@ -643,7 +643,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 end subroutine write_ice_statistics
 
 
-subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
+subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the bottom of the sea-ice for conservation checks.
 ! Arguments: Ice - The publicly visible sea ice data type.
@@ -655,7 +655,6 @@ subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_size
   real,                    intent(in)    :: dt
   type(SIS_sum_out_CS),    pointer       :: CS
 
@@ -669,13 +668,6 @@ subroutine accumulate_bottom_input(IST, Ice, part_size, dt, G, CS)
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   if (CS%dt < 0.0) CS%dt = dt
-
-  ! In cases where the ice evaporates entirely, there may be additional
-  ! evaporative (latent heat) fluxes that are passed through the ice.
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
-          part_size(i,j,k) * IST%flux_lh_top(i,j,k)
-  enddo ; enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &

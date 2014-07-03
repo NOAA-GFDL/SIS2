@@ -1426,7 +1426,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                               message="    Start of update", check_column=.true.)
 
-!  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
+  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
 
   call mpp_clock_end(iceClock7)
 
@@ -1587,7 +1587,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                     IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   call disable_SIS_averaging(IST%diag)
 
-  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
+!  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
 
   if (IST%SIS1_5L_thermo) then
     call SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
@@ -1602,7 +1602,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Set up the fluxes in the externally visible structure Ice.
   call set_ice_bottom_state(Ice, IST, part_save, G)
 
-  call accumulate_bottom_input(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
+  call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                               message="        Post_thermo", check_column=.true.)
@@ -1897,9 +1897,9 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                 hlv*(evap_from_ocn*Idt_slow)
+                                 ((hlv*evap_from_ocn)*Idt_slow)
       IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
+            (IST%bheat(i,j) - (heat_to_ocn - hlf*evap_from_ocn)*Idt_slow)
       IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
@@ -1909,7 +1909,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
       ! modify above-ice to under-ice fluxes for passing to ocean
       IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
-      IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
+!      IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
       IST%flux_lw_top(i,j,k) = 0.0
       IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
       IST%flux_sw_vis_dif_top(i,j,k) = ((IST%flux_sw_vis_dir_top(i,j,k)+      &
@@ -2309,9 +2309,10 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         do m=1,G%NkIce ; T_col0(m) = IST%t_ice(i,j,k,m) ; enddo
         call enthalpy_from_TS(T_col0(:), S_col0(:), enthalpy(:), IST%ITV)
 
-        heat_in(i,j,k) = heat_in(i,j,k) + IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - heat_to_ocn
+        heat_in(i,j,k) = heat_in(i,j,k) + IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - &
+                     (heat_to_ocn - (hlv+hlf)*evap_from_ocn)
 
-        heat_input = IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - heat_to_ocn
+        heat_input = IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - (heat_to_ocn - (hlv+hlf)*evap_from_ocn)
         heat_mass_in = enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap
         mass_in = dt_slow*IST%fprec_top(i,j,k) + h2o_ocn_to_ice - h2o_ice_to_ocn - &
                  (dt_slow*IST%flux_q_top(i,j,k)-evap_from_ocn)
@@ -2343,9 +2344,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                 (hlv*(evap_from_ocn*Idt_slow))
+                                 ((hlv*evap_from_ocn)*Idt_slow)
       IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-            (IST%bheat(i,j) - heat_to_ocn*Idt_slow)
+             (IST%bheat(i,j) - (heat_to_ocn - hlf*evap_from_ocn)*Idt_slow)
       IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
@@ -2355,9 +2356,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
       ! modify above-ice to under-ice fluxes for passing to ocean
       IST%flux_q_top(i,j,k) = evap_from_ocn*Idt_slow ! no ice, evaporation left
-      IST%flux_lh_top(i,j,k) = hlv*(evap_from_ocn*Idt_slow)
+!      IST%flux_lh_top(i,j,k) = 0.0 ! hlv*(evap_from_ocn*Idt_slow)
       IST%flux_lw_top(i,j,k) = 0.0
-      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - heat_to_ocn*Idt_slow
+      IST%flux_t_top(i,j,k) = IST%bheat(i,j) - (heat_to_ocn - (hlv+hlf)*evap_from_ocn)*Idt_slow
       IST%flux_sw_vis_dif_top(i,j,k) = ((IST%flux_sw_vis_dir_top(i,j,k)+      &
             IST%flux_sw_vis_dif_top(i,j,k)) + (IST%flux_sw_nir_dir_top(i,j,k)+   &
             IST%flux_sw_nir_dif_top(i,j,k))) * IST%sw_abs_ocn(i,j,k)

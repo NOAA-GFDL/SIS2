@@ -39,6 +39,7 @@ use ice_thm_mod, only : get_thermo_coefs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 
+  use constants_mod, only : hlv, hlf ! latent heats of vaporization and fusion.
 
 implicit none ; private
 
@@ -1010,6 +1011,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
                                      ! mass loss by melting, in J m-2.
   real, intent(  out), optional :: enthalpy_freeze ! The enthalpy gain due to the
                                      ! mass gain by freezing, in J m-2.
+
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
   real, dimension(0:NkIce) :: m_lay ! temporary ice mass
 !  real, dimension(0:NkIce) :: enth_lay  ! The enthalpy of the ice and snow layers, in enth_unit.
@@ -1117,6 +1119,10 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
     enddo
 
     evap_from_ocn = evap_left
+    !   The energy required to evaporate was already taken into account in
+    ! ice_thm, but there is excess energy that has not been used here that needs
+    ! to be passed on to the ocean.
+    heat_to_ocn = heat_to_ocn + evap_left*(hlv+hlf)
   endif
 
   if (top_melt > 0.0 ) then ! apply top melt heat flux
