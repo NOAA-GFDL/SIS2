@@ -1652,7 +1652,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   if (IST%Cgrid_dyn) then
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
-                       IST%enth_ice, IST%enth_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+                       IST%TrReg, IST%sea_lev, G%H_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp)
   else
     ! B-grid transport 
@@ -1666,7 +1666,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
 
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                       IST%enth_ice, IST%enth_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
+                       IST%TrReg, IST%sea_lev, G%H_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp)
   endif
   !   Convert from ice and snow enthalpy back to temperature.
@@ -2959,9 +2959,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
 
   ! Register tracers that will be advected around.
-  call register_SIS_tracer(IST%enth_ice, G%NkIce, "enth_ice", param_file, &
+  call register_SIS_tracer(IST%enth_ice, G, G%NkIce, "enth_ice", param_file, &
                            IST%TrReg, snow_tracer=.false.)
-  call register_SIS_tracer(IST%enth_snow, 1, "enth_snow", param_file, &
+  call register_SIS_tracer(IST%enth_snow, G, 1, "enth_snow", param_file, &
                            IST%TrReg, snow_tracer=.true.)
 
   call SIS_sum_output_init(G, param_file, "./", Time_Init, IST%sum_output_CSp)

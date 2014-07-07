@@ -31,6 +31,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
+use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 
 use ice_grid_mod, only : sea_ice_grid_type
 
@@ -75,13 +76,12 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, heat_ice, heat_snow, &
+subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
                          sea_lev, hlim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: heat_ice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),1),  intent(inout) :: heat_snow
+  type(SIS_tracer_registry_type),              intent(inout) :: TrReg
   real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
   real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
@@ -95,10 +95,7 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, heat_ice, heat_snow, &
 !                     in m.
 !  (in)      uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
-!  (inout)   heat_ice - The enthalpy of the ice in each category and layer
-!                    within the ice in enth_units (J or rescaled).
-!  (inout)   heat_snow - The enthalpy of the snow atop the ice in each category
-!                    in enth_units (J or rescaled).
+!  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      hlim - The lower thickness limit of each category, in m.
 !  (in)      sea_lev - The height of the sea level, including contributions
 !                      from non-levitating ice from an earlier time step, in m.
@@ -106,7 +103,12 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, heat_ice, heat_snow, &
 !                      advanced, in s.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
-  
+  real, dimension(:,:,:,:), pointer :: &
+    heat_ice=>NULL(), & ! Pointers to the enth_ice and enth_snow arrays from the
+    heat_snow=>NULL()   ! SIS tracer registry.  enth_ice is the enthalpy of the
+                        ! ice in each category and layer, while enth_snow is the
+                        ! enthalpy of the snow atop the ice in each category.
+                        ! Both are in enth_units (J or rescaled).
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
     uh_ice, &  ! Zonal fluxes in m3 s-1 and kg s-1.
     uh_snow    ! Zonal fluxes in m3 s-1 and kg s-1.
@@ -140,10 +142,9 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, heat_ice, heat_snow, &
 
   real :: dt_adv
   character(len=200) :: mesg
-  integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed
+  integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-
 
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
@@ -219,6 +220,9 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, heat_ice, heat_snow, &
   endif
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
+
+  call get_SIS_tracer_pointer("enth_ice", TrReg, heat_ice, nL)
+  call get_SIS_tracer_pointer("enth_snow", TrReg, heat_snow, nL)
 
   if (CS%check_conservation) then
     call get_total_enthalpy(h_ice, h_snow, part_sz, heat_ice, heat_snow(:,:,:,1), &

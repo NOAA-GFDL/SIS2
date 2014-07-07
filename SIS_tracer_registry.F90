@@ -47,9 +47,9 @@ implicit none ; private
 #  define NINTMEM_(i) :
 #endif
 
-public register_SIS_tracer, SIS_tracer_registry_init, SIS_tracer_chksum
+public register_SIS_tracer, get_SIS_tracer_pointer, SIS_tracer_chksum
 public add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
-public SIS_tracer_registry_end
+public SIS_tracer_registry_init, SIS_tracer_registry_end
 
 type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), pointer :: t => NULL()
@@ -89,11 +89,12 @@ end type SIS_tracer_registry_type
 
 contains
 
-subroutine register_SIS_tracer(tr1, nLtr, name, param_file, Reg, snow_tracer, &
+subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer, &
                  ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, ad_4d_x, ad_4d_y, &
                  OBC_inflow, OBC_in_u, OBC_in_v)
   integer,                                  intent(in) :: nLtr              
-  real, dimension(NIMEM_,NJMEM_,NCATMEM_,NINTMEM_(nLtr)), target :: tr1
+  type(sea_ice_grid_type),     intent(in)    :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
   type(param_file_type), intent(in)           :: param_file
   type(SIS_tracer_registry_type), pointer     :: Reg
@@ -188,6 +189,31 @@ subroutine register_SIS_tracer(tr1, nLtr, name, param_file, Reg, snow_tracer, &
 
 end subroutine register_SIS_tracer
 
+subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
+  character(len=*),          intent(in)      :: name
+  type(SIS_tracer_registry_type), intent(in) :: Reg
+  real, dimension(:,:,:,:),       pointer    :: Tr_ptr
+  integer,                    intent(out)    :: nLayer
+
+  integer :: m
+
+  do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= Reg%ntr_ice) then ! This is an ice tracer.
+    Tr_ptr => Reg%Tr_ice(m)%t
+    nLayer = Reg%Tr_ice(m)%nL
+  else  ! See whether this is a snow tracer.
+    do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= Reg%ntr_snow) then ! This is a snow tracer.
+      Tr_ptr => Reg%Tr_snow(m)%t
+      nLayer = Reg%Tr_snow(m)%nL
+    else
+      call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
+               trim(name)//" before get_registered_tracer_pointer is called for it.")
+    endif
+  endif
+
+end subroutine get_SIS_tracer_pointer
+
 subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
   character(len=*), intent(in)               :: name
   type(SIS_tracer_registry_type), pointer    :: Reg
@@ -212,7 +238,7 @@ subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
 
   do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
   if (m <= Reg%ntr_ice) then ; Tr_here => Reg%Tr_ice(m)
-  else
+  else  ! See whether this is a snow tracer.
     do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
     if (m <= Reg%ntr_snow) then ; Tr_here => Reg%Tr_snow(m)
     else
@@ -221,11 +247,11 @@ subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
     endif
   endif
 
-    if (present(OBC_inflow)) Tr_here%OBC_inflow_conc = OBC_inflow
-    if (present(OBC_in_u)) then ; if (associated(OBC_in_u)) &
-                                      Tr_here%OBC_in_u => OBC_in_u ; endif
-    if (present(OBC_in_v)) then ; if (associated(OBC_in_v)) &
-                                      Tr_here%OBC_in_v => OBC_in_v ; endif
+  if (present(OBC_inflow)) Tr_here%OBC_inflow_conc = OBC_inflow
+  if (present(OBC_in_u)) then ; if (associated(OBC_in_u)) &
+                                    Tr_here%OBC_in_u => OBC_in_u ; endif
+  if (present(OBC_in_v)) then ; if (associated(OBC_in_v)) &
+                                    Tr_here%OBC_in_v => OBC_in_v ; endif
 
 end subroutine add_SIS_tracer_OBC_values
 
@@ -263,7 +289,7 @@ subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
 
   do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
   if (m <= Reg%ntr_ice) then ; Tr_here => Reg%Tr_ice(m)
-  else
+  else  ! See whether this is a snow tracer.
     do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
     if (m <= Reg%ntr_snow) then ; Tr_here => Reg%Tr_snow(m)
     else
