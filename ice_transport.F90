@@ -644,81 +644,113 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
   real :: vol_trans
   real :: part_trans
   real :: snow_trans
-  real :: Ivol_snow
   real :: Ivol_new
   real :: I_hlim1
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
+    vol0_ice, vol0_snow, trans_ice, trans_snow
+  logical :: do_any, do_j(SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, isd, ied, jsd, jed
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  do k=1,G%CatIce-1 ; do j=jsd,jed ; do i=isd,ied
-    if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) > hlim(k+1))) then
-      ! Move some or all of the ice to a thicker category.
-      ! For now move all of it.
-      vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k+1))
-      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
-      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
+  ! Only work on rows that have any sea ice at all.
+  do j=jsd,jed
+    do_j(j) = .false.
+    do k=1,G%CatIce
+      do i=isd,ied ; if (vol_ice(i,j,k) > 0.0) then
+       do_j(j) = .true. ; exit
+      endif ; enddo
+      if (do_j(j)) exit
+    enddo
+  enddo
 
-      ! This is upwind advection across categories.  Improve it later.
-      do m=1,G%NkIce
-        heat_ice(i,j,k+1,m) = (vol_trans*heat_ice(i,j,k,m) + &
-                            vol_ice(i,j,k+1)*heat_ice(i,j,k+1,m)) * Ivol_new
-      enddo
-      h_ice(i,j,k+1) = (vol_trans*h_ice(i,j,k) + &
-                        vol_ice(i,j,k+1)*h_ice(i,j,k+1)) * Ivol_new
-      ! h should be the first thing to correct via a non-constant profile, and
-      ! can be improved independent of T & S.
-      h_ice(i,j,k) = hlim(k+1)
-      part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
-      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+  do j=jsd,jed ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isd,ied
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-      vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
-      vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+    do k=1,G%CatIce-1 ; do i=isd,ied
+      if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) > hlim(k+1))) then
+        ! Move some or all of the ice to a thicker category.
+        ! For now move all of it.
+        vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k+1))
+        part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+        snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
-      if (snow_trans > 0.0) then
-        Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k+1))
-        heat_snow(i,j,k+1,1) = (snow_trans*heat_snow(i,j,k,1) + &
-                           vol_snow(i,j,k+1)*heat_snow(i,j,k+1,1)) * Ivol_snow
-        vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + snow_trans
-        vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        trans_ice(i,K) = vol_trans
+        trans_snow(i,K) = snow_trans
+        do_any = .true.
+
+        h_ice(i,j,k+1) = (vol_trans*h_ice(i,j,k) + &
+                          vol_ice(i,j,k+1)*h_ice(i,j,k+1)) * Ivol_new
+        ! h should be the first thing to correct via a non-constant profile, and
+        ! can be improved independent of T & S.
+        h_ice(i,j,k) = hlim(k+1)
+        part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
+        part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+
+        vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
+        vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+
+        if (snow_trans > 0.0) then
+          vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + snow_trans
+          vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        endif
       endif
+    enddo ; enddo
+    
+    if (do_any) then
+      call advect_tracers_thicker(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isd, ied)
+      call advect_tracers_thicker(vol0_snow, trans_snow, heat_snow, 1, G, j, isd, ied)
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo ! j-loop
 
-  do k=G%CatIce,2,-1 ; do j=jsd,jed ; do i=isd,ied
-    if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) < hlim(k))) then
-      ! Move some or all of the ice to a thinner category.
-      ! For now move all of it.
-      vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k-1))
-!      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
-      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
-      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
+  do j=jsd,jed ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isd,ied
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-      ! This is upwind advection across categories.  Improve it later.
-      do m=1,G%NkIce
-        heat_ice(i,j,k-1,m) = (vol_trans * heat_ice(i,j,k,m) + &
-                            vol_ice(i,j,k-1)* heat_ice(i,j,k-1,m)) * Ivol_new
-      enddo
-      h_ice(i,j,k-1) = (vol_trans*h_ice(i,j,k) + &
-                        vol_ice(i,j,k-1)*h_ice(i,j,k-1)) * Ivol_new
-      ! h should be the first thing to correct via a non-constant profile, and
-      ! can be improved independent of T & S.
-      h_ice(i,j,k) = hlim(k)
-      part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
-      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+    do k=G%CatIce,2,-1 ; do i=isd,ied
+      if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) < hlim(k))) then
+        ! Move some or all of the ice to a thinner category.
+        ! For now move all of it.
+        vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k-1))
+  !      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
+        part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+        snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
-      vol_ice(i,j,k-1) = vol_ice(i,j,k-1) + vol_trans
-      vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+        do_any = .true.
+        trans_ice(i,K-1) = vol_trans  ! Note the shifted index conventions!
+        trans_snow(i,K-1) = snow_trans
 
-      if (snow_trans > 0.0) then
-        Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k-1))
-        heat_snow(i,j,k-1,1) = (snow_trans*heat_snow(i,j,k,1) + &
-                              vol_snow(i,j,k-1)*heat_snow(i,j,k-1,1)) * Ivol_snow
-        vol_snow(i,j,k-1) = vol_snow(i,j,k-1) + snow_trans
-        vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        h_ice(i,j,k-1) = (vol_trans*h_ice(i,j,k) + &
+                          vol_ice(i,j,k-1)*h_ice(i,j,k-1)) * Ivol_new
+
+        ! h should be the first thing to correct via a non-constant profile, and
+        ! can be improved independently from T & S.
+        h_ice(i,j,k) = hlim(k)
+        part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
+        part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+
+        vol_ice(i,j,k-1) = vol_ice(i,j,k-1) + vol_trans
+        vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+
+        if (snow_trans > 0.0) then
+          vol_snow(i,j,k-1) = vol_snow(i,j,k-1) + snow_trans
+          vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        endif
       endif
+    enddo ; enddo
+
+    if (do_any) then
+      call advect_tracers_thinner(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isd, ied)
+      call advect_tracers_thinner(vol0_snow, trans_snow, heat_snow, 1, G, j, isd, ied)
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo
 
   ! Compress the ice in category 1 if it is thinner than the minimum.
   if (hlim(1) > 0.0) then
@@ -772,8 +804,10 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
   real :: Icompress_here
   real :: vol_trans, vol_old
   real :: snow_trans, snow_old
-  real :: Ivol_snow, Ivol_new
-  logical :: do_j(SZJ_(G))
+  real :: Ivol_new
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
+    vol0_ice, vol0_snow, trans_ice, trans_snow
+  logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -789,51 +823,57 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
     endif
   enddo ; enddo
 
-  do j=jsc,jec ; if (do_j(j)) then ; do k=1,G%CatIce-1 ; do i=isc,iec
-    if ((excess_cover(i,j) > 0.0) .and. (vol_ice(i,j,k) > 0.0)) then
-      compression_ratio = h_ice(i,j,k) / hlim(k+1)
-      if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
-        ! This category is compacted, but not to the point that it needs to
-        ! be transferred to a thicker layer.
-        Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
-        h_ice(i,j,k) = h_ice(i,j,k) * Icompress_here
-        h_snow(i,j,k) = h_snow(i,j,k) * Icompress_here
-        part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
-        excess_cover(i,j) = 0.0
-      else
-        ! Mass from this category needs to be transfered to the next thicker
-        ! category after being compacted to thickness hlim(k+1).
-        excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
-        part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
+  do j=jsc,jec ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isc,iec
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-        vol_trans = vol_ice(i,j,k) ; vol_old = vol_ice(i,j,k+1)
-        vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
-        Ivol_new = 1.0 / vol_ice(i,j,k+1)
-      ! This is upwind advection across categories.  Improve it later.
-        do m=1,G%NkIce
-          heat_ice(i,j,k+1,m) = (vol_trans * heat_ice(i,j,k,m) + &
-                                 vol_old * heat_ice(i,j,k+1,m)) * Ivol_new
-        enddo
-!        This is not quite right, or at least not consistent.
-!        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
-!                          vol_old*h_ice(i,j,k+1)) * Ivol_new
-        h_ice(i,j,k+1) = vol_ice(i,j,k+1) / part_sz(i,j,k+1)
+    do k=1,G%CatIce-1 ; do i=isc,iec
+      if ((excess_cover(i,j) > 0.0) .and. (vol_ice(i,j,k) > 0.0)) then
+        compression_ratio = h_ice(i,j,k) / hlim(k+1)
+        if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
+          ! This category is compacted, but not to the point that it needs to
+          ! be transferred to a thicker layer.
+          Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
+          h_ice(i,j,k) = h_ice(i,j,k) * Icompress_here
+          h_snow(i,j,k) = h_snow(i,j,k) * Icompress_here
+          part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
+          excess_cover(i,j) = 0.0
+        else
+          ! Mass from this category needs to be transfered to the next thicker
+          ! category after being compacted to thickness hlim(k+1).
+          excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
+          part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
 
-        if (vol_snow(i,j,k) > 0.0) then
-          snow_trans = vol_snow(i,j,k) ; snow_old = vol_snow(i,j,k+1)
-          vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + vol_snow(i,j,k)
-          Ivol_snow = 1.0 / vol_snow(i,j,k+1)
+          vol_trans = vol_ice(i,j,k) ; vol_old = vol_ice(i,j,k+1)
+          trans_ice(i,K) = vol_trans ; do_any = .true.
+          vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
+          Ivol_new = 1.0 / vol_ice(i,j,k+1)
+  !        This is not quite right, or at least not consistent.
+  !        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
+  !                          vol_old*h_ice(i,j,k+1)) * Ivol_new
+          h_ice(i,j,k+1) = vol_ice(i,j,k+1) / part_sz(i,j,k+1)
 
-          heat_snow(i,j,k+1,1) = (snow_trans*heat_snow(i,j,k,1) + &
-                                snow_old*heat_snow(i,j,k+1,1)) * Ivol_snow
+          if (vol_snow(i,j,k) > 0.0) then
+            snow_trans = vol_snow(i,j,k) ; snow_old = vol_snow(i,j,k+1)
+            trans_snow(i,K) = snow_trans
+            vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + vol_snow(i,j,k)
+          endif
+          h_snow(i,j,k+1) = vol_snow(i,j,k+1) / part_sz(i,j,k+1)
+
+          vol_ice(i,j,k) = 0.0 ; vol_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
+          h_ice(i,j,k) = 0.0 ; h_snow(i,j,k) = 0.0
         endif
-        h_snow(i,j,k+1) = vol_snow(i,j,k+1) / part_sz(i,j,k+1)
-
-        vol_ice(i,j,k) = 0.0 ; vol_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
-        h_ice(i,j,k) = 0.0 ; h_snow(i,j,k) = 0.0
       endif
+    enddo ; enddo
+
+    if (do_any) then
+      call advect_tracers_thicker(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isc, iec)
+      call advect_tracers_thicker(vol0_snow, trans_snow, heat_snow, 1, G, j, isc, iec)
     endif
-  enddo ; enddo ; endif ; enddo
+  endif ; enddo ! j-loop.
 
   k=G%CatIce
   do j=jsc,jec ; if (do_j(j)) then ; do i=isc,iec
@@ -866,6 +906,54 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
   endif
 
 end subroutine compress_ice
+
+subroutine advect_tracers_thicker(vol_start, vol_trans, tr, nL, G, j, is, ie)
+  type(sea_ice_grid_type), intent(in) :: G
+  integer,                 intent(in) :: nL
+  real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL), intent(inout) :: tr
+  integer, intent(in) :: j, is, ie
+
+  real, dimension(SZI_(G),SZCAT_(G)) :: vol
+  real :: Ivol_new
+  integer :: i, k, m
+  
+  do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
+  do K=1,G%CatIce-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
+    Ivol_new = 1.0 / (vol_trans(i,K) + vol(i,k+1))
+    ! This is upwind advection across categories.  Improve it later.
+    do m=1,nL
+      tr(i,j,k+1,m) = (vol_trans(i,K)*tr(i,j,k,m) + &
+                       vol(i,k+1)*tr(i,j,k+1,m)) * Ivol_new
+    enddo
+!    vol(i,k+1) = vol(i,k+1) + vol_trans(i,K)
+!    vol(i,k) = vol(i,k) - vol_trans(i,K)
+  endif ; enddo ; enddo
+end subroutine advect_tracers_thicker
+
+subroutine advect_tracers_thinner(vol_start, vol_trans, tr, nL, G, j, is, ie)
+  type(sea_ice_grid_type), intent(in) :: G
+  integer,                 intent(in) :: nL
+  real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL), intent(inout) :: tr
+  integer, intent(in) :: j, is, ie
+
+  real, dimension(SZI_(G),SZCAT_(G)) :: vol
+  real :: Ivol_new
+  integer :: i, k, m
+  
+  do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
+  do K=G%CatIce-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
+    Ivol_new = 1.0 / (vol_trans(i,K) + vol(i,k))
+    ! This is upwind advection across categories.  Improve it later.
+    do m=1,nL
+      tr(i,j,k,m) = (vol_trans(i,K)*tr(i,j,k+1,m) + &
+                     vol(i,k)*tr(i,j,k,m)) * Ivol_new
+    enddo
+!    vol(i,k+1) = vol(i,k+1) - vol_trans(i,K)
+!    vol(i,k) = vol(i,k) + vol_trans(i,K)
+  endif ; enddo ; enddo
+end subroutine advect_tracers_thinner
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_advect - take adv_sub_steps upstream advection timesteps                 !
