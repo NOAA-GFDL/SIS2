@@ -33,6 +33,8 @@ use MOM_file_parser, only : get_param, log_param, read_param, log_version, param
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos
+use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
+use SIS_tracer_advect, only : advect_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 
 use ice_grid_mod, only : sea_ice_grid_type
 
@@ -67,6 +69,7 @@ type, public :: ice_transport_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
+  type(SIS_tracer_advect_CS), pointer :: SIS_tracer_advect_CSp => NULL()
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
   integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
   integer :: id_ix_trans = -1, id_iy_trans = -1
@@ -82,7 +85,7 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
-  type(SIS_tracer_registry_type),              intent(inout) :: TrReg
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
   real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
@@ -628,7 +631,7 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
   type(sea_ice_grid_type),                     intent(inout) :: G
   real, dimension(:),                          intent(in)    :: hlim  ! Move to grid type?
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice, part_sz
-  type(SIS_tracer_registry_type),              intent(inout) :: TrReg
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   type(ice_transport_CS),                      pointer       :: CS
 
 !   This subroutine moves mass between thickness categories if it is thinner or
@@ -718,8 +721,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
     enddo ; enddo
     
     if (do_any) then
-      call advect_tracers_thicker(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isd, ied)
-      call advect_tracers_thicker(vol0_snow, trans_snow, heat_snow, 1, G, j, isd, ied)
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, TrReg, .false., j, isd, ied)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, TrReg, .true., j, isd, ied)
     endif
   endif ; enddo ! j-loop
 
@@ -740,8 +743,8 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
         snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
         do_any = .true.
-        trans_ice(i,K-1) = vol_trans  ! Note the shifted index conventions!
-        trans_snow(i,K-1) = snow_trans
+        trans_ice(i,K-1) = -vol_trans  ! Note the shifted index conventions!
+        trans_snow(i,K-1) = -snow_trans
 
         h_ice(i,j,k-1) = (vol_trans*h_ice(i,j,k) + &
                           vol_ice(i,j,k-1)*h_ice(i,j,k-1)) * Ivol_new
@@ -763,8 +766,10 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
     enddo ; enddo
 
     if (do_any) then
-      call advect_tracers_thinner(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isd, ied)
-      call advect_tracers_thinner(vol0_snow, trans_snow, heat_snow, 1, G, j, isd, ied)
+      ! call advect_tracers_thinner(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isd, ied)
+      ! call advect_tracers_thinner(vol0_snow, trans_snow, heat_snow, 1, G, j, isd, ied)
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, TrReg, .false., j, isd, ied)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, TrReg, .true., j, isd, ied)
     endif
   endif ; enddo
 
@@ -788,7 +793,7 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(:),                          intent(in)    :: hlim  ! Move to grid type?
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice, h_snow
-  type(SIS_tracer_registry_type),              intent(inout) :: TrReg
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   type(ice_transport_CS),                      pointer       :: CS
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
@@ -890,8 +895,8 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
     enddo ; enddo
 
     if (do_any) then
-      call advect_tracers_thicker(vol0_ice, trans_ice, heat_ice, G%NkIce, G, j, isc, iec)
-      call advect_tracers_thicker(vol0_snow, trans_snow, heat_snow, 1, G, j, isc, iec)
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, TrReg, .false., j, isc, iec)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, TrReg, .true., j, isc, iec)
     endif
   endif ; enddo ! j-loop.
 
@@ -927,53 +932,29 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
 
 end subroutine compress_ice
 
-subroutine advect_tracers_thicker(vol_start, vol_trans, tr, nL, G, j, is, ie)
-  type(sea_ice_grid_type),            intent(in) :: G
-  integer,                            intent(in) :: nL
-  real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL), intent(inout) :: tr
-  integer, intent(in) :: j, is, ie
+! subroutine advect_tracers_thinner(vol_start, vol_trans, tr, nL, G, j, is, ie)
+!   type(sea_ice_grid_type), intent(in) :: G
+!   integer,                 intent(in) :: nL
+!   real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
+!   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL), intent(inout) :: tr
+!   integer, intent(in) :: j, is, ie
 
-  real, dimension(SZI_(G),SZCAT_(G)) :: vol
-  real :: Ivol_new
-  integer :: i, k, m
-  
-  do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
-  do K=1,G%CatIce-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
-    Ivol_new = 1.0 / (vol_trans(i,K) + vol(i,k+1))
-    ! This is upwind advection across categories.  Improve it later.
-    do m=1,nL
-      tr(i,j,k+1,m) = (vol_trans(i,K)*tr(i,j,k,m) + &
-                       vol(i,k+1)*tr(i,j,k+1,m)) * Ivol_new
-    enddo
-!    vol(i,k+1) = vol(i,k+1) + vol_trans(i,K)
-!    vol(i,k) = vol(i,k) - vol_trans(i,K)
-  endif ; enddo ; enddo
-end subroutine advect_tracers_thicker
+!   real, dimension(SZI_(G),SZCAT_(G)) :: vol
+!   real :: Ivol_new
+!   integer :: i, k, m
 
-subroutine advect_tracers_thinner(vol_start, vol_trans, tr, nL, G, j, is, ie)
-  type(sea_ice_grid_type), intent(in) :: G
-  integer,                 intent(in) :: nL
-  real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL), intent(inout) :: tr
-  integer, intent(in) :: j, is, ie
-
-  real, dimension(SZI_(G),SZCAT_(G)) :: vol
-  real :: Ivol_new
-  integer :: i, k, m
-  
-  do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
-  do K=G%CatIce-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
-    Ivol_new = 1.0 / (vol_trans(i,K) + vol(i,k))
-    ! This is upwind advection across categories.  Improve it later.
-    do m=1,nL
-      tr(i,j,k,m) = (vol_trans(i,K)*tr(i,j,k+1,m) + &
-                     vol(i,k)*tr(i,j,k,m)) * Ivol_new
-    enddo
-!    vol(i,k+1) = vol(i,k+1) - vol_trans(i,K)
-!    vol(i,k) = vol(i,k) + vol_trans(i,K)
-  endif ; enddo ; enddo
-end subroutine advect_tracers_thinner
+!   do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
+!   do K=G%CatIce-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
+!     Ivol_new = 1.0 / (vol_trans(i,K) + vol(i,k))
+!     ! This is upwind advection across categories.  Improve it later.
+!     do m=1,nL
+!       tr(i,j,k,m) = (vol_trans(i,K)*tr(i,j,k+1,m) + &
+!                      vol(i,k)*tr(i,j,k,m)) * Ivol_new
+!     enddo
+! !    vol(i,k+1) = vol(i,k+1) - vol_trans(i,K)
+! !    vol(i,k) = vol(i,k) + vol_trans(i,K)
+!   endif ; enddo ; enddo
+! end subroutine advect_tracers_thinner
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_advect - take adv_sub_steps upstream advection timesteps                 !
@@ -1208,8 +1189,8 @@ subroutine get_total_enthalpy(h_ice, h_snow, part_sz, TrReg, &
                               G, enth_ice, enth_snow)
   type(sea_ice_grid_type),                   intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in) :: h_ice, h_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)),  intent(in)  :: part_sz
-  type(SIS_tracer_registry_type),            intent(inout) :: TrReg
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)),  intent(in) :: part_sz
+  type(SIS_tracer_registry_type),              pointer     :: TrReg
   type(EFP_type),                              intent(out) :: enth_ice, enth_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
@@ -1343,6 +1324,8 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "mass conservation in the sea-ice transport code.  This \n"//&
                  "is expensive and should be used sparingly.", default=.false.)
 
+  call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tracer_advect_CSp)
+
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)
   CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
@@ -1367,6 +1350,8 @@ end subroutine ice_transport_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport_end(CS)
   type(ice_transport_CS), pointer :: CS
+
+  call SIS_tracer_advect_end(CS%SIS_tracer_advect_CSp)
 
   deallocate(CS)
 end subroutine ice_transport_end
