@@ -71,7 +71,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public advect_tracers, advect_tracers_thicker
+public advect_SIS_tracers, advect_tracers_thicker
 public SIS_tracer_advect_init, SIS_tracer_advect_end
 
 type, public :: SIS_tracer_advect_CS ; private
@@ -86,7 +86,7 @@ integer :: id_clock_advect, id_clock_pass, id_clock_sync
 
 contains
 
-subroutine advect_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr ) ! (, OBC)
+subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr ) ! (, OBC)
   type(sea_ice_grid_type),                     intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_prev, h_end
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in) :: uhtr
@@ -130,7 +130,7 @@ subroutine advect_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr ) !
 
   call cpu_clock_end(id_clock_advect)
 
-end subroutine advect_tracers
+end subroutine advect_SIS_tracers
 
 subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC)
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
@@ -962,11 +962,11 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
 
 end subroutine advect_upwind_2d
 
-subroutine advect_tracers_thicker(vol_start, vol_trans, G, & !CS, &
+subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
                                   Reg, snow_tr, j, is, ie)
   type(sea_ice_grid_type),            intent(in) :: G
   real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
-!  type(SIS_tracer_advect_CS),         pointer    :: CS
+  type(SIS_tracer_advect_CS),         pointer    :: CS
   type(SIS_tracer_registry_type),     pointer    :: Reg
   logical,                            intent(in) :: snow_tr
   integer,                            intent(in) :: j, is, ie
@@ -976,8 +976,8 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, & !CS, &
   real :: Ivol_new
   integer :: i, k, m, n, ntr
 
-!  if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
-!       "SIS_tracer_advect_init must be called before advect_tracers_thicker.")
+  if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
+       "SIS_tracer_advect_init must be called before advect_tracers_thicker.")
   if (.not. associated(Reg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "register_tracer must be called before advect_tracers_thicker.")
   if (snow_tr) then

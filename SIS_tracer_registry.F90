@@ -50,13 +50,15 @@ implicit none ; private
 
 public register_SIS_tracer, get_SIS_tracer_pointer, SIS_tracer_chksum
 public add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
-public update_SIS_tracer_halos, SIS_tracer_registry_init, SIS_tracer_registry_end
+public update_SIS_tracer_halos, set_massless_SIS_tracers
+public SIS_tracer_registry_init, SIS_tracer_registry_end
 
 type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), pointer :: t => NULL()
              ! The array containing the tracer concentration, with dimensions
              ! of x-, y-, category, and layer.
   integer :: nL = 0 ! The number of vertical layers for this tracer.
+  real :: massless_val = 0.0 ! A value to use in massless layers.
   real, dimension(:,:), pointer :: ad2d_x => NULL(), ad2d_y => NULL()
              ! The arrays in which x- & y- advective fluxes summed
              ! vertically and across ice category are stored in units of
@@ -91,8 +93,8 @@ end type SIS_tracer_registry_type
 contains
 
 subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer, &
-                 ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, ad_4d_x, ad_4d_y, &
-                 OBC_inflow, OBC_in_u, OBC_in_v)
+                             massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
+                             ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v)
   integer,                         intent(in) :: nLtr              
   type(sea_ice_grid_type),         intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nLtr), target :: tr1
@@ -100,6 +102,7 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
   type(param_file_type), intent(in)           :: param_file
   type(SIS_tracer_registry_type), pointer     :: Reg
   logical,               intent(in), optional :: snow_tracer
+  real,                  intent(in), optional :: massless_val
   real, dimension(:,:),     pointer, optional :: ad_2d_x, ad_2d_y
   real, dimension(:,:,:),   pointer, optional :: ad_3d_x, ad_3d_y
   real, dimension(:,:,:,:), pointer, optional :: ad_4d_x, ad_4d_y
@@ -165,6 +168,8 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
   Tr_here%name = trim(name)
   Tr_here%t => tr1(:,:,:,1:nLtr)
   Tr_here%nL = nLtr
+
+  if (present(massless_val)) Tr_here%massless_val = massless_val
 
   if (present(ad_2d_x)) then ; if (associated(ad_2d_x)) Tr_here%ad2d_x => ad_2d_x ; endif
   if (present(ad_2d_y)) then ; if (associated(ad_2d_y)) Tr_here%ad2d_y => ad_2d_y ; endif
@@ -234,6 +239,33 @@ subroutine update_SIS_tracer_halos(Reg, G, complete)
   enddo ; enddo
 
 end subroutine update_SIS_tracer_halos
+
+
+subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain)
+  type(sea_ice_grid_type),                 intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(in) :: mass
+  type(SIS_tracer_registry_type),          intent(inout) :: Reg
+  logical,                       optional, intent(in)    :: compute_domain
+
+  integer :: i, j, k, m, n, is, ie, js, je
+
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+  if (present(compute_domain)) then ; if (compute_domain) then
+    is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
+  endif ; endif
+
+  do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
+    do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+      Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
+    enddo ; enddo ; enddo
+  enddo ; enddo
+  do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
+    do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+      Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
+    enddo ; enddo ; enddo
+  enddo ; enddo
+
+end subroutine set_massless_SIS_tracers
 
 subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
   character(len=*), intent(in)               :: name
