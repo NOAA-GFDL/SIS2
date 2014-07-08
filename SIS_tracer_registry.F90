@@ -33,6 +33,7 @@ module SIS_tracer_registry
 
 use SIS_diag_mediator, only : SIS_diag_ctrl
 use SIS_error_checking, only : hchksum
+use MOM_domains,       only : pass_var
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
@@ -49,7 +50,7 @@ implicit none ; private
 
 public register_SIS_tracer, get_SIS_tracer_pointer, SIS_tracer_chksum
 public add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
-public SIS_tracer_registry_init, SIS_tracer_registry_end
+public update_SIS_tracer_halos, SIS_tracer_registry_init, SIS_tracer_registry_end
 
 type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), pointer :: t => NULL()
@@ -92,8 +93,8 @@ contains
 subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer, &
                  ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, ad_4d_x, ad_4d_y, &
                  OBC_inflow, OBC_in_u, OBC_in_v)
-  integer,                                  intent(in) :: nLtr              
-  type(sea_ice_grid_type),     intent(in)    :: G
+  integer,                         intent(in) :: nLtr              
+  type(sea_ice_grid_type),         intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
   type(param_file_type), intent(in)           :: param_file
@@ -213,6 +214,26 @@ subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
   endif
 
 end subroutine get_SIS_tracer_pointer
+
+subroutine update_SIS_tracer_halos(Reg, G, complete)
+  type(SIS_tracer_registry_type), intent(inout) :: Reg
+  type(sea_ice_grid_type),        intent(inout) :: G
+  logical,              optional, intent(in)    :: complete
+
+  logical :: do_complete, comp_here
+  integer :: m, n
+
+  do_complete = .true. ; if (present(complete)) do_complete=complete
+
+  do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
+    call pass_var(Reg%Tr_snow(n)%t(:,:,:,m), G%Domain, complete=.false.)
+  enddo ; enddo
+  do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
+    comp_here = (do_complete .and. (n==Reg%ntr_ice) .and. (m==Reg%Tr_ice(n)%nL))
+    call pass_var(Reg%Tr_ice(n)%t(:,:,:,m), G%Domain, complete=comp_here)
+  enddo ; enddo
+
+end subroutine update_SIS_tracer_halos
 
 subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
   character(len=*), intent(in)               :: name
