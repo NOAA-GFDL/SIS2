@@ -237,8 +237,9 @@ type ice_state_type
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 !   type(coupler_3d_bc_type)   :: ocean_fluxes_top   ! array of fluxes for averaging
 
-  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_t1=-1
-  integer :: id_t2=-1, id_t3=-1, id_t4=-1, id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
+  integer, dimension(:), allocatable :: id_t, id_sw_abs_ice
+  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
+  integer :: id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
@@ -251,8 +252,7 @@ type ice_state_type
   integer :: id_mib=-1, id_coszen=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
   integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
-  integer :: id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
-  integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
+  integer :: id_sw_pen=-1, id_sw_abs_ocn=-1
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -517,7 +517,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   character(len=*),        intent(in)    :: restart_file
   
   type(domain2d), pointer :: domain
-  integer :: CatIce, idr
+  integer :: CatIce, idr, n
+  character(len=8) :: nstr
 
   CatIce = G%CatIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
@@ -607,14 +608,12 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%h_ice, &
                                domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice1', IST%t_ice(:,:,:,1), &
-                               domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice2', IST%t_ice(:,:,:,2), &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice3', IST%t_ice(:,:,:,3), &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice4', IST%t_ice(:,:,:,4), &
-                               domain=domain, mandatory=.false.)
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
+                                 IST%t_ice(:,:,:,n), domain=domain, mandatory=(n==1))
+  enddo
+
   if (IST%Cgrid_dyn) then
     idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
                                  domain=domain, position=EAST, mandatory=.false.)
@@ -930,7 +929,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   real, parameter       :: missing = -1e34
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
-  integer :: i, j, k, isc, iec, jsc, jec
+  integer :: i, j, k, isc, iec, jsc, jec, n
+  character(len=8) :: nstr
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -963,14 +963,16 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'ice thickness', 'm-ice', missing_value=missing)
   IST%id_hio      = register_SIS_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
-  IST%id_t1       = register_SIS_diag_field('ice_model', 'T1', diag%axesT1, Time, &
-               'top ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t2       = register_SIS_diag_field('ice_model', 'T2', diag%axesT1, Time, &
-               'second ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t3       = register_SIS_diag_field('ice_model', 'T3', diag%axesT1, Time, &
-               'third ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t4       = register_SIS_diag_field('ice_model', 'T4', diag%axesT1, Time, &
-               'bottom ice layer temperature', 'C',  missing_value=missing)
+  
+  if (.not.allocated(IST%id_t)) then
+    allocate(IST%id_t(G%NkIce)) ; IST%id_t(:) = -1
+  endif
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
+                 diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
+                 'C',  missing_value=missing)
+  enddo
   IST%id_ts       = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
   IST%id_sh       = register_SIS_diag_field('ice_model','SH' ,diag%axesT1, Time, &
@@ -1017,14 +1019,16 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'SW frac. abs. at the ice surface','0:1', missing_value=missing )
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
-  IST%id_sw_abs_ice1= register_SIS_diag_field('ice_model','sw_abs_ice1',diag%axesT1, Time, &
-               'SW frac. abs. in ice1','0:1', missing_value=missing )
-  IST%id_sw_abs_ice2= register_SIS_diag_field('ice_model','sw_abs_ice2',diag%axesT1, Time, &
-               'SW frac. abs. in ice2','0:1', missing_value=missing )
-  IST%id_sw_abs_ice3= register_SIS_diag_field('ice_model','sw_abs_ice3',diag%axesT1, Time, &
-               'SW frac. abs. in ice3','0:1', missing_value=missing )
-  IST%id_sw_abs_ice4= register_SIS_diag_field('ice_model','sw_abs_ice4',diag%axesT1, Time, &
-               'SW frac. abs. in ice4','0:1', missing_value=missing )
+
+  if (.not.allocated(IST%id_sw_abs_ice)) then
+    allocate(IST%id_sw_abs_ice(G%NkIce)) ; IST%id_sw_abs_ice(:) = -1
+  endif
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
+                 diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
+                 '0:1', missing_value=missing )
+  enddo
   IST%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
                'SW frac. pen. surf.','0:1', missing_value=missing )
   IST%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
@@ -1149,7 +1153,7 @@ subroutine ice_stock_pe(Ice, index, value)
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
-
+      !### Fix the heat stock calculation.
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
@@ -1228,37 +1232,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
-
-! write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(IST%sea_lev            )
-! write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(IST%u_ocn              )
-! write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(IST%v_ocn              )
-! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
-! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
-! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
-! write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(IST%flux_q_top         )
-! write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(IST%flux_lw_top        )
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(IST%flux_sw_vis_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(IST%flux_sw_vis_dif_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(IST%flux_sw_nir_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(IST%flux_sw_nir_dif_top)
-! write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(IST%flux_lh_top        )
-! write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(IST%lprec_top          )
-! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
-!  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(IST%lwdn               )
-!  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
-!  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(IST%tmelt              )
-!  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(IST%bmelt              )
-!  write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(IST%h_snow             )
-!  write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(IST%t_snow             )
-!  write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(IST%h_ice              )
-!  write(outunit,100) 'ice_data_type%t_ice(1)           ',mpp_chksum(IST%t_ice(:,:,:,1)     )
-!  write(outunit,100) 'ice_data_type%t_ice(2)           ',mpp_chksum(IST%t_ice(:,:,:,2)     )
-!  write(outunit,100) 'ice_data_type%t_ice(3)           ',mpp_chksum(IST%t_ice(:,:,:,3)     )
-!  write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(IST%t_ice(:,:,:,4)     )
-!  write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(IST%u_ice              )
-!  write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(IST%v_ice              )
-!  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(IST%frazil)
-!  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(IST%bheat)
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &

@@ -1244,14 +1244,10 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice1>0) call post_avg(IST%id_sw_abs_ice1, IST%sw_abs_ice(:,:,:,1), &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice2>0) call post_avg(IST%id_sw_abs_ice2, IST%sw_abs_ice(:,:,:,2), &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice3>0) call post_avg(IST%id_sw_abs_ice3, IST%sw_abs_ice(:,:,:,3), &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
-  if (IST%id_sw_abs_ice4>0) call post_avg(IST%id_sw_abs_ice4, IST%sw_abs_ice(:,:,:,4), &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+  do m=1,G%NkIce
+    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
+                                     IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+  enddo
   if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
                                    IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
 
@@ -1747,14 +1743,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                  IST%diag, G=G, mask=G%Lmask2dT, offset=-T_0degC, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, IST%t_snow, IST%part_size(:,:,1:), &
                                  IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
-  if (IST%id_t1>0) call post_avg(IST%id_t1, IST%t_ice(:,:,:,1), IST%part_size(:,:,1:), &
-                                 IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
-  if (IST%id_t2>0) call post_avg(IST%id_t2, IST%t_ice(:,:,:,2), IST%part_size(:,:,1:), &
-                                 IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
-  if (IST%id_t3>0) call post_avg(IST%id_t3, IST%t_ice(:,:,:,3), IST%part_size(:,:,1:), &
-                                 IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
-  if (IST%id_t4>0) call post_avg(IST%id_t4, IST%t_ice(:,:,:,4), IST%part_size(:,:,1:), &
-                                 IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
+  do m=1,G%NkIce
+    if (IST%id_t(m)>0) call post_avg(IST%id_t(m), IST%t_ice(:,:,:,m), IST%part_size(:,:,1:), &
+                                   IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
+  enddo
 
   if (IST%id_xprt>0) then
     do j=jsc,jec ; do i=isc,iec
@@ -2672,10 +2664,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...NumCat
-  integer :: i, j, k, l, i2, j2, k2, i_off, j_off
+  integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
   character(len=128) :: restart_file
   character(len=40)  :: mod = "ice_model" ! This module's name.
+  character(len=8)   :: nstr
+  
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
   type(sea_ice_grid_type), pointer :: G => NULL()
@@ -2896,12 +2890,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     ! in SIS1 restart files.
     if (.not.query_initialized(Ice%Ice_restart, 't_snow')) &
       IST%t_snow(:,:,:) = IST%t_ice(:,:,:,1)
-    if (.not.query_initialized(Ice%Ice_restart, 't_ice2')) &
-      IST%t_ice(:,:,:,2) = IST%t_ice(:,:,:,1)
-    if (.not.query_initialized(Ice%Ice_restart, 't_ice3')) &
-      IST%t_ice(:,:,:,3) = IST%t_ice(:,:,:,2)
-    if (.not.query_initialized(Ice%Ice_restart, 't_ice4')) &
-      IST%t_ice(:,:,:,4) = IST%t_ice(:,:,:,3)
+    do n=2,G%NkIce
+      write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+      if (.not.query_initialized(Ice%Ice_restart, 't_ice'//trim(nstr))) &
+        IST%t_ice(:,:,:,n) = IST%t_ice(:,:,:,n-1)
+    enddo
 
     ! Deal with any ice thicknesses over land.
     do k=1,G%CatIce
