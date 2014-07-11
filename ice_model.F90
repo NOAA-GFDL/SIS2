@@ -1747,6 +1747,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%id_t(m)>0) call post_avg(IST%id_t(m), IST%t_ice(:,:,:,m), IST%part_size(:,:,1:), &
                                    IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   enddo
+  if (IST%id_t_iceav>0) call post_avg(IST%id_t_iceav, IST%t_ice, IST%part_size(:,:,1:), &
+                                    IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
 
   if (IST%id_xprt>0) then
     do j=jsc,jec ; do i=isc,iec
@@ -1810,6 +1812,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp)
     IST%write_ice_stats_time = IST%write_ice_stats_time + IST%ice_stats_interval
+  elseif (IST%column_check) then
+    call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp)
   endif
 
 end subroutine update_ice_model_slow
@@ -2813,6 +2817,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "The interval in units of TIMEUNIT between writes of the \n"//&
                  "globally summed ice statistics and conservation checks.", &
                  default=set_time(0,1), timeunit=Time_unit)
+
+  if (IST%ice_bulk_salin < 0.0) IST%ice_bulk_salin = 0.0
 
   call check_ice_model_nml(param_file)
 

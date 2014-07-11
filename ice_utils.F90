@@ -43,6 +43,10 @@ implicit none ; private
 
 public :: get_avg, post_avg, ice_line, is_NaN, g_sum, ice_grid_chksum
 
+interface post_avg
+  module procedure post_avg_3d, post_avg_4d
+end interface
+
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -128,10 +132,10 @@ end subroutine ice_line
 ! post_avg - take area weighted average over some or all thickness categories  !
 !            and offer it for diagnostic output.                               !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine post_avg(id, val, part, diag, G, mask, scale, offset, wtd)
-  integer, intent(in) :: id
-  real, dimension(:,:,:), intent(in) :: val, part
-  type(SIS_diag_ctrl),  intent(in) :: diag
+subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
+  integer,                 intent(in) :: id
+  real, dimension(:,:,:),  intent(in) :: val, part
+  type(SIS_diag_ctrl),     intent(in) :: diag
   type(sea_ice_grid_type), optional, intent(in) :: G
   logical, dimension(:,:), optional, intent(in) :: mask
   real,                    optional, intent(in) :: scale, offset
@@ -202,7 +206,90 @@ subroutine post_avg(id, val, part, diag, G, mask, scale, offset, wtd)
 
   call post_SIS_data(id, avg, diag, mask=mask)
 
-end subroutine post_avg
+end subroutine post_avg_3d
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! post_avg - take area weighted average over some or all thickness categories  !
+!            and offer it for diagnostic output.                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
+  integer, intent(in) :: id
+  real, dimension(:,:,:,:), intent(in) :: val
+  real, dimension(:,:,:),   intent(in) :: part
+  type(SIS_diag_ctrl),      intent(in) :: diag
+  type(sea_ice_grid_type), optional, intent(in) :: G
+  logical, dimension(:,:), optional, intent(in) :: mask
+  real,                    optional, intent(in) :: scale, offset
+  logical,                 optional, intent(in) :: wtd
+  ! This subroutine determines the average of a quantity across thickness
+  ! categories and does a send data on it.
+
+  real :: avg(size(val,1),size(val,2)), wts(size(val,1),size(val,2))
+  real :: scl, off, I_nLay
+  logical :: do_wt
+  integer :: i, j, k, L, ni, nj, nk, nLay, is, ie, js, je
+
+  ni = size(val,1) ; nj = size(val,2) ; nk = size(val,3) ; nLay = size(val,4)
+  if (size(part,1) /= ni) call SIS_error(FATAL, &
+    "Mismatched i-sizes in post_avg.")
+  if (size(part,2) /= nj) call SIS_error(FATAL, &
+    "Mismatched j-sizes in post_avg.")
+  if (size(part,3) /= nk) call SIS_error(FATAL, &
+    "Mismatched k-sizes in post_avg.")
+
+  if (present(G)) then  ! Account for the fact that arrays here start at 1.
+    if ((ni == G%isc-G%iec + 1) .or. (ni == G%isc-G%iec + 2)) then
+      is = 1; ie = ni  ! These arrays have no halos.
+    elseif (ni == G%ied-(G%isd-1)) then  ! Arrays have halos.
+      is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1)
+    elseif (ni == G%ied-(G%isd-1)+1) then ! Symmetric arrays with halos.
+      is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1) + 1
+    else
+      call SIS_error(FATAL,"post_avg: peculiar size in i-direction")
+    endif
+
+    if ((nj == G%jsc-G%jec + 1) .or. (nj == G%jsc-G%jec + 2)) then
+      js = 1; je = nj  ! These arrays have no halos.
+    elseif (nj == G%jed-(G%jsd-1)) then  ! Arrays have halos
+      js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1)
+    elseif (nj == G%jed-(G%jsd-1)+1) then ! Symmetric arrays with halos.
+      js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1) + 1
+    else
+      call SIS_error(FATAL,"post_avg: peculiar size in j-direction")
+    endif
+  else
+    is = 1; ie = ni ; js = 1 ; je = nj
+  endif
+
+  scl = 1.0 ; if (present(scale)) scl = scale
+  off = 0.0 ; if (present(offset)) off = offset
+  do_wt = .false. ; if (present(wtd)) do_wt = wtd
+
+  if (do_wt) then
+    avg(:,:) = 0.0 ; wts(:,:) = 0.0
+    do L=1,nLay ; do k=1,nk ; do j=js,je ; do i=is,ie
+      avg(i,j) = avg(i,j) + part(i,j,k)*(scl*val(i,j,k,L) + off)
+    enddo ; enddo ; enddo ; enddo
+    do k=1,nk ; do j=js,je ; do i=is,ie
+      wts(i,j) = wts(i,j) + nLay * part(i,j,k)
+    enddo ; enddo ; enddo
+    do j=js,je ; do i=is,ie
+      if (wts(i,j) > 0.) then
+        avg(i,j) = avg(i,j) / wts(i,j)
+      else
+        avg(i,j) = 0.0
+      endif
+    enddo ; enddo
+  else
+    avg(:,:) = 0.0 ; I_nLay = 1.0/nLay
+    do L=1,nLay ; do k=1,nk ; do j=js,je ; do i=is,ie
+      avg(i,j) = avg(i,j) + (part(i,j,k)*I_nLay)*(scl*val(i,j,k,L) + off)
+    enddo ; enddo ; enddo ; enddo
+  endif
+
+  call post_SIS_data(id, avg, diag, mask=mask)
+
+end subroutine post_avg_4d
 
 subroutine ice_grid_chksum(G, haloshift)
   type(sea_ice_grid_type), optional, intent(inout) :: G

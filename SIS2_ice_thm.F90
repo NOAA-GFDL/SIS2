@@ -979,16 +979,16 @@ end subroutine get_SIS2_thermo_coefs
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
+subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, evap, &
                            tmlt, bmlt, tfw, NkIce, heat_to_ocn, h2o_ice_to_ocn, &
                            h2o_ocn_to_ice, evap_from_ocn, snow_to_ice, ITV, CS, bablt, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
-  real, intent(inout) :: m_snow        ! snow mass per unit area (kg m-2)
-  real, intent(inout) :: m_ice        ! ice mass per unit area (kg m-2)
+  real, intent(inout) :: m_snow      ! snow mass per unit area (kg m-2)
+  real, intent(inout) :: m_ice       ! ice mass per unit area (kg m-2)
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    ! snow, ice, and ocean enthalpy by layer (J/kg)
   real, dimension(NkIce), &
-        intent(in)    :: Sice ! ice salinity by layer (g/kg)
+        intent(in)    :: Sice_therm  ! ice salinity by layer, as used for thermodynamics (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
   real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: evap        ! ice evaporation (kg/m^2)
@@ -1014,7 +1014,6 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
   real, dimension(0:NkIce) :: m_lay ! temporary ice mass
-!  real, dimension(0:NkIce) :: enth_lay  ! The enthalpy of the ice and snow layers, in enth_unit.
   real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit..
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy, in units of enth_unit.
@@ -1047,7 +1046,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
   enth_fr(0) = enthalpy_liquid_freeze(0.0, ITV)
   m_lay(0) = m_snow
   do k=1,NkIce ! break out individual layers
-    enth_fr(k) = enthalpy_liquid_freeze(sice(k), ITV)
+    enth_fr(k) = enthalpy_liquid_freeze(sice_therm(k), ITV)
     m_lay(k) = m_ice / NkIce
   enddo
 
@@ -1072,8 +1071,8 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
   if (frazil > 0.0) then
     frazil_per_layer = (enth_unit*frazil)/NkIce
     do k=1,NkIce
-      t_frazil = min(tfw, -ITV%mu_TS*sice(k) - CS%Frazil_temp_offset)
-      enth_frazil = enth_from_TS(t_frazil, sice(k), ITV)
+      t_frazil = min(tfw, -ITV%mu_TS*sice_therm(k) - CS%Frazil_temp_offset)
+      enth_frazil = enth_from_TS(t_frazil, sice_therm(k), ITV)
       ! Enth_fr here should be based on the temperature of ocean water and the
       ! salinity of the newly formed ice.
       m_frazil = frazil_per_layer / (enth_fr(k) - enth_frazil)
@@ -1238,7 +1237,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice, snow, frazil, evap, &
     h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
   endif
 
-  call resize_check(m_snow, m_ice, enthalpy, Sice, NkIce, bot_melt/enth_unit, &
+  call resize_check(m_snow, m_ice, enthalpy, Sice_therm, NkIce, bot_melt/enth_unit, &
                     top_melt/enth_unit, ITV)
 
 end subroutine ice_resize_SIS2

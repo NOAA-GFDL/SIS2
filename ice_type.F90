@@ -239,7 +239,7 @@ type ice_state_type
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
-  integer :: id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
+  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_hio=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
@@ -964,9 +964,9 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_hio      = register_SIS_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
   
-  if (.not.allocated(IST%id_t)) then
-    allocate(IST%id_t(G%NkIce)) ; IST%id_t(:) = -1
-  endif
+  IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice temperature', 'C', missing_value=missing)
+  call safe_alloc_ids_1d(IST%id_t, G%NkIce)
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
@@ -1020,9 +1020,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
 
-  if (.not.allocated(IST%id_sw_abs_ice)) then
-    allocate(IST%id_sw_abs_ice(G%NkIce)) ; IST%id_sw_abs_ice(:) = -1
-  endif
+  call safe_alloc_ids_1d(IST%id_sw_abs_ice, G%NkIce)
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
@@ -1118,6 +1116,15 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   if (id_cell_area>0) call post_data(id_cell_area, cell_area, diag, is_static=.true.)
 
 end subroutine ice_diagnostics_init
+
+subroutine safe_alloc_ids_1d(ids, nids)
+  integer, allocatable :: ids(:)
+  integer, intent(in)  :: nids
+
+  if (.not.ALLOCATED(ids)) then
+    allocate(ids(nids)) ; ids(:) = -1
+  endif
+end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !

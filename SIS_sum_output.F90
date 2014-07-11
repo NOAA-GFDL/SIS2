@@ -583,15 +583,17 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     heat_imb = (col_heat(i,j,hem) - CS%heat_col_prev(i,j)) - CS%heat_in_col(i,j)
     mass_imb = (col_mass(i,j,hem) - CS%water_col_prev(i,j)) - CS%water_in_col(i,j)
-    if (abs(mass_imb) > CS%imb_tol*abs(Mass)) then
+    if (abs(mass_imb) > CS%imb_tol*abs(Mass) .and. (abs(Mass) > 0.0)) then
       write(mesg,'("Mass imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
-                  &" Lon/Lat = ",2(f8.2))') mass_imb, mass_imb/mass, i, j, &
-                  G%geolonT(i,j), G%geolatT(i,j)
+                  &" Lon/Lat = ",2(f8.2))') &
+                  mass_imb, mass_imb/max(abs(mass),abs(mass_imb)), &
+                  i, j, G%geolonT(i,j), G%geolatT(i,j)
       call SIS_error(WARNING, mesg, all_print=.true.)
     endif
-    if (abs(heat_imb) > CS%imb_tol*abs(Heat)) then
+    if (abs(heat_imb) > CS%imb_tol*abs(Heat) .and. (abs(Heat) > 0.0)) then
       write(mesg,'("Heat imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
-                  &" Lon/Lat = ",2(f8.2))') heat_imb, heat_imb/heat, i, j, &
+                  &" Lon/Lat = ",2(f8.2))') &
+                  heat_imb, heat_imb/max(abs(heat),abs(heat_imb)), i, j, &
                   G%geolonT(i,j), G%geolatT(i,j)
       call SIS_error(WARNING, mesg, all_print=.true.)
     endif

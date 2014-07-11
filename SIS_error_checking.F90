@@ -35,43 +35,31 @@ public :: check_redundant_C, check_redundant_B, check_redundant_T
 public :: MOM_checksums_init
 
 interface hchksum
-  module procedure chksum_h_2d
-  module procedure chksum_h_3d
+  module procedure chksum_h_2d, chksum_h_3d
 end interface
 
 interface Bchksum
-  module procedure chksum_B_2d
-  module procedure chksum_B_3d
+  module procedure chksum_B_2d, chksum_B_3d
 end interface
 
 interface uchksum
-  module procedure chksum_u_2d
-  module procedure chksum_u_3d
+  module procedure chksum_u_2d, chksum_u_3d
 end interface
 
 interface vchksum
-  module procedure chksum_v_2d
-  module procedure chksum_v_3d
+  module procedure chksum_v_2d, chksum_v_3d
 end interface
 
 interface chksum
-  module procedure chksum1d
-  module procedure chksum2d
-  module procedure chksum3d
+  module procedure chksum1d, chksum2d, chksum3d
 end interface
 
 interface chk_sum_msg
-  module procedure chk_sum_msg1
-  module procedure chk_sum_msg2
-  module procedure chk_sum_msg3
-  module procedure chk_sum_msg5
+  module procedure chk_sum_msg1, chk_sum_msg2, chk_sum_msg3, chk_sum_msg5
 end interface
 
 interface is_NaN
-  module procedure is_NaN_0d
-  module procedure is_NaN_1d
-  module procedure is_NaN_2d
-  module procedure is_NaN_3d
+  module procedure is_NaN_0d, is_NaN_1d, is_NaN_2d, is_NaN_3d
 end interface
 
 interface check_redundant_C
