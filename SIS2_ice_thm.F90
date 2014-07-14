@@ -979,9 +979,10 @@ end subroutine get_SIS2_thermo_coefs
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, evap, &
-                           tmlt, bmlt, tfw, NkIce, heat_to_ocn, h2o_ice_to_ocn, &
-                           h2o_ocn_to_ice, evap_from_ocn, snow_to_ice, ITV, CS, bablt, &
+subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
+                           frazil, evap, tmlt, bmlt, tfw, NkIce, heat_to_ocn, &
+                           h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
+                           snow_to_ice, salt_to_ice, ITV, CS, bablt, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   real, intent(inout) :: m_snow      ! snow mass per unit area (kg m-2)
   real, intent(inout) :: m_ice       ! ice mass per unit area (kg m-2)
@@ -989,6 +990,8 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
         intent(inout) :: Enthalpy    ! snow, ice, and ocean enthalpy by layer (J/kg)
   real, dimension(NkIce), &
         intent(in)    :: Sice_therm  ! ice salinity by layer, as used for thermodynamics (g/kg)
+  real, dimension(NkIce+1), &
+        intent(inout) :: Salin       ! Conserved ice bulk salinity by layer (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
   real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: evap        ! ice evaporation (kg/m^2)
@@ -1001,6 +1004,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
   real, intent(  out) :: h2o_ocn_to_ice ! liquid water flux from ocean (kg/m^2)
   real, intent(  out) :: evap_from_ocn! evaporation flux from ocean (kg/m^2)
   real, intent(  out) :: snow_to_ice ! snow below waterline becomes ice
+  real, intent(  out) :: salt_to_ice ! Net flux of salt to the ice, in g m-2.
   type(SIS2_ice_thm_CS), intent(in) :: CS
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
 
@@ -1017,7 +1021,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
   real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit..
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy, in units of enth_unit.
-  real, dimension(NkIce) :: mlay_new, enth_ice_new
+  real, dimension(NkIce) :: mlay_new, enth_ice_new, sal_ice_new
   real :: frazil_per_layer    ! The frazil heat sink from each of the sublayers of
                               ! of the ice, in units of enth_unit.
   real :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
@@ -1030,6 +1034,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
   real :: evap_left           ! The remaining evaporation, in kg m-2.
   real :: evap_here           ! The evaporation from the current layer, in kg m-2.
   real :: m_submerged         ! The submerged mass of ice, in kg m-2.
+  real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: etot
   real :: enth_unit, LI
@@ -1054,6 +1059,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
 
   evap_from_ocn = 0.0 ! for excess evap-melt
   h2o_ocn_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0 ; snow_to_ice  = 0.0
+  salt_to_ice = 0.0
   enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
 
   if (m_ice == 0.0) m_lay(0) = 0.0  ! This should already be true! Trap an error?  Convert the snow to ice?
@@ -1064,6 +1070,8 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
     m_lay(0) = m_lay(0) - evap ! Treat frost formation like snow.
     enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
   endif
+  ! Assume that Salin(NkIce+1) already is the freezing salinity.
+  salin_freeze = Salin(NkIce+1)
 
   ! add frazil
   ! Frazil mostly forms in leads, so add its heat uniformly over all of the
@@ -1079,6 +1087,10 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
 
       Enthalpy(k) = (m_lay(k)*Enthalpy(k) + m_frazil*enth_frazil) / &
                     (m_lay(k) + m_frazil)
+      Salin(k) = (m_lay(k)*Salin(k) + m_frazil*salin_freeze) / &
+                 (m_lay(k) + m_frazil)
+      Salt_to_ice = Salt_to_ice + m_frazil*salin_freeze
+
       m_lay(k) = m_lay(k) + m_frazil
       h2o_ocn_to_ice = h2o_ocn_to_ice + m_frazil
 
@@ -1092,10 +1104,14 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
     top_melt = 0.0
   endif
 
-  if (bot_melt < 0.0 ) then ! add freezing to bottom layer at tice and sice.
+  if (bot_melt < 0.0 ) then ! add freezing to bottom layer at tice and salin_freeze.
     ! Enth_fr here should be based on the temperature of ocean water and the
     ! salinity of the newly formed ice.
     m_freeze = -bot_melt / (enth_fr(NkIce) - Enthalpy(NkIce))
+
+    Salin(NkIce) = (m_lay(NkIce)*Salin(NkIce) + m_freeze*salin_freeze) / &
+                   (m_lay(NkIce) + m_freeze)
+    Salt_to_ice = Salt_to_ice + m_freeze*salin_freeze
 
     m_lay(NkIce) = m_lay(NkIce) + m_freeze
     h2o_ocn_to_ice = h2o_ocn_to_ice + m_freeze
@@ -1112,6 +1128,8 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
       evap_here = min(evap_left, m_lay(k))
       evap_left = evap_left - evap_here
       m_lay(k) = m_lay(k) - evap_here
+      ! Assume that evaporation does not make ice salty?
+      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * evap_here
       enthM_evap = enthM_evap + evap_here * enthalpy(k)
       
       if (evap_left <= 0.0) exit
@@ -1135,6 +1153,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
         melt_left = melt_left - M_melt*(enth_fr(k) - Enthalpy(k))
       endif
       m_lay(k) = m_lay(k) - M_melt
+      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
       h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
 
@@ -1157,6 +1176,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
         melt_left = melt_left - M_melt*(enth_fr(k) - Enthalpy(k))
       endif
       m_lay(k) = m_lay(k) - M_melt
+      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
       h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
       ablation = ablation + M_melt
@@ -1188,6 +1208,11 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
     ! and the bulk ice salinity do not change.
     Enthalpy(1) = (m_lay(1)*Enthalpy(1) + snow_to_ice*Enthalpy(0)) / &
                   (m_lay(1) + snow_to_ice)
+
+    ! Pick one of the following...
+    ! Salt_to_ice = Salt_to_ice + Salin(k) * snow_to_ice
+    Salin(1) = Salin(1) * m_lay(1) / (m_lay(1) + snow_to_ice)
+
     m_lay(1) = m_lay(1) + snow_to_ice
   else
     snow_to_ice = 0.0;
@@ -1199,6 +1224,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
     do k=1,NkIce ; Enthalpy(k) = enth_fr(k) ; enddo
   else
     do k=1,NkIce ; mlay_new(k) = 0.0 ; enth_ice_new(k) = 0.0 ; enddo
+    do k=1,NkIce ; sal_ice_new(k) = 0.0 ; enddo
     m_ice_avg = m_ice / NkIce
     k1 = 1 ; k2 = 1
     do  ! Add ice from k1 to k2 to even up layer thicknesses.
@@ -1209,6 +1235,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
         ! Move all remaining ice from k1 to k2.
         m_k1_to_k2 = m_lay(k1)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
+        sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
         mlay_new(k2) = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = 0.0 ! = m_lay(k1) - m_k1_to_k2
         k1 = k1+1
@@ -1216,6 +1243,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
         ! Move some of the ice from k1 to k2.
         m_k1_to_k2 = m_ice_avg - mlay_new(k2)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
+        sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
         mlay_new(k2) = m_ice_avg ! = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = m_lay(k1) - m_k1_to_k2
         k2 = k2+1
@@ -1224,6 +1252,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, snow, frazil, ev
     enddo
     do k=1,NkIce ; if (mlay_new(k) > 0.0) then
       Enthalpy(k) = enth_ice_new(k)/mlay_new(k)
+      Salin(k) = sal_ice_new(k)/mlay_new(k)
     endif ; enddo
   endif
 

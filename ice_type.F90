@@ -88,10 +88,12 @@ type ice_state_type
   real, pointer, dimension(:,:,:,:) :: &
     t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
+    sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
+                        ! fractional thickness layer, in kg/kg.
     enth_ice =>NULL(), & ! The enthalpy of the sea ice in each category and
                         ! fractional thickness layer, in enth_unit (J or rescaled).
     enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
-  
+
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
     t_ocn   =>NULL(), &    ! The ocean's bulk surface temperature in degC.
@@ -210,6 +212,8 @@ type ice_state_type
                          ! ocean/ice basal heat flux, in W m-2 K-1.
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in kg/kg
                          ! that is used to calculate the ocean salt flux.
+  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
+                         ! salinity of the water from which it formed, nondim.
   logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
                             ! by applying a restorative heat flux.
   real    :: ice_restore_timescale ! The time scale for restoring ice when
@@ -237,7 +241,7 @@ type ice_state_type
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 !   type(coupler_3d_bc_type)   :: ocean_fluxes_top   ! array of fluxes for averaging
 
-  integer, dimension(:), allocatable :: id_t, id_sw_abs_ice
+  integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
   integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_hio=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
@@ -576,6 +580,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
 
   allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
@@ -612,6 +617,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
                                  IST%t_ice(:,:,:,n), domain=domain, mandatory=(n==1))
+    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
+                                 IST%sal_ice(:,:,:,n), domain=domain, mandatory=.false.)
   enddo
 
   if (IST%Cgrid_dyn) then
@@ -681,7 +688,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
   deallocate(IST%h_snow, IST%t_snow, IST%h_ice, IST%t_ice)
-  deallocate(IST%enth_snow, IST%enth_ice)
+  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
 end subroutine dealloc_IST_arrays
 
@@ -710,6 +717,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%h_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
@@ -867,7 +875,8 @@ subroutine IST_bounds_check(IST, G, msg)
 
   do l=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max) .or. &
-        (IST%enth_ice(i,j,k,l) < enth_min) .or. (IST%enth_ice(i,j,k,l) > enth_max)) then
+        (IST%enth_ice(i,j,k,l) < enth_min) .or. (IST%enth_ice(i,j,k,l) > enth_max) .or. &
+        (IST%sal_ice(i,j,k,l) < 0.0) .or. (IST%sal_ice(i,j,k,l) > 1000.0)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
@@ -966,12 +975,18 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   
   IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', 'C', missing_value=missing)
+  IST%id_s_iceav = register_SIS_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice salinity', 'kg/kg', missing_value=missing)
   call safe_alloc_ids_1d(IST%id_t, G%NkIce)
+  call safe_alloc_ids_1d(IST%id_sal, G%NkIce)
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
                  diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
                  'C',  missing_value=missing)
+    IST%id_sal(n)   = register_SIS_diag_field('ice_model', 'Sal'//trim(nstr), &
+               diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
+               'kg/kg',  missing_value=missing)
   enddo
   IST%id_ts       = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)

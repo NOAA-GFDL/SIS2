@@ -398,8 +398,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * &
           (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k))
 
-      col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
-          ((IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin)
+!      col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
+!          ((IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin)
 
       T_col(0) = IST%t_snow(i,j,k)
       do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
@@ -410,6 +410,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
           (IST%Rho_ice*IST%h_ice(i,j,k)*I_nlay) * enthalpy(L)
+        col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
+          ((IST%Rho_ice*IST%h_ice(i,j,k)*I_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
     if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)
