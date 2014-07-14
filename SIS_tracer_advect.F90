@@ -79,7 +79,10 @@ type, public :: SIS_tracer_advect_CS ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                             ! timing of diagnostic output.
   logical :: debug          ! If true, write verbose checksums for debugging purposes.
-  logical :: usePPM         ! If true, use PPM instead of PLM
+  logical :: use_upwind2d   ! If true, use the non-split upwind scheme that was
+                            ! was used in older versions of SIS.
+  logical :: usePPM         ! If true, use PPM tracer advection instead of PLM.
+  logical :: usePCM         ! If true, use PCM tracer advection instead of PLM.
 end type SIS_tracer_advect_CS
 
 integer :: id_clock_advect, id_clock_pass, id_clock_sync
@@ -1047,10 +1050,17 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "DEBUG", CS%debug, default=.false.)
   call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&
+          "  UPWIND_2D - Non-directionally split upwind\n"//&
+          "  PCM    - Directionally split peicewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
-          "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)" &
-          , default='PLM')
+          "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
+          default='UPWIND_2D')
+  CS%use_upwind2d = .false. ; CS%usePPM = .false. ; CS%usePCM = .false.
   select case (trim(mesg))
+    case ("UPWIND_2D")
+      CS%use_upwind2d = .true.
+    case ("PCM")
+      CS%usePCM = .true.
     case ("PLM")
       CS%usePPM = .false.
     case ("PPM:H3")
@@ -1059,6 +1069,11 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
       call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
            "Unknown SIS_TRACER_ADVECTION_SCHEME = "//trim(mesg))
   end select
+
+  if (.not.CS%use_upwind2d) then
+      call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
+           "Only SIS_TRACER_ADVECTION_SCHEME = UPWIND_2D is implemented yet.")
+  endif
 
   id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)
   id_clock_pass = cpu_clock_id('(Ocean tracer halo updates)', grain=CLOCK_ROUTINE)
