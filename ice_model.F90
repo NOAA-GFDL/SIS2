@@ -2223,10 +2223,12 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
   I_Nk = 1.0 / G%NkIce
-  do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    salt_change(i,j) = salt_change(i,j) - &
-       (IST%sal_ice(i,j,k,m)*(IST%h_ice(i,j,k)*I_Nk)) * IST%part_size(i,j,k)
-  enddo ; enddo ; enddo ; enddo
+  if (IST%ice_rel_salin <= 0.0) then
+    do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      salt_change(i,j) = salt_change(i,j) - &
+         (IST%sal_ice(i,j,k,m)*(IST%h_ice(i,j,k)*I_Nk)) * IST%part_size(i,j,k)
+    enddo ; enddo ; enddo ; enddo
+  endif
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     h2o_change(i,j) = h2o_change(i,j) - IST%part_size(i,j,k) * &
                   (IST%Rho_snow*IST%h_snow(i,j,k) + IST%Rho_ice*IST%h_ice(i,j,k))
@@ -2297,9 +2299,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         else
           do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
         endif
-      ! i2 = i+i_off ; j2 = j+j_off
-      ! Ice%flux_salt(i2,j2) = Ice%flux_salt(i2,j2) + &
-      !    IST%part_size(i,j,k) * (IST%Rho_ice * Idt_slow) * salt_to_ice
+        salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
 
       ! The snow temperature should not have changed.  This should do nothing.
@@ -2443,9 +2443,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         else
           do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
         endif
-      ! i2 = i+i_off ; j2 = j+j_off
-      ! Ice%flux_salt(i2,j2) = Ice%flux_salt(i2,j2) + &
-      !    IST%part_size(i,j,k) * (IST%Rho_ice * Idt_slow) * salt_to_ice
+        salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
 
       ! The snow temperature should not have changed.  This should do nothing.
@@ -2577,9 +2575,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                 else
                   do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
                 endif
-              ! i2 = i+i_off ; j2 = j+j_off
-              ! Ice%flux_salt(i2,j2) = Ice%flux_salt(i2,j2) + &
-              !    IST%part_size(i,j,k) * (IST%Rho_ice * Idt_slow) * salt_to_ice
+                salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
               endif
 
               ! The snow temperature should not have changed.  This should do nothing.
@@ -2637,9 +2633,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           else
             do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
           endif
-        ! i2 = i+i_off ; j2 = j+j_off
-        ! Ice%flux_salt(i2,j2) = Ice%flux_salt(i2,j2) + &
-        !    IST%part_size(i,j,k) * (IST%Rho_ice * Idt_slow) * salt_to_ice
+          salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
         endif
         ! The snow temperature should not have changed.  This should do nothing.
         ! IST%t_snow(i,j,k) = Temp_from_En_S(Enthalpy(0), 0.0)
@@ -2702,10 +2696,15 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   ! Determine the salt fluxes to ocean
   ! Note that at this point salt_change and h2o_change are the negative of the masses.
-  do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    salt_change(i,j) = salt_change(i,j) + &
-       (IST%sal_ice(i,j,k,m)*(IST%h_ice(i,j,k)*I_Nk)) * IST%part_size(i,j,k)
-  enddo ; enddo ; enddo ; enddo
+  if (IST%ice_rel_salin <= 0.0) then
+    do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      salt_change(i,j) = salt_change(i,j) + &
+         (IST%sal_ice(i,j,k,m)*(IST%h_ice(i,j,k)*I_Nk)) * IST%part_size(i,j,k)
+    enddo ; enddo ; enddo ; enddo
+    do j=jsc,jec ; do i=isc,iec
+      salt_change(i,j) = IST%Rho_ice*salt_change(i,j)
+    enddo ; enddo
+  endif
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
                 (IST%Rho_snow*IST%h_snow(i,j,k) + IST%Rho_ice*IST%h_ice(i,j,k))
@@ -2713,7 +2712,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%flux_salt(i2,j2) = IST%Rho_ice*salt_change(i,j) * Idt_slow
+    Ice%flux_salt(i2,j2) = salt_change(i,j) * Idt_slow
   enddo ; enddo
 
   yr_dtslow = (864e2*365*Idt_slow)
