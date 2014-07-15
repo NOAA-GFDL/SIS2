@@ -411,7 +411,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
           (IST%Rho_ice*IST%h_ice(i,j,k)*I_nlay) * enthalpy(L)
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
-          ((IST%Rho_ice*IST%h_ice(i,j,k)*I_nlay) * IST%sal_ice(i,j,k,L))
+          ((IST%Rho_ice*0.001*IST%h_ice(i,j,k)*I_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
     if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)

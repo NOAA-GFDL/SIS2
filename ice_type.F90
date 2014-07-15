@@ -89,7 +89,7 @@ type ice_state_type
     t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
     sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
-                        ! fractional thickness layer, in kg/kg.
+                        ! fractional thickness layer, in g/kg.
     enth_ice =>NULL(), & ! The enthalpy of the sea ice in each category and
                         ! fractional thickness layer, in enth_unit (J or rescaled).
     enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
@@ -210,7 +210,7 @@ type ice_state_type
                          ! model and have the wrong sign.
   real :: kmelt          ! A constant that is used in the calculation of the 
                          ! ocean/ice basal heat flux, in W m-2 K-1.
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in kg/kg
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed, nondim.
@@ -976,7 +976,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', 'C', missing_value=missing)
   IST%id_s_iceav = register_SIS_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
-               'Volume-averaged ice salinity', 'kg/kg', missing_value=missing)
+               'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
   call safe_alloc_ids_1d(IST%id_t, G%NkIce)
   call safe_alloc_ids_1d(IST%id_sal, G%NkIce)
   do n=1,G%NkIce
@@ -986,7 +986,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                  'C',  missing_value=missing)
     IST%id_sal(n)   = register_SIS_diag_field('ice_model', 'Sal'//trim(nstr), &
                diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
-               'kg/kg',  missing_value=missing)
+               'g/kg',  missing_value=missing)
   enddo
   IST%id_ts       = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
@@ -1153,7 +1153,7 @@ subroutine ice_stock_pe(Ice, index, value)
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
 
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
 
   value = 0.0
@@ -1171,7 +1171,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -1193,12 +1193,12 @@ subroutine ice_stock_pe(Ice, index, value)
       enddo ; enddo ; enddo
 
     case (ISTOCK_SALT)
-      !No salt in the h_snow component.
+      !There is no salt in the snow.
       value = 0.0
-      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
-      enddo ; enddo ; enddo
+      do m=1,Ice%G%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
+            (0.001*IST%Rho_ice*IST%h_ice(i,j,k)) * IST%sal_ice(i,j,k,m)
+      enddo ; enddo ; enddo ; enddo
 
     case default
 
@@ -1404,7 +1404,7 @@ subroutine check_ice_model_nml(param_file)
   real    :: pen_ice        = missing    ! part unreflected solar penetrates ice
   real    :: opt_dep_ice    = missing    ! ice optical depth
   real    :: t_range_melt   = missing    ! melt albedos scaled in over T range
-  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)!CICE value
+  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)
 
   namelist /ice_model_nml/ mom_rough_ice, heat_rough_ice, p0, c0, cdw, wd_turn,  &
                            kmelt, alb_sno, alb_ice, pen_ice, opt_dep_ice,        &

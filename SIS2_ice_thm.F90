@@ -46,7 +46,7 @@ implicit none ; private
 public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
 public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
-public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze
+public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
 
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
@@ -856,7 +856,7 @@ function enthalpy_liquid_freeze(S, ITV)
 end function enthalpy_liquid_freeze
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! enthalpy_liquid_freeze - Returns the enthalpy of liquid water at the given   !
+! enthalpy_liquid - Returns the enthalpy of liquid water at the given          !
 !     temperature and salinity, in enth_unit.                                  !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 function enthalpy_liquid(T, S, ITV)

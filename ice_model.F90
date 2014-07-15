@@ -2091,7 +2091,9 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%flux_salt(i2,j2) = IST%ice_bulk_salin*IST%Rho_ice*hi_change(i,j) * Idt_slow
+    ! Note the convsersion here from g m-2 to kg m-2 s-1.
+    Ice%flux_salt(i2,j2) = ((0.001*IST%ice_bulk_salin)*IST%Rho_ice) * &
+                           (hi_change(i,j) * Idt_slow)
   enddo ; enddo
 
   yr_dtslow = (864e2*365/dt_slow)
@@ -2141,8 +2143,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
   real, dimension(1:G%CatIce)        :: e2m
   real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
-  real, dimension(G%NkIce+1) :: Salin      ! The conserved bulk salinity of each layer, with
-                                           ! the salinity of newly formed ice in layer NkIce+1.
+  real, dimension(G%NkIce+1) :: Salin      ! The conserved bulk salinity of each
+                                           ! layer in g/kg, with the salinity of
+                                           ! newly formed ice in layer NkIce+1.
 
   real :: m_snow   ! The mass of snow per unit area, in kg m-2.
   real :: m_ice    ! The mass of sea ice per unit area, in kg m-2.
@@ -2269,11 +2272,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       ! at the "freezing salinity".
       T_col0(NkIce+1) = max(IST%t_ocn(i,j), T_freeze(S_col0(NkIce+1), IST%ITV))
       call enthalpy_from_TS(T_col0(:), S_col0(:), enthalpy(:), IST%ITV)
+!      enthalpy(NkIce+1) = enthalpy_liquid(IST%t_ocn(i,j), IST%s_surf(i,j), IST%ITV)
 
       if (IST%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-        ! Note the conversion from g/kg to kg/kg.
-        salin(NkIce+1) = (0.001*IST%ice_rel_salin) * IST%s_surf(i,j)
+        salin(NkIce+1) = IST%ice_rel_salin * IST%s_surf(i,j)
       else
         do m=1,NkIce+1 ; Salin(m) = max(IST%ice_bulk_salin,0.0) ; enddo
       endif
@@ -2419,8 +2422,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
       if (IST%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-        ! Note the conversion from g/kg to kg/kg.
-        salin(NkIce+1) = (0.001*IST%ice_rel_salin) * IST%s_surf(i,j)
+        salin(NkIce+1) = IST%ice_rel_salin * IST%s_surf(i,j)
       else
         do m=1,NkIce+1 ; Salin(m) = max(IST%ice_bulk_salin,0.0) ; enddo
       endif
@@ -2552,8 +2554,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
               call enthalpy_from_TS(T_col0(:), S_col0(:), enthalpy(:), IST%ITV)
               if (IST%ice_rel_salin > 0.0) then
                 do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-                ! Note the conversion from g/kg to kg/kg.
-                salin(NkIce+1) = (0.001*IST%ice_rel_salin) * IST%s_surf(i,j)
+                salin(NkIce+1) = IST%ice_rel_salin * IST%s_surf(i,j)
               else
                 do m=1,NkIce+1 ; Salin(m) = max(IST%ice_bulk_salin,0.0) ; enddo
               endif
@@ -2611,8 +2612,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         m_ice = IST%rho_ice * IST%h_ice(i,j,k)
         if (IST%ice_rel_salin > 0.0) then
           do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-          ! Note the conversion from g/kg to kg/kg.
-          salin(NkIce+1) = (0.001*IST%ice_rel_salin) * IST%s_surf(i,j)
+          salin(NkIce+1) = IST%ice_rel_salin * IST%s_surf(i,j)
         else
           do m=1,NkIce+1 ; Salin(m) = max(IST%ice_bulk_salin,0.0) ; enddo
         endif
@@ -2712,7 +2712,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%flux_salt(i2,j2) = salt_change(i,j) * Idt_slow
+    ! Note the convsersion here from g m-2 to kg m-2 s-1.
+    Ice%flux_salt(i2,j2) = salt_change(i,j) * (0.001*Idt_slow)
   enddo ; enddo
 
   yr_dtslow = (864e2*365*Idt_slow)
@@ -2867,7 +2868,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
   call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "kg/kg", default=0.004)
+                 "The fixed bulk salinity of sea ice.", units = "g/kg", default=4.0)
   call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", IST%ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the \n"//&
                  "salinity of the seawater from which it formed.", &
