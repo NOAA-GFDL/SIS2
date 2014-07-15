@@ -1018,7 +1018,8 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
   real, dimension(0:NkIce) :: m_lay ! temporary ice mass
-  real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit..
+  real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit.
+  real :: enth_freeze ! The enthalpy of newly formed congelation ice, in enth_unit.
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy, in units of enth_unit.
   real, dimension(NkIce) :: mlay_new, enth_ice_new, sal_ice_new
@@ -1028,6 +1029,10 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
   real :: m_frazil  ! The newly-formed mass per unit area of frazil ice, in kg m-2.
   real :: hw                  ! waterline height above ice base.
   real :: ablation  ! The mass loss from bottom melt, in kg m-2.
+  real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when
+                              ! freezing water, usually enough to account for
+                              ! the latent heat of fusion in a small fraction of
+                              ! the water, in Enth_unit kg-1 (perhaps J kg-1).
   real :: m_k1_to_k2, m_ice_avg
   real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
   real :: M_melt              ! The ice mass lost to melting, in kg m-2.
@@ -1042,6 +1047,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
   integer :: k, k1, k2, kold, knew
 
   enth_unit = ITV%enth_unit ; LI = ITV%LI
+  min_dEnth_freeze = (LI*enth_unit) * (1.0-CS%liq_lim)
 
   top_melt = tmlt*enth_unit ; bot_melt = bmlt*enth_unit
 
@@ -1080,10 +1086,9 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
     frazil_per_layer = (enth_unit*frazil)/NkIce
     do k=1,NkIce
       t_frazil = min(tfw, -ITV%mu_TS*sice_therm(k) - CS%Frazil_temp_offset)
-      enth_frazil = enth_from_TS(t_frazil, sice_therm(k), ITV)
-      ! Enth_fr here should be based on the temperature of ocean water and the
-      ! salinity of the newly formed ice.
-      m_frazil = frazil_per_layer / (enth_fr(k) - enth_frazil)
+      enth_frazil = min(enth_from_TS(t_frazil, sice_therm(k), ITV), &
+                        enthalpy(NkIce+1) - min_dEnth_freeze)
+      m_frazil = frazil_per_layer / (enthalpy(NkIce+1) - enth_frazil)
 
       Enthalpy(k) = (m_lay(k)*Enthalpy(k) + m_frazil*enth_frazil) / &
                     (m_lay(k) + m_frazil)
@@ -1094,8 +1099,7 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
       m_lay(k) = m_lay(k) + m_frazil
       h2o_ocn_to_ice = h2o_ocn_to_ice + m_frazil
 
-      ! This should be based on the enthalpy of ocean water.
-      enthM_freezing = enthM_freezing + m_frazil*enth_fr(k)
+      enthM_freezing = enthM_freezing + m_frazil*enthalpy(NkIce+1)
     enddo
   endif
 
@@ -1105,17 +1109,20 @@ subroutine ice_resize_SIS2(m_snow, m_ice, Enthalpy, Sice_therm, Salin, snow, &
   endif
 
   if (bot_melt < 0.0 ) then ! add freezing to bottom layer at tice and salin_freeze.
-    ! Enth_fr here should be based on the temperature of ocean water and the
-    ! salinity of the newly formed ice.
-    m_freeze = -bot_melt / (enth_fr(NkIce) - Enthalpy(NkIce))
+    ! Enth_freeze is based on the colder of the properties of the existing ice
+    ! or the heat content of ocean water after a small fraction has frozen.
+    enth_freeze = min(Enthalpy(NkIce), enthalpy(NkIce+1) - min_dEnth_freeze)
+    m_freeze = -bot_melt / (Enthalpy(NkIce+1) - enth_freeze)
 
+    Enthalpy(NkIce) = (m_lay(NkIce)*Enthalpy(NkIce) + m_freeze*enth_freeze) / &
+                      (m_lay(NkIce) + m_freeze)
     Salin(NkIce) = (m_lay(NkIce)*Salin(NkIce) + m_freeze*salin_freeze) / &
                    (m_lay(NkIce) + m_freeze)
     Salt_to_ice = Salt_to_ice + m_freeze*salin_freeze
 
     m_lay(NkIce) = m_lay(NkIce) + m_freeze
     h2o_ocn_to_ice = h2o_ocn_to_ice + m_freeze
-    enthM_freezing = enthM_freezing + m_freeze*enth_fr(NkIce)
+    enthM_freezing = enthM_freezing + m_freeze*enthalpy(NkIce+1)
 
     bot_melt = 0.0
   endif
