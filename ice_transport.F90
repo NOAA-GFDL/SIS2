@@ -66,6 +66,7 @@ type, public :: ice_transport_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
+  logical :: do_ridging
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
   integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
   integer :: id_ix_trans = -1, id_iy_trans = -1
@@ -77,7 +78,7 @@ contains
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
-                          sea_lev, hlim, dt_slow, G, CS)
+                          sea_lev, rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh, hlim, dt_slow, G, CS)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
@@ -85,7 +86,13 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
   real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
-  real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
+  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: sea_lev
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: rdg_hice
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: age_ice
+  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
+  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_rate
+  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_open ! formation rate of open water due to ridging
+  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
   real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
   real,                    intent(in) :: dt_slow
   type(ice_transport_CS), pointer :: CS
@@ -134,7 +141,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    vol_ice_d2, h_ice_d2, vol_snow_d2, h_snow_d2, T_snow_d2
 !  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)) :: &
 !    T_ice_d1, T_ice_d2
-  
+  real, dimension(SZI_(G),SZJ_(G)) :: opnwtr  
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
@@ -271,7 +278,48 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   call pass_var(t_snow, G%Domain, complete=.false.)
   call pass_var(vol_ice,  G%Domain, complete=.false.)
   call pass_var(vol_snow, G%Domain, complete=.false.)
+  call pass_var(rdg_hice, G%Domain, complete=.false.)
+  call pass_var(age_ice, G%Domain, complete=.false.)
   call pass_var(h_ice, G%Domain, complete=.true.)
+
+!TOM> perform redistribution of ice thickness, which might have 
+! changed due to thermodynamics, previous to advection in
+! case ridging scheme is used for redistribution of dynamic changes;
+! here the old redistribution scheme is used (plan is to use 
+! linear remapping of Lipscomb [2001, JGR])
+! T. Martin, June 2008
+!
+!Niki: ice_redistribute is called after advection in SIS2
+!      so I added age_ice and rdg_hice to the ice_redistribute call after advection in SIS1_transport
+!      Bob, is this a problem? How do we redistribute for SIS2_transport
+!    if (do_ridging .and. .not. no_thm) then
+!       do j=jsc, jec
+!	  do i=isc, iec
+!	     if (sum(Ice%h_ice(i,j,:))>0)                   &
+!             call ice_redistribute(Ice%part_size(i,j,2:km), &
+!                  Ice%h_snow(i,j,:),  Ice%h_ice (i,j,:),    &
+!                  Ice%t_ice1(i,j,:),  Ice%t_ice2(i,j,:),    &
+!	          Ice%age_ice(i,j,:), Ice%rdg_hice(i,j,:)   )
+!	  end do
+!       end do
+!    end if
+
+!TOM> ridging needs advection of actual open water fraction, which
+!       is updated here and will be changed during the ridging process.
+!     part_size(:,:,1) is only updated once at the end of slow time step
+!       after budgets are calculated!
+!     opnwtr thus only stores part_size(:,:,1) during transport and
+!       part_size(:,:,1) will be restored after ridging is finished.
+    if (CS%do_ridging) then
+       do j=jsc, jec
+	  do i=isc, iec
+	     opnwtr = part_sz(i,j,0)
+	     part_sz(i,j,0) = 1.0-sum(part_sz(i,j,1:G%CatIce))
+	  end do
+       end do
+    end if
+!<TOM
+
 
   if (CS%SIS1_transport) then
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
@@ -307,12 +355,14 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
         call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
            vol_snow(i,j,:), t_snow(i,j,:), vol_ice(i,j,:), &
            heat_ice(i,j,:,1), heat_ice(i,j,:,2), &
-           heat_ice(i,j,:,3), heat_ice(i,j,:,4), hlim)
+           heat_ice(i,j,:,3), heat_ice(i,j,:,4), &
+           age_ice(i,j,:), rdg_hice(i,j,:), hlim)
     enddo ; enddo
 
     !  Handle vanished categories and recalculate thickness.
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (part_sz(i,j,k)<1e-10) vol_ice(i,j,k) = 0.0
+      if (part_sz(i,j,k)<1e-10) rdg_hice(i,j,k) = 0.0
       if (vol_ice(i,j,k)>0.0) then
         h_ice(i,j,k) = vol_ice(i,j,k)/part_sz(i,j,k)
         h_snow(i,j,k) = vol_snow(i,j,k)/part_sz(i,j,k)
@@ -359,7 +409,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    T_ice_d1(:,:,:,:) = heat_ice(:,:,:,:)
 
     call adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
-                               heat_ice, t_snow, G, CS)
+                               heat_ice, t_snow, G, CS) !Niki: add ridging and age
 
     ! Copy the arrays for debugging purposes.
     ! ###
@@ -440,7 +490,25 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     ! Is sum(part_sz) = 1 ?
 
   endif ! Not SIS1_transport.
-
+  
+  if (CS%do_ridging) then
+     do j=jsc, jec
+        do i=isc, iec
+           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
+           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
+                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
+                call ice_ridging(G%CatIce, CS, part_sz(i,j,:),      &
+                h_ice(i,j,:), h_snow(i,j,:),      &
+                t_ice(i,j,:,1), t_ice(i,j,:,2),     &
+                age_ice(i,j,:), snow2ocn(i,j),        & 
+                rdg_rate(i,j), rdg_hice(i,j,:),   &
+                dt_slow, hlim,                            &
+                rdg_open(i,j), rdg_vosh(i,j))
+        end do
+     end do
+     ! reset open water fraction
+     part_sz(isd:ied,jsd:jed,1) = opnwtr
+  end if   ! do_ridging
 
   !   Convert from enthalpy back to ice temperature. These expressions stem from
   ! the assumptions that brine pockets will shrink or grow until their salinity
@@ -1079,10 +1147,12 @@ end subroutine slab_ice_advect
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_redistribute - a simple ice redistribution scheme from Igor Polyakov     !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
+subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, age, rdg, hlim)
 !!$    real, intent(inout), dimension(1:G%CatIce)           :: cn, hs, hi, t1, t2
   type(sea_ice_grid_type), intent(inout) :: G
   real, intent(inout), dimension(:) :: cn, hs, tsn, hi, t1, t2, t3, t4
+  real, intent(inout), dimension(:) :: age
+  real, intent(inout), dimension(:), optional :: rdg
   real, dimension(:), intent(in) :: hlim
 
   real    :: cw                                 ! open water concentration
@@ -1100,6 +1170,10 @@ subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
     t2(k+1) = t2(k+1)+t2(k) ; t2(k) = 0 ! thm_unpack calls, all quantities are
     t3(k+1) = t3(k+1)+t3(k) ; t3(k) = 0 ! extensive, so we add instead of
     t4(k+1) = t4(k+1)+t4(k) ; t4(k) = 0 ! averaging
+    age(k+1) = age(k+1)+age(k) ; age(k) = 0 ! averaging
+    if (present(rdg)) then
+      rdg(k+1)=rdg(k+1)+rdg(k);rdg(k)= 0 
+    endif
   endif ; enddo
 
   do k=1,G%CatIce-1 ; if (hi(k)>hlim(k+1)*cn(k)) then
@@ -1111,6 +1185,10 @@ subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
     t2(k+1) = t2(k+1)+t2(k) ; t2(k) = 0
     t3(k+1) = t3(k+1)+t3(k) ; t3(k) = 0
     t4(k+1) = t4(k+1)+t4(k) ; t4(k) = 0
+    age(k+1) = age(k+1)+age(k) ; age(k) = 0 ! averaging
+    if (present(rdg)) then
+      rdg(k+1)=rdg(k+1)+rdg(k);rdg(k)= 0 
+    endif
   endif ; enddo
 
   do k=G%CatIce,2,-1 ; if (hi(k)<hlim(k)*cn(k)) then
@@ -1122,8 +1200,12 @@ subroutine ice_redistribute(cn, G, hs, tsn, hi, t1, t2, t3, t4, hlim)
     t2(k-1) = t2(k-1)+t2(k) ; t2(k) = 0
     t3(k-1) = t3(k-1)+t3(k) ; t3(k) = 0
     t4(k-1) = t4(k-1)+t4(k) ; t4(k) = 0
-  endif ; enddo
-
+    age(k-1)=age(k-1)+age(k);age(k)= 0
+    if (present(rdg)) then 
+       rdg(k-1)=rdg(k-1)+rdg(k);rdg(k)= 0 
+    endif
+  endif; enddo
+    
 end subroutine ice_redistribute
 
 subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
@@ -1322,6 +1404,8 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "If true, use add multiple diagnostics of ice and snow \n"//&
                  "mass conservation in the sea-ice transport code.  This \n"//&
                  "is expensive and should be used sparingly.", default=.false.)
+  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+                 "Apply ridging scheme of Torge", default=.false.)
 
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)

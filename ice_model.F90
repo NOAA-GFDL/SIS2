@@ -587,6 +587,41 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%do_init) then
     call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
                          IST%h_ice(isc:iec,jsc:jec,1) )
+
+    !TOM> transfer ice to the correct thickness category 
+    !     - after call to get_sea_surface all ice is in Ice%h_ice(:,:,2)
+    !     - h_snow, t_ice1, t_ice2 and age_ice are always initialized with 0.0
+    !     - in case of do_ridging=.false. first call to ice_redistribute has the same result
+    if (IST%do_ridging) then
+       do j=jsc,jec
+          do i=isc,iec
+             if (IST%h_ice(i,j,1) <= G%H_cat_lim(1)) then
+                cycle   ! i
+             else if (IST%h_ice(i,j,1) > G%H_cat_lim(ncat-1)) then
+                IST%part_size(i,j,ncat) = IST%part_size(i,j,1)
+                IST%part_size(i,j,1)  = 0.0
+                IST%h_ice    (i,j,ncat) = IST%h_ice(i,j,1)
+                IST%h_ice    (i,j,1)  = 0.0
+                !		   IST%h_snow   (i,j,km) = IST%h_snow(i,j,2)
+                !		   IST%h_snow   (i,j,2)  = 0.0
+                cycle   ! i
+             else
+                do k=2,ncat-1
+                   if (IST%h_ice(i,j,1) <= G%H_cat_lim(k)) then
+                      IST%part_size(i,j,k) = IST%part_size(i,j,1)
+                      IST%part_size(i,j,1) = 0.0
+                      IST%h_ice    (i,j,k) = IST%h_ice(i,j,1)
+                      IST%h_ice    (i,j,1) = 0.0
+                      !			 IST%h_snow   (i,j,k) = IST%h_snow(i,j,2)
+                      !			 IST%h_snow   (i,j,2) = 0.0
+                      exit   ! k
+                   end if
+                end do
+             end if
+          end do
+       end do
+    end if
+    
     call pass_var(IST%part_size(:,:,0), G%Domain, complete=.false. )
     call pass_var(IST%part_size(:,:,1), G%Domain, complete=.false. )
     call pass_var(IST%h_ice(:,:,1), G%Domain, complete=.true. )
@@ -1255,6 +1290,17 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real :: tot_frazil
   real, parameter :: LI = hlf
 
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,1:G%CatIce) :: rdg_frac ! fraction of ridged ice per category
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: rdg_open ! formation rate of open water due to ridging
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: rdg_s2o  ! snow volume [m] dumped into ocean during ridging
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: rdg_rate ! Niki: Where should this come from?
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,1:G%CatIce)      :: hi_old,hs_old
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)      :: snow2ocn
+  real                                  :: tmp3
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,1:G%CatIce) :: hi_change_part
+  logical :: no_thm=.false. !Niki: What is this?
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
@@ -1464,6 +1510,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call ice_B_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
                       IST%u_ocn, IST%v_ocn, &
                       wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
+                      IST%do_ridging,rdg_rate(isc:iec,jsc:jec),&
                       dt_slow, G, IST%ice_B_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
@@ -1503,6 +1550,32 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call mpp_clock_end(iceClock4)
 
+  !TOM> prepare for memorizing partial ice growth and for elimination of thermal ice growth
+  do k = 1,ncat
+     do j = jsc, jec
+        do i = isc, iec
+           hi_old(i,j,k)   = IST%h_ice(i,j,k)
+           hs_old(i,j,k)   = IST%h_snow(i,j,k)
+        end do
+     end do
+  end do
+  !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
+  !     in order to subtract ice melt proportionally from ridged ice volume (see below)
+  if (IST%do_ridging) then
+     do k = 1,ncat
+        do j = jsc, jec
+           do i = isc, iec
+              tmp3 = IST%h_ice(i,j,k)*IST%part_size(i,j,k)
+              if (tmp3 > 0.0) then
+                 rdg_frac(i,j,k) = IST%rdg_hice(i,j,k) / tmp3
+              else
+                 rdg_frac(i,j,k) = 0.0
+              end if
+           end do
+        end do
+     end do
+  end if
+  
   !
   ! Thermodynamics
   !
@@ -1518,6 +1591,49 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call SIS2_thermodynamics(Ice, IST, G, runoff, calving, &
                              runoff_hflx, calving_hflx)
   endif                         
+
+    
+  !TOM> memorize partial ice growth
+  do k = 1, ncat
+     do j = jsc, jec
+        do i = isc, iec
+           hi_change_part(i,j,k) = IST%h_ice(i,j,k) - hi_old(i,j,k)
+        enddo
+     enddo
+  enddo
+  !TOM> eliminate ice and snow layer growth
+  if (no_thm) then
+     do k = 1,ncat
+        do j = jsc, jec
+           do i = isc, iec
+              IST%h_ice(i,j,k) = hi_old(i,j,k)
+              IST%h_snow(i,j,k)= hs_old(i,j,k)
+              hi_change_part(i,j,k) = 0.0
+           enddo
+        enddo
+     enddo
+  endif
+  !TOM> update ridged ice volume
+  !     ice growth (Ice%h_ice > hi_old) does not affect ridged ice volume
+  !     ice melt   (ice%h_ice < hi_old) reduces ridged ice volume proportionally
+  if (IST%do_ridging) then
+     do k = 1,ncat
+        do j = jsc, jec
+           do i = isc, iec
+              if (IST%h_ice(i,j,k) < hi_old(i,j,k)) &
+		   IST%rdg_hice(i,j,k) = IST%rdg_hice(i,j,k) &
+                   + rdg_frac(i,j,k) * hi_change_part(i,j,k)*IST%part_size(i,j,k)
+              IST%rdg_hice(i,j,k) = max(IST%rdg_hice(i,j,k), 0.0)
+           enddo
+        enddo
+     enddo
+  end if
+  
+  !
+  !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
+  !
+  call ice_aging(G, IST%h_ice(isc:iec,jsc:jec,:), IST%age_ice(isc:iec,jsc:jec,:), &
+       hi_change_part, dt_slow)
 
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
@@ -1538,8 +1654,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   if (IST%Cgrid_dyn) then
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
-                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
-                       G, IST%ice_transport_CSp)
+                       IST%t_ice, IST%t_snow, IST%sea_lev, &
+                       IST%rdg_hice,IST%age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh, &
+                       G%H_cat_lim, dt_slow, G, IST%ice_transport_CSp)
   else
     ! B-grid transport 
     ! Convert the velocities to C-grid points for transport.
@@ -1552,8 +1669,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
 
     call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                       IST%t_ice, IST%t_snow, IST%sea_lev, G%H_cat_lim, dt_slow, &
-                       G, IST%ice_transport_CSp)
+                       IST%t_ice, IST%t_snow, IST%sea_lev, &
+                       IST%rdg_hice,IST%age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh, &
+                       G%H_cat_lim, dt_slow, G, IST%ice_transport_CSp)
+  endif
+
+  ! add snow volume dumped into ocean to flux of frozen precipitation:
+  if (IST%do_ridging) then
+     do k=1,ncat
+        IST%fprec_top(:,:,k) = IST%fprec_top(:,:,k) + rdg_s2o*IST%Rho_snow/dt_slow
+     enddo
   endif
 
   ! Set appropriate surface quantities in categories with no ice.
@@ -1645,7 +1770,31 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call post_data(IST%id_e2m,  tmp2d(:,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
   call disable_SIS_averaging(IST%diag)
+  
+  !
+  ! Ridging diagnostics
+  !
+  !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume) 
+  !     in each category; Ice%rdg_hice is ridged ice volume throughout code
+  if (IST%do_ridging) then
+     do k=1,ncat
+        do j=jsc,jec
+           do i=isc,iec
+              tmp3 = IST%h_ice(i,j,k)*IST%part_size(i,j,k)
+              if (tmp3 > 1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
+                 rdg_frac(i,j,k) = IST%rdg_hice(i,j,k) / tmp3
+              else
+                 rdg_frac(i,j,k) = 0.0
+              end if
+           end do
+        end do
+     end do
 
+!     if (id_rdgr>0) sent = send_data(id_rdgr, IST%rdg_rate(isc:iec,jsc:jec),      Ice%Time, mask=Ice%mask)
+!     if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time, mask=spread(Ice%mask,3,km-1))
+!     if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time, mask=Ice%mask)
+!     if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*cell_area(isc:iec,jsc:jec), & 
+  end if
 
   ! Set up the fluxes in the externally visible structure Ice.
   call set_ice_bottom_state(Ice, IST, part_save, G)
@@ -2470,6 +2619,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
                  "radiative transfer calculation.", units="perhaps nondimensional?", &
                  default=0.0)
+  call get_param(param_file, mod, "DO_RIDGING", IST%do_ridging, &
+                 "If true, call the ridging routines.", default=.false.)
 
   call check_ice_model_nml(param_file)
 
@@ -2681,5 +2832,54 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%Ice_state)
 
 end subroutine ice_model_end
+
+
+!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+  ! ice_aging - step the age of sea ice with time step                           !
+  !             based on Harder, M. (1997) Roughness, age and drift trajectories !
+  !             of sea ice in large-scale simulations and their use in model     !
+  !             verifications, Annals of Glaciology 25, p. 237-240.              !
+  !           - adding a tracer for the oldest ice per category                  !
+  !             T. Martin, April/June 2008                                       !
+  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+  subroutine ice_aging(G,hi, age, growth, dt)
+    type(sea_ice_grid_type), intent(in) :: G
+    real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(in) :: hi, growth
+    real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: age
+!    real, dimension(isc:iec,jsc:jec,2:km), intent(in) :: hi, growth
+!    real, dimension(isc:iec,jsc:jec,2:km), intent(inout) :: age
+    real, intent(in) :: dt   ! has unit seconds
+
+    integer :: i, j, k
+    integer :: isc, iec, jsc, jec
+    isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+    
+    do k=1,G%CatIce
+       do j=jsc,jec
+          do i=isc,iec
+
+    ! age the ice by one time step, age has unit days
+	     if (hi(i,j,k) > 1.e-10) then
+                age(i,j,k) = age(i,j,k) + dt/86400.
+	     else
+		age(i,j,k) = 0.0
+	     endif
+
+    ! ice age decreases when new ice is formed (growth>0)
+    ! but is not changed by ice melt (growth<0) because melt
+    ! is assumed to occur uniformly to all ice
+	     if (growth(i,j,k) > 0.0) then
+		if (hi(i,j,k) > 0.01) then   ! ice age is at least 0.01 time step
+		   age(i,j,k) = age(i,j,k) - age(i,j,k)*growth(i,j,k)/hi(i,j,k)
+		else
+		   age(i,j,k) = 0.0
+		endif
+	     endif
+
+	  enddo
+       enddo
+    enddo
+
+  end subroutine ice_aging
 
 end module ice_model_mod

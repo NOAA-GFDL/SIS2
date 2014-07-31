@@ -85,7 +85,11 @@ type ice_state_type
   real, pointer, dimension(:,:,:,:) :: &
     t_ice =>NULL()      ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
-  
+
+  real, pointer, dimension(:,:,:) :: &
+    rdg_hice =>NULL(),&
+    age_ice  =>NULL()
+ 
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean surface salinity in g/kg.
     u_ocn   =>NULL(), &    ! The ocean's zonal velocity on B-grid points in m s-1.
@@ -152,6 +156,7 @@ type ice_state_type
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
+  logical :: do_ridging     ! If true, use the ridging code
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
@@ -506,6 +511,9 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+
+  allocate(IST%rdg_hice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_hice(:,:,:) = 0.0
+  allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%age_ice(:,:,:) = 0.0
 
   if (IST%Cgrid_dyn) then
     allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
