@@ -507,7 +507,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
         end do
      end do
      ! reset open water fraction
-     part_sz(isd:ied,jsd:jed,1) = opnwtr
+     part_sz(isd:ied,jsd:jed,0) = opnwtr
   end if   ! do_ridging
 
   !   Convert from enthalpy back to ice temperature. These expressions stem from

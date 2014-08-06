@@ -39,13 +39,12 @@ implicit none ; private
 
 public :: ice_ridging, ridge_rate, ice_ridging_init
 
-type, public :: ice_ridging_CS ; private
+real, parameter :: hlim_unlim = 1.e8   ! arbitrary huge number used in ice_ridging
+real    :: s2o_frac       = 0.5        ! fraction of snow dumped into ocean during ridging
+logical :: rdg_lipscomb = .true.		
 
-  ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
-  real :: p0 = 2.75e4         ! pressure constant (Pa)
 
-end type ice_ridging_CS
+
 
 contains
 
@@ -257,10 +256,6 @@ contains
     real, dimension(1:km) :: area_rdg
     real, dimension(1:km) :: frac_hi, frac_hs, frac_t1, frac_t2, frac_age
     logical               :: rdg_iterate
-!Niki: Where is hlim_unlim , s2o_frac  coming from?
-integer :: hlim_unlim , s2o_frac
-!Niki: Where is rdg_lipscomb
-logical :: rdg_lipscomb = .true.		
     !-------------------------------------------------------------------
     ! some preparations
     !-------------------------------------------------------------------
@@ -509,12 +504,8 @@ endif ! Rtot>0.0
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_ridging_end - deallocate the memory associated with this module.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_ridging_end(CS)
-  type(ice_ridging_CS), pointer :: CS
+subroutine ice_ridging_end()
 
-!  deallocate(CS%) 
-
-  deallocate(CS)
 end subroutine ice_ridging_end
 
 end module ice_ridging_mod

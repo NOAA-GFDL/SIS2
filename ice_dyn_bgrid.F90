@@ -195,17 +195,19 @@ subroutine find_ice_strength(hi, ci, ice_strength, G, CS) ! ??? may change to do
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: hi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_B_dyn_CS),               pointer     :: CS
-!Niki: Where is prs_rothrock?
-logical :: prs_rothrock = .false.
-logical :: rdg_lipscomb = .true.
-!Niki: Where is ci3,hi3,hi3v?
-real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: hi3,ci3
-real, dimension(G%CatIce) :: hi3v
-real :: Cp, Cf 
+  !Niki: TOM has a new option for calculating ice strength. If you want to use it set prs_rothrock=.ture.
+  !      In that case we need to review and fix the new code inside if (prs_rothrock)
+  !      Particularly work on getting hi3,ci3,hi3v,Cp, Cf
+  logical :: prs_rothrock = .false.
+  logical :: rdg_lipscomb = .true.
+  !Niki: What are ci3,hi3,Cp, Cf?
+  real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: hi3,ci3
+  real, dimension(G%CatIce) :: hi3v
+  real :: Cp, Cf 
 
   integer :: i, j, isc, iec, jsc, jec,k,km
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-km=G%CatIce
+  km=G%CatIce
   ! ice strength derived after Rothrock et al. (JGR, 1975)
   if (prs_rothrock) then
      do j = jsc, jec
@@ -512,7 +514,8 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      enddo; enddo
 
      !Niki:
-     !Instead of the above block for calculating stresses TOM uses
+     !Instead of the above block for calculating stresses TOM uses subroutine calls below
+     !I have ported these subroutines to this file for completeness.
      !TOM> viscosity and ice stress calculation in subroutines
      !     a) new: EVP solver as documented for CICE 4.0
      !     b) old: solver as in H&D and omsk_2008_03
@@ -656,7 +659,10 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      do j = jsc, jec
         do i = isc, iec
            if(ice_present(i,j)) then
-!Niki: What is del2(i,j)?              rdg_rate(i,j)=ridge_rate(del2(i,j), strn11(i,j)+strn22(i,j))
+              del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
+                   + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
+
+              rdg_rate(i,j)=ridge_rate(del2, strn11(i,j)+strn22(i,j))
            else
               rdg_rate(i,j)=0.0
            endif
