@@ -37,6 +37,7 @@ use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 
 use ice_grid_mod, only : sea_ice_grid_type
+use ice_ridging_mod, only : ice_ridging
 
 implicit none ; private
 
@@ -480,7 +481,7 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
            snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
            if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
                 sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
-                call ice_ridging(G%CatIce, CS, part_sz(i,j,:),      &
+                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
                 h_ice(i,j,:), h_snow(i,j,:),      &
                 heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
                 age_ice(i,j,:), snow2ocn(i,j),        & 

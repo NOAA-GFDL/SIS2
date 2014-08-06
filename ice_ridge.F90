@@ -221,7 +221,7 @@ contains
   !               T. Martin, 2008                                                !
   !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
   subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rdg, &
-                         dt, hlim, rdg_open, vlev)
+                         dt, hlim_in, rdg_open, vlev)
 
     integer, intent(in) :: km
     real, dimension(0:), intent(inout) :: cn                    ! including open water fraction
@@ -231,7 +231,7 @@ contains
     real,                intent(in)    :: rdg_rate              ! ridging rate from subroutine ridge_rate
     real, dimension(1:), intent(inout) :: hi_rdg                ! ridged ice volume
     real,                intent(in)    :: dt                    ! time step dt has units seconds
-    real, dimension(1:), intent(inout) :: hlim                  ! ice thickness category limits
+    real, dimension(1:), intent(in)    :: hlim_in                  ! ice thickness category limits
     real,                intent(out)   :: rdg_open              ! change in open water area due to newly formed ridges
     real,                intent(out)   :: vlev                  ! volume of level ice participating in ridging
      
@@ -248,7 +248,7 @@ contains
     real, dimension(1:km) :: rdg_frac    ! ratio of ridged and total ice volume
     real                  :: alev        ! area of level ice participating in ridging
     real                  :: ardg, vrdg  ! area and volume of newly formed rdiged (vlev=vrdg!!!)
-    real, dimension(1:km) :: hmin, hmax, efold, rdg_ratio
+    real, dimension(1:km) :: hmin, hmax, efold, rdg_ratio, hlim
     real                  :: hl, hr
     real                  :: cn_tot, part_undef_sum
     real                  :: div_adv, Rnet, Rdiv, Rtot, rdg_area, rdgtmp, hlimtmp
@@ -259,7 +259,7 @@ contains
     !-------------------------------------------------------------------
     ! some preparations
     !-------------------------------------------------------------------
-    hlimtmp = hlim(km)
+    hlimtmp = hlim_in(km)
     hlim(km) = hlim_unlim   ! ensures all ridged ice is smaller than thickest ice allowed
     frac_hs_rdg = 1.0-s2o_frac
     !snow_to_ocn = 0.0 -> done in subroutine transport
@@ -496,7 +496,7 @@ endif ! Rtot>0.0
     vlev = vlev / dt
 
     ! return to true upper most ice thickness category limit
-    hlim(km) = hlimtmp
+    !hlim(km) = hlimtmp
 
   end subroutine ice_ridging
 
