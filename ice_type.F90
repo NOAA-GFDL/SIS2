@@ -12,7 +12,7 @@ use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
-use constants_mod,    only: Tfreeze
+use constants_mod,    only: T_0degC=>Tfreeze
 
 use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
@@ -20,6 +20,7 @@ use ice_thm_mod,      only: e_to_melt
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
+use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -30,6 +31,8 @@ use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : archaic_nml_check
+use SIS_sum_output_type, only : SIS_sum_out_CS
+use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 implicit none ; private
 
@@ -41,7 +44,7 @@ public :: ice_data_type_register_restarts, ice_state_register_restarts
 public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
-public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum, ice_print_budget
+public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
 
 public  :: earth_area
@@ -83,15 +86,21 @@ type ice_state_type
     h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
     t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
   real, pointer, dimension(:,:,:,:) :: &
-    t_ice =>NULL()      ! The temperature of the sea ice in each category and
+    t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
                         ! fractional thickness layer, in degC.
+    sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
+                        ! fractional thickness layer, in g/kg.
+    enth_ice =>NULL(), & ! The enthalpy of the sea ice in each category and
+                        ! fractional thickness layer, in enth_unit (J or rescaled).
+    enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
 
   real, pointer, dimension(:,:,:) :: &
     rdg_hice =>NULL(),&
     age_ice  =>NULL()
  
   real,    pointer, dimension(:,:) :: &
-    s_surf  =>NULL(), &    ! The ocean surface salinity in g/kg.
+    s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
+    t_ocn   =>NULL(), &    ! The ocean's bulk surface temperature in degC.
     u_ocn   =>NULL(), &    ! The ocean's zonal velocity on B-grid points in m s-1.
     v_ocn   =>NULL(), &    ! The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C =>NULL(), &    ! The ocean's zonal and meridional velocity on C-grid
@@ -102,7 +111,8 @@ type ice_state_type
                            ! applying pressure to the ocean that is then
                            ! (partially) converted back to its equivalent by the
                            ! ocean. 
-  
+  real, pointer, dimension(:,:,:) :: &
+    enth_prev, heat_in
   real,    pointer, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
@@ -129,11 +139,40 @@ type ice_state_type
     fprec_top           =>NULL()    ! The downward flux of frozen precipitation
                                     ! at the top of the ice, in kg m-2 s-1.
 
+  real, pointer, dimension(:,:)   :: &
+    ! These terms diagnose the enthalpy change associated with the addition or
+    ! removal of water mass (liquid or frozen) from the ice model are required
+    ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
+    ! that add mass to the ice are generally negative.
+    Enth_Mass_in_atm  =>NULL(), & ! The enthalpy introduced to the ice by water
+                                  ! fluxes from the atmosphere, in J m-2.
+    Enth_Mass_out_atm =>NULL(), & ! Negative of the enthalpy extracted from the
+                                  ! ice by water fluxes to the atmosphere, in J m-2.
+    Enth_Mass_in_ocn  =>NULL(), & ! The enthalpy introduced to the ice by water
+                                  ! fluxes from the ocean, in J m-2.
+    Enth_Mass_out_ocn =>NULL(), & ! Negative of the enthalpy extracted from the
+                                  ! ice by water fluxes to the ocean, in J m-2.
+
+    flux_t_ocn_top => NULL(), &   ! The upward sensible heat flux from the ocean
+                                  ! to the ice or atmosphere, in W m-2.
+    flux_q_ocn_top => NULL(), &   ! The upward evaporative moisture flux at
+                                  ! the ocean surface, in kg m-2 s-1.
+    flux_lw_ocn_top =>NULL(), &   ! The downward flux of longwave radiation at
+                                  ! the ocean surface, in W m-2.
+    flux_sw_vis_dir_ocn =>NULL(), & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif_ocn =>NULL(), & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir_ocn =>NULL(), & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif_ocn =>NULL(), & ! bands at the ocean surface, in W m-2.
+    flux_lh_ocn_top =>NULL(), &   ! The upward flux of latent heat at the
+                                  ! ocean surface, in W m-2.
+    lprec_ocn_top => NULL(), &    ! The downward flux of liquid precipitation at
+                                  ! the ocena surface, in kg m-2 s-1.
+    fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
+                                  ! the ocena surface, in kg m-2 s-1.
   !  ### ADD BETTER COMMENTS, WITH UNITS.
-  real, pointer, dimension(:,:)   :: lwdn         =>NULL() ! Accumulated diagnostics of
-  real, pointer, dimension(:,:  ) :: swdn         =>NULL() ! downward long/shortwave
-  real, pointer, dimension(:,:,:) :: pen          =>NULL()
-  real, pointer, dimension(:,:,:) :: trn          =>NULL() ! ice optical parameters
+    lwdn         =>NULL(), &      ! Accumulated diagnostics of downward long-
+    swdn         =>NULL()         ! and short-wave radiation <WHERE?> in <UNITS?>.
+
   real, pointer, dimension(:,:,:) :: sw_abs_sfc   =>NULL() ! frac abs sw abs @ surf.
   real, pointer, dimension(:,:,:) :: sw_abs_snow  =>NULL() ! frac abs sw abs in snow
   real, pointer, dimension(:,:,:,:) :: sw_abs_ice =>NULL() ! frac abs sw abs in ice layers
@@ -144,13 +183,15 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: bmelt        =>NULL()
 
   real, pointer, dimension(:,:)   :: frazil       =>NULL()
+  real, pointer, dimension(:,:)   :: frazil_input =>NULL()
   real, pointer, dimension(:,:)   :: bheat        =>NULL()
   real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
-  logical :: SIS1_thermo ! If true, the thermodynamic calculations inhereted
-                       ! from SIS1. Otherwise, use the newer SIS2 version.                  
+  logical :: SIS1_5L_thermo ! If true, the thermodynamic calculations inhereted
+                       ! from the 5-layer version of SIS1. Otherwise, use the
+                       ! newer SIS2 version.                  
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
@@ -159,17 +200,25 @@ type ice_state_type
   logical :: do_ridging     ! If true, use the ridging code
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
-  logical :: conservation_check ! If true, check for heat, salt and h2o conservation.
+  logical :: column_check   ! If true, enable the heat check column by column.
+  real    :: imb_tol        ! The tolerance for imbalances to be flagged by
+                            ! column_check, nondim.
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
+  type(time_type) :: ice_stats_interval ! The interval between writes of the
+                             ! globally summed ice statistics and conservation checks.
+  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
+  
 
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
   real :: kmelt          ! A constant that is used in the calculation of the 
                          ! ocean/ice basal heat flux, in W m-2 K-1.
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in kg/kg
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
                          ! that is used to calculate the ocean salt flux.
+  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
+                         ! salinity of the water from which it formed, nondim.
   logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
                             ! by applying a restorative heat flux.
   real    :: ice_restore_timescale ! The time scale for restoring ice when
@@ -184,12 +233,10 @@ type ice_state_type
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
 
-  real    :: h2o(4), heat(4), salt(4) ! for conservation analysis
-                             ! 1 - initial ice h2o/heat content
-                             ! 2 - h2o/heat flux down at top of ice
-                             ! 3 - h2o/heat flux down at bottom of ice
-                             ! 4 - final ice h2o/heat content
-
+  integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
+                             ! has been called.
+  integer :: n_fast = 0      ! The number of times update_ice_model_fast
+                             ! has been called.
   logical :: do_init = .false. ! If true, there is still some initialization
                                ! that needs to be done.
   logical :: first_time = .true. ! If true, this is the first call to 
@@ -199,8 +246,9 @@ type ice_state_type
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 !   type(coupler_3d_bc_type)   :: ocean_fluxes_top   ! array of fluxes for averaging
 
-  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_t1=-1
-  integer :: id_t2=-1, id_t3=-1, id_t4=-1, id_ts=-1, id_hio=-1, id_mi=-1, id_sh=-1
+  integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
+  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
+  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_hio=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
@@ -212,12 +260,17 @@ type ice_state_type
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_mib=-1, id_coszen=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
-  integer :: id_abs_int=-1, id_sw_abs_snow=-1, id_sw_abs_ice1=-1, id_sw_abs_ice2=-1
-  integer :: id_sw_abs_ice3=-1, id_sw_abs_ice4=-1, id_sw_pen=-1, id_sw_trn=-1
+  integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
+  integer :: id_sw_pen=-1, id_sw_abs_ocn=-1
+
+  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
   type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(ice_thermo_type), pointer  :: ITV => NULL()
+  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
+  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
 !   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
@@ -306,17 +359,19 @@ type ice_data_type !  ice_public_type
   type(restart_file_type), pointer :: Ice_restart
 end type ice_data_type !  ice_public_type
 
-!
-! the following three types are for data exchange with the new coupler
-! they are defined here but declared in coupler_main and allocated in flux_init
-!   ###ADD COMMENTS DESCRIBING EACH FIELD!
+!   The following three types are for data exchange with the FMS coupler
+! they are defined here but declared in coupler_main and allocated in flux_init.
 type :: ocean_ice_boundary_type
-  real, dimension(:,:),   pointer :: u         =>NULL()
-  real, dimension(:,:),   pointer :: v         =>NULL()
-  real, dimension(:,:),   pointer :: t         =>NULL()
-  real, dimension(:,:),   pointer :: s         =>NULL()
-  real, dimension(:,:),   pointer :: frazil    =>NULL()
-  real, dimension(:,:),   pointer :: sea_level =>NULL()
+  real, dimension(:,:),   pointer :: &
+    u      => NULL(), &  ! The x-direction ocean velocity at a position
+                         ! determined by stagger, in m s-1.
+    v      => NULL(), &  ! The y-direction ocean velocity at a position
+                         ! determined by stagger, in m s-1.
+    t      => NULL(), &  ! The ocean's surface temperature in Kelvin.
+    s      => NULL(), &  ! The ocean's surface temperature in g/kg. 
+    frazil => NULL(), &  ! The frazil heat rejected by the ocean, in J.
+    sea_level => NULL()  ! The sea level after adjustment for any surface
+                         ! pressure that the ocean allows to be expressed, in m.
   real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above
   integer                         :: stagger = BGRID_NE
   integer                         :: xtype              ! REGRID, REDIST or DIRECT used by coupler
@@ -324,6 +379,7 @@ type :: ocean_ice_boundary_type
 end type 
 
 type :: atmos_ice_boundary_type 
+!### These arrays need to be described in comments with units and directionality.
   real, dimension(:,:,:), pointer :: u_flux  =>NULL()
   real, dimension(:,:,:), pointer :: v_flux  =>NULL()
   real, dimension(:,:,:), pointer :: u_star  =>NULL()
@@ -470,11 +526,13 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   character(len=*),        intent(in)    :: restart_file
   
   type(domain2d), pointer :: domain
-  integer :: CatIce, idr
+  integer :: CatIce, idr, n
+  character(len=8) :: nstr
 
   CatIce = G%CatIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
+  allocate(IST%t_ocn(SZI_(G), SZJ_(G))) ; IST%t_ocn(:,:) = 0.0   !NI X
   allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR 
   allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
   allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
@@ -492,15 +550,29 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
   allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
 
+  allocate(IST%Enth_Mass_in_atm(SZI_(G), SZJ_(G)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_atm(SZI_(G), SZJ_(G))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_in_ocn(SZI_(G), SZJ_(G)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_ocn(SZI_(G), SZJ_(G))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+  allocate(IST%flux_t_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_t_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_q_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_q_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lw_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lw_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lh_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lh_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%lprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%fprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
+
   allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
   allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
+  allocate(IST%frazil_input(SZI_(G), SZJ_(G))) ; IST%frazil_input(:,:) = 0.0 !NR
   allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
   allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
   allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
-  allocate(IST%pen(SZI_(G), SZJ_(G), CatIce)) ; IST%pen(:,:,:) = 0.0 !NI
-  allocate(IST%trn(SZI_(G), SZJ_(G), CatIce)) ; IST%trn(:,:,:) = 0.0 !NI
   allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
@@ -509,8 +581,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
 
   allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
+  allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+
+  allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
+  allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
+
 
   allocate(IST%rdg_hice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_hice(:,:,:) = 0.0
   allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%age_ice(:,:,:) = 0.0
@@ -542,14 +621,14 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%h_ice, &
                                domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice1', IST%t_ice(:,:,:,1), &
-                               domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice2', IST%t_ice(:,:,:,2), &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice3', IST%t_ice(:,:,:,3), &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 't_ice4', IST%t_ice(:,:,:,4), &
-                               domain=domain, mandatory=.false.)
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
+                                 IST%t_ice(:,:,:,n), domain=domain, mandatory=(n==1))
+    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
+                                 IST%sal_ice(:,:,:,n), domain=domain, mandatory=.false.)
+  enddo
+
   if (IST%Cgrid_dyn) then
     idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
                                  domain=domain, position=EAST, mandatory=.false.)
@@ -587,7 +666,7 @@ end subroutine dealloc_Ice_arrays
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
 
-  deallocate(IST%t_surf, IST%s_surf, IST%sea_lev)
+  deallocate(IST%t_surf, IST%s_surf, IST%t_ocn, IST%sea_lev)
   deallocate(IST%part_size)
   if (IST%Cgrid_dyn) then
     deallocate(IST%u_ice_C, IST%v_ice_C, IST%u_ocn_C, IST%v_ocn_C)
@@ -603,12 +682,21 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_sw_vis_dir_top, IST%flux_sw_vis_dif_top)
   deallocate(IST%flux_sw_nir_dir_top, IST%flux_sw_nir_dif_top)
 
-  deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil)
-  deallocate(IST%bheat, IST%tmelt, IST%bmelt, IST%pen, IST%trn)
+  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
+  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
+  deallocate(IST%flux_t_ocn_top, IST%flux_q_ocn_top)
+  deallocate(IST%flux_lw_ocn_top, IST%flux_lh_ocn_top)
+  deallocate(IST%flux_sw_vis_dir_ocn, IST%flux_sw_vis_dif_ocn)
+  deallocate(IST%flux_sw_nir_dir_ocn, IST%flux_sw_nir_dif_ocn)
+  deallocate(IST%lprec_ocn_top, IST%fprec_ocn_top)
+
+  deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
+  deallocate(IST%bheat, IST%tmelt, IST%bmelt)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
   deallocate(IST%h_snow, IST%t_snow, IST%h_ice, IST%t_ice)
+  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
 end subroutine dealloc_IST_arrays
 
@@ -632,13 +720,16 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
   call hchksum(IST%h_ice, trim(mesg)//" IST%h_ice",G,haloshift=hs)
-  do k=1,4
+  do k=1,G%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%h_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
+  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
   if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
@@ -719,7 +810,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo
-  t_min = Tfreeze-100. ; t_max = Tfreeze+60.
+  t_min = T_0degC-100. ; t_max = T_0degC+60.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     if ((Ice%t_surf(i2,j2,k2) < t_min) .or. (Ice%t_surf(i2,j2,k2) > t_max)) then
@@ -746,7 +837,8 @@ subroutine IST_bounds_check(IST, G, msg)
 
   character(len=512) :: mesg1, mesg2
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
-  real    :: tsurf_min, tsurf_max, tice_min, tice_max
+  real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
+  real    :: enth_min, enth_max
   integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
 
@@ -760,15 +852,19 @@ subroutine IST_bounds_check(IST, G, msg)
     sum_part_sz(i,j) = sum_part_sz(i,j) + IST%part_size(i,j,k) 
   enddo ; enddo ; enddo
 
+  tOcn_min = -100. ; tOcn_max = 60.
   do j=jsc,jec ; do i=isc,iec
     if ((abs(sum_part_sz(i,j) - 1.0) > 1.0e-5) .or. &
-        (IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0)) then
+        (IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0) .or. &
+        (IST%t_ocn(i,j) < tOcn_min) .or. (IST%t_ocn(i,j) > tOcn_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
   enddo ; enddo
-  tsurf_min = Tfreeze-100. ; tsurf_max = Tfreeze+60.
+  tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
   tice_min = -100. ; tice_max = 1.0
+  enth_min = enth_from_TS(tice_min, 0., IST%ITV)
+  enth_max = enth_from_TS(tice_max, 0., IST%ITV)
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then
       n_bad = n_bad + 1
@@ -778,14 +874,17 @@ subroutine IST_bounds_check(IST, G, msg)
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%h_ice(i,j,k) > 1000.0) .or. (IST%h_snow(i,j,k) > 1000.0) .or. &
-        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max)) then
+        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
+        (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo ; enddo
 
   do l=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max)) then
+    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max) .or. &
+        (IST%enth_ice(i,j,k,l) < enth_min) .or. (IST%enth_ice(i,j,k,l) > enth_max) .or. &
+        (IST%sal_ice(i,j,k,l) < 0.0) .or. (IST%sal_ice(i,j,k,l) > 1000.0)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
@@ -798,7 +897,8 @@ subroutine IST_bounds_check(IST, G, msg)
     if (k_bad > 0) then
       write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
     else
-      write(mesg2,'("S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') IST%s_surf(i,j), sum_part_sz(i,j)
+      write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
+            IST%t_ocn(i,j), IST%s_surf(i,j), sum_part_sz(i,j)
     endif
     call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
@@ -813,33 +913,6 @@ subroutine IST_bounds_check(IST, G, msg)
   endif
 
 end subroutine IST_bounds_check
-
-subroutine ice_print_budget(IST)
-  type(ice_state_type), intent(inout) :: IST
-  integer :: k
- 
-  do k=1,4
-    call mpp_sum(IST%h2o(k))
-    call mpp_sum(IST%heat(k))
-    call mpp_sum(IST%salt(k))
-!          call mpp_sum(tracer(k))
-  end do
-  if (is_root_pe()) then
-    print *, 'ICE MODEL BUDGET' ! PER EARTH AREA'
-    print '(a10,5a22)',   'ICE MODEL ','   AT START  ', &
-         ' TOP FLUX DN.', ' BOT FLUX DN.', '   AT END    ', '   ERROR     '
-    print '(a10,5es22.14)','WATER(Kg) ', IST%h2o(:), &
-                 -(IST%h2o(4) -IST%h2o(1) -IST%h2o(2) +IST%h2o(3))/(IST%h2o(4) +1.0) 
-    print '(a10,5es22.14)','HEAT(J)   ', IST%heat(:), &
-                                       -(IST%heat(4)-IST%heat(1)-IST%heat(2)+IST%heat(3))/(IST%heat(4)+1.0)
-    print '(a10,5es22.14)','SALT(sal) ', IST%salt(:), &
-                                       -(IST%salt(4)-IST%salt(1)-IST%salt(2)+IST%salt(3))/(IST%salt(4)+1.0)
-!          print '(a10,5es22.14)','TRACER      ', tracer, &
-!                            -(tracer(4)-tracer(1)-tracer(2)+tracer(3))/(tracer(4)+1.0)
-    print *
-  endif
-end subroutine ice_print_budget
-
 
 !#######################################################################
 ! <SUBROUTINE NAME="ice_model_restart">
@@ -873,7 +946,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   real, parameter       :: missing = -1e34
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
-  integer :: i, j, k, isc, iec, jsc, jec
+  integer :: i, j, k, isc, iec, jsc, jec, n
+  character(len=8) :: nstr
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -906,14 +980,22 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'ice thickness', 'm-ice', missing_value=missing)
   IST%id_hio      = register_SIS_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
-  IST%id_t1       = register_SIS_diag_field('ice_model', 'T1', diag%axesT1, Time, &
-               'top ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t2       = register_SIS_diag_field('ice_model', 'T2', diag%axesT1, Time, &
-               'second ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t3       = register_SIS_diag_field('ice_model', 'T3', diag%axesT1, Time, &
-               'third ice layer temperature', 'C',  missing_value=missing)
-  IST%id_t4       = register_SIS_diag_field('ice_model', 'T4', diag%axesT1, Time, &
-               'bottom ice layer temperature', 'C',  missing_value=missing)
+  
+  IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice temperature', 'C', missing_value=missing)
+  IST%id_s_iceav = register_SIS_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
+  call safe_alloc_ids_1d(IST%id_t, G%NkIce)
+  call safe_alloc_ids_1d(IST%id_sal, G%NkIce)
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
+                 diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
+                 'C',  missing_value=missing)
+    IST%id_sal(n)   = register_SIS_diag_field('ice_model', 'Sal'//trim(nstr), &
+               diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
+               'g/kg',  missing_value=missing)
+  enddo
   IST%id_ts       = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
   IST%id_sh       = register_SIS_diag_field('ice_model','SH' ,diag%axesT1, Time, &
@@ -956,20 +1038,22 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'surface albedo','0-1', missing_value=missing )
   IST%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
                'cosine of zenith','-1:1', missing_value=missing )
+  IST%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
+               'SW frac. abs. at the ice surface','0:1', missing_value=missing )
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
-  IST%id_sw_abs_ice1= register_SIS_diag_field('ice_model','sw_abs_ice1',diag%axesT1, Time, &
-               'SW frac. abs. in ice1','0:1', missing_value=missing )
-  IST%id_sw_abs_ice2= register_SIS_diag_field('ice_model','sw_abs_ice2',diag%axesT1, Time, &
-               'SW frac. abs. in ice2','0:1', missing_value=missing )
-  IST%id_sw_abs_ice3= register_SIS_diag_field('ice_model','sw_abs_ice3',diag%axesT1, Time, &
-               'SW frac. abs. in ice3','0:1', missing_value=missing )
-  IST%id_sw_abs_ice4= register_SIS_diag_field('ice_model','sw_abs_ice4',diag%axesT1, Time, &
-               'SW frac. abs. in ice4','0:1', missing_value=missing )
+
+  call safe_alloc_ids_1d(IST%id_sw_abs_ice, G%NkIce)
+  do n=1,G%NkIce
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
+                 diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
+                 '0:1', missing_value=missing )
+  enddo
   IST%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
                'SW frac. pen. surf.','0:1', missing_value=missing )
-  IST%id_sw_trn= register_SIS_diag_field('ice_model','sw_trn',diag%axesT1, Time, &
-               'SW frac. trans. to ice bot.','0:1', missing_value=missing )
+  IST%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
+               'SW frac. sent to the ocean','0:1', missing_value=missing )
 
 
   IST%id_alb_vis_dir = register_SIS_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time, &
@@ -1056,6 +1140,15 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 
 end subroutine ice_diagnostics_init
 
+subroutine safe_alloc_ids_1d(ids, nids)
+  integer, allocatable :: ids(:)
+  integer, intent(in)  :: nids
+
+  if (.not.ALLOCATED(ids)) then
+    allocate(ids(nids)) ; ids(:) = -1
+  endif
+end subroutine safe_alloc_ids_1d
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1068,7 +1161,7 @@ subroutine ice_stock_pe(Ice, index, value)
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
 
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
 
   value = 0.0
@@ -1086,11 +1179,11 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (ICE%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
-
+      !### Fix the heat stock calculation.
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
         if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
@@ -1108,12 +1201,12 @@ subroutine ice_stock_pe(Ice, index, value)
       enddo ; enddo ; enddo
 
     case (ISTOCK_SALT)
-      !No salt in the h_snow component.
+      !There is no salt in the snow.
       value = 0.0
-      do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%Rho_ice*IST%h_ice(i,j,k)) * IST%ice_bulk_salin * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
-      enddo ; enddo ; enddo
+      do m=1,Ice%G%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
+            (0.001*IST%Rho_ice*IST%h_ice(i,j,k)) * IST%sal_ice(i,j,k,m)
+      enddo ; enddo ; enddo ; enddo
 
     case default
 
@@ -1169,39 +1262,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
-
-! write(outunit,100) 'ice_data_type%sea_lev            ',mpp_chksum(IST%sea_lev            )
-! write(outunit,100) 'ice_data_type%u_ocn              ',mpp_chksum(IST%u_ocn              )
-! write(outunit,100) 'ice_data_type%v_ocn              ',mpp_chksum(IST%v_ocn              )
-! write(outunit,100) 'ice_data_type%flux_u_top         ',mpp_chksum(IST%flux_u_top         )
-! write(outunit,100) 'ice_data_type%flux_v_top         ',mpp_chksum(IST%flux_v_top         )
-! write(outunit,100) 'ice_data_type%flux_t_top         ',mpp_chksum(IST%flux_t_top         )
-! write(outunit,100) 'ice_data_type%flux_q_top         ',mpp_chksum(IST%flux_q_top         )
-! write(outunit,100) 'ice_data_type%flux_lw_top        ',mpp_chksum(IST%flux_lw_top        )
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dir_top',mpp_chksum(IST%flux_sw_vis_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_vis_dif_top',mpp_chksum(IST%flux_sw_vis_dif_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dir_top',mpp_chksum(IST%flux_sw_nir_dir_top)
-! write(outunit,100) 'ice_data_type%flux_sw_nir_dif_top',mpp_chksum(IST%flux_sw_nir_dif_top)
-! write(outunit,100) 'ice_data_type%flux_lh_top        ',mpp_chksum(IST%flux_lh_top        )
-! write(outunit,100) 'ice_data_type%lprec_top          ',mpp_chksum(IST%lprec_top          )
-! write(outunit,100) 'ice_data_type%fprec_top          ',mpp_chksum(IST%fprec_top          )
-!  write(outunit,100) 'ice_data_type%lwdn               ',mpp_chksum(IST%lwdn               )
-!  write(outunit,100) 'ice_data_type%swdn               ',mpp_chksum(IST%swdn               )
-!  write(outunit,100) 'ice_data_type%pen                ',mpp_chksum(IST%pen                )
-!  write(outunit,100) 'ice_data_type%trn                ',mpp_chksum(IST%trn                )
-!  write(outunit,100) 'ice_data_type%tmelt              ',mpp_chksum(IST%tmelt              )
-!  write(outunit,100) 'ice_data_type%bmelt              ',mpp_chksum(IST%bmelt              )
-!  write(outunit,100) 'ice_data_type%h_snow             ',mpp_chksum(IST%h_snow             )
-!  write(outunit,100) 'ice_data_type%t_snow             ',mpp_chksum(IST%t_snow             )
-!  write(outunit,100) 'ice_data_type%h_ice              ',mpp_chksum(IST%h_ice              )
-!  write(outunit,100) 'ice_data_type%t_ice(1)           ',mpp_chksum(IST%t_ice(:,:,:,1)     )
-!  write(outunit,100) 'ice_data_type%t_ice(2)           ',mpp_chksum(IST%t_ice(:,:,:,2)     )
-!  write(outunit,100) 'ice_data_type%t_ice(3)           ',mpp_chksum(IST%t_ice(:,:,:,3)     )
-!  write(outunit,100) 'ice_data_type%t_ice(4)           ',mpp_chksum(IST%t_ice(:,:,:,4)     )
-!  write(outunit,100) 'ice_data_type%u_ice              ',mpp_chksum(IST%u_ice              )
-!  write(outunit,100) 'ice_data_type%v_ice              ',mpp_chksum(IST%v_ice              )
-!  write(outunit,100) 'ice_data_type%frazil             ',mpp_chksum(IST%frazil)
-!  write(outunit,100) 'ice_data_type%bheat              ',mpp_chksum(IST%bheat)
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
@@ -1352,7 +1412,7 @@ subroutine check_ice_model_nml(param_file)
   real    :: pen_ice        = missing    ! part unreflected solar penetrates ice
   real    :: opt_dep_ice    = missing    ! ice optical depth
   real    :: t_range_melt   = missing    ! melt albedos scaled in over T range
-  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)!CICE value
+  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)
 
   namelist /ice_model_nml/ mom_rough_ice, heat_rough_ice, p0, c0, cdw, wd_turn,  &
                            kmelt, alb_sno, alb_ice, pen_ice, opt_dep_ice,        &
@@ -1402,7 +1462,6 @@ subroutine check_ice_model_nml(param_file)
   call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, missing)
   call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, missing)
   call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, missing)
-  call archaic_nml_check(param_file, "ICE_CONSERVATION_CHECK", "conservation_check", conservation_check, .true.)
   call archaic_nml_check(param_file, "ICE_SEES_ATMOS_WINDS", "atmos_winds", atmos_winds, .true.)
   call archaic_nml_check(param_file, "DO_ICE_RESTORE", "do_ice_restore", do_ice_restore, .false.)
   call archaic_nml_check(param_file, "APPLY_ICE_LIMIT", "do_ice_limit", do_ice_limit, .false.)

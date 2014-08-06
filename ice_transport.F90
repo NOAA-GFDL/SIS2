@@ -31,9 +31,12 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
+use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
+use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
+use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
+use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 
 use ice_grid_mod, only : sea_ice_grid_type
-use ice_thm_mod,  only : get_thermo_coefs
 
 implicit none ; private
 
@@ -67,6 +70,7 @@ type, public :: ice_transport_CS ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
   logical :: do_ridging
+  type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
   integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
   integer :: id_ix_trans = -1, id_iy_trans = -1
@@ -77,25 +81,25 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
-                          sea_lev, rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh, hlim, dt_slow, G, CS)
+subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
+                         sea_lev, hlim, dt_slow, G, CS,&
+                         rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: t_ice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
-  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: sea_lev
+  real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
+  real, dimension(:),    intent(in) :: hlim  ! Move to grid type?
+  real,                  intent(in) :: dt_slow
+  type(ice_transport_CS), pointer   :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: rdg_hice
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: age_ice
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_rate
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_open ! formation rate of open water due to ridging
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
-  real, dimension(:),      intent(in) :: hlim  ! Move to grid type?
-  real,                    intent(in) :: dt_slow
-  type(ice_transport_CS), pointer :: CS
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1, in/out.
 !  (inout)   h_ice - The thickness of the ice in each category in m.
@@ -103,10 +107,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !                     in m.
 !  (in)      uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
-!  (inout)   t_ice - The temperature of the ice in each category and layer
-!                    within the ice in degC.
-!  (inout)   t_snow - The temperature of the snow atop the ice in each category
-!                     in degC.
+!  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      hlim - The lower thickness limit of each category, in m.
 !  (in)      sea_lev - The height of the sea level, including contributions
 !                      from non-levitating ice from an earlier time step, in m.
@@ -114,10 +115,12 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !                      advanced, in s.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
-  
-  real, dimension(G%NkIce) :: pocket_enth ! Coefficients relating to the enthalpy
-                                          ! contribution from melting in brine
-                                          ! pockets, in degC2.
+  real, dimension(:,:,:,:), pointer :: &
+    heat_ice=>NULL(), & ! Pointers to the enth_ice and enth_snow arrays from the
+    heat_snow=>NULL()   ! SIS tracer registry.  enth_ice is the enthalpy of the
+                        ! ice in each category and layer, while enth_snow is the
+                        ! enthalpy of the snow atop the ice in each category.
+                        ! Both are in enth_units (J or rescaled).
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
     uh_ice, &  ! Zonal fluxes in m3 s-1 and kg s-1.
     uh_snow    ! Zonal fluxes in m3 s-1 and kg s-1.
@@ -130,8 +133,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZI_(G),SZJB_(G)) :: &
     vf, & ! Meridional fluxes in m3 s-1 and kg s-1.
     vstar, vstaro, vstarv ! Local variables, transporting velocities
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)) :: &
-    heat_ice              ! The enthalpy (heat) of ice in degC.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
     vol_ice, vol_snow, &  ! The total volume of snow and ice per unit area in a cell, in m.
     vol0_ice, vol0_snow   ! The initial total volume of snow and ice per unit area in a cell, in m.
@@ -144,13 +145,16 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   real, dimension(SZI_(G),SZJ_(G)) :: opnwtr  
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
+
+  real :: I_vol_ice
+
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
   real :: I_tot_ice, I_tot_snow
   real :: C1_3 = 1.0/3.0
 
   real :: dt_adv
   character(len=200) :: mesg
-  integer :: i, j, k, l, bad, isc, iec, jsc, jec, isd, ied, jsd, jed
+  integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
@@ -229,12 +233,9 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
-  call get_thermo_coefs(layer_coefs=pocket_enth)
-
-  if (CS%check_conservation) then
-    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                            pocket_enth, G, enth_ice(1), enth_snow(1))
-  endif
+  if (CS%check_conservation) &
+    call get_total_enthalpy(h_ice, h_snow, part_sz, TrReg, G, enth_ice(1), &
+                            enth_snow(1))
 
   !   Determine the volume of snow and ice.
   vol_ice(:,:,:) = 0.0 ; vol_snow(:,:,:) = 0.0
@@ -251,37 +252,10 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     endif
   enddo ; enddo ; enddo
 
-  !   Convert from ice temperature (which is not conserved) to enthalpy, which
-  ! includes the heat requirements for melting of brine pockets associated with 
-  ! temperature changes.  These expressions stem from the assumptions that
-  ! brine pockets will shrink or grow until their salinity gives a freezing
-  ! point that matches the local temperature.
-  heat_ice(:,:,:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (vol_ice(i,j,k)>0.0) then
-      do l=1,G%NkIce
-        heat_ice(i,j,k,l) = (t_ice(i,j,k,l) - pocket_enth(l)/t_ice(i,j,k,l))
-      enddo
-    else
-      do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
-    endif
-  enddo ; enddo ; enddo
-
   if (CS%check_conservation) then
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
   endif
   
-  call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
-  do l=1,G%NkIce ! The do loop allows these to be combined with the following.
-    call pass_var(heat_ice(:,:,:,l), G%Domain, complete=.false.)
-  enddo
-  call pass_var(t_snow, G%Domain, complete=.false.)
-  call pass_var(vol_ice,  G%Domain, complete=.false.)
-  call pass_var(vol_snow, G%Domain, complete=.false.)
-  call pass_var(rdg_hice, G%Domain, complete=.false.)
-  call pass_var(age_ice, G%Domain, complete=.false.)
-  call pass_var(h_ice, G%Domain, complete=.true.)
-
 !TOM> perform redistribution of ice thickness, which might have 
 ! changed due to thermodynamics, previous to advection in
 ! case ridging scheme is used for redistribution of dynamic changes;
@@ -320,8 +294,19 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     end if
 !<TOM
 
-
   if (CS%SIS1_transport) then
+    call get_SIS_tracer_pointer("enth_ice", TrReg, heat_ice, nL)
+    call get_SIS_tracer_pointer("enth_snow", TrReg, heat_snow, nL)
+
+    call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
+    do m=1,G%NkIce ! The do loop allows these to be combined with the following.
+      call pass_var(heat_ice(:,:,:,m), G%Domain, complete=.false.)
+    enddo
+    call pass_var(heat_snow(:,:,:,1), G%Domain, complete=.false.)
+    call pass_var(vol_ice,  G%Domain, complete=.false.)
+    call pass_var(vol_snow, G%Domain, complete=.false.)
+    call pass_var(h_ice, G%Domain, complete=.true.)
+
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
       vol0_ice(i,j,k) = vol_ice(i,j,k)
       vol0_snow(i,j,k) = vol_snow(i,j,k)
@@ -336,24 +321,24 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
       if (vol0_ice(i,j,k)>0.0) then
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = heat_ice(i,j,k,l) * vol0_ice(i,j,k) ; enddo
-        t_snow(i,j,k) = t_snow(i,j,k)*vol0_snow(i,j,k)
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = heat_ice(i,j,k,m) * vol0_ice(i,j,k) ; enddo
+        heat_snow(i,j,k,1) = heat_snow(i,j,k,1)*vol0_snow(i,j,k)
       else
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
-        t_snow(i,j,k) = 0.0
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = 0.0 ; enddo
+        heat_snow(i,j,k,1) = 0.0
       endif
     enddo ; enddo ; enddo
     do k=1,G%CatIce
-      call ice_advect(uc, vc, t_snow(:,:,k), dt_slow, G, CS)
-      do l=1,G%NkIce
-        call ice_advect(uc, vc, heat_ice(:,:,k,l), dt_slow, G, CS)
+      call ice_advect(uc, vc, heat_snow(:,:,k,1), dt_slow, G, CS)
+      do m=1,G%NkIce
+        call ice_advect(uc, vc, heat_ice(:,:,k,m), dt_slow, G, CS)
       enddo
     enddo
 
     do j=jsc,jec ; do i=isc,iec
       if (sum(vol_ice(i,j,:))>0) &
         call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
-           vol_snow(i,j,:), t_snow(i,j,:), vol_ice(i,j,:), &
+           vol_snow(i,j,:), heat_snow(i,j,:,1), vol_ice(i,j,:), &
            heat_ice(i,j,:,1), heat_ice(i,j,:,2), &
            heat_ice(i,j,:,3), heat_ice(i,j,:,4), &
            age_ice(i,j,:), rdg_hice(i,j,:), hlim)
@@ -374,19 +359,19 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     !  Divide the volumes out of the tracers.
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      ! ### Change to multiply by reciprocals.
       if (vol_ice(i,j,k)>0.0) then
-        do l=1,G%NkIce
-          heat_ice(i,j,k,l) = heat_ice(i,j,k,l) / vol_ice(i,j,k)
+        I_vol_ice = 1.0 / vol_ice(i,j,k)
+        do m=1,G%NkIce
+          heat_ice(i,j,k,m) = heat_ice(i,j,k,m) * I_vol_ice
         enddo
         if (vol_snow(i,j,k)>0.0) then
-          t_snow(i,j,k) = t_snow(i,j,k)/vol_snow(i,j,k)
+          heat_snow(i,j,k,1) = heat_snow(i,j,k,1)/vol_snow(i,j,k)
         else
-          t_snow(i,j,k) = 0.0
+          heat_snow(i,j,k,1) = 0.0
         endif
       else
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
-        t_snow(i,j,k) = 0.0
+        do m=1,G%NkIce ; heat_ice(i,j,k,m) = 0.0 ; enddo
+        heat_snow(i,j,k,1) = 0.0
       endif
     enddo ; enddo ; enddo
 
@@ -405,11 +390,14 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    h_ice_d1(:,:,:) = h_ice(:,:,:)
 !    vol_snow_d1(:,:,:) = vol_snow(:,:,:)
 !    h_snow_d1(:,:,:) = h_snow(:,:,:)
-!    T_snow_d1(:,:,:) = T_snow(:,:,:)
-!    T_ice_d1(:,:,:,:) = heat_ice(:,:,:,:)
+    call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
+    call update_SIS_tracer_halos(TrReg, G, complete=.false.)
+    call pass_var(vol_ice,  G%Domain, complete=.false.)
+    call pass_var(vol_snow, G%Domain, complete=.false.)
+    call pass_var(h_ice, G%Domain, complete=.true.)
 
     call adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
-                               heat_ice, t_snow, G, CS) !Niki: add ridging and age
+                               TrReg, G, CS)!Niki: add ridging and age
 
     ! Copy the arrays for debugging purposes.
     ! ###
@@ -417,8 +405,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 !    h_ice_d2(:,:,:) = h_ice(:,:,:)
 !    vol_snow_d2(:,:,:) = vol_snow(:,:,:)
 !    h_snow_d2(:,:,:) = h_snow(:,:,:)
-!    T_snow_d2(:,:,:) = T_snow(:,:,:)
-!    T_ice_d2(:,:,:,:) = heat_ice(:,:,:,:)
 
     do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
       vol0_ice(i,j,k) = vol_ice(i,j,k)
@@ -429,12 +415,10 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, h_ice, dt_slow, G, CS)
 
-    do l=1,G%NkIce
-      call advect_ice_tracer(vol0_ice, vol_ice, uh_ice, vh_ice, heat_ice(:,:,:,l), dt_slow, G, CS)
-    enddo
-
-    call advect_ice_tracer(vol0_snow, vol_snow, uh_snow, vh_snow, t_snow, dt_slow, G, CS)
-
+    call advect_SIS_tracers(vol0_ice, vol_ice, uh_ice, vh_ice, dt_slow, G, &
+                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
+    call advect_SIS_tracers(vol0_snow, vol_snow, uh_snow, vh_snow, dt_slow, G, &
+                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
 
     ! Add code to make sure that h_ice(i,j,1) > hlim(1).
     do j=jsc,jec ; do i=isc,iec
@@ -458,7 +442,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
         endif    
 
         part_sz(i,j,k) = vol_ice(i,j,k) / h_ice(i,j,k)
-! This was...        h_snow(i,j,k) = vol_snow(i,j,k) / part_sz(i,j,k)
         h_snow(i,j,k) = h_ice(i,j,k) * (vol_snow(i,j,k) / vol_ice(i,j,k))
         ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
       else
@@ -475,17 +458,17 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
 
     ! Compress the ice where the fractional coverage exceeds 1, starting with
     ! the thinnest categories.
-    call compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, heat_ice, t_snow, G, CS)
+    call compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
+                      TrReg, G, CS)
 
     !   Handle massless categories.
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k)<=0.0) then
         part_sz(i,j,k) = 0.0 ; h_ice(i,j,k) = 0.0
-        do l=1,G%NkIce ; heat_ice(i,j,k,l) = 0.0 ; enddo
         h_snow(i,j,k) = 0.0
-        t_snow(i,j,k) = 0.0
       endif
     enddo ; enddo ; enddo
+    call set_massless_SIS_tracers(vol_ice, TrReg, G, compute_domain=.true.)
 
     ! Is sum(part_sz) = 1 ?
 
@@ -499,7 +482,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
                 sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
                 call ice_ridging(G%CatIce, CS, part_sz(i,j,:),      &
                 h_ice(i,j,:), h_snow(i,j,:),      &
-                t_ice(i,j,:,1), t_ice(i,j,:,2),     &
+                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
                 age_ice(i,j,:), snow2ocn(i,j),        & 
                 rdg_rate(i,j), rdg_hice(i,j,:),   &
                 dt_slow, hlim,                            &
@@ -510,39 +493,16 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
      part_sz(isd:ied,jsd:jed,0) = opnwtr
   end if   ! do_ridging
 
-  !   Convert from enthalpy back to ice temperature. These expressions stem from
-  ! the assumptions that brine pockets will shrink or grow until their salinity
-  ! gives a freezing point that matches the local temperature.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (vol_ice(i,j,k)>0.0) then
-      do l=1,G%NkIce
-        t_ice(i,j,k,l) = 0.5*(heat_ice(i,j,k,l) - &
-                              sqrt(heat_ice(i,j,k,l)*heat_ice(i,j,k,l) + 4.0*pocket_enth(l)))
-      enddo
-    else
-      do l=1,G%NkIce ; t_ice(i,j,k,l) = 0.0 ; enddo
-    endif
-  enddo ; enddo ; enddo
-
-!   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
-!     do j=jsc,jec ; do I=isc-1,iec
-!       uf(I,j) = uf(I,j) + (CS%Rho_snow*uh_snow(I,j,k) + CS%Rho_ice*uh_ice(I,j,k))
-!     enddo ; enddo
-!     do J=jsc-1,jec ; do i=isc,iec
-!       vf(i,J) = vf(i,J) + (CS%Rho_snow*vh_snow(i,J,k) + CS%Rho_ice*vh_ice(i,J,k))
-!     enddo ; enddo
-!   enddo ; endif
 
   uf(:,:) = 0.0; vf(:,:) = 0.0
   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
     do j=jsc,jec ; do I=isc-1,iec
-      uf(I,j) = (uf(I,j) + CS%Rho_snow*uh_snow(I,j,k)) + CS%Rho_ice*uh_ice(I,j,k)
+      uf(I,j) = uf(I,j) + (CS%Rho_snow*uh_snow(I,j,k) + CS%Rho_ice*uh_ice(I,j,k))
     enddo ; enddo
     do J=jsc-1,jec ; do i=isc,iec
-      vf(i,J) = (vf(i,J) + CS%Rho_snow*vh_snow(i,J,k)) + CS%Rho_ice*vh_ice(i,J,k)
+      vf(i,J) = vf(i,J) + (CS%Rho_snow*vh_snow(i,J,k) + CS%Rho_ice*vh_ice(i,J,k))
     enddo ; enddo
   enddo ; endif
-
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
   call pass_var(h_snow, G%Domain, complete=.false.)
@@ -564,8 +524,8 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
     
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(2), tot_snow(2))
 
-    call get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                            pocket_enth, G, enth_ice(2), enth_snow(2))
+    call get_total_enthalpy(h_ice, h_snow, part_sz, TrReg, G, enth_ice(2), &
+                            enth_snow(2))
     
     if (is_root_pe()) then
       I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
@@ -592,28 +552,6 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
         EFP_real_diff(enth_snow(2),enth_snow(1)) * I_tot_snow
     endif
   endif
-
-  ! Check for bad values of thickness and temperature.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    ! Check for bad values.
-    bad = 0
-    if (h_snow(i,j,k) <0.0 .or. h_snow(i,j,k) > 1e3 ) &
-      bad = bad+1
-    if (h_ice(i,j,k) <0.0 .or. h_ice(i,j,k) > 1e3 ) &
-      bad = bad+1
-    if ((bad == 0) .and. (h_ice(i,j,k) == 0.0)) cycle
-    if (t_snow(i,j,k)>0.0.or.t_snow(i,j,k)<-100.0) &
-      bad = bad+1
-    do l=1,G%NkIce
-      if (t_ice(i,j,k,l) > 0.0 .or. t_ice(i,j,k,l) < -100.0) &
-        bad = bad+1
-    enddo      
-!### USE BETTER ERROR HANDLING LATER.
-    if (bad>0) &
-      print *, 'BAD ICE AFTER TRANSPORT ', 'hs/hi=',h_snow(i,j,k),h_ice(i,j,k),'tsn/tice=', &
-                        t_snow(i,j,k),t_ice(i,j,k,1),t_ice(i,j,k,2),t_ice(i,j,k,3), &
-                        t_ice(i,j,k,4),'cn=',part_sz(i,j,k)
-  enddo ; enddo ; enddo
   
   if (CS%id_ix_trans>0) call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
@@ -623,6 +561,7 @@ subroutine ice_transport (part_sz, h_ice, h_snow, uc, vc, t_ice, t_snow, &
   if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
   if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
   if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
+
 
 end subroutine ice_transport
 
@@ -694,8 +633,8 @@ subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
 !  A monotonic, conservative, weakly diffusive scheme will eventually used, but
 !  for now a simple upwind scheme is used.
 
-! Arguments: h_prev - Category thickness before advection, in m or kg m-2.
-!  (in)      h_end - Layer thickness after advection, in m or kg m-2.
+! Arguments: h_prev - Category thickness times fractional coverage before advection, in m or kg m-2.
+!  (in)      h_end - Layer thickness times fractional coverage after advection, in m or kg m-2.
 !  (in)      uhtr - Accumulated volume or mass fluxes through zonal faces,
 !                   in m3 or kg.
 !  (in)      vhtr - Accumulated volume or mass fluxes through meridional faces,
@@ -745,12 +684,12 @@ subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
 
 end subroutine advect_ice_tracer
 
-subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, heat_ice, t_snow, G, CS)
-  type(sea_ice_grid_type), intent(inout) :: G
+subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
+                                 TrReg, G, CS)
+  type(sea_ice_grid_type),                     intent(inout) :: G
   real, dimension(:),                          intent(in)    :: hlim  ! Move to grid type?
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice, part_sz
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: heat_ice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   type(ice_transport_CS),                      pointer       :: CS
 
 !   This subroutine moves mass between thickness categories if it is thinner or
@@ -764,90 +703,123 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, heat_i
 !  (inout)   vol_snow - The volume per unit grid-cell area of the snow atop the
 !                       ice in each category in m.
 !  (inout)   h_ice - The thickness of the ice in each category in m.
-!  (inout)   heat_ice - The enthalpy of the ice in each category and layer
-!                     within the ice in degC.
-!  (inout)   t_snow - The temperature of the snow atop the ice in each category
-!                     in degC.
+!  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
   real :: vol_trans
   real :: part_trans
   real :: snow_trans
-  real :: Ivol_snow
   real :: Ivol_new
   real :: I_hlim1
-  integer :: i, j, k, m, is, ie, js, je, isd, ied, jsd, jed
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
+    vol0_ice, vol0_snow, trans_ice, trans_snow
+  logical :: do_any, do_j(SZJ_(G))
+  integer :: i, j, k, m, is, ie, js, je, isd, ied, jsd, jed, nLay
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  do k=1,G%CatIce-1 ; do j=jsd,jed ; do i=isd,ied
-    if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) > hlim(k+1))) then
-      ! Move some or all of the ice to a thicker category.
-      ! For now move all of it.
-      vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k+1))
-      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
-      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
+  ! Only work on rows that have any sea ice at all.
+  do j=jsd,jed
+    do_j(j) = .false.
+    do k=1,G%CatIce
+      do i=isd,ied ; if (vol_ice(i,j,k) > 0.0) then
+       do_j(j) = .true. ; exit
+      endif ; enddo
+      if (do_j(j)) exit
+    enddo
+  enddo
 
-      ! This is upwind advection across categories.  Improve it later.
-      do m=1,G%NkIce
-        heat_ice(i,j,k+1,m) = (vol_trans*heat_ice(i,j,k,m) + &
-                            vol_ice(i,j,k+1)*heat_ice(i,j,k+1,m)) * Ivol_new
-      enddo
-      h_ice(i,j,k+1) = (vol_trans*h_ice(i,j,k) + &
-                        vol_ice(i,j,k+1)*h_ice(i,j,k+1)) * Ivol_new
-      ! h should be the first thing to correct via a non-constant profile, and
-      ! can be improved independent of T & S.
-      h_ice(i,j,k) = hlim(k+1)
-      part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
-      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+  do j=jsd,jed ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isd,ied
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-      vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
-      vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+    do k=1,G%CatIce-1 ; do i=isd,ied
+      if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) > hlim(k+1))) then
+        ! Move some or all of the ice to a thicker category.
+        ! For now move all of it.
+        vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k+1))
+        part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+        snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
-      if (snow_trans > 0.0) then
-        Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k+1))
-        t_snow(i,j,k+1) = (snow_trans*T_snow(i,j,k) + &
-                           vol_snow(i,j,k+1)*T_snow(i,j,k+1)) * Ivol_snow
-        vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + snow_trans
-        vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        trans_ice(i,K) = vol_trans
+        trans_snow(i,K) = snow_trans
+        do_any = .true.
+
+        h_ice(i,j,k+1) = (vol_trans*h_ice(i,j,k) + &
+                          vol_ice(i,j,k+1)*h_ice(i,j,k+1)) * Ivol_new
+        ! h should be the first thing to correct via a non-constant profile, and
+        ! can be improved independent of T & S.
+        h_ice(i,j,k) = hlim(k+1)
+        part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
+        part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+
+        vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
+        vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+
+        if (snow_trans > 0.0) then
+          vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + snow_trans
+          vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        endif
       endif
+    enddo ; enddo
+    
+    if (do_any) then
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .false., j, isd, ied)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .true., j, isd, ied)
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo ! j-loop
 
-  do k=G%CatIce,2,-1 ; do j=jsd,jed ; do i=isd,ied
-    if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) < hlim(k))) then
-      ! Move some or all of the ice to a thinner category.
-      ! For now move all of it.
-      vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k-1))
-!      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
-      part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
-      snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
+  do j=jsd,jed ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isd,ied
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-      ! This is upwind advection across categories.  Improve it later.
-      do m=1,G%NkIce
-        heat_ice(i,j,k-1,m) = (vol_trans * heat_ice(i,j,k,m) + &
-                            vol_ice(i,j,k-1)* heat_ice(i,j,k-1,m)) * Ivol_new
-      enddo
-      h_ice(i,j,k-1) = (vol_trans*h_ice(i,j,k) + &
-                        vol_ice(i,j,k-1)*h_ice(i,j,k-1)) * Ivol_new
-      ! h should be the first thing to correct via a non-constant profile, and
-      ! can be improved independent of T & S.
-      h_ice(i,j,k) = hlim(k)
-      part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
-      part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+    do k=G%CatIce,2,-1 ; do i=isd,ied
+      if ((vol_ice(i,j,k) > 0.0) .and. (h_ice(i,j,k) < hlim(k))) then
+        ! Move some or all of the ice to a thinner category.
+        ! For now move all of it.
+        vol_trans = vol_ice(i,j,k) ; Ivol_new = 1.0 / (vol_trans + vol_ice(i,j,k-1))
+  !      snow_trans = vol_snow(i,j,k) ! * (vol_trans / vol_ice) = 1
+        part_trans = part_sz(i,j,k) ! * (vol_trans / vol_ice) * (h_ice / h_trans)
+        snow_trans = vol_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
-      vol_ice(i,j,k-1) = vol_ice(i,j,k-1) + vol_trans
-      vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+        do_any = .true.
+        trans_ice(i,K-1) = -vol_trans  ! Note the shifted index conventions!
+        trans_snow(i,K-1) = -snow_trans
 
-      if (snow_trans > 0.0) then
-        Ivol_snow = 1.0 / (snow_trans + vol_snow(i,j,k-1))
-        t_snow(i,j,k-1) = (snow_trans*T_snow(i,j,k) + &
-                           vol_snow(i,j,k-1)*T_snow(i,j,k-1)) * Ivol_snow
-        vol_snow(i,j,k-1) = vol_snow(i,j,k-1) + snow_trans
-        vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        h_ice(i,j,k-1) = (vol_trans*h_ice(i,j,k) + &
+                          vol_ice(i,j,k-1)*h_ice(i,j,k-1)) * Ivol_new
+
+        ! h should be the first thing to correct via a non-constant profile, and
+        ! can be improved independently from T & S.
+        h_ice(i,j,k) = hlim(k)
+        part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
+        part_sz(i,j,k) = part_sz(i,j,k) - part_trans
+
+        vol_ice(i,j,k-1) = vol_ice(i,j,k-1) + vol_trans
+        vol_ice(i,j,k) = vol_ice(i,j,k) - vol_trans 
+
+        if (snow_trans > 0.0) then
+          vol_snow(i,j,k-1) = vol_snow(i,j,k-1) + snow_trans
+          vol_snow(i,j,k) = vol_snow(i,j,k) - snow_trans
+        endif
       endif
+    enddo ; enddo
+
+    if (do_any) then
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .false., j, isd, ied)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .true., j, isd, ied)
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo
 
   ! Compress the ice in category 1 if it is thinner than the minimum.
   if (hlim(1) > 0.0) then
@@ -863,13 +835,13 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, heat_i
 
 end subroutine adjust_ice_categories
 
-subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, heat_ice, t_snow, G, CS)
-  type(sea_ice_grid_type), intent(inout) :: G
+subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
+                        TrReg, G, CS)
+  type(sea_ice_grid_type),                     intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(:),                          intent(in)    :: hlim  ! Move to grid type?
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: vol_ice, vol_snow, h_ice, h_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)), intent(inout) :: heat_ice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: t_snow
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   type(ice_transport_CS),                      pointer       :: CS
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
@@ -888,10 +860,7 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, heat_ic
 !  (inout)   h_ice - The thickness of the ice in each category in m.
 !  (inout)   h_snow - The thickness of the snow atop the ice in each category
 !                     in m.
-!  (inout)   heat_ice - The enthalpy of the ice in each category and layer
-!                     within the ice in degC.
-!  (inout)   t_snow - The temperature of the snow atop the ice in each category
-!                     in degC.
+!  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
 
@@ -900,12 +869,13 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, heat_ic
   real :: Icompress_here
   real :: vol_trans, vol_old
   real :: snow_trans, snow_old
-  real :: Ivol_snow, Ivol_new
-  logical :: do_j(SZJ_(G))
+  real :: Ivol_new
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
+    vol0_ice, vol0_snow, trans_ice, trans_snow
+  logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
-  integer :: i, j, k, m, isc, iec, jsc, jec
+  integer :: i, j, k, m, isc, iec, jsc, jec, nLay
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
 
   do_j(:) = .false.
   do j=jsc,jec ; do i=isc,iec
@@ -917,51 +887,59 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, heat_ic
     endif
   enddo ; enddo
 
-  do j=jsc,jec ; if (do_j(j)) then ; do k=1,G%CatIce-1 ; do i=isc,iec
-    if ((excess_cover(i,j) > 0.0) .and. (vol_ice(i,j,k) > 0.0)) then
-      compression_ratio = h_ice(i,j,k) / hlim(k+1)
-      if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
-        ! This category is compacted, but not to the point that it needs to
-        ! be transferred to a thicker layer.
-        Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
-        h_ice(i,j,k) = h_ice(i,j,k) * Icompress_here
-        h_snow(i,j,k) = h_snow(i,j,k) * Icompress_here
-        part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
-        excess_cover(i,j) = 0.0
-      else
-        ! Mass from this category needs to be transfered to the next thicker
-        ! category after being compacted to thickness hlim(k+1).
-        excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
-        part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
+  do j=jsc,jec ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=isc,iec
+      vol0_ice(i,k) = vol_ice(i,j,k) ; vol0_snow(i,k) = vol_snow(i,j,k)
+    enddo ; enddo
+    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+    do_any = .false.
 
-        vol_trans = vol_ice(i,j,k) ; vol_old = vol_ice(i,j,k+1)
-        vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
-        Ivol_new = 1.0 / vol_ice(i,j,k+1)
-      ! This is upwind advection across categories.  Improve it later.
-        do m=1,G%NkIce
-          heat_ice(i,j,k+1,m) = (vol_trans * heat_ice(i,j,k,m) + &
-                                 vol_old * heat_ice(i,j,k+1,m)) * Ivol_new
-        enddo
-!        This is not quite right, or at least not consistent.
-!        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
-!                          vol_old*h_ice(i,j,k+1)) * Ivol_new
-        h_ice(i,j,k+1) = vol_ice(i,j,k+1) / part_sz(i,j,k+1)
+    do k=1,G%CatIce-1 ; do i=isc,iec
+      if ((excess_cover(i,j) > 0.0) .and. (vol_ice(i,j,k) > 0.0)) then
+        compression_ratio = h_ice(i,j,k) / hlim(k+1)
+        if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
+          ! This category is compacted, but not to the point that it needs to
+          ! be transferred to a thicker layer.
+          Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
+          h_ice(i,j,k) = h_ice(i,j,k) * Icompress_here
+          h_snow(i,j,k) = h_snow(i,j,k) * Icompress_here
+          part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
+          excess_cover(i,j) = 0.0
+        else
+          ! Mass from this category needs to be transfered to the next thicker
+          ! category after being compacted to thickness hlim(k+1).
+          excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
+          part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
 
-        if (vol_snow(i,j,k) > 0.0) then
-          snow_trans = vol_snow(i,j,k) ; snow_old = vol_snow(i,j,k+1)
-          vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + vol_snow(i,j,k)
-          Ivol_snow = 1.0 / vol_snow(i,j,k+1)
+          vol_trans = vol_ice(i,j,k) ; vol_old = vol_ice(i,j,k+1)
+          trans_ice(i,K) = vol_trans ; do_any = .true.
+          vol_ice(i,j,k+1) = vol_ice(i,j,k+1) + vol_trans
+          Ivol_new = 1.0 / vol_ice(i,j,k+1)
+  !        This is not quite right, or at least not consistent.
+  !        h_ice(i,j,k+1) = (vol_trans*hlim(k+1) + &
+  !                          vol_old*h_ice(i,j,k+1)) * Ivol_new
+          h_ice(i,j,k+1) = vol_ice(i,j,k+1) / part_sz(i,j,k+1)
 
-          t_snow(i,j,k+1) = (snow_trans*t_snow(i,j,k) + &
-                             snow_old*t_snow(i,j,k+1)) * Ivol_snow
+          if (vol_snow(i,j,k) > 0.0) then
+            snow_trans = vol_snow(i,j,k) ; snow_old = vol_snow(i,j,k+1)
+            trans_snow(i,K) = snow_trans
+            vol_snow(i,j,k+1) = vol_snow(i,j,k+1) + vol_snow(i,j,k)
+          endif
+          h_snow(i,j,k+1) = vol_snow(i,j,k+1) / part_sz(i,j,k+1)
+
+          vol_ice(i,j,k) = 0.0 ; vol_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
+          h_ice(i,j,k) = 0.0 ; h_snow(i,j,k) = 0.0
         endif
-        h_snow(i,j,k+1) = vol_snow(i,j,k+1) / part_sz(i,j,k+1)
-
-        vol_ice(i,j,k) = 0.0 ; vol_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
-        h_ice(i,j,k) = 0.0 ; h_snow(i,j,k) = 0.0
       endif
+    enddo ; enddo
+
+    if (do_any) then
+      call advect_tracers_thicker(vol0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .false., j, isc, iec)
+      call advect_tracers_thicker(vol0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
+                                  TrReg, .true., j, isc, iec)
     endif
-  enddo ; enddo ; endif ; enddo
+  endif ; enddo ! j-loop.
 
   k=G%CatIce
   do j=jsc,jec ; if (do_j(j)) then ; do i=isc,iec
@@ -1238,80 +1216,52 @@ subroutine get_total_amounts(vol_ice, vol_snow, G, tot_ice, tot_snow)
 
 end subroutine get_total_amounts
 
-subroutine get_total_enthalpy(h_ice, h_snow, part_sz, t_ice, t_snow, &
-                              pocket_enth, G, enth_ice, enth_snow)
-  type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_ice, h_snow, t_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_sz
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),SZK_ICE_(G)),  intent(in) :: t_ice
-  real, dimension(SZK_ICE_(G)),  intent(in) :: pocket_enth
-  type(EFP_type), intent(out) :: enth_ice, enth_snow
+subroutine get_total_enthalpy(h_ice, h_snow, part_sz, TrReg, &
+                              G, enth_ice, enth_snow)
+  type(sea_ice_grid_type),                   intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in) :: h_ice, h_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)),  intent(in) :: part_sz
+  type(SIS_tracer_registry_type),              pointer     :: TrReg
+  type(EFP_type),                              intent(out) :: enth_ice, enth_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
 !  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
 !                      category in m.
 !  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
 !                       ice in each category in m.
+!  (in)      TrReg - The registry of registered SIS ice and snow tracers.
 !  (out)     tot_ice - The globally integrated total ice, in m3.
 !  (out)     tot_snow - The globally integrated total snow, in m3.
 
+  real, dimension(:,:,:,:), pointer :: &
+    heat_ice=>NULL(), & ! Pointers to the enth_ice and enth_snow arrays from the
+    heat_snow=>NULL()   ! SIS tracer registry.  enth_ice is the enthalpy of the
+                        ! ice in each category and layer, while enth_snow is the
+                        ! enthalpy of the snow atop the ice in each category.
+                        ! Both are in enth_units (J or rescaled).
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
-  real :: total, LI_CI, enth_chg
-  integer :: i, j, k, m, isc, iec, jsc, jec
+  real :: total, I_Nk
+  integer :: i, j, k, m, isc, iec, jsc, jec, nLay
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call get_thermo_coefs(max_enthalpy_chg=LI_CI)
+  call get_SIS_tracer_pointer("enth_ice", TrReg, heat_ice, nLay)
+  call get_SIS_tracer_pointer("enth_snow", TrReg, heat_snow, nLay)
+  sum_enth_ice(:,:) = 0.0 ; sum_enth_snow(:,:) = 0.0
 
-  sum_enth_ice(:,:) = 0.0
-  sum_enth_snow(:,:) = 0.0
+  I_Nk = 1.0 / G%NkIce
   do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    ! Determine the enthalpy correction due to brine pockets.
-    if ((t_ice(i,j,k,m) >= 0.0) .or. (pocket_enth(m) > LI_CI*(-t_ice(i,j,k,m)))) then
-      enth_chg = LI_CI
-    else
-      enth_chg = -pocket_enth(m)/t_ice(i,j,k,m)  ! The enthalpy correction due to brine pockets.
-    endif
-    
-    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * (h_ice(i,j,k)*part_sz(i,j,k))) * &
-                           (t_ice(i,j,k,m) + enth_chg) 
+    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
+              ((h_ice(i,j,k)*part_sz(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * (h_snow(i,j,k)*part_sz(i,j,k))) * &
-                        T_snow(i,j,k)
+    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
+              (h_snow(i,j,k)*part_sz(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
 
   total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
   total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
 
 end subroutine get_total_enthalpy
-
-subroutine get_snow_heat(vol_snow, t_snow, G, enth_snow)
-  type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: vol_snow, t_snow
-  type(EFP_type), intent(out) ::  enth_snow
-! Arguments: part_sz - The fractional ice concentration within a cell in each
-!                      thickness category, nondimensional, 0-1 at the end, in/out.
-!  (in)      vol_ice - The volume per unit grid-cell area of the ice in each
-!                      category in m.
-!  (in)      vol_snow - The volume per unit grid-cell area of the snow atop the
-!                       ice in each category in m.
-!  (out)     tot_ice - The globally integrated total ice, in m3.
-!  (out)     tot_snow - The globally integrated total snow, in m3.
-
-  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_snow
-  real :: total
-  integer :: i, j, k, m, isc, iec, jsc, jec
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  sum_enth_snow(:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * vol_snow(i,j,k)) * &
-                        T_snow(i,j,k)
-  enddo ; enddo ; enddo
-
-  total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
-
-end subroutine get_snow_heat
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_transport_init - initialize the ice transport and set parameters.        !
@@ -1407,6 +1357,8 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
                  "Apply ridging scheme of Torge", default=.false.)
 
+  call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)
   CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
@@ -1431,6 +1383,8 @@ end subroutine ice_transport_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport_end(CS)
   type(ice_transport_CS), pointer :: CS
+
+  call SIS_tracer_advect_end(CS%SIS_tr_adv_CSp)
 
   deallocate(CS)
 end subroutine ice_transport_end

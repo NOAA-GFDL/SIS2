@@ -34,16 +34,12 @@
 
 module ice_thm_mod
 
-! for calling delta-Eddington shortwave from ice_optics
-use ice_shortwave_dEdd, only: shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond, &
-                              shortwave_dEdd0, dbl_kind, int_kind, nilyr, nslyr
-
 
 use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none ; private
 
-public :: DS, DI, DW, MU_TS, TFI, CI, ice_optics, get_thermo_coefs
+public :: DS, DI, DW, MU_TS, TFI, CI, slab_ice_optics, get_thermo_coefs
 public :: ice5lay_temp, ice5lay_resize, ice_thm_param, e_to_melt
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
@@ -76,11 +72,6 @@ real, parameter :: CW    = 4.2e3     ! heat capacity of seawater 4200 J/(kg K)
 real, parameter :: DW    = 1030.0    ! density of water for waterline - kg/(m^3)
 
 ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-real            :: ALB_SNO = 0.85       ! albedo of snow (not melting)
-real            :: ALB_ICE = 0.5826     ! albedo of ice (not melting)
-real            :: PEN_ICE = 0.3        ! ice surface penetrating solar fraction
-real            :: OPT_DEP_ICE = 0.67   ! ice optical depth (m)
-real            :: T_RANGE_MELT = 1.0   ! melt albedos scaled in below melting T
 
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
 real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
@@ -105,64 +96,6 @@ real               :: DT = 1800.0
 ! temperature to be such that the brine content is less than "liq_lim" of
 ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
 real, parameter :: liq_lim = .99
-
-! for calling delta-Eddington shortwave from ice_optics
-logical :: do_deltaEdd = .true.
-integer (kind=int_kind) :: &
-   nx_block, ny_block, & ! block dimensions
-   icells                ! number of ice-covered grid cells
-
-integer (kind=int_kind), dimension (1) :: &
-   indxi   , & ! compressed indices for ice-covered cells
-   indxj
-
-! inputs
-real (kind=dbl_kind), dimension (1,1) :: &
-   aice   , & ! concentration of ice
-   vice   , & ! volume of ice
-   vsno   , & ! volume of snow
-   Tsfc   , & ! surface temperature
-   coszen , & ! cosine of solar zenith angle
-   tarea  , & ! cell area - not used
-   swvdr  , & ! sw down, visible, direct  (W/m^2)
-   swvdf  , & ! sw down, visible, diffuse (W/m^2)
-   swidr  , & ! sw down, near IR, direct  (W/m^2)
-   swidf      ! sw down, near IR, diffuse (W/m^2)
-
-
-! outputs
-real (kind=dbl_kind), dimension (1,1) :: &
-   fs     , & ! horizontal coverage of snow
-   fp     , & ! pond fractional coverage (0 to 1)
-   hp         ! pond depth (m)
-
-real (kind=dbl_kind), dimension (1,1,1) :: &
-   rhosnw , & ! density in snow layer (kg/m3)
-   rsnw       ! grain radius in snow layer (micro-meters)
-
-real (kind=dbl_kind), dimension (1,1,18) :: &
-         trcr        ! aerosol tracers
-
-
-real (kind=dbl_kind), dimension (1,1) :: &
-   alvdr   , & ! visible, direct, albedo (fraction) 
-   alvdf   , & ! visible, diffuse, albedo (fraction) 
-   alidr   , & ! near-ir, direct, albedo (fraction) 
-   alidf   , & ! near-ir, diffuse, albedo (fraction) 
-   fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
-   fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-   fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
-
-real (kind=dbl_kind), dimension (1,1,1) :: &
-   Sswabs      ! SW absorbed in snow layer (W m-2)
-
-real (kind=dbl_kind), dimension (1,1,nilyr) :: &
-   Iswabs      ! SW absorbed in ice layer (W m-2)
-
-real (kind=dbl_kind), dimension (1,1) :: &
-   albice  , & ! bare ice albedo, for history  
-   albsno  , & ! snow albedo, for history  
-   albpnd      ! pond albedo, for history  
 
 contains
 
@@ -586,6 +519,8 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   real, dimension(NN) :: hlay ! temporary ice layer thicknesses
   real :: hw                  ! waterline height above ice base
   real :: evap_left, melt_left
+  real, dimension(NN) :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
+  real, dimension(NN) :: h_frazil  ! The newly-formed thickness of frazil ice, in m.
   integer :: k
 
   do k=1,NN ! break out individual layers
@@ -601,11 +536,22 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
   hsno = hsno+snow/DS ! add snow
 
   ! add frazil
-  if (frazil > 0.0 .and. hice == 0.0) then
+  if (frazil > 0.0) then
     do k=1,NN
-      tice(k) = min(tfw,-MU_TS*sice(k)-0.5) !was tfw  ! Why the 0.5?
-      hlay(k) = hlay(k) + ((frazil/NN)/emelt(tice(k), sice(k)))/DI
+      t_frazil(k) = min(tfw,-MU_TS*sice(k)-Frazil_temp_offset) !was tfw  ! Why the 0.5?
+      h_frazil(k) = ((frazil/NN)/emelt(t_frazil(k), sice(k)))/DI
     enddo
+    if (hice == 0.0) then
+      do k=1,NN
+        tice(k) = T_frazil(k)
+        hlay(k) = hlay(k) + h_frazil(k)
+      enddo
+    else
+      do k=1,NN
+        tice(k) = (hlay(k)*tice(k) + h_frazil(k)*T_frazil(k)) / (hlay(k) + h_frazil(k))
+        hlay(k) = hlay(k) + h_frazil(k)
+      enddo
+    endif
   endif
 
   if (tmelt < 0.0) then  ! this shouldn't happen
@@ -731,214 +677,45 @@ end subroutine ice_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_thm_param(alb_sno_in, alb_ice_in, pen_ice_in, opt_dep_ice_in, &
-                         slab_ice_in, t_range_melt_in, ks_in, &
-                         h_lo_lim_in, deltaEdd )
-  real, intent(in)    :: alb_sno_in, alb_ice_in, pen_ice_in 
-  real, intent(in)    :: opt_dep_ice_in, t_range_melt_in
+subroutine ice_thm_param(slab_ice_in, ks_in, h_lo_lim_in )
   logical, intent(in) :: slab_ice_in
   real, intent(in)    :: ks_in
   real, intent(in)    :: h_lo_lim_in
-  logical, intent(in) :: deltaEdd 
 
-  ALB_SNO     = alb_sno_in
-  ALB_ICE     = alb_ice_in
-  PEN_ICE     = pen_ice_in
-  OPT_DEP_ICE = opt_dep_ice_in
+
   SLAB_ICE    = slab_ice_in
-  T_RANGE_MELT = t_range_melt_in
 
   KS          = ks_in
   H_LO_LIM    = h_lo_lim_in
   H_SUBROUNDOFF = max(1e-35, 1e-20*H_LO_LIM)
-  do_deltaEdd = deltaEdd
 
 end subroutine ice_thm_param
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics(hs, hi, ts, tfw, alb_vis_dir, alb_vis_dif, alb_nir_dir, &
-     alb_nir_dif, abs_sfc, abs_snow, abs_ice1, abs_ice2, &
-     abs_ice3, abs_ice4, abs_ocn, abs_int, pen, trn, coszen_in)
+subroutine slab_ice_optics(hs, hi, ts, tfw, albedo)
   real, intent(in   ) :: hs  ! snow thickness (m-snow)
   real, intent(in   ) :: hi  ! ice thickness (m-ice)
   real, intent(in   ) :: ts  ! surface temperature
   real, intent(in   ) :: tfw ! seawater freezing temperature
-  real, intent(  out) :: alb_vis_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_vis_dif ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dif ! ice surface albedo (0-1)
-  real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
-  real, intent(  out) :: abs_snow ! frac abs sw abs in snow
-  real, intent(  out) :: abs_ice1 ! frac abs sw abs at ice layer 1
-  real, intent(  out) :: abs_ice2 ! frac abs sw abs at ice layer 2
-  real, intent(  out) :: abs_ice3 ! frac abs sw abs at ice layer 3
-  real, intent(  out) :: abs_ice4 ! frac abs sw abs at ice layer 4
-  real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
-  real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  real, intent(  out) :: pen      ! frac     sw passed below the surface (frac 1-pen absrobed at the surface)
-  real, intent(  out) :: trn      ! frac     sw passed below the bottom  (frac 1-trn absorbed at the interior)
-  real, intent(in),optional :: coszen_in
+  real, intent(  out) :: albedo ! ice surface albedo (0-1)
   real :: alb, as, ai, cs
   real :: thick_ice_alb, tcrit, fh
 
-
-  if (SLAB_ICE) then
-     tcrit = tfw - T_RANGE
-     if (ts <= tcrit) then
-        thick_ice_alb = MAX_ICE_ALB
-     else if (ts >= tfw) then
-        thick_ice_alb = MIN_ICE_ALB
-     else
-        thick_ice_alb = MAX_ICE_ALB + (MIN_ICE_ALB-MAX_ICE_ALB)*(ts-tcrit)/T_RANGE
-     endif
-
-     if (hi >= crit_thickness) then
-        alb = THICK_ICE_ALB
-     else
-        alb = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
-     endif
-
-     abs_sfc  = 0.0
-     abs_snow = 0.0
-     abs_ice1 = 0.0
-     abs_ice2 = 0.0
-     abs_ice3 = 0.0
-     abs_ice4 = 0.0
-     abs_ocn  = 0.0
-     abs_int  = 0.0
-     alb_vis_dir = alb
-     alb_vis_dif = alb
-     alb_nir_dir = alb
-     alb_nir_dif = alb
-     !   pen = 0.0
-     !   trn = 0.0
-
-     !! check for ice albdeos out of range (0 to 1)
-     !      if (alb.lt.0.0 .or.alb.gt.1.0) then
-     !         print *,'ice_optics: albedo out of range, alb_in=',alb_in, 'alb=',alb
-     !         print *,'ts=',ts,  'tfw=',tfw, 'tcrit=',tcrit
-     !         print *,'hi=',hi,  'thick_ice_alb=',thick_ice_alb
-     !         print *,'ALB_OCEAN=',ALB_OCEAN
-     !         print *,'MIN_ICE_ALB=',MIN_ICE_ALB, 'MAX_ICE_ALB=',MAX_ICE_ALB
-     !         print *,'T_RANGE,=',T_RANGE, 'CRIT_THICKNESS=',CRIT_THICKNESS
-     !         stop
-     !      end if
-
-     return
-  endif
-
-  if(do_deltaEdd) then
-
-     ! temporary for delta-Eddington shortwave call
-     nx_block = 1
-     ny_block = 1
-     icells = 1
-     indxi(1) = 1
-     indxj(1) = 1
-     aice(1,1) = 1.0
-     tarea(1,1) = 1.0 ! not used
-
-     ! stuff that matters
-     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
-     if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
-     Tsfc(1,1) = ts
-     vsno(1,1) = hs
-     vice(1,1) = hi
-     swvdr(1,1) = 0.25
-     swvdf(1,1) = 0.25
-     swidr(1,1) = 0.25
-     swidf(1,1) = 0.25
-
-     call shortwave_dEdd0_set_snow(nx_block, ny_block, &
-          icells,             &
-          indxi,    indxj,    &
-          aice,     vsno,     &
-          Tsfc,     fs,       &
-          rhosnw,   rsnw) ! out: fs, rhosnw, rsnw
-
-     call shortwave_dEdd0_set_pond(nx_block, ny_block, &
-          icells,             &
-          indxi,    indxj,    &
-          aice,     Tsfc,     &
-          fs,       fp,       &
-          hp) ! out: fp, hp
-     call shortwave_dEdd0  (nx_block, ny_block,    &
-          icells,   indxi,       &
-          indxj,    coszen,      &
-          aice,     vice,        &
-          vsno,     fs,          &
-          rhosnw,   rsnw,        &
-          fp,       hp,          &
-          swvdr,    swvdf,       &
-          swidr,    swidf,       &
-          alvdf,    alvdr,       & ! out: these and below
-          alidr,    alidf,       &
-          fswsfc,   fswint,      &
-          fswthru,  Sswabs,      &
-          Iswabs,   albice,      &
-          albsno,   albpnd)
-
-     ! ### ADD PARENTHESES AND MULTIPLY BY A RECIPROCAL.
-     alb = 1-fswsfc(1,1)-fswint(1,1)-fswthru(1,1)
-     abs_sfc  = fswsfc(1,1)  /(1-alb)
-     abs_snow = Sswabs(1,1,1)/(1-alb)
-     abs_ice1 = Iswabs(1,1,1)/(1-alb)
-     abs_ice2 = Iswabs(1,1,2)/(1-alb)
-     abs_ice3 = Iswabs(1,1,3)/(1-alb)
-     abs_ice4 = Iswabs(1,1,4)/(1-alb)
-     abs_ocn  = fswthru(1,1) /(1-alb)
-
-     alb_vis_dir = alvdr(1,1)
-     alb_vis_dif = alvdf(1,1)
-     alb_nir_dir = alidr(1,1)
-     alb_nir_dif = alidf(1,1)
-
-     ! pen = (fswint(1,1)+fswthru(1,1))/(fswsfc(1,1)+fswint(1,1)+fswthru(1,1))
-     pen = abs_snow + abs_ice1 + abs_ice2 + abs_ice3 + abs_ice4 + abs_ocn
-     ! trn = fswthru(1,1)/(fswint(1,1)+fswthru(1,1))
-     trn = 0.0
-     if(pen > 0.0) trn = abs_ocn/pen
-     abs_int = 1.0 - trn
-
+  tcrit = tfw - T_RANGE
+  if (ts <= tcrit) then
+    thick_ice_alb = MAX_ICE_ALB
+  else if (ts >= tfw) then
+    thick_ice_alb = MIN_ICE_ALB
   else
-
-     !! 2007/04/11 Fix for thin ice negative ice albedos from Mike Winton
-     !!            Move ai calculation after if test
-
-     as = ALB_SNO; ai = ALB_ICE
-     cs = hs/(hs+0.02)                        ! thin snow partially covers ice
-
-     fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
-     ! reduce albedo for thin ice
-      if (ts+T_RANGE_MELT > TFI) then        ! reduce albedo for melting as in
-         ! CSIM4 assuming 0.53/0.47 vis/ir
-         as = as-0.1235*min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-         ai = ai-0.075 *min((ts+T_RANGE_MELT-TFI)/T_RANGE_MELT,1.0)
-      endif
-      ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-
-     alb = cs*as+(1-cs)*ai
-     pen = (1-cs)*PEN_ICE
-     trn = exp(-hi/OPT_DEP_ICE);
-     alb_vis_dir = alb
-     alb_vis_dif = alb
-     alb_nir_dir = alb
-     alb_nir_dif = alb
-
-     !! check for ice albdeos out of range (0 to 1)
-     ! if (alb.lt.0.0 .or. alb.gt.1.0) then
-     !    print *,'ice_optics: albedo out of range, alb=',alb
-     !    print *,'cs=',cs,  'as=',as, 'ai=',ai
-     !    print *,'ts=',ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',tfw
-     !    print *,'ALB_SNO=',ALB_SNO,  'ALB_ICE=',ALB_ICE, 'T_RANGE_MELT,=',T_RANGE_MELT, 'TFI=',TFI
-     !    stop
-     ! end if
+    thick_ice_alb = MAX_ICE_ALB + (MIN_ICE_ALB-MAX_ICE_ALB)*(ts-tcrit)/T_RANGE
   endif
-  return
 
-end subroutine ice_optics
+  if (hi >= crit_thickness) then
+    albedo = thick_ice_alb
+  else
+    albedo = ALB_OCEAN + (thick_ice_alb-ALB_OCEAN)*sqrt(hi/CRIT_THICKNESS)
+  endif
+
+end subroutine slab_ice_optics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice5lay_temp - ice & snow temp. change [Winton (2000) section 2.a]           !
@@ -969,8 +746,6 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
 !
-    real :: ef ! for Beer's law partitioning of radiation among layers
-
     real, dimension(NN) :: tice, sice
     real, dimension(0:NN) :: sol ! layer 0 for snow, 1:NN for ice
 
@@ -997,7 +772,6 @@ real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
     return
   endif
 
-  ef = exp(-hi/OPT_DEP_ICE)
   sol(0) = IS
   sol(1) = I1 ;  sol(2) = I2 ;  sol(3) = I3 ;  sol(4) = I4
   tice(1) = t1; tice(2) = t2; tice(3) = t3; tice(4) = t4
@@ -1184,36 +958,11 @@ end subroutine ice5lay_resize
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_thermo_coefs(pocket_coef, layer_coefs, max_enthalpy_chg, ice_salinity)
-  real, optional, intent(out) :: pocket_coef
-  real, dimension(:), optional, intent(out) :: layer_coefs, ice_salinity
-  real, optional, intent(out) :: max_enthalpy_chg
-! Arguments: pocket_coef - Minus the partial derivative of the freezing point
-!                          with salinity, times the latent heat of fusion over
-!                          the heat capacity of ice, in degC^2/psu.  This term
-!                          is used in the conversion of heat into a form of
-!                          enthalpy that is conserved with brine pockets.
-!            layer_coefs - pocket_coef times a prescribed salinity for each of
-!                          up to 4 layers, in degC^2.  With more than 4 layers,
-!                          the prescribed salinity of layer 4 is used for all
-!                          subsequent layers.
-!            max_enth_chg - The maximum ethalpy change due to the presence of
-!                           brine pockets, LI/CI.
+subroutine get_thermo_coefs(ice_salinity)
+  real, dimension(:), optional, intent(out) :: ice_salinity
+! Arguments: ice_salinity - The specified salinity of each layer when the
+!                           thermodynamic salinities are pre-specified.
   integer k, nk
-
-  ! Enthalpy = T + pocket_coef*S / T
-  if (present(pocket_coef)) pocket_coef = MU_TS*LI/CI
-
-  if (present(layer_coefs)) then  
-    nk = size(layer_coefs)
-    if (nk >= 1) layer_coefs(1) = MU_TS*SI1*LI/CI
-    if (nk >= 2) layer_coefs(2) = MU_TS*SI2*LI/CI
-    if (nk >= 3) layer_coefs(3) = MU_TS*SI3*LI/CI
-    if (nk >= 4) layer_coefs(4) = MU_TS*SI4*LI/CI
-    do k=5,nk ; layer_coefs(k) = MU_TS*SI4*LI/CI ; enddo
-  endif
-  
-  if (present(max_enthalpy_chg)) max_enthalpy_chg = LI/CI
 
   if (present(ice_salinity)) then
     nk = size(ice_salinity)
