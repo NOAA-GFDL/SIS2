@@ -1917,7 +1917,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         end do
      end do
 
-!     if (id_rdgr>0) sent = send_data(id_rdgr, IST%rdg_rate(isc:iec,jsc:jec),      Ice%Time, mask=Ice%mask)
+     if (IST%id_rdgr>0) call post_data(IST%id_rdgr,  rdg_rate(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
 !     if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time, mask=spread(Ice%mask,3,km-1))
 !     if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time, mask=Ice%mask)
 !     if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*cell_area(isc:iec,jsc:jec), & 
