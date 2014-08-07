@@ -1580,6 +1580,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
     endif
 
+    rdg_rate(:,:) = 0.0
     call mpp_clock_begin(iceClocka)
     call ice_B_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
                       IST%u_ocn, IST%v_ocn, &
@@ -1916,6 +1917,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
            end do
         end do
      end do
+
+     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
      if (IST%id_rdgr>0) call post_data(IST%id_rdgr,  rdg_rate(isc:iec,jsc:jec), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
 !     if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time, mask=spread(Ice%mask,3,km-1))

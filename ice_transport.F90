@@ -256,44 +256,6 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
   if (CS%check_conservation) then
     call get_total_amounts(vol_ice, vol_snow, G, tot_ice(1), tot_snow(1))
   endif
-  
-!TOM> perform redistribution of ice thickness, which might have 
-! changed due to thermodynamics, previous to advection in
-! case ridging scheme is used for redistribution of dynamic changes;
-! here the old redistribution scheme is used (plan is to use 
-! linear remapping of Lipscomb [2001, JGR])
-! T. Martin, June 2008
-!
-!Niki: ice_redistribute is called after advection in SIS2
-!      so I added age_ice and rdg_hice to the ice_redistribute call after advection in SIS1_transport
-!      Bob, is this a problem? How do we redistribute for SIS2_transport
-!    if (do_ridging .and. .not. no_thm) then
-!       do j=jsc, jec
-!	  do i=isc, iec
-!	     if (sum(Ice%h_ice(i,j,:))>0)                   &
-!             call ice_redistribute(Ice%part_size(i,j,2:km), &
-!                  Ice%h_snow(i,j,:),  Ice%h_ice (i,j,:),    &
-!                  Ice%t_ice1(i,j,:),  Ice%t_ice2(i,j,:),    &
-!	          Ice%age_ice(i,j,:), Ice%rdg_hice(i,j,:)   )
-!	  end do
-!       end do
-!    end if
-
-!TOM> ridging needs advection of actual open water fraction, which
-!       is updated here and will be changed during the ridging process.
-!     part_size(:,:,1) is only updated once at the end of slow time step
-!       after budgets are calculated!
-!     opnwtr thus only stores part_size(:,:,1) during transport and
-!       part_size(:,:,1) will be restored after ridging is finished.
-    if (CS%do_ridging) then
-       do j=jsc, jec
-	  do i=isc, iec
-	     opnwtr = part_sz(i,j,0)
-	     part_sz(i,j,0) = 1.0-sum(part_sz(i,j,1:G%CatIce))
-	  end do
-       end do
-    end if
-!<TOM
 
   if (CS%SIS1_transport) then
     call get_SIS_tracer_pointer("enth_ice", TrReg, heat_ice, nL)
@@ -336,6 +298,34 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
       enddo
     enddo
 
+    !Niki: ice_redistribute is called after advection in SIS2, before advection in SIS1
+    !      Bob, How do we redistribute for SIS2_transport
+    ! 
+
+    if (CS%do_ridging) then
+     do j=jsc, jec
+        do i=isc, iec
+           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
+           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
+                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
+                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
+                h_ice(i,j,:), h_snow(i,j,:),      &
+                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
+                age_ice(i,j,:), snow2ocn(i,j),        &
+                rdg_rate(i,j), rdg_hice(i,j,:),   &
+                dt_slow, hlim,                            &
+                rdg_open(i,j), rdg_vosh(i,j))
+        end do
+     end do
+    end if   ! do_ridging
+
+    !TOM> perform redistribution of ice thickness, which might have 
+    ! changed due to thermodynamics, previous to advection in
+    ! case ridging scheme is used for redistribution of dynamic changes;
+    ! here the old redistribution scheme is used (plan is to use 
+    ! linear remapping of Lipscomb [2001, JGR])
+    ! T. Martin, June 2008
+    !
     do j=jsc,jec ; do i=isc,iec
       if (sum(vol_ice(i,j,:))>0) &
         call ice_redistribute(part_sz(i,j,1:G%CatIce), G, &
@@ -474,25 +464,24 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
     ! Is sum(part_sz) = 1 ?
 
   endif ! Not SIS1_transport.
-  
-  if (CS%do_ridging) then
-     do j=jsc, jec
-        do i=isc, iec
-           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
-           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
-                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
-                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
-                h_ice(i,j,:), h_snow(i,j,:),      &
-                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
-                age_ice(i,j,:), snow2ocn(i,j),        & 
-                rdg_rate(i,j), rdg_hice(i,j,:),   &
-                dt_slow, hlim,                            &
-                rdg_open(i,j), rdg_vosh(i,j))
-        end do
-     end do
-     ! reset open water fraction
-     part_sz(isd:ied,jsd:jed,0) = opnwtr
-  end if   ! do_ridging
+ 
+!  Niki: TOM does the ridging after redistribute which would need IST%age_ice and IST%rdg_hice below.  
+!  if (CS%do_ridging) then
+!     do j=jsc, jec
+!        do i=isc, iec
+!           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
+!           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
+!                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
+!                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
+!                h_ice(i,j,:), h_snow(i,j,:),      &
+!                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
+!                age_ice(i,j,:), snow2ocn(i,j),        & 
+!                rdg_rate(i,j), rdg_hice(i,j,:),   &
+!                dt_slow, hlim,                            &
+!                rdg_open(i,j), rdg_vosh(i,j))
+!        end do
+!     end do
+!  end if   ! do_ridging
 
 
   uf(:,:) = 0.0; vf(:,:) = 0.0

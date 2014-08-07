@@ -121,7 +121,7 @@ contains
        ! ************
        ! *   Ai     *
        ! ************
-       !part_par = -0.05    ! this is -a* for practical reasons, 
+       part_par = -0.05    ! this is -a* for practical reasons, 
                             ! part_par(lipscomb)=part_par(thorn-hib)/3 for best comparability of schemes
        !do k=1,km
 	  !part_undef(k) = (exp(ccn(k-1)/part_par)-exp(ccn(k)/part_par)) / (1.-exp(1./part_par))
@@ -137,6 +137,7 @@ contains
        ! ************
        ! *   Aii    *
        ! ************
+       dist_par = 4.0
 ! set in namelist: dist_par = 4.0   ! unit [m**0.5], e-folding scale of ridged ice, 
 	                            ! for comparable results of Lipscomb and Thorn-Hib schemes choose
 		                    ! 3 & 25, 4 & 50, 5 & 75 or 6 & 100
@@ -154,6 +155,7 @@ contains
        ! ************
        ! *   Bi     *
        ! ************
+       part_par = 0.15 
 ! set in namelist: part_par = 0.15   ! CICE standard is 0.15
 	do k=1,km
 	   if (ccn(k) < part_par) then
@@ -225,7 +227,7 @@ contains
 
     integer, intent(in) :: km
     real, dimension(0:), intent(inout) :: cn                    ! including open water fraction
-    real, dimension(1:), intent(inout) :: hi, hs, t1, t2, age   ! CAUTION: these quantities are extensive here,
+    real, dimension(1:), intent(inout) :: hi, t1, t2, hs, age   ! CAUTION: these quantities are extensive here,
 							        !          i.e. hi represents ice volume
     real,                intent(out)   :: snow_to_ocn           ! total snow volume dumped into ocean during ridging
     real,                intent(in)    :: rdg_rate              ! ridging rate from subroutine ridge_rate
@@ -298,7 +300,7 @@ contains
 
     ! save initial state of ice concentration, total and ridged ice volume 
     !  at beginning of each iteration loop
-    do k=0,km
+    do k=1,km
        cn_old(k)      = cn(k)   
        hi_old(k)      = hi(k)   
        if (hi(k)>0.0) then
@@ -309,7 +311,7 @@ contains
     end do
     
     ! reduce rates in case more than 100% of any category would be removed
-    do k=0,km
+    do k=1,km
 	if (cn(k)>1.e-10 .and. part_undef(k)>0.0) then
 	   rdg_area = part_undef(k) * Rtot * dt   ! area ridged in category k
 	   if (rdg_area > cn(k)) then
