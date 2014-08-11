@@ -1719,8 +1719,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
   !
-  call ice_aging(G, IST%h_ice(isc:iec,jsc:jec,:), IST%age_ice(isc:iec,jsc:jec,:), &
-       hi_change_part, dt_slow)
+  call ice_aging(G, IST%h_ice, IST%age_ice, hi_change_part, dt_slow)
 
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
