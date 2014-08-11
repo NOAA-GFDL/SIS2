@@ -1721,6 +1721,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   call ice_aging(G, IST%h_ice, IST%age_ice, hi_change_part, dt_slow)
 
+  if (IST%id_age>0) call post_avg(IST%id_age, IST%age_ice, IST%part_size(:,:,1:), &
+                                 IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
+
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
   !

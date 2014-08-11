@@ -252,7 +252,7 @@ type ice_state_type
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
-  integer :: id_rdgr=-1,id_rdgf=-1,id_rdgo=-1,id_rdgv=-1
+  integer :: id_rdgr=-1,id_rdgf=-1,id_rdgo=-1,id_rdgv=-1,id_age=-1
   integer :: id_frazil=-1, id_alb=-1, id_xprt=-1, id_lsrc=-1, id_lsnk=-1, id_bsnk=-1
   integer :: id_strna=-1, id_fax=-1, id_fay=-1, id_swdn=-1, id_lwdn=-1, id_sn2ic=-1
   integer :: id_slp=-1, id_ext=-1, id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1
@@ -1142,6 +1142,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_rdgv    = register_SIS_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
                'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
 
+  IST%id_age     = register_SIS_diag_field('ice_model', 'AGE', diag%axesT1, Time, &
+               'ice age', 'days', missing_value=missing)
 
   if (id_sin_rot>0) call post_data(id_sin_rot, G%sin_rot, diag, is_static=.true.)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
