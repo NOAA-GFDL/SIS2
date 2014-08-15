@@ -205,52 +205,51 @@ subroutine find_ice_strength(hi, ci, ice_strength, G, CS) ! ??? may change to do
   real, dimension(G%CatIce) :: hi3v
   real :: Cp, Cf 
 
-  integer :: i, j, isc, iec, jsc, jec,k,km
+  integer :: i, j, isc, iec, jsc, jec, k, km
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  km=G%CatIce
+  km = G%CatIce
   ! ice strength derived after Rothrock et al. (JGR, 1975)
   if (prs_rothrock) then
-     do j = jsc, jec
-        do i = isc, iec
-           !
-           ! preparations
-           ice_strength(i,j) = 0.0
-           do k = 1,km
-              hi3v(k) = hi3(i,j,k)*ci3(i,j,k)
-           enddo
+    do j=jsc,jec ; do i=isc,iec
+
+      ! preparations
+      ice_strength(i,j) = 0.0
+      do k=1,km
+        hi3v(k) = hi3(i,j,k)*ci3(i,j,k)
+      enddo
 !Niki: The arguments for the following call are missing
 !           call ice_ridging_init(km, ci3(i,j,:), hi3v, part_undef, part_undef_sum, &
 !                hmin, hmax, efold, rdg_ratio)
-           !
-           if (rdg_lipscomb) then   ! based on exponential distribution after Lipscomb
-              do k=1,km
-!Niki                 tmp(k) = hmin(k)*hmin(k) + 2.*hmin(k)*efold(k) + 2.*efold(k)*efold(k)
-              enddo
-           else   ! based on uniform distribution after Thorndike and Hibler
-              do k=1,km
-!Niki                 tmp(k) = ( hmax(k)*hmax(k)*hmax(k) - hmin(k)*hmin(k)*hmin(k) ) &
-!                      / ( 3 * (hmax(k)-hmin(k)) )
-              enddo
-           endif
-           !
-           ! ice strength calculation
-           do k=1,km
-!Niki              ice_strength(i,j) = ice_strength(i,j)                     &
-!                   + part_undef(k)/rdg_ratio(k) * (tmp(k)) &   ! potential energy of new ridges
-!                   - part_undef(k)*hi3(i,j,k)*hi3(i,j,k)         ! potential energy of ridging
-           enddo
-           !if (part_undef_sum>0.0.and.part_undef_sum<=1.0) then
-           !ice_strength(i,j) = ice_strength(i,j) * Cf * Cp / part_undef_sum
-           !
+       !
+      if (rdg_lipscomb) then   ! based on exponential distribution after Lipscomb
+        do k=1,km
+!Niki                tmp(k) = hmin(k)*hmin(k) + 2.*hmin(k)*efold(k) + 2.*efold(k)*efold(k)
         enddo
-     enddo
+      else   ! based on uniform distribution after Thorndike and Hibler
+        do k=1,km
+!Niki      tmp(k) = ( hmax(k)*hmax(k)*hmax(k) - hmin(k)*hmin(k)*hmin(k) ) / &
+!                      ( 3 * (hmax(k)-hmin(k)) )
+        enddo
+      endif
+      !
+      ! ice strength calculation
+      do k=1,km
+!Niki   ice_strength(i,j) = ice_strength(i,j) + &
+!           part_undef(k)/rdg_ratio(k) * (tmp(k)) - &  ! potential energy of new ridges
+!           part_undef(k)*hi3(i,j,k)*hi3(i,j,k)        ! potential energy of ridging
+      enddo
+      !if (part_undef_sum>0.0 .and. part_undef_sum<=1.0) then
+      !  ice_strength(i,j) = ice_strength(i,j) * Cf * Cp / part_undef_sum
+      !
+    enddo ; enddo
 
-     ! ice strength derived after Hibler, JGR, 1979 (default!)
   else 
-     do j=jsc,jec ; do i=isc,iec
-        ice_strength(i,j) = CS%p0*hi(i,j)*ci(i,j)*exp(-CS%c0*(1-ci(i,j)))
-     enddo; enddo
+    ! ice strength derived after Hibler, JGR, 1979 (default!)
+    do j=jsc,jec ; do i=isc,iec
+      ice_strength(i,j) = CS%p0*hi(i,j)*ci(i,j)*exp(-CS%c0*(1-ci(i,j)))
+    enddo ; enddo
   endif
+
 end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -270,19 +269,19 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate    ! ridging rate from drift state
   real,                               intent(in   ) :: dt_slow
   type(ice_B_dyn_CS),                 pointer       :: CS
-  ! Arguments: ci - The sea ice concentration, nondim.
-  !  (in)      hs - The thickness of the snow, in m.
-  !  (in)      hi - The thickness of the ice, in m.
-  !  (inout)   ui - The zonal ice velocity, in m s-1.
-  !  (inout)   vi - The meridional ice velocity, in m s-1.
-  !  (in)      uo - The zonal ocean velocity, in m s-1.
-  !  (in)      vo - The meridional ocean velocity, in m s-1.
-  !  (in)      sea_lev - The height of the sea level, including contributions
-  !                      from non-levitating ice from an earlier time step, in m.
-  !  (in)      dt_slow - The amount of time over which the ice dynamics are to be
-  !                      advanced, in s.
-  !  (in)      G - The ocean's grid structure.
-  !  (in/out)  CS - A pointer to the control structure for this module.
+! Arguments: ci - The sea ice concentration, nondim.
+!  (in)      hs - The thickness of the snow, in m.
+!  (in)      hi - The thickness of the ice, in m.
+!  (inout)   ui - The zonal ice velocity, in m s-1.
+!  (inout)   vi - The meridional ice velocity, in m s-1.
+!  (in)      uo - The zonal ocean velocity, in m s-1.
+!  (in)      vo - The meridional ocean velocity, in m s-1.
+!  (in)      sea_lev - The height of the sea level, including contributions
+!                      from non-levitating ice from an earlier time step, in m.
+!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
+!                      advanced, in s.
+!  (in)      G - The ocean's grid structure.
+!  (in/out)  CS - A pointer to the control structure for this module.
 
   real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice int. stress
   real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! coriolis force
@@ -353,47 +352,40 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   dt_evp = dt_slow/CS%evp_sub_steps
 
   do J=jsc-1,jec ; do I=isc-1,iec
-     dydx(I,J) = 0.5*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
-     dxdy(I,J) = 0.5*((G%dxT(i+1,j+1) - G%dxT(i+1,j)) + (G%dxT(i,j+1) - G%dxT(i,j)))
-  enddo; enddo
+    dydx(I,J) = 0.5*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
+    dxdy(I,J) = 0.5*((G%dxT(i+1,j+1) - G%dxT(i+1,j)) + (G%dxT(i,j+1) - G%dxT(i,j)))
+  enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
-     grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))*G%IdyT(i,j)
-     grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))*G%IdxT(i,j)
-     grid_fac3(i,j) = 0.5*G%dyT(i,j) * G%IdxT(i,j)
-     grid_fac4(i,j) = 0.5*G%dxT(i,j) * G%IdyT(i,j)
-  enddo; enddo
+    grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))*G%IdyT(i,j)
+    grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))*G%IdxT(i,j)
+    grid_fac3(i,j) = 0.5*G%dyT(i,j) * G%IdxT(i,j)
+    grid_fac4(i,j) = 0.5*G%dxT(i,j) * G%IdyT(i,j)
+  enddo ; enddo
 
-  !
   !TOM> check where ice is present
-  !
-  do j = jsc, jec
-     do i = isc, iec
-        if( (G%mask2dT(i,j)>0.5) .and.(ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
-           ice_present(i,j)=.true.
-        else
-           ice_present(i,j)=.false.
-        endif
-     enddo
-  enddo
+  do j=jsc,jec ; do i=isc,iec
+    ice_present(i,j) = ( (G%mask2dT(i,j)>0.5) .and. &
+          (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) )
+  enddo ; enddo
 
   ! sea level slope force
   do J=jsc-1,jec ; do I=isc-1,iec
-     sldx(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
-          + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
-     sldy(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
-          + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
-  enddo; enddo
+    sldx(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
+         + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
+    sldy(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
+         + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
+  enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-     mit(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
-  enddo; enddo
+    mit(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
+  enddo ; enddo
   do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
-     miv(I,J) = 0.25*( (mit(i+1,j+1) + mit(i,j)) + (mit(i+1,j) + mit(i,j+1)) )
-     civ(I,J) = 0.25*( (ci(i+1,j+1) + ci(i,j)) + (ci(i+1,j) + ci(i,j+1)) )
+    miv(I,J) = 0.25*( (mit(i+1,j+1) + mit(i,j)) + (mit(i+1,j) + mit(i,j+1)) )
+    civ(I,J) = 0.25*( (ci(i+1,j+1) + ci(i,j)) + (ci(i+1,j) + ci(i,j+1)) )
   else
-     miv(I,J) = 0.0 ; civ(I,J) = 0.0
+    miv(I,J) = 0.0 ; civ(I,J) = 0.0
   endif ; enddo ; enddo
 
   ! precompute prs, elastic timestep parameter, and linear drag coefficient
@@ -402,20 +394,20 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
   !TOM> towards a leaner calculation of the ice stress
   if (evp_new) then
-     ! calculate elastic parameter: 
-     ! E=zeta/(E_0*dt) => E*dt_evp=zeta/(E_0*N_evp), where dt_evp=dt/N_evp
-     ! here, edt_new is 2*zeta/(E*dt_evp) = 2*E_0*N_evp for computational reasons
-     edt_new = 2. *e0 *float(CS%evp_sub_steps)
+    ! calculate elastic parameter: 
+    ! E=zeta/(E_0*dt) => E*dt_evp=zeta/(E_0*N_evp), where dt_evp=dt/N_evp
+    ! here, edt_new is 2*zeta/(E*dt_evp) = 2*E_0*N_evp for computational reasons
+    edt_new = 2. *e0 *float(CS%evp_sub_steps)
   else
-     ! This is H&D97, Eq. 44, with their E_0 = 0.25.
-     Rho_2dt_evp = CS%Rho_ice / (2.0*dt_evp)
-     do j=jsc,jec ; do i=isc,iec
-        if(G%dxT(i,j) < G%dyT(i,j) ) then
-           edt(i,j) = Rho_2dt_evp * (G%dxT(i,j)**2 * (ci(i,j)*hi(i,j)))
-        else
-           edt(i,j) = Rho_2dt_evp * (G%dyT(i,j)**2 * (ci(i,j)*hi(i,j)))
-        endif
-     enddo; enddo
+    ! This is H&D97, Eq. 44, with their E_0 = 0.25.
+    Rho_2dt_evp = CS%Rho_ice / (2.0*dt_evp)
+    do j=jsc,jec ; do i=isc,iec
+      if (G%dxT(i,j) < G%dyT(i,j) ) then
+        edt(i,j) = Rho_2dt_evp * (G%dxT(i,j)**2 * (ci(i,j)*hi(i,j)))
+      else
+        edt(i,j) = Rho_2dt_evp * (G%dyT(i,j)**2 * (ci(i,j)*hi(i,j)))
+      endif
+    enddo ; enddo
   endif
 
   do J=jsc-1,jec ; do I=isc-1,iec
@@ -424,7 +416,7 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
      else
         ui(I,J) = 0.0 ; vi(I,J) = 0.0
      endif
-  enddo; enddo
+  enddo ; enddo
 
   if (CS%debug) then
      call Bchksum(sldx, "sldx in ice_dynamics", G, symmetric=.true.)
@@ -446,183 +438,183 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
 
   do l=1,CS%evp_sub_steps
 
-     ! calculate strain tensor for viscosities and forcing elastic eqn.
-     call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
+    ! calculate strain tensor for viscosities and forcing elastic eqn.
+    call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
 
-     !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-     ! set_strain - calculate generalized orthogonal coordinate strain tensor       !
-     !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-     do j=jsc,jec ; do i=isc,iec
-        strn11(i,j) = (0.5*((ui(I,J)-ui(I-1,J)) + (ui(I,J-1)-ui(I-1,J-1))) + &
-             0.25*((vi(I,J)+vi(I-1,J-1)) + (vi(I,J-1)+vi(I-1,J))) * &
-             grid_fac1(i,j)) * G%IdxT(i,j)
-        strn22(i,j) = (0.5*((vi(I,J)-vi(I,J-1)) + (vi(I-1,J)-vi(I-1,J-1))) + &
-             0.25*((ui(I,J)+ui(I,J-1)) + (ui(I-1,J)+ui(I-1,J-1))) * &
-             grid_fac2(i,j)) * G%IdyT(i,j)
-        strn12(i,j) = 0.5*grid_fac3(i,j) * &
-             ( (vi(I,J)*G%IdyBu(I,J) - vi(I-1,J)*G%IdyBu(I-1,J)) + &
-             (vi(I,J-1)*G%IdyBu(I,J-1) - vi(I-1,J-1)*G%IdyBu(I-1,J-1)) ) + &
-             0.5*grid_fac4(i,j) * &
-             ( (ui(I,J)*G%IdxBu(I,J) - ui(I,J-1)*G%IdxBu(I,J-1)) + &
-             (ui(I-1,J)*G%IdxBu(I-1,J) - ui(I-1,J-1)*G%IdxBu(I-1,J-1)) )
-     enddo; enddo
+    !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+    ! set_strain - calculate generalized orthogonal coordinate strain tensor       !
+    !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+    do j=jsc,jec ; do i=isc,iec
+      strn11(i,j) = (0.5*((ui(I,J)-ui(I-1,J)) + (ui(I,J-1)-ui(I-1,J-1))) + &
+           0.25*((vi(I,J)+vi(I-1,J-1)) + (vi(I,J-1)+vi(I-1,J))) * &
+           grid_fac1(i,j)) * G%IdxT(i,j)
+      strn22(i,j) = (0.5*((vi(I,J)-vi(I,J-1)) + (vi(I-1,J)-vi(I-1,J-1))) + &
+           0.25*((ui(I,J)+ui(I,J-1)) + (ui(I-1,J)+ui(I-1,J-1))) * &
+           grid_fac2(i,j)) * G%IdyT(i,j)
+      strn12(i,j) = 0.5*grid_fac3(i,j) * &
+           ( (vi(I,J)*G%IdyBu(I,J) - vi(I-1,J)*G%IdyBu(I-1,J)) + &
+           (vi(I,J-1)*G%IdyBu(I,J-1) - vi(I-1,J-1)*G%IdyBu(I-1,J-1)) ) + &
+           0.5*grid_fac4(i,j) * &
+           ( (ui(I,J)*G%IdxBu(I,J) - ui(I,J-1)*G%IdxBu(I,J-1)) + &
+           (ui(I-1,J)*G%IdxBu(I-1,J) - ui(I-1,J-1)*G%IdxBu(I-1,J-1)) )
+    enddo ; enddo
 
-     ! calculate viscosities - how often should we do this ?
-     if (l>=1) then
-        do j=jsc,jec ; do i=isc,iec
-           del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
-                + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
+    ! calculate viscosities - how often should we do this ?
+    if (l>=1) then
+      do j=jsc,jec ; do i=isc,iec
+        del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
+             + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
 
-           if ( del2 > 4e-18 ) then
-              zeta = 0.5*prs(i,j)/sqrt(del2)
-           else
-              zeta = 2.5e8*prs(i,j)
-           endif
-
-           if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
-
-           eta = zeta*EC2I
-           !
-           ! some helpful temporaries
-           !
-           if ( hi(i,j) > 0.0 ) then
-              mp4z(i,j) = -prs(i,j)/(4*zeta)
-              t0(i,j)   = 2*eta / (2*eta + edt(i,j))
-              tmp       = 1/(4*eta*zeta)
-              a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
-              b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
-              t1(i,j)   = b/a                         ! = (1-EC2I)*edt(i,j) / (4*eta + (1+EC2I)*edt(i,j))
-              It2(i,j)  = a / (a**2 - b**2)           ! 1/t2 = a / (a*a - b*b)
-           endif
-        enddo; enddo
-     endif
-
-     ! timestep stress tensor (H&D eqn 21)
-     do j=jsc,jec ; do i=isc,iec
-        if( (G%mask2dT(i,j)>0.5) .and. &
-             (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
-           f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
-           f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
-           CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
-           CS%sig22(i,j) = (t1(i,j)*f11 + f22) * It2(i,j)
-           CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
+        if ( del2 > 4e-18 ) then
+          zeta = 0.5*prs(i,j)/sqrt(del2)
         else
-           CS%sig11(i,j) = 0.0
-           CS%sig22(i,j) = 0.0
-           CS%sig12(i,j) = 0.0 ! eliminate internal ice forces 
+          zeta = 2.5e8*prs(i,j)
         endif
-     enddo; enddo
 
-     !Niki:
-     !Instead of the above block for calculating stresses TOM uses subroutine calls below
-     !I have ported these subroutines to this file for completeness.
-     !TOM> viscosity and ice stress calculation in subroutines
-     !     a) new: EVP solver as documented for CICE 4.0
-     !     b) old: solver as in H&D and omsk_2008_03
-     !       if (evp_new) then
-     !	  call ice_stress_new(prs,strn11,strn22,strn12,edt_new,               &
-     !	                      sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
-     !	                      sig12(isc:iec,jsc:jec), del2, ice_present       )
-     !       else
-     !	  call ice_stress_old(prs,strn11,strn22,strn12,edt,                   &
-     !	                      sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
-     !	                      sig12(isc:iec,jsc:jec), del2, ice_present       )
-     !       endif
-     !
+        if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
 
-
-
-     ! ### SIG11 and SIG22 SHOULD BE PAIRED ON A CUBED SPHERE.
-     call pass_var(CS%sig11, G%Domain, complete=.false.)
-     call pass_var(CS%sig22, G%Domain, complete=.false.)
-     call pass_var(CS%sig12, G%Domain, complete=.true.)
-
-     do J=jsc-1,jec ; do I=isc-1,iec
-        if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-           rr = CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-                exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
-           !
-           ! first, timestep explicit parts (ice, wind & ocean part of water stress)
-           !
-           tmp1 = 0.5*((CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j)) + &
-                (CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j)) )
-           tmp2 = 0.5*((CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1)) + &
-                (CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j)) )
-           tmp6 = 0.5*((CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1)) + &
-                (CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j)) )
-           tmp7 = 0.5*((CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j)) + &
-                (CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j)))
-           tmp3 = 0.25*((CS%sig12(i+1,j+1)+CS%sig12(i,j)) + (CS%sig12(i+1,j)+CS%sig12(i,j+1)) )
-           tmp4 = 0.25*((CS%sig22(i+1,j+1)+CS%sig22(i,j)) + (CS%sig22(i+1,j)+CS%sig22(i,j+1)) )
-           tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
-
-           fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * G%IareaBu(I,J)
-           fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J) 
-
-           !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
-           ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &
-                real(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
-           vi(I,J) = vi(I,J) + (fyic_now + civ(I,J)*fyat(I,J) + &
-                aimag(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldy(I,J)
-
-           !
-           ! second, timestep implicit parts (Coriolis and ice part of water stress)
-           !
-           newuv = cmplx(ui(I,J),vi(I,J)) / &
-                (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
-           ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
-           !
-           ! sum for averages
-           !
-           fxic(I,J) = fxic(I,J) + fxic_now
-           fyic(I,J) = fyic(I,J) + fyic_now
-           fxoc(I,J) = fxoc(I,J) +  real(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
-           fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
-           fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
-           fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))              
-
+        eta = zeta*EC2I
+        !
+        ! some helpful temporaries
+        !
+        if ( hi(i,j) > 0.0 ) then
+          mp4z(i,j) = -prs(i,j)/(4*zeta)
+          t0(i,j)   = 2*eta / (2*eta + edt(i,j))
+          tmp       = 1/(4*eta*zeta)
+          a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
+          b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
+          t1(i,j)   = b/a                         ! = (1-EC2I)*edt(i,j) / (4*eta + (1+EC2I)*edt(i,j))
+          It2(i,j)  = a / (a**2 - b**2)           ! 1/t2 = a / (a*a - b*b)
         endif
-     enddo; enddo
+      enddo ; enddo
+    endif
 
-     if (CS%debug) then
-        call hchksum(CS%sig11, "sig11 in ice_dynamics", G, haloshift=1)
-        call hchksum(CS%sig22, "sig22 in ice_dynamics", G, haloshift=1)
-        call hchksum(CS%sig12, "sig12 in ice_dynamics", G, haloshift=1)
+    ! timestep stress tensor (H&D eqn 21)
+    do j=jsc,jec ; do i=isc,iec
+      if( (G%mask2dT(i,j)>0.5) .and. &
+          (ci(i,j)*(CS%Rho_ice*hi(i,j)+CS%Rho_snow*hs(i,j))>CS%MIV_MIN) ) then
+        f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
+        f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
+        CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
+        CS%sig22(i,j) = (t1(i,j)*f11 + f22) * It2(i,j)
+        CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
+      else
+        CS%sig11(i,j) = 0.0
+        CS%sig22(i,j) = 0.0
+        CS%sig12(i,j) = 0.0 ! eliminate internal ice forces 
+      endif
+    enddo ; enddo
 
-        call Bchksum(fxic, "fxic in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(fyic, "fyic in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(fxoc, "fxoc in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(fyoc, "fyoc in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(fxco, "fxco in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(fyco, "fyco in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(ui, "ui in ice_dynamics", G, symmetric=.true.)
-        call Bchksum(vi, "vi in ice_dynamics", G, symmetric=.true.)
-     endif
-     if (CS%debug_redundant) then
-        call check_redundant_B("fxic/fyic in ice_dynamics steps",fxic, fyic, G)
-        call check_redundant_B("fxco in ice_dynamics steps", fxco, fyco, G)
-        call check_redundant_B("fxoc in ice_dynamics steps", fxoc, fyoc, G)
-        call check_redundant_B("ui/vi in ice_dynamics steps", ui, vi, G)
-     endif
+    !Niki:
+    !Instead of the above block for calculating stresses TOM uses subroutine calls below
+    !I have ported these subroutines to this file for completeness.
+    !TOM> viscosity and ice stress calculation in subroutines
+    !     a) new: EVP solver as documented for CICE 4.0
+    !     b) old: solver as in H&D and omsk_2008_03
+    !       if (evp_new) then
+    !    call ice_stress_new(prs,strn11,strn22,strn12,edt_new,               &
+    !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
+    !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
+    !       else
+    !    call ice_stress_old(prs,strn11,strn22,strn12,edt,                   &
+    !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
+    !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
+    !       endif
+    !
+
+
+
+    ! ### SIG11 and SIG22 SHOULD BE PAIRED ON A CUBED SPHERE.
+    call pass_var(CS%sig11, G%Domain, complete=.false.)
+    call pass_var(CS%sig22, G%Domain, complete=.false.)
+    call pass_var(CS%sig12, G%Domain, complete=.true.)
+
+    do J=jsc-1,jec ; do I=isc-1,iec
+      if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+        rr = CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+             exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+        !
+        ! first, timestep explicit parts (ice, wind & ocean part of water stress)
+        !
+        tmp1 = 0.5*((CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j)) + &
+             (CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j)) )
+        tmp2 = 0.5*((CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1)) + &
+             (CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j)) )
+        tmp6 = 0.5*((CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1)) + &
+             (CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j)) )
+        tmp7 = 0.5*((CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j)) + &
+             (CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j)))
+        tmp3 = 0.25*((CS%sig12(i+1,j+1)+CS%sig12(i,j)) + (CS%sig12(i+1,j)+CS%sig12(i,j+1)) )
+        tmp4 = 0.25*((CS%sig22(i+1,j+1)+CS%sig22(i,j)) + (CS%sig22(i+1,j)+CS%sig22(i,j+1)) )
+        tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
+
+        fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * G%IareaBu(I,J)
+        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J) 
+
+        !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
+        ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &
+             real(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
+        vi(I,J) = vi(I,J) + (fyic_now + civ(I,J)*fyat(I,J) + &
+             aimag(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldy(I,J)
+
+        !
+        ! second, timestep implicit parts (Coriolis and ice part of water stress)
+        !
+        newuv = cmplx(ui(I,J),vi(I,J)) / &
+             (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
+        ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
+        !
+        ! sum for averages
+        !
+        fxic(I,J) = fxic(I,J) + fxic_now
+        fyic(I,J) = fyic(I,J) + fyic_now
+        fxoc(I,J) = fxoc(I,J) +  real(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
+        fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
+        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
+        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))              
+
+      endif
+    enddo ; enddo
+
+    if (CS%debug) then
+      call hchksum(CS%sig11, "sig11 in ice_dynamics", G, haloshift=1)
+      call hchksum(CS%sig22, "sig22 in ice_dynamics", G, haloshift=1)
+      call hchksum(CS%sig12, "sig12 in ice_dynamics", G, haloshift=1)
+
+      call Bchksum(fxic, "fxic in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fyic, "fyic in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fxoc, "fxoc in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fyoc, "fyoc in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fxco, "fxco in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fyco, "fyco in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(ui, "ui in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(vi, "vi in ice_dynamics", G, symmetric=.true.)
+    endif
+    if (CS%debug_redundant) then
+      call check_redundant_B("fxic/fyic in ice_dynamics steps",fxic, fyic, G)
+      call check_redundant_B("fxco in ice_dynamics steps", fxco, fyco, G)
+      call check_redundant_B("fxoc in ice_dynamics steps", fxoc, fyoc, G)
+      call check_redundant_B("ui/vi in ice_dynamics steps", ui, vi, G)
+    endif
 
   enddo ! l=1,CS%evp_sub_steps
 
   if (CS%debug) then
-     call Bchksum(ui, "ui end ice_dynamics", G, symmetric=.true.)
-     call Bchksum(vi, "vi end ice_dynamics", G, symmetric=.true.)
+    call Bchksum(ui, "ui end ice_dynamics", G, symmetric=.true.)
+    call Bchksum(vi, "vi end ice_dynamics", G, symmetric=.true.)
   endif
   if (CS%debug_redundant) &
-       call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
+    call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
 
   ! make averages
   I_sub_steps = 1.0/CS%evp_sub_steps
   do J=jsc-1,jec ; do I=isc-1,iec
-     if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
-        fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
-        fxic(i,j) = fxic(i,j)*I_sub_steps ; fyic(i,j) = fyic(i,j)*I_sub_steps
-        fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps            
-     endif
-  enddo; enddo
+    if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
+      fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
+      fxic(i,j) = fxic(i,j)*I_sub_steps ; fyic(i,j) = fyic(i,j)*I_sub_steps
+      fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps            
+    endif
+  enddo ; enddo
 
   ! Write out diagnostics associated with the ice dynamics.
   if (query_SIS_averaging_enabled(CS%diag)) then
@@ -656,18 +648,14 @@ subroutine ice_B_dynamics(ci, hs, hi, ui, vi, uo, vo,       &
   ! compute deformation rate for ridging
   !
   if (do_ridging) then
-     do j = jsc, jec
-        do i = isc, iec
-           if(ice_present(i,j)) then
-              del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
-                   + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
+    do j=jsc,jec ; do i=isc,iec ; if (ice_present(i,j)) then
+      del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
+           + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
 
-              rdg_rate(i,j)=ridge_rate(del2, strn11(i,j)+strn22(i,j))
-           else
-              rdg_rate(i,j)=0.0
-           endif
-        enddo
-     enddo
+      rdg_rate(i,j)=ridge_rate(del2, strn11(i,j)+strn22(i,j))
+    else
+      rdg_rate(i,j)=0.0
+    endif ; enddo ; enddo
   endif
 
 end subroutine ice_B_dynamics
@@ -764,132 +752,131 @@ subroutine ice_B_dyn_end(CS)
 
   deallocate(CS)
 end subroutine ice_B_dyn_end
-  !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_stress_old - deriving ice stress as in SIS of CM2.1                      !
-  !                  (after Hunke and Dukowicz, 1997)                            !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
-    !
-    integer, intent(in) :: isc,iec,jsc,jec
-    real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
-    real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
-    real,    intent(in   ), dimension(isc:iec,jsc:jec) :: edt
-    real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
-    real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
-    logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
-    !
-    integer                          :: i, j
-    real, dimension(isc:iec,jsc:jec) :: mp4z, t0, t1, t2
-    real, dimension(isc:iec,jsc:jec) :: f11, f22
-    real                             :: a, b, tmp
-    real                             :: zeta, eta               ! bulk/shear viscosities
-    !
-    real :: EC2I !Niki: What is EC2I?
 
-    do j = jsc, jec
-       do i = isc, iec
-	  del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
-                    + 4*EC2I*strn12(i,j)*strn12(i,j) +2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
-	  !
-	  ! calculate viscosities
-	  if(del2(i,j) > 4e-18 ) then
-	     zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
-	  else
-	     zeta = 2.5e8*prs(i,j)
-	  endif
-	  if(zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
-          eta = zeta*EC2I
-          !
-          ! timestep stress tensor (H&D eqn 21)
-          !
-          if(ice_present(i,j)) then
-	     ! some helpful temporaries
-             mp4z(i,j) = -prs(i,j)/(4*zeta)
-             t0(i,j)   = 2*eta/(2*eta+edt(i,j))
-             tmp       = 1/(4*eta*zeta)
-             a         = 1/edt(i,j)+(zeta+eta)*tmp
-             b         = (zeta-eta)*tmp
-             t1(i,j)   = b/a
-             t2(i,j)   = a-b*b/a
-	     !
-             f11(i,j)   = mp4z(i,j)+sig11(i,j)/edt(i,j)+strn11(i,j)
-             f22(i,j)   = mp4z(i,j)+sig22(i,j)/edt(i,j)+strn22(i,j)
-	     ! stresses
-             sig11(i,j) = (t1(i,j)*f22(i,j)+f11(i,j))/t2(i,j)
-             sig22(i,j) = (t1(i,j)*f11(i,j)+f22(i,j))/t2(i,j)
-             sig12(i,j) = t0(i,j)*(sig12(i,j)+edt(i,j)*strn12(i,j))
-	  else
-	     sig11(i,j) = 0.0
-	     sig22(i,j) = 0.0
-	     sig12(i,j) = 0.0 ! eliminate internal ice forces 
-	  endif
-	  !
-       enddo
-    enddo
-    !
-  end subroutine ice_stress_old
+!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_stress_old - deriving ice stress as in SIS of CM2.1                      !
+!                  (after Hunke and Dukowicz, 1997)                            !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
+  !
+  integer, intent(in) :: isc,iec,jsc,jec
+  real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
+  real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
+  real,    intent(in   ), dimension(isc:iec,jsc:jec) :: edt
+  real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
+  real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
+  logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
+  !
+  integer                          :: i, j
+  real, dimension(isc:iec,jsc:jec) :: mp4z, t0, t1, t2
+  real, dimension(isc:iec,jsc:jec) :: f11, f22
+  real                             :: a, b, tmp
+  real                             :: zeta, eta               ! bulk/shear viscosities
+  !
+  real :: EC2I !Niki: What is EC2I?
 
-  !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  ! ice_stress_new - deriving ice stress as in CICE 4.0                          !
-  !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-  subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
-    integer, intent(in) :: isc,iec,jsc,jec
-    !
-    real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
-    real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
-    real,    intent(in   )                             :: edt
-    real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
-    real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
-    logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
-    !
-    integer :: i, j
-    real    :: zeta, eta               ! bulk/shear viscosities
-    real    :: strn1, strn2, sig1, sig2
-    real    :: tmp
-    !
-    real :: EC2I !Niki: What is EC2I?
-    do j = jsc, jec
-       do i = isc, iec
-	  del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
+  do j=jsc,jec ; do i=isc,iec
+    del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
                     + 4*EC2I*strn12(i,j)*strn12(i,j) +2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
-	  !
-	  ! calculate viscosities
-	  if(del2(i,j) > 4e-18 ) then
-	     zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
-	  else
-	     zeta = 2.5e8*prs(i,j)
-	  endif
-	  if(zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
-	  zeta = 2.*zeta
-          eta = zeta*EC2I
-	  !
-	  ! calculate stresses
-	  if(ice_present(i,j)) then
-	     strn1      = strn11(i,j) + strn22(i,j)
-	     strn2      = strn11(i,j) - strn22(i,j)
-	     sig1       = sig11(i,j)  + sig22(i,j)
-	     sig2       = sig11(i,j)  - sig22(i,j)
-	     !
-	     sig1       =      edt*sig1       + zeta*strn1 - prs(i,j)
-	     sig2       = EC2I*edt*sig2       +  eta*strn2
-	     sig12(i,j) = EC2I*edt*sig12(i,j) +  eta*strn12(i,j)
-	     !
-	     sig1       = sig1       * 1./(1.+     edt)
-	     tmp        =              1./(1.+EC2I*edt)
-	     sig2       = sig2       * tmp 
-	     sig12(i,j) = sig12(i,j) * tmp
-	     !
-	     sig11(i,j) = 0.5*(sig1+sig2)
-	     sig22(i,j) = 0.5*(sig1-sig2)
-	  else
-	     sig11(i,j) = 0.0
-	     sig22(i,j) = 0.0
-	     sig12(i,j) = 0.0 ! eliminate internal ice forces 
-	  endif
-	  !
-       enddo
-    enddo
     !
-  end subroutine ice_stress_new
+    ! calculate viscosities
+    if (del2(i,j) > 4e-18 ) then
+      zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
+    else
+      zeta = 2.5e8*prs(i,j)
+    endif
+    if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
+
+    eta = zeta*EC2I
+    !
+    ! timestep stress tensor (H&D eqn 21)
+    !
+    if(ice_present(i,j)) then
+ ! some helpful temporaries
+      mp4z(i,j) = -prs(i,j)/(4*zeta)
+      t0(i,j)   = 2*eta/(2*eta+edt(i,j))
+      tmp       = 1/(4*eta*zeta)
+      a         = 1/edt(i,j)+(zeta+eta)*tmp
+      b         = (zeta-eta)*tmp
+      t1(i,j)   = b/a
+      t2(i,j)   = a-b*b/a
+
+      f11(i,j)   = mp4z(i,j)+sig11(i,j)/edt(i,j)+strn11(i,j)
+      f22(i,j)   = mp4z(i,j)+sig22(i,j)/edt(i,j)+strn22(i,j)
+      ! stresses
+      sig11(i,j) = (t1(i,j)*f22(i,j)+f11(i,j))/t2(i,j)
+      sig22(i,j) = (t1(i,j)*f11(i,j)+f22(i,j))/t2(i,j)
+      sig12(i,j) = t0(i,j)*(sig12(i,j)+edt(i,j)*strn12(i,j))
+    else
+      sig11(i,j) = 0.0
+      sig22(i,j) = 0.0
+      sig12(i,j) = 0.0 ! eliminate internal ice forces 
+    endif
+  !
+  enddo ; enddo
+  !
+end subroutine ice_stress_old
+
+!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_stress_new - deriving ice stress as in CICE 4.0                          !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
+  integer, intent(in) :: isc,iec,jsc,jec
+  !
+  real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
+  real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
+  real,    intent(in   )                             :: edt
+  real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
+  real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
+  logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
+  !
+  integer :: i, j
+  real    :: zeta, eta               ! bulk/shear viscosities
+  real    :: strn1, strn2, sig1, sig2
+  real    :: tmp
+  !
+  real :: EC2I !Niki: What is EC2I?
+
+  do j=jsc,jec ; do i=isc,iec
+    del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
+                    + 4*EC2I*strn12(i,j)*strn12(i,j) +2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
+    !
+    ! calculate viscosities
+    if (del2(i,j) > 4e-18 ) then
+      zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
+    else
+      zeta = 2.5e8*prs(i,j)
+    endif
+    if(zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
+    zeta = 2.*zeta
+    eta = zeta*EC2I
+
+    ! calculate stresses
+    if (ice_present(i,j)) then
+      strn1      = strn11(i,j) + strn22(i,j)
+      strn2      = strn11(i,j) - strn22(i,j)
+      sig1       = sig11(i,j)  + sig22(i,j)
+      sig2       = sig11(i,j)  - sig22(i,j)
+
+      sig1       =      edt*sig1       + zeta*strn1 - prs(i,j)
+      sig2       = EC2I*edt*sig2       +  eta*strn2
+      sig12(i,j) = EC2I*edt*sig12(i,j) +  eta*strn12(i,j)
+
+      sig1       = sig1       * 1./(1.+     edt)
+      tmp        =              1./(1.+EC2I*edt)
+      sig2       = sig2       * tmp 
+      sig12(i,j) = sig12(i,j) * tmp
+
+      sig11(i,j) = 0.5*(sig1+sig2)
+      sig22(i,j) = 0.5*(sig1-sig2)
+    else
+      sig11(i,j) = 0.0
+      sig22(i,j) = 0.0
+      sig12(i,j) = 0.0 ! eliminate internal ice forces 
+    endif
+
+  enddo ; enddo
+
+end subroutine ice_stress_new
 
 end module ice_dyn_bgrid

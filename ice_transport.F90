@@ -83,8 +83,9 @@ contains
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
-                         sea_lev, hlim, dt_slow, G, CS,&
-                         rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
+                         sea_lev, hlim, dt_slow, G, CS, &
+                         rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, &
+                         rdg_vosh)
   type(sea_ice_grid_type), intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: h_ice, h_snow
@@ -300,24 +301,22 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
 
     !Niki: ice_redistribute is called after advection in SIS2, before advection in SIS1
     !      Bob, How do we redistribute for SIS2_transport
-    ! 
+    ! Bob: With SIS2_transport adjust_ice_categories is analogous.
 
+    !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
+    !  ### Heat_snow AND OTHER TRACERS ARE OMITTED.
     if (CS%do_ridging) then
-     do j=jsc, jec
-        do i=isc, iec
-           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
-           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
-                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
-                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
-                h_ice(i,j,:), h_snow(i,j,:),      &
-                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
-                age_ice(i,j,:), snow2ocn(i,j),        &
-                rdg_rate(i,j), rdg_hice(i,j,:),   &
-                dt_slow, hlim,                            &
-                rdg_open(i,j), rdg_vosh(i,j))
-        end do
-     end do
-    end if   ! do_ridging
+      do j=jsc,jec ; do i=isc,iec
+        snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
+        if (sum(h_ice(i,j,:)) > 1.e-10 .and. &
+            sum(part_sz(i,j,1:G%CatIce)) > 0.01) &
+          call ice_ridging(G%CatIce, part_sz(i,j,:), h_ice(i,j,:), &
+              h_snow(i,j,:), &
+              heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
+              age_ice(i,j,:), snow2ocn(i,j), rdg_rate(i,j), rdg_hice(i,j,:), &
+              dt_slow, hlim, rdg_open(i,j), rdg_vosh(i,j))
+      enddo ; enddo
+    endif   ! do_ridging
 
     !TOM> perform redistribution of ice thickness, which might have 
     ! changed due to thermodynamics, previous to advection in
@@ -466,23 +465,20 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
   endif ! Not SIS1_transport.
  
 !  Niki: TOM does the ridging after redistribute which would need IST%age_ice and IST%rdg_hice below.  
-!  if (CS%do_ridging) then
-!     do j=jsc, jec
-!        do i=isc, iec
-!           snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
-!           if (sum(h_ice(i,j,:)) > 1.e-10 .and.       &
-!                sum(part_sz(i,j,1:G%CatIce)) > 0.01)       &
-!                call ice_ridging(G%CatIce, part_sz(i,j,:),      &
-!                h_ice(i,j,:), h_snow(i,j,:),      &
-!                heat_ice(i,j,:,1), heat_ice(i,j,:,2),     & !Niki: Is this correct?
-!                age_ice(i,j,:), snow2ocn(i,j),        & 
-!                rdg_rate(i,j), rdg_hice(i,j,:),   &
-!                dt_slow, hlim,                            &
-!                rdg_open(i,j), rdg_vosh(i,j))
-!        end do
-!     end do
-!  end if   ! do_ridging
-
+!   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
+!   !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
+!   if (CS%do_ridging) then
+!     do j=jsc,jec ; do i=isc,iec
+!       snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
+!       if (sum(h_ice(i,j,:)) > 1.e-10 .and. &
+!           sum(part_sz(i,j,1:G%CatIce)) > 0.01) &
+!         call ice_ridging(G%CatIce, part_sz(i,j,:), h_ice(i,j,:), &
+!             h_snow(i,j,:), &
+!             heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
+!             age_ice(i,j,:), snow2ocn(i,j), rdg_rate(i,j), rdg_hice(i,j,:), &
+!             dt_slow, hlim, rdg_open(i,j), rdg_vosh(i,j))
+!     enddo ; enddo
+!   endif   ! do_ridging
 
   uf(:,:) = 0.0; vf(:,:) = 0.0
   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
