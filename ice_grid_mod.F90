@@ -136,7 +136,9 @@ type, public :: sea_ice_grid_type
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
   real, allocatable, dimension(:) :: &
-    H_cat_lim     ! The lower thickness limits for each ice category, in m.
+    H_cat_lim, &  ! The lower thickness limits for each ice category, in m.
+    M_cat_lim     ! The lower mass-per-unit area limits for each ice category,
+                  ! in kg m-2.
     
 end type sea_ice_grid_type
 
@@ -1082,6 +1084,7 @@ subroutine allocate_metrics(G)
   allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
   allocate(G%H_cat_lim(1:G%CatIce+1)) ; G%H_cat_lim(:) = 0.0
+  allocate(G%M_cat_lim(1:G%CatIce+1)) ; G%M_cat_lim(:) = 0.0
 
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0

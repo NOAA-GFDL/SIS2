@@ -16,11 +16,10 @@ use constants_mod,    only: T_0degC=>Tfreeze
 
 use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 
-use ice_thm_mod,      only: e_to_melt
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS
+use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, e_to_melt_TS
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -82,6 +81,8 @@ type ice_state_type
                       ! All thickness categories are assumed to have the same
                       ! velocity.
   real, pointer, dimension(:,:,:) :: &
+    m_snow =>NULL(), &  ! The mass per unit area of the snow in each category, in kg m-2.
+    m_ice =>NULL(), &   ! The mass per unit area of the ice in each category, in kg m-2.
     h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
     h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
     t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
@@ -95,8 +96,9 @@ type ice_state_type
     enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
 
   real, pointer, dimension(:,:,:) :: &
-    rdg_hice =>NULL(),&
-    age_ice  =>NULL()
+    rdg_hice =>NULL()
+  real, pointer, dimension(:,:,:,:) :: &
+    age_ice  =>NULL()      ! The average age of ice in a category, in days.
  
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
@@ -248,7 +250,7 @@ type ice_state_type
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
-  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_hio=-1, id_mi=-1, id_sh=-1
+  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
@@ -580,9 +582,11 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
+  allocate(IST%m_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%m_snow(:,:,:) = 0.0
   allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
+  allocate(IST%m_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%m_ice(:,:,:) = 0.0
   allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
@@ -591,9 +595,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
 
-
   allocate(IST%rdg_hice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_hice(:,:,:) = 0.0
-  allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%age_ice(:,:,:) = 0.0
+  allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%age_ice(:,:,:,:) = 0.0
 
   if (IST%Cgrid_dyn) then
     allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
@@ -617,11 +620,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
                                domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%h_snow, &
-                               domain=domain)
+                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'm_snow', IST%m_snow, &
+                               domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 't_snow', IST%t_snow, &
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%h_ice, &
-                               domain=domain)
+                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'm_ice',  IST%m_ice, &
+                               domain=domain, mandatory=.false.)
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
@@ -696,7 +703,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
-  deallocate(IST%h_snow, IST%t_snow, IST%h_ice, IST%t_ice)
+  deallocate(IST%h_snow, IST%m_snow, IST%t_snow, IST%h_ice, IST%m_ice, IST%t_ice)
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
 end subroutine dealloc_IST_arrays
@@ -720,6 +727,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   hs=0; if (present(haloshift)) hs=haloshift
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
+  call hchksum(IST%m_ice, trim(mesg)//" IST%m_ice",G,haloshift=hs)
   call hchksum(IST%h_ice, trim(mesg)//" IST%h_ice",G,haloshift=hs)
   do k=1,G%NkIce
     write(k_str1,'(I8)') k
@@ -728,6 +736,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
+  call hchksum(IST%m_snow, trim(mesg)//" IST%m_snow",G,haloshift=hs)
   call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
@@ -874,7 +883,7 @@ subroutine IST_bounds_check(IST, G, msg)
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%h_ice(i,j,k) > 1000.0) .or. (IST%h_snow(i,j,k) > 1000.0) .or. &
+    if ((IST%m_ice(i,j,k) > 1.e6) .or. (IST%m_snow(i,j,k) > 1.e6) .or. &
         (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
         (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
       n_bad = n_bad + 1
@@ -903,8 +912,8 @@ subroutine IST_bounds_check(IST, G, msg)
     endif
     call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
-      write(mesg1,'("hi/hs = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
-             IST%h_ice(i,j,k), IST%h_snow(i,j,k), IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
+      write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
+             IST%m_ice(i,j,k), IST%m_snow(i,j,k), IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
       do l=2,G%NkIce
         write(mesg2,'(", ", 1pe12.4)') IST%T_ice(i,j,k,l)
         mesg1 = trim(mesg1)//trim(mesg2)
@@ -978,8 +987,6 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_tsn      = register_SIS_diag_field('ice_model', 'TSN', diag%axesT1, Time, &
                'snow layer temperature', 'C',  missing_value=missing)
   IST%id_hi       = register_SIS_diag_field('ice_model', 'HI', diag%axesT1, Time, &
-               'ice thickness', 'm-ice', missing_value=missing)
-  IST%id_hio      = register_SIS_diag_field('ice_model', 'HIO', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
   
   IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
@@ -1151,6 +1158,12 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
   if (id_cell_area>0) call post_data(id_cell_area, cell_area, diag, is_static=.true.)
 
+
+!### This doesn't work here!  age_ice needs to go into its own module!
+  ! Register for restarts any of the diagnostics set here that must evolve in time.
+!  if (IST%id_age>0) idr = register_restart_field(Ice_restart, restart_file, 'age_ice', &
+!        IST%age_ice(:,:,:,1), domain=G%domain%mpp_domain, mandatory=.false.)
+
 end subroutine ice_diagnostics_init
 
 subroutine safe_alloc_ids_1d(ids, nids)
@@ -1176,6 +1189,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
+  real :: part_wt, I_NkIce
 
   value = 0.0
   if(.not.Ice%pe) return
@@ -1183,7 +1197,7 @@ subroutine ice_stock_pe(Ice, index, value)
   IST => Ice%Ice_state
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
-  ncat = Ice%G%CatIce
+  ncat = Ice%G%CatIce ; I_NkIce = 1.0 / Ice%G%NkIce
 
   select case (index)
 
@@ -1191,34 +1205,39 @@ subroutine ice_stock_pe(Ice, index, value)
 
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%Rho_ice*IST%h_ice(i,j,k) + IST%Rho_snow*IST%h_snow(i,j,k)) * &
+        value = value + (IST%m_ice(i,j,k) + IST%m_snow(i,j,k)) * &
                IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
-      !### Fix the heat stock calculation.
       value = 0.0
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        if ((IST%part_size(i,j,k)>0.0.and.IST%h_ice(i,j,k)>0.0)) then
-          if (IST%slab_ice) then
-            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                           IST%h_ice(i,j,1)*IST%Rho_ice*LI
-          else
-            value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                            e_to_melt(IST%h_snow(i,j,k), IST%t_snow(i,j,k), &
-                                      IST%h_ice(i,j,k), IST%t_ice(i,j,k,1),  &
-                                      IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3), &
-                                      IST%t_ice(i,j,k,4) )
+      if (IST%slab_ice) then
+        do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+          if (IST%part_size(i,j,k)*IST%m_ice(i,j,k) > 0.0) then
+              value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+                              IST%m_ice(i,j,1)*LI
           endif
-        endif
-      enddo ; enddo ; enddo
+        enddo ; enddo ; enddo
+      else
+        do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+          part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          if (part_wt*IST%m_ice(i,j,k) > 0.0) then
+            value = value - (part_wt * IST%m_snow(i,j,k)) * &
+                      e_to_melt_TS(IST%T_snow(i,j,k), 0.0, IST%ITV)
+            do m=1,Ice%G%NkIce
+              value = value - ((part_wt * I_NkIce) * IST%m_ice(i,j,k)) * &
+                  e_to_melt_TS(IST%T_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
+            enddo
+          endif
+        enddo ; enddo ; enddo
+      endif
 
     case (ISTOCK_SALT)
       !There is no salt in the snow.
       value = 0.0
       do m=1,Ice%G%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
-            (0.001*IST%Rho_ice*IST%h_ice(i,j,k)) * IST%sal_ice(i,j,k,m)
+            (0.001*I_NkIce*IST%m_ice(i,j,k)) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 
     case default

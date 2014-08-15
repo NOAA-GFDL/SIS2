@@ -78,7 +78,7 @@ subroutine get_avg(x, cn, avg, wtd)
       avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
       wts(i,j) = wts(i,j) + cn(i,j,k)
     enddo ; enddo ; enddo
-     do j=1,nj ; do i=1,ni
+    do j=1,nj ; do i=1,ni
       if (wts(i,j) > 0.) then
         avg(i,j) = avg(i,j) / wts(i,j)
       else
