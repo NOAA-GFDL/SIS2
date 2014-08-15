@@ -1319,6 +1319,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     part_save
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: hs_avg, hi_avg
+  real, dimension(SZI_(G),SZJ_(G))   :: ms_sum, mi_sum ! Masses per unit total area, in kg m-2.
   real, dimension(SZI_(G),SZJ_(G))   :: ice_cover ! The fractional ice coverage, between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
   real, dimension(SZIB_(G),SZJ_(G))  :: wind_stress_Cu, fx_wat_C
@@ -1476,6 +1477,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call get_avg(IST%h_snow, IST%part_size(:,:,1:), hs_avg, wtd=.true.)
   call get_avg(IST%h_ice,  IST%part_size(:,:,1:), hi_avg, wtd=.true.)
 
+  ms_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0
+  do k=1,ncat ; do j=jsd,jed ; do i=isd,ied
+    ms_sum(i,j) = ms_sum(i,j) + IST%m_snow(i,j,k) * IST%part_size(i,j,k)
+    mi_sum(i,j) = mi_sum(i,j) + IST%m_ice(i,j,k)  * IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
+
   ! In the dynamics code, only the ice velocities are changed, and the ice-ocean
   ! stresses are calculated.  The gravity wave dynamics (i.e. the continuity
   ! equation) are not included in the dynamics.  All of the thickness categories
@@ -1504,8 +1511,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%debug) then
       call IST_chksum("Before ice_C_dynamics", IST, G)
       call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G)
-      call hchksum(hs_avg, "hs_avg before ice_C_dynamics", G)
-      call hchksum(hi_avg, "hi_avg before ice_C_dynamics", G)
+      call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G)
+      call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G)
       call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G, haloshift=1)
       call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G)
       call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G)
@@ -1517,7 +1524,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     call mpp_clock_begin(iceClocka)
     !### Ridging needs to be added with C-grid dyanmics.
-    call ice_C_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice_C, IST%v_ice_C, &
+    call ice_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                       IST%u_ocn_C, IST%v_ocn_C, &
                       wind_stress_Cu, wind_stress_Cv, IST%sea_lev, fx_wat_C, fy_wat_C, &
                       dt_slow, G, IST%ice_C_dyn_CSp)
@@ -1565,8 +1572,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%debug) then
       call IST_chksum("Before ice_dynamics", IST, G)
       call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
-      call hchksum(hs_avg, "hs_avg before ice_dynamics", G)
-      call hchksum(hi_avg, "hi_avg before ice_dynamics", G)
+      call hchksum(ms_sum, "ms_sum before ice_dynamics", G)
+      call hchksum(mi_sum, "mi_sum before ice_dynamics", G)
       call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
       call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
       call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
@@ -1578,7 +1585,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     rdg_rate(:,:) = 0.0
     call mpp_clock_begin(iceClocka)
-    call ice_B_dynamics(1.0-IST%part_size(:,:,0), hs_avg, hi_avg, IST%u_ice, IST%v_ice, &
+    call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice, IST%v_ice, &
                       IST%u_ocn, IST%v_ocn, &
                       wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
                       IST%do_ridging, rdg_rate(isc:iec,jsc:jec), &

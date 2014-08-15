@@ -57,12 +57,12 @@ type, public :: ice_C_dyn_CS ; private
   ! parameters for calculating water drag and internal ice stresses
   logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
   real :: p0 = 2.75e4         ! pressure constant (Pa)
+  real :: p0_rho              ! The pressure constant divided by ice density, N m kg-1.
   real :: c0 = 20.0           ! another pressure constant
   real :: cdw = 3.24e-3       ! ice/water drag coef. (nondim)
   real :: EC = 2.0            ! yield curve axis ratio
   real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
-  real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in kg m-3.
   real :: drag_bg_vel2 = 0.0  ! A background (subgridscale) velocity for drag
                               ! with the ocean squared, in m2 s-2.
   real :: Tdamp   ! The damping timescale of the stress tensor components
@@ -187,9 +187,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", CS%Rho_snow, &
-                 "The nominal density of snow as used by SIS.", &
-                 units="kg m-3", default=330.0)
+  CS%p0_rho = CS%p0 / CS%Rho_ice
 
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
@@ -290,9 +288,9 @@ end subroutine ice_C_dyn_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! find_ice_strength - magnitude of force on ice in plastic deformation         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine find_ice_strength(hi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
+subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
   type(sea_ice_grid_type),          intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: hi, ci
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_C_dyn_CS),               pointer     :: CS
   integer,                optional, intent(in)  :: halo_sz
@@ -302,7 +300,7 @@ subroutine find_ice_strength(hi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
   isc = G%isc-halo ; iec = G%iec+halo ; jsc = G%jsc-halo ; jec = G%jec+halo
 
   do j=jsc,jec ; do i=isc,iec
-    ice_strength(i,j) = CS%p0*hi(i,j)*ci(i,j)*exp(-CS%c0*(1-ci(i,j)))
+    ice_strength(i,j) = CS%p0_rho*mi(i,j)*exp(-CS%c0*(1-ci(i,j)))
   enddo ; enddo
 
 end subroutine find_ice_strength
@@ -310,11 +308,11 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_C_dynamics - take a single dynamics timestep with EVP subcycles          !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
+subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                           fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci, hs, hi  ! ice properties
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci, msnow, mice  ! ice properties
   real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui      ! ice velocity
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi      ! ice velocity
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo      ! ocean velocity
@@ -327,8 +325,10 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   real,                              intent(in   ) :: dt_slow
   type(ice_C_dyn_CS),                pointer       :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
-!  (in)      hs - The thickness of the snow, in m.
-!  (in)      hi - The thickness of the ice, in m.
+!  (in)      msnow - The mass per unit total area (ice covered and ice free)
+!                    of the snow, in kg m-2.
+!  (in)      mice - The mass per unit total area (ice covered and ice free)
+!                   of the ice, in kg m-2.
 !  (inout)   ui - The zonal ice velocity, in m s-1.
 !  (inout)   vi - The meridional ice velocity, in m s-1.
 !  (in)      uo - The zonal ocean velocity, in m s-1.
@@ -351,9 +351,9 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    mi, &       ! Total snow and ice mass per unit area, in kg m-2.
-    pres_ice, & ! The ice internal pressure, in N/kg.
-    zeta, &     ! The ice bulk viscosity, in ???
+    mis, &      ! Total snow and ice mass per unit area, in kg m-2.
+    pres_ice, & ! The vertically integrated ice internal pressure, in N/m.
+    zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
     del_sh_min, &   ! The minimum value of del_sh that is used in the calculation
@@ -508,11 +508,11 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     ! Store the total snow and ice mass.
-    mi(i,j) = ci(i,j)*(hi(i,j)*CS%Rho_ice + hs(i,j)*CS%Rho_snow)
+    mis(i,j) = mice(i,j) + msnow(i,j)
 
     ! Precompute pres_ice and the minimum value of del_sh for stability.
-    pr_vol = CS%p0*exp(-CS%c0*(1-ci(i,j)))
-    pres_ice(i,j) = pr_vol * (hi(i,j)*ci(i,j))
+    pr_vol = CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
+    pres_ice(i,j) = pr_vol * mice(i,j)
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
@@ -521,13 +521,13 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
     del_sh_min(i,j) = (2.0 * CS%del_sh_min_scale * pr_vol * dt**2) / &
-                      (Tdamp * CS%Rho_ice * dxharm**2)
+                      (Tdamp * dxharm**2)
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
   ! the ice pressure now, as the ice might have melted or been advected away
   ! during the thermodynamic and transport phases.
- 
+
 !    This commented out version seems to work, but is not obviously better than
 ! treating each component separately, and the later is simpler.
 !  do J=jsc-1,jec ; do I=isc-1,iec
@@ -556,7 +556,7 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 !        if ((stress_mag > pres_avg) .and. G%Lmask2dBu(I,j)) &
 !          CS%str_s(I,J) = CS%str_s(I,J) * (pres_avg / stress_mag)
 !      endif
-!    endif   
+!    endif
 !  enddo ; enddo
 
 !  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
@@ -603,10 +603,10 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
 
   ! Zero out ice velocities with no mass.
   do j=jsc,jec ; do I=isc-1,iec
-    if (G%mask2dCu(I,j) * (mi(i,j)+mi(i+1,j)) == 0.0) ui(I,j) = 0.0
+    if (G%mask2dCu(I,j) * (mis(i,j)+mis(i+1,j)) == 0.0) ui(I,j) = 0.0
   enddo ; enddo
   do J=jsc-1,jec ; do i=isc,iec
-    if (G%mask2dCv(i,J) * (mi(i,j)+mi(i,j+1)) == 0.0) vi(I,j) = 0.0
+    if (G%mask2dCv(i,J) * (mis(i,j)+mis(i,j+1)) == 0.0) vi(I,j) = 0.0
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
@@ -641,20 +641,20 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
       ! arithmetic mean masses at the velocity points.  mi_ratio goes from 4 times
       ! the ratio of the smallest mass at velocity points over the largest mass
       ! at velocity points up to 1.
-      muq2 = 0.25 * (mi(i,j) + mi(i+1,j)) * (mi(i,j+1) + mi(i+1,j+1))
-      mvq2 = 0.25 * (mi(i,j) + mi(i,j+1)) * (mi(i+1,j) + mi(i+1,j+1))
+      muq2 = 0.25 * (mis(i,j) + mis(i+1,j)) * (mis(i,j+1) + mis(i+1,j+1))
+      mvq2 = 0.25 * (mis(i,j) + mis(i,j+1)) * (mis(i+1,j) + mis(i+1,j+1))
       mi_ratio_A_q(I,J) = 32.0 * muq2 * mvq2 / ((m_neglect4 + (muq2 + mvq2) * &
-                 ((mi(i,j) + mi(i+1,j+1)) + (mi(i,j+1) + mi(i+1,j)))**2) * &
+                 ((mis(i,j) + mis(i+1,j+1)) + (mis(i,j+1) + mis(i+1,j)))**2) * &
                  sum_area)
     elseif ((G%mask2dCu(I,j) + G%mask2dCu(I,j+1)) + &
             (G%mask2dCv(i,J) + G%mask2dCv(i+1,J)) > 1.5) then
       !   This is a corner point, and there are 1 unmasked u-point and 1 v-point.
       ! The ratio below goes from 4 times the ratio of the smaller of the two
       ! masses at velocity points over the larger up to 1.
-      muq = 0.5 * (G%mask2dCu(I,j) * (mi(i,j) + mi(i+1,j)) + &
-                   G%mask2dCu(I,j+1) * (mi(i,j+1) + mi(i+1,j+1)) )
-      mvq = 0.5 * (G%mask2dCv(i,J) * (mi(i,j) + mi(i,j+1)) + &
-                   G%mask2dCv(i+1,J) * (mi(i+1,j) + mi(i+1,j+1)) )
+      muq = 0.5 * (G%mask2dCu(I,j) * (mis(i,j) + mis(i+1,j)) + &
+                   G%mask2dCu(I,j+1) * (mis(i,j+1) + mis(i+1,j+1)) )
+      mvq = 0.5 * (G%mask2dCv(i,J) * (mis(i,j) + mis(i,j+1)) + &
+                   G%mask2dCv(i+1,J) * (mis(i+1,j) + mis(i+1,j+1)) )
       mi_ratio_A_q(I,J) = 4.0 * muq * mvq / ((m_neglect2 + (muq + mvq)**2) * sum_area)
     else
       ! This is a straight coastline or all neighboring velocity points are
@@ -664,26 +664,20 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
   enddo ; enddo
 
   do j=jsc-1,jec+1 ; do I=isc-1,iec
-    mi_u(I,j) = 0.5*(mi(i+1,j) + mi(i,j))
+    mi_u(I,j) = 0.5*(mis(i+1,j) + mis(i,j))
     I_mi_u(I,j) = G%mask2dCu(I,j) / (mi_u(I,j) + m_neglect)
   enddo ; enddo
 
   do J=jsc-1,jec ; do i=isc-1,iec+1
-    mi_v(i,J) = 0.5*(mi(i,j+1) + mi(i,j))
+    mi_v(i,J) = 0.5*(mis(i,j+1) + mis(i,j))
     I_mi_v(i,J) = G%mask2dCv(i,J) / (mi_v(i,J) + m_neglect)
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
     tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
     q(I,J) = G%CoriolisBu(I,J) * tot_area / &
-         (((G%areaT(i,j) * mi(i,j) + G%areaT(i+1,j+1) * mi(i+1,j+1)) + &
-           (G%areaT(i+1,j) * mi(i+1,j) + G%areaT(i,j+1) * mi(i,j+1))) + tot_area * m_neglect)
-  enddo ; enddo
-
-  ! sea level slope force
-  do j=jsc,jec ; do I=isc-1,iec
-  enddo ; enddo
-  do J=jsc-1,jec ; do i=isc,iec
+         (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
+           (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
   enddo ; enddo
 
   do j=jsc,jec ; do I=isc-1,iec
@@ -917,11 +911,11 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
       if (CS%id_sh_t_hifreq > 0) call post_SIS_data(CS%id_sh_t_hifreq, sh_Dt, CS%diag)
       if (CS%id_sh_s_hifreq > 0) call post_SIS_data(CS%id_sh_s_hifreq, sh_Ds, CS%diag)
       if (CS%id_sigi_hifreq>0) then
-        call find_sigI(hi, ci, CS%str_d, diag_val, G, CS)
+        call find_sigI(mice, ci, CS%str_d, diag_val, G, CS)
         call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
       endif
       if (CS%id_sigii_hifreq>0) then
-        call find_sigII(hi, ci, CS%str_t, CS%str_s, diag_val, G, CS)
+        call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, CS)
         call post_SIS_data(CS%id_sigii_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
       endif
     endif
@@ -1005,15 +999,15 @@ subroutine ice_C_dynamics(ci, hs, hi, ui, vi, uo, vo, &
     if (CS%id_fiy_s>0) call post_SIS_data(CS%id_fiy_s, fyic_s, CS%diag)
 
     if (CS%id_sigi>0) then
-      call find_sigI(hi, ci, CS%str_d, diag_val, G, CS)
+      call find_sigI(mice, ci, CS%str_d, diag_val, G, CS)
       call post_SIS_data(CS%id_sigi, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
     if (CS%id_sigii>0) then
-      call find_sigII(hi, ci, CS%str_t, CS%str_s, diag_val, G, CS)
+      call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, CS)
       call post_SIS_data(CS%id_sigii, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
     if (CS%id_stren>0) then
-      call find_ice_strength(hi, ci, diag_val, G, CS)
+      call find_ice_strength(mice, ci, diag_val, G, CS)
       call post_SIS_data(CS%id_stren, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
 
@@ -1038,9 +1032,9 @@ end subroutine ice_C_dynamics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigI - first stress invariant                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine find_sigI(hi, ci, str_d, sigI, G, CS)
+subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
   type(sea_ice_grid_type), intent(in)    :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: hi, ci, str_d
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci, str_d
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI
   type(ice_C_dyn_CS),               pointer     :: CS
 
@@ -1049,7 +1043,7 @@ subroutine find_sigI(hi, ci, str_d, sigI, G, CS)
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call find_ice_strength(hi, ci, strength, G, CS)
+  call find_ice_strength(mi, ci, strength, G, CS)
 
   do j=jsc,jec ; do i=isc,iec
     sigI(i,j) = 0.0
@@ -1061,9 +1055,9 @@ end subroutine find_sigI
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigII - second stress invariant                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine find_sigII(hi, ci, str_t, str_s, sigII, G, CS)
+subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
   type(sea_ice_grid_type),            intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: hi, ci, str_t
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi, ci, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII
   type(ice_C_dyn_CS),                  pointer    :: CS
@@ -1081,7 +1075,7 @@ subroutine find_sigII(hi, ci, str_t, str_s, sigII, G, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    strength(i,j) = (hi(i,j)*ci(i,j)) * CS%p0*exp(-CS%c0*(1-ci(i,j)))
+    strength(i,j) = mi(i,j) * CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
