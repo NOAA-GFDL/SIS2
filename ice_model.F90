@@ -1640,9 +1640,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !     in order to subtract ice melt proportionally from ridged ice volume (see below)
   if (IST%do_ridging) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      tmp3 = IST%h_ice(i,j,k)*IST%part_size(i,j,k)
+      tmp3 = IST%m_ice(i,j,k)*IST%part_size(i,j,k)
       rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-          rdg_frac(i,j,k) = IST%rdg_hice(i,j,k) / tmp3
+          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
     enddo ; enddo ; enddo
   endif
   
@@ -1678,9 +1678,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !     ice melt   (ice%m_ice < mi_old) reduces ridged ice volume proportionally
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       if (IST%m_ice(i,j,k) < mi_old(i,j,k)) &
-		    IST%rdg_hice(i,j,k) = IST%rdg_hice(i,j,k) + rdg_frac(i,j,k) * &
-           ((IST%m_ice(i,j,k) - mi_old(i,j,k))/IST%Rho_ice) * IST%part_size(i,j,k)
-      IST%rdg_hice(i,j,k) = max(IST%rdg_hice(i,j,k), 0.0)
+		    IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+           (IST%m_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
+      IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
     enddo ; enddo ; enddo
   endif
 
@@ -1741,7 +1741,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call ice_transport(IST%part_size, IST%m_ice, IST%m_snow, IST%u_ice_C, IST%v_ice_C, &
                        IST%TrReg, IST%sea_lev, G%M_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp, &
-                       IST%rdg_hice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
+                       IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
   else
     ! B-grid transport 
@@ -1757,7 +1757,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call ice_transport(IST%part_size, IST%m_ice, IST%m_snow, uc, vc, &
                        IST%TrReg, IST%sea_lev, G%M_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp, &
-                       IST%rdg_hice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
+                       IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
   endif
   do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
@@ -1894,12 +1894,13 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Ridging diagnostics
   !
   !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume) 
-  !     in each category; Ice%rdg_hice is ridged ice volume throughout code
+  !     in each category; Ice%rdg_mice is ridged ice mass per unit total
+  !     area throughout the code.
   if (IST%do_ridging) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      tmp3 = IST%h_ice(i,j,k)*IST%part_size(i,j,k)
-      if (tmp3 > 1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
-        rdg_frac(i,j,k) = IST%rdg_hice(i,j,k) / tmp3
+      tmp3 = IST%m_ice(i,j,k)*IST%part_size(i,j,k)
+      if (tmp3 > IST%Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
+        rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
       else
         rdg_frac(i,j,k) = 0.0
       endif

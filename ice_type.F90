@@ -96,7 +96,8 @@ type ice_state_type
     enth_snow =>NULL()  ! The enthalpy of the snow in each category, in enth_unit.
 
   real, pointer, dimension(:,:,:) :: &
-    rdg_hice =>NULL()
+    rdg_mice =>NULL()   ! A diagnostic of the ice load that was formed by
+                        ! ridging, in kg m-2. 
   real, pointer, dimension(:,:,:,:) :: &
     age_ice  =>NULL()      ! The average age of ice in a category, in days.
  
@@ -595,7 +596,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
 
-  allocate(IST%rdg_hice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_hice(:,:,:) = 0.0
+  ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
+  allocate(IST%rdg_mice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%age_ice(:,:,:,:) = 0.0
 
   if (IST%Cgrid_dyn) then

@@ -220,9 +220,9 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
                     !          i.e. hi represents ice volume
   real,                intent(out)   :: snow_to_ocn           ! total snow volume dumped into ocean during ridging
   real,                intent(in)    :: rdg_rate              ! ridging rate from subroutine ridge_rate
-  real, dimension(1:), intent(inout) :: hi_rdg                ! ridged ice volume
+  real, dimension(1:), intent(inout) :: hi_rdg                ! A diagnostic of the ridged ice volume in each category.
   real,                intent(in)    :: dt                    ! time step dt has units seconds
-  real, dimension(1:), intent(in)    :: hlim_in                  ! ice thickness category limits
+  real, dimension(1:), intent(in)    :: hlim_in               ! ice thickness category limits
   real,                intent(out)   :: rdg_open              ! change in open water area due to newly formed ridges
   real,                intent(out)   :: vlev                  ! volume of level ice participating in ridging
 
