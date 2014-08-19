@@ -595,7 +595,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   I_Nk = 1.0 / G%NkIce
  
   I_RhoIce = 1.0 / IST%Rho_Ice
-  I_RhoSnow = 1.0 / IST%Rho_Ice
+  I_RhoSnow = 1.0 / IST%Rho_Snow
  
   ! pass ocean state through ice on first partition
   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
