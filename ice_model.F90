@@ -588,10 +588,14 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   logical :: sent
   real, dimension(0:G%NkIce) :: T_col, S_col, enthalpy
+  real :: I_RhoIce, I_RhoSnow
   real, parameter                  :: LI = hlf
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   I_Nk = 1.0 / G%NkIce
+ 
+  I_RhoIce = 1.0 / IST%Rho_Ice
+  I_RhoSnow = 1.0 / IST%Rho_Ice
  
   ! pass ocean state through ice on first partition
   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
@@ -684,7 +688,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     IST%sw_abs_int(:,:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%m_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      call slab_ice_optics(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
+      call slab_ice_optics(IST%m_snow(i,j,k)*I_RhoSnow, IST%m_ice(i,j,k)*I_RhoIce, &
                IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
@@ -696,7 +700,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   else
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%m_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      call ice_optics_SIS2(IST%h_snow(i,j,k), IST%h_ice(i,j,k), &
+      call ice_optics_SIS2(IST%m_snow(i,j,k)*I_RhoSnow, IST%m_ice(i,j,k)*I_RhoIce, &
                IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), G%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
@@ -1734,8 +1738,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   endif
 
   if (IST%Cgrid_dyn) then
-    call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, IST%u_ice_C, IST%v_ice_C, &
-                       IST%TrReg, IST%sea_lev, G%H_cat_lim, dt_slow, &
+    call ice_transport(IST%part_size, IST%m_ice, IST%m_snow, IST%u_ice_C, IST%v_ice_C, &
+                       IST%TrReg, IST%sea_lev, G%M_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp, &
                        IST%rdg_hice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
@@ -1750,15 +1754,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       vc(i,J) = 0.5 * ( IST%v_ice(I-1,J) + IST%v_ice(I,J) )
     enddo ; enddo
 
-    call ice_transport(IST%part_size, IST%h_ice, IST%h_snow, uc, vc, &
-                       IST%TrReg, IST%sea_lev, G%H_cat_lim, dt_slow, &
+    call ice_transport(IST%part_size, IST%m_ice, IST%m_snow, uc, vc, &
+                       IST%TrReg, IST%sea_lev, G%M_cat_lim, dt_slow, &
                        G, IST%ice_transport_CSp, &
                        IST%rdg_hice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
   endif
   do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
-    IST%m_ice(i,j,k) = IST%h_ice(i,j,k) * IST%Rho_ice
-    IST%m_snow(i,j,k) = IST%h_snow(i,j,k) * IST%Rho_snow
+    IST%h_ice(i,j,k) = IST%m_ice(i,j,k) / IST%Rho_ice
+    IST%h_snow(i,j,k) = IST%m_snow(i,j,k) / IST%Rho_snow
   enddo ; enddo ; enddo
 
   ! add snow volume dumped into ocean to flux of frozen precipitation:

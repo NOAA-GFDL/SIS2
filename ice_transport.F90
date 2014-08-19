@@ -104,13 +104,13 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1, in/out.
-!  (inout)   h_ice - The thickness of the ice in each category in m.
-!  (inout)   h_snow - The thickness of the snow atop the ice in each category
-!                     in m.
+!  (inout)   h_ice - The mass per unit area of the ice in each category in kg m-2.
+!  (inout)   h_snow - The mass per unit area of the snow atop the ice in each
+!                     category in kg m-2.
 !  (in)      uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
-!  (in)      hlim - The lower thickness limit of each category, in m.
+!  (in)      hlim - The lower ice-loading limit of each category, in kg m-2.
 !  (in)      sea_lev - The height of the sea level, including contributions
 !                      from non-levitating ice from an earlier time step, in m.
 !  (in)      dt_slow - The amount of time over which the ice dynamics are to be
@@ -308,10 +308,10 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
     if (CS%do_ridging) then
       do j=jsc,jec ; do i=isc,iec
         snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
-        if (sum(h_ice(i,j,:)) > 1.e-10 .and. &
+        if (sum(h_ice(i,j,:)) > CS%Rho_ice*1.e-10 .and. &
             sum(part_sz(i,j,1:G%CatIce)) > 0.01) &
-          call ice_ridging(G%CatIce, part_sz(i,j,:), h_ice(i,j,:), &
-              h_snow(i,j,:), &
+          call ice_ridging(G%CatIce, part_sz(i,j,:), vol_ice(i,j,:), &
+              vol_snow(i,j,:), &
               heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
               age_ice(i,j,:), snow2ocn(i,j), rdg_rate(i,j), rdg_hice(i,j,:), &
               dt_slow, hlim, rdg_open(i,j), rdg_vosh(i,j))
@@ -420,16 +420,18 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
     ice_cover(:,:) = 0.0
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (vol_ice(i,j,k) > 0.0) then
-        if (CS%roll_factor * h_ice(i,j,k)**3 > vol_ice(i,j,k)*G%areaT(i,j)) then
+        if (CS%roll_factor * (h_ice(i,j,k)/CS%Rho_Ice)**3 > &
+            (vol_ice(i,j,k)/CS%Rho_Ice)*G%areaT(i,j)) then
           ! This ice is thicker than it is wide even if all the ice in a grid
           ! cell is collected into a single cube, so it will roll.  Any snow on
           ! top will simply be redistributed into a thinner layer, although it
           ! should probably be dumped into the ocean.  Rolling makes the ice
           ! thinner so that it melts faster, but it should never be made thinner
           ! than hlim(1).
-          h_ice(i,j,k) = max(sqrt((vol_ice(i,j,k)*G%areaT(i,j)) / &
-                                  (CS%roll_factor * h_ice(i,j,k)) ), hlim(1))
-        endif    
+          h_ice(i,j,k) = max(CS%Rho_ice * sqrt((vol_ice(i,j,k)*G%areaT(i,j)) / &
+                                               (CS%roll_factor * h_ice(i,j,k)) ), &
+                             hlim(1))
+        endif
 
         part_sz(i,j,k) = vol_ice(i,j,k) / h_ice(i,j,k)
         h_snow(i,j,k) = h_ice(i,j,k) * (vol_snow(i,j,k) / vol_ice(i,j,k))
@@ -447,7 +449,9 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
     enddo ; enddo
 
     ! Compress the ice where the fractional coverage exceeds 1, starting with
-    ! the thinnest categories.
+    ! the thinnest categories.  This is a minimalist version of a sea-ice
+    ! ridging scheme.  A more complete ridging scheme would also compress
+    ! thicker ice and allow the fractional ice coverage to drop below 1.
     call compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
                       TrReg, G, CS)
 
@@ -470,7 +474,7 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
 !   if (CS%do_ridging) then
 !     do j=jsc,jec ; do i=isc,iec
 !       snow2ocn(i,j)=0.0 !TOM> initializing snow2ocean
-!       if (sum(h_ice(i,j,:)) > 1.e-10 .and. &
+!       if (sum(h_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
 !           sum(part_sz(i,j,1:G%CatIce)) > 0.01) &
 !         call ice_ridging(G%CatIce, part_sz(i,j,:), h_ice(i,j,:), &
 !             h_snow(i,j,:), &
@@ -483,10 +487,10 @@ subroutine ice_transport(part_sz, h_ice, h_snow, uc, vc, TrReg, &
   uf(:,:) = 0.0; vf(:,:) = 0.0
   if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,G%CatIce 
     do j=jsc,jec ; do I=isc-1,iec
-      uf(I,j) = uf(I,j) + (CS%Rho_snow*uh_snow(I,j,k) + CS%Rho_ice*uh_ice(I,j,k))
+      uf(I,j) = uf(I,j) + (uh_snow(I,j,k) + uh_ice(I,j,k))
     enddo ; enddo
     do J=jsc-1,jec ; do i=isc,iec
-      vf(i,J) = vf(i,J) + (CS%Rho_snow*vh_snow(i,J,k) + CS%Rho_ice*vh_ice(i,J,k))
+      vf(i,J) = vf(i,J) + (vh_snow(i,J,k) + vh_ice(i,J,k))
     enddo ; enddo
   enddo ; endif
 
@@ -683,12 +687,12 @@ subroutine adjust_ice_categories(hlim, vol_ice, vol_snow, h_ice, part_sz, &
 
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
-!  (in)      hlim - The lower thickness limit of each category, in m.
+!  (in)      hlim - The lower thickness limit of each category, in kg m-2.
 !  (inout)   vol_ice - The volume per unit grid-cell area of the ice in each
 !                      category in m.
 !  (inout)   vol_snow - The volume per unit grid-cell area of the snow atop the
 !                       ice in each category in m.
-!  (inout)   h_ice - The thickness of the ice in each category in m.
+!  (inout)   h_ice - The thickness of the ice in each category in kg m-2.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
@@ -836,9 +840,13 @@ subroutine compress_ice(part_sz, hlim, vol_ice, vol_snow, h_ice, h_snow, &
 ! routine, the volume (mass) is conserved, while the fractional coverage is
 ! solved for, while the new thicknesses are diagnosed.
 
+!   This subroutine is effectively a minimalist version of a sea-ice ridging
+! scheme.  A more complete ridging scheme would also compress thicker ice and
+! allow the fractional ice coverage to drop below 1.
+
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
-!  (in)      hlim - The lower thickness limit of each category, in m.
+!  (in)      hlim - The lower thickness limit of each category, in kg m-2.
 !  (inout)   vol_ice - The volume per unit grid-cell area of the ice in each
 !                      category in m.
 !  (inout)   vol_snow - The volume per unit grid-cell area of the snow atop the

@@ -390,7 +390,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
 end subroutine ice_optics_SIS2
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice5lay_temp - A subroutine that calculates the snow and ice enthalpy        !
+! ice_temp_SIS2 - A subroutine that calculates the snow and ice enthalpy       !
 !    changes due to surface forcing.                                           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
@@ -434,7 +434,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   real :: I_bb, b_denom_1
   real :: comp_rat ! The complement of rat, going from 0 to 1.
   real :: tsf      ! The surface freezing temperature in degC.
-  real :: k0a_x_ta, tsno_est, hie, salt_part, rat
+  real :: k0a_x_ta, tsno_est, salt_part, rat
   real :: tsurf_est  ! An estimate of the surface temperature in degC.
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
@@ -446,6 +446,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   real :: tfb_diff_err, tfb_resid_err
   real :: tflux_sfc, sum_sol, d_tflux_bot
   real :: hsnow_eff ! , Ks_h
+  real :: hL_ice_eff
   real :: enth_liq_lim
   real :: enth_prev
   real :: I_enth_unit
@@ -463,17 +464,21 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   A = -sh_T0
 
   I_enth_unit = 1.0 / ITV%enth_unit
-  mL_ice = ITV%Rho_ice*hice/NkIce ! ice mass of each layer
+  mL_ice = (ITV%Rho_ice*hice) / NkIce ! ice mass of each layer
   m_snow = ITV%Rho_snow*hsno     ! full snow layer mass
   call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
-  hie = max(hice, CS%H_LO_LIM); ! prevent thin ice inaccuracy (mw)
-  kk = NkIce*CS%KI/hie                     ! full ice layer conductivity
 
-  tsf = tfi(1)                          ! surface freezing temperature
-  if (hsno>0.0) tsf = 0.0
-  hsnow_eff = hsno + max(1e-35, 1e-20*CS%H_LO_LIM)
+  ! Set the effective thickness of each ice and snow layer, limited to avoid
+  ! instabilities for thin layers.
+  hL_ice_eff = max(mL_ice / ITV%Rho_ice, CS%H_LO_LIM) 
+  hsnow_eff = m_snow / ITV%Rho_snow + max(1e-35, 1e-20*CS%H_LO_LIM)
+
+  kk = CS%KI/hL_ice_eff       ! full ice layer conductivity
+
+  tsf = tfi(1)                ! surface freezing temperature
+  if (m_snow>0.0) tsf = 0.0
   
-  k10 = 2.0*(CS%KS*(NkIce*CS%KI)) / (hice*CS%KS + hsnow_eff*(NkIce*CS%KI)) ! coupling ice layer 1 to snow
+  k10 = 2.0*(CS%KS*CS%KI) / (hL_ice_eff*CS%KS + hsnow_eff*CS%KI) ! coupling ice layer 1 to snow
   k0a = (CS%KS*B) / (0.5*B*hsnow_eff + CS%KS)      ! coupling snow to "air"
   k0skin = 2.0*CS%KS / hsnow_eff
   k0a_x_ta = (CS%KS*A) / (0.5*B*hsnow_eff + CS%KS) ! coupling times "air" temperture
@@ -719,7 +724,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   tsn = temp_from_En_S(enthalpy(0), 0.0, ITV)
   call temp_from_Enth_S(enthalpy(1:), sice, Tice, ITV)
 
-  call temp_check(tsurf, hsno, tsn, hice, tice, NkIce, bmelt, tmelt)
+  call temp_check(tsurf, m_snow, tsn, NkIce*mL_ice, tice, NkIce, bmelt, tmelt)
 
 end subroutine ice_temp_SIS2
 
@@ -880,8 +885,8 @@ function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_te
 
 end function lay_temp_enth
 
-subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
-  real, intent(in) :: ts, hs, tsn, hi, bmelt, tmelt
+subroutine temp_check(ts, ms, tsn, mi, t_ice, NkIce, bmelt, tmelt)
+  real, intent(in) :: ts, ms, tsn, mi, bmelt, tmelt
   real, dimension(NkIce), intent(in) :: t_ice
   integer, intent(in) :: NkIce
   integer :: k, bad
@@ -892,7 +897,7 @@ subroutine temp_check(ts, hs, tsn, hi, t_ice, NkIce, bmelt, tmelt)
   do k=1,NkIce ; if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1 ; enddo
 
   if (bad>0) then
-    print *, 'BAD ICE AFTER TEMP ', 'hs/hi=',hs,hi,'ts/tsn/tice=',ts, &
+    print *, 'BAD ICE AFTER TEMP ', 'ms/mi=',ms,mi,'ts/tsn/tice=',ts, &
                       tsn,t_ice(:),'tmelt/bmelt=',tmelt,bmelt
   endif
 end subroutine temp_check
