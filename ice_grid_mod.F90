@@ -57,7 +57,7 @@ type, public :: sea_ice_grid_type
                                 ! sea ice.
   integer :: NkSnow             ! The number of vertical partitions within the
                                 ! snow atop the sea ice.
-  
+
   logical :: symmetric          ! True if symmetric memory is used.
   logical :: nonblocking_updates  ! If true, non-blocking halo updates are
                                   ! allowed.  The default is .false. (for now).
@@ -135,6 +135,11 @@ type, public :: sea_ice_grid_type
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
+  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
+                        ! internal units of thickness to kg m-2.
+  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
+                        ! the internal units of thickness.
+                                
   real, allocatable, dimension(:) :: &
     H_cat_lim, &  ! The lower thickness limits for each ice category, in m.
     M_cat_lim     ! The lower mass-per-unit area limits for each ice category,
@@ -284,6 +289,11 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call get_param(param_file, mod_nm, "SET_GRID_LIKE_SIS1", set_grid_like_SIS1, &
                  "If true, use SIS1 code to set the grid values.  Otherwise \n"//&
                  "use code derived from MOM6.", default=.false.)
+  call get_param(param_file, mod_nm, "H_TO_KG_M2", G%H_to_kg_m2, &
+               "A constant that translates thicknesses from the model's \n"//&
+               "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
+               default=1.0)
+  G%kg_m2_to_H = 1.0 / G%H_to_kg_m2
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &

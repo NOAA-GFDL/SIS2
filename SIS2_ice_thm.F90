@@ -393,18 +393,18 @@ end subroutine ice_optics_SIS2
 ! ice_temp_SIS2 - A subroutine that calculates the snow and ice enthalpy       !
 !    changes due to surface forcing.                                           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
+subroutine ice_temp_SIS2(m_snow, tsn, m_ice, tice, sice, sh_T0, B, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
 !### CHANGE THE FIRST 4 ARGUMENTS HERE TO MASS/AREA & Enthalpy.
 !### CONSIDER USING THE 3-EQUATION CLOSURE FOR THE BOTTOM B.C.?
-  real, intent(in   ) :: hsno  ! snow thickness (m)
-  real, intent(inout) :: tsn   ! snow temperature (deg-C)
-  real, intent(in   ) :: hice  ! ice thickness (m)
+  real, intent(in   ) :: m_snow  ! snow mass per unit area (kg m-2)
+  real, intent(inout) :: tsn     ! snow temperature (deg-C)
+  real, intent(in   ) :: m_ice   ! ice mass per unit area (kg m-2)
   real, dimension(NkIce), &
-        intent(inout) :: tice ! ice temperature by layer (deg-C)
+        intent(inout) :: tice    ! ice temperature by layer (deg-C)
   real, dimension(NkIce), &
-        intent(in)    :: Sice ! ice salinity by layer (g/kg)
+        intent(in)    :: Sice  ! ice salinity by layer (g/kg)
   real, intent(in   ) :: sh_T0 ! net surface heat flux (+ up) at ts=0 (W/m^2)
   real, intent(in   ) :: B     ! d(sfc heat flux)/d(ts) [W/(m^2 deg-C)]
   real, dimension(0:NkIce), &
@@ -426,7 +426,8 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   real :: A ! Net downward surface heat flux from the atmosphere at 0C (W/m^2)
   real, dimension(0:NkIce) :: temp_est
   real, dimension(NkIce) :: tfi, tice_est ! estimated new ice temperatures
-  real :: mL_ice, m_snow, e_extra
+  real :: mL_ice
+  real :: e_extra
   real, dimension(0:NkIce) :: m_lay
   real, dimension(0:NkIce) :: enthalpy
   real :: enth_fp  ! The enthalpy at the freezing point (solid for fresh ice).
@@ -464,8 +465,7 @@ subroutine ice_temp_SIS2(hsno, tsn, hice, tice, sice, sh_T0, B, sol, tfw, fb, &
   A = -sh_T0
 
   I_enth_unit = 1.0 / ITV%enth_unit
-  mL_ice = (ITV%Rho_ice*hice) / NkIce ! ice mass of each layer
-  m_snow = ITV%Rho_snow*hsno     ! full snow layer mass
+  mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
   call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
 
   ! Set the effective thickness of each ice and snow layer, limited to avoid

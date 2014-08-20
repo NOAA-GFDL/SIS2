@@ -584,11 +584,9 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
   allocate(IST%m_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%m_snow(:,:,:) = 0.0
-  allocate(IST%h_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%h_snow(:,:,:) = 0.0
   allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%m_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%m_ice(:,:,:) = 0.0
-  allocate(IST%h_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%h_ice(:,:,:) = 0.0
   allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
   allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
@@ -621,16 +619,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
                                domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%h_snow, &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'm_snow', IST%m_snow, &
-                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%m_snow, &
+                               domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 't_snow', IST%t_snow, &
                                domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%h_ice, &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'm_ice',  IST%m_ice, &
-                               domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%m_ice, &
+                               domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%H_to_kg_m2, &
+                               longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
+                               no_domain=.true., mandatory=.false.)
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
@@ -705,7 +702,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
-  deallocate(IST%h_snow, IST%m_snow, IST%t_snow, IST%h_ice, IST%m_ice, IST%t_ice)
+  deallocate(IST%m_snow, IST%t_snow, IST%m_ice, IST%t_ice)
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
 end subroutine dealloc_IST_arrays
@@ -730,16 +727,14 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
   call hchksum(IST%m_ice, trim(mesg)//" IST%m_ice",G,haloshift=hs)
-  call hchksum(IST%h_ice, trim(mesg)//" IST%h_ice",G,haloshift=hs)
   do k=1,G%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
-    call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%h_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%t_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
   call hchksum(IST%m_snow, trim(mesg)//" IST%m_snow",G,haloshift=hs)
-  call hchksum(IST%h_snow, trim(mesg)//" IST%h_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
