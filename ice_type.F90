@@ -81,10 +81,10 @@ type ice_state_type
                       ! All thickness categories are assumed to have the same
                       ! velocity.
   real, pointer, dimension(:,:,:) :: &
-    m_snow =>NULL(), &  ! The mass per unit area of the snow in each category, in kg m-2.
-    m_ice =>NULL(), &   ! The mass per unit area of the ice in each category, in kg m-2.
-    h_snow =>NULL(), &  ! The thickness of the snow in each category, in m.
-    h_ice =>NULL(), &   ! The thickness of the ice in each category, in m.
+    m_snow =>NULL(), &  ! The mass per unit area of the snow in each category, 
+                        ! in units of H (usually kg m-2).
+    m_ice =>NULL(), &   ! The mass per unit area of the ice in each category,
+                        ! in units of H (usually kg m-2).
     t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
   real, pointer, dimension(:,:,:,:) :: &
     t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
@@ -97,7 +97,7 @@ type ice_state_type
 
   real, pointer, dimension(:,:,:) :: &
     rdg_mice =>NULL()   ! A diagnostic of the ice load that was formed by
-                        ! ridging, in kg m-2. 
+                        ! ridging, in H (usually kg m-2). 
   real, pointer, dimension(:,:,:,:) :: &
     age_ice  =>NULL()      ! The average age of ice in a category, in days.
  
@@ -726,7 +726,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   hs=0; if (present(haloshift)) hs=haloshift
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
-  call hchksum(IST%m_ice, trim(mesg)//" IST%m_ice",G,haloshift=hs)
+  call hchksum(IST%m_ice*G%H_to_kg_m2, trim(mesg)//" IST%m_ice",G,haloshift=hs)
   do k=1,G%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
@@ -734,7 +734,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
-  call hchksum(IST%m_snow, trim(mesg)//" IST%m_snow",G,haloshift=hs)
+  call hchksum(IST%m_snow*G%H_to_kg_m2, trim(mesg)//" IST%m_snow",G,haloshift=hs)
   call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
@@ -845,14 +845,15 @@ subroutine IST_bounds_check(IST, G, msg)
   character(len=512) :: mesg1, mesg2
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
-  real    :: enth_min, enth_max
+  real    :: enth_min, enth_max, m_max
   integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
-
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
+
+  m_max = 1.0e6*G%kg_m2_to_H
 
   sum_part_sz(:,:) = 0.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -880,7 +881,7 @@ subroutine IST_bounds_check(IST, G, msg)
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%m_ice(i,j,k) > 1.e6) .or. (IST%m_snow(i,j,k) > 1.e6) .or. &
+    if ((IST%m_ice(i,j,k) > m_max) .or. (IST%m_snow(i,j,k) > m_max) .or. &
         (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
         (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
       n_bad = n_bad + 1
@@ -910,7 +911,8 @@ subroutine IST_bounds_check(IST, G, msg)
     call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
-             IST%m_ice(i,j,k), IST%m_snow(i,j,k), IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
+             IST%m_ice(i,j,k)*G%H_to_kg_m2, IST%m_snow(i,j,k)*G%H_to_kg_m2, &
+             IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
       do l=2,G%NkIce
         write(mesg2,'(", ", 1pe12.4)') IST%T_ice(i,j,k,l)
         mesg1 = trim(mesg1)//trim(mesg2)
@@ -1186,7 +1188,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
-  real :: part_wt, I_NkIce
+  real :: part_wt, I_NkIce, kg_H, kg_H_Nk
 
   value = 0.0
   if(.not.Ice%pe) return
@@ -1195,6 +1197,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   ncat = Ice%G%CatIce ; I_NkIce = 1.0 / Ice%G%NkIce
+  kg_H = Ice%G%H_to_kg_m2 ; kg_H_Nk = Ice%G%H_to_kg_m2 / Ice%G%NkIce
 
   select case (index)
 
@@ -1202,7 +1205,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%m_ice(i,j,k) + IST%m_snow(i,j,k)) * &
+        value = value + kg_H * (IST%m_ice(i,j,k) + IST%m_snow(i,j,k)) * &
                IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
@@ -1212,17 +1215,17 @@ subroutine ice_stock_pe(Ice, index, value)
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%m_ice(i,j,k) > 0.0) then
               value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                              IST%m_ice(i,j,1)*LI
+                              (kg_H * IST%m_ice(i,j,1)) * LI
           endif
         enddo ; enddo ; enddo
       else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%m_ice(i,j,k) > 0.0) then
-            value = value - (part_wt * IST%m_snow(i,j,k)) * &
+            value = value - (part_wt * (kg_H * IST%m_snow(i,j,k))) * &
                       e_to_melt_TS(IST%T_snow(i,j,k), 0.0, IST%ITV)
             do m=1,Ice%G%NkIce
-              value = value - ((part_wt * I_NkIce) * IST%m_ice(i,j,k)) * &
+              value = value - (part_wt * (kg_H_Nk * IST%m_ice(i,j,k))) * &
                   e_to_melt_TS(IST%T_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
             enddo
           endif
@@ -1234,7 +1237,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do m=1,Ice%G%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
-            (0.001*I_NkIce*IST%m_ice(i,j,k)) * IST%sal_ice(i,j,k,m)
+            (0.001*(kg_H_Nk*IST%m_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 
     case default

@@ -104,9 +104,9 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1, in/out.
-!  (inout)   m_ice - The mass per unit area of the ice in each category in kg m-2.
+!  (inout)   m_ice - The mass per unit area of the ice in each category in H (often kg m-2).
 !  (inout)   m_snow - The mass per unit area of the snow atop the ice in each
-!                     category in kg m-2.
+!                     category in H (often kg m-2).
 !  (in)      uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
@@ -124,8 +124,8 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
                         ! enthalpy of the snow atop the ice in each category.
                         ! Both are in enth_units (J or rescaled).
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
-    uh_ice, &  ! Zonal fluxes in m3 s-1 and kg s-1.
-    uh_snow    ! Zonal fluxes in m3 s-1 and kg s-1.
+    uh_ice, &  ! Zonal fluxes in H m2 s-1.
+    uh_snow    ! Zonal fluxes in H m2 s-1.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     uf, & ! Zonal fluxes in m3 s-1 and kg s-1.
     ustar, ustaro, ustarv ! Local variables, transporting velocities
@@ -136,9 +136,12 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
     vf, & ! Meridional fluxes in m3 s-1 and kg s-1.
     vstar, vstaro, vstarv ! Local variables, transporting velocities
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
-    mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a cell, in kg m-2.
-    mca0_ice, mca0_snow   ! The initial mass of snow and ice per unit total area in a cell, in kg m-2.
-  
+    mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a
+                          ! cell, in units of H (often kg m-2).
+    mca0_ice, mca0_snow   ! The initial mass of snow and ice per unit total
+                          ! area in a cell, in units of H (often kg m-2).
+  real :: h_in_m          ! The ice thickness in m.
+  real :: hca_in_m        ! The ice thickness averaged over the whole cell in m.
 !  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
 !    mca_ice_d1, h_ice_d1, mca_snow_d1, h_snow_d1, T_snow_d1, &
 !    mca_ice_d2, h_ice_d2, mca_snow_d2, h_snow_d2, T_snow_d2
@@ -162,7 +165,7 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
 
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-    call slab_ice_advect(uc, vc, m_ice(:,:,1), 4.0, dt_slow, G, CS)
+    call slab_ice_advect(uc, vc, m_ice(:,:,1), 4.0*G%kg_m2_to_H, dt_slow, G, CS)
     call pass_var(m_ice(:,:,2), G%Domain)
     do j=G%jsd,G%jed ; do i=G%isd,G%ied
       if (m_ice(i,j,1) > 0.0) then
@@ -420,17 +423,17 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
     ice_cover(:,:) = 0.0
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (mca_ice(i,j,k) > 0.0) then
-        if (CS%roll_factor * (m_ice(i,j,k)/CS%Rho_Ice)**3 > &
-            (mca_ice(i,j,k)/CS%Rho_Ice)*G%areaT(i,j)) then
+        if (CS%roll_factor * (m_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)**3 > &
+            (mca_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
           ! This ice is thicker than it is wide even if all the ice in a grid
           ! cell is collected into a single cube, so it will roll.  Any snow on
           ! top will simply be redistributed into a thinner layer, although it
           ! should probably be dumped into the ocean.  Rolling makes the ice
           ! thinner so that it melts faster, but it should never be made thinner
           ! than M_lim(1).
-          m_ice(i,j,k) = max(CS%Rho_ice * sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
-                                               (CS%roll_factor * m_ice(i,j,k)) ), &
-                             M_lim(1))
+          m_ice(i,j,k) = max((CS%Rho_ice*G%H_to_kg_m2) * &
+               sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
+                    (CS%roll_factor * m_ice(i,j,k)) ), M_lim(1))
         endif
 
         part_sz(i,j,k) = mca_ice(i,j,k) / m_ice(i,j,k)
@@ -1185,9 +1188,9 @@ subroutine get_total_amounts(mca_ice, mca_snow, G, tot_ice, tot_snow)
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: mca_ice, mca_snow
   type(EFP_type), intent(out) :: tot_ice, tot_snow
 ! Arguments: mca_ice - The mass per unit grid-cell area of the ice in each
-!                      category in kg m-2.
+!                      category in units of H (often kg m-2).
 !  (in)      mca_snow - The mass per unit grid-cell area of the snow atop the
-!                       ice in each category in kg m-2.
+!                       ice in each category in units of H (often kg m-2).
 !  (in)      G - The ocean's grid structure.
 !  (out)     tot_ice - The globally integrated total ice, in kg.
 !  (out)     tot_snow - The globally integrated total snow, in kg.
@@ -1219,9 +1222,9 @@ subroutine get_total_enthalpy(m_ice, m_snow, part_sz, TrReg, &
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
 !  (in)      m_ice - The mass per unit area of the ice in each
-!                    category in kg m-2.
+!                    category in units of H (often kg m-2).
 !  (in)      m_snow - The mass per unit area of the snow atop the
-!                     ice in each category in kg m-2.
+!                     ice in each category in units of H (often kg m-2).
 !  (in)      TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (out)     enth_ice - The globally integrated total ice enthalpy in J.

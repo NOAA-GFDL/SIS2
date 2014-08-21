@@ -253,7 +253,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   real :: Extent       ! The total extent of the sea ice in m2.
   real :: heat_imb     ! The column integrated heat imbalance in enth_units (J).
   real :: mass_imb     ! The column integrated mass imbalance in kg.
-  real :: I_nlay, area_pt
+  real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
   type(EFP_type) :: &
     mass_EFP, &        ! Extended fixed point sums of total mass, etc.
@@ -312,6 +312,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
   I_nlay = 1.0 / (1.0*nlay)
+  kg_H_nlay = G%H_to_kg_m2 * I_nlay
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
@@ -395,20 +396,20 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
-      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * &
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * G%H_to_kg_m2 * &
                           (IST%m_ice(i,j,k) + IST%m_snow(i,j,k))
 
       T_col(0) = IST%t_snow(i,j,k)
       do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
       call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:), IST%ITV)
 
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * G%H_to_kg_m2 * &
                           (IST%m_snow(i,j,k) * enthalpy(0))
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
-                            ((IST%m_ice(i,j,k)*I_nlay) * enthalpy(L))
+                            ((IST%m_ice(i,j,k)*kg_H_nlay) * enthalpy(L))
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
-                  ((0.001*IST%m_ice(i,j,k)*I_nlay) * IST%sal_ice(i,j,k,L))
+                  ((0.001*IST%m_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
     if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)

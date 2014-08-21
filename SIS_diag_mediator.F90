@@ -207,8 +207,8 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
     id_zl = -1 ; id_zi = -1
   endif
 
-  id_ct = diag_axis_init('ct', G%H_cat_lim(1:G%CatIce), 'meters', 'n', & ! 'z',?
-                         'Ice thickness category', set_name='ice')
+  id_ct = diag_axis_init('ct', G%cat_thick_lim(1:G%CatIce), 'meters', 'n', & ! 'z',?
+                         'Ice thickness category bounds', set_name='ice')
 
   ! Note that there are no 4-d spatial axis groupings yet.  Ferret only started
   ! allowing for 5-d data with version 6.8, which is later than the default for
