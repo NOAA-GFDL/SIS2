@@ -431,7 +431,7 @@ subroutine ice_transport(part_sz, m_ice, m_snow, uc, vc, TrReg, &
           ! should probably be dumped into the ocean.  Rolling makes the ice
           ! thinner so that it melts faster, but it should never be made thinner
           ! than M_lim(1).
-          m_ice(i,j,k) = max((CS%Rho_ice*G%H_to_kg_m2) * &
+          m_ice(i,j,k) = max((CS%Rho_ice*G%kg_m2_to_H) * &
                sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
                     (CS%roll_factor * m_ice(i,j,k)) ), M_lim(1))
         endif

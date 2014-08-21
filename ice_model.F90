@@ -1008,7 +1008,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: Cp_Ice  ! The heat capacity of ice, in J kg-1 K-1.
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
-  real :: I_RhoIce, I_RhoSnow  ! The specific volumes of ice and snow in m3 kg-1.
+  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
+  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
@@ -1111,8 +1112,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   S_col0(0) = 0.0 ; do m=1,NkIce ; S_col0(m) = S_col(m) ; enddo
 
   if (IST%SIS1_5L_thermo) then
-    I_RhoIce = 1.0 / IST%Rho_Ice ; I_RhoSnow = 1.0 / IST%Rho_Snow
-
+    H_to_m_snow = G%H_to_kg_m2 / IST%Rho_snow
+    H_to_m_ice  = G%H_to_kg_m2 / IST%Rho_ice
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
       if (IST%m_ice(i,j,k) > 0.0) then
@@ -1131,8 +1132,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
-        call ice5lay_temp(IST%m_snow(i,j,k)*I_RhoSnow, IST%t_snow(i,j,k), &
-                          IST%m_ice(i,j,k)*I_RhoIce,    &
+        call ice5lay_temp(IST%m_snow(i,j,k)*H_to_m_snow, IST%t_snow(i,j,k), &
+                          IST%m_ice(i,j,k)*H_to_m_ice,    &
                           IST%t_ice(i,j,k,1), IST%t_ice(i,j,k,2), IST%t_ice(i,j,k,3),   &
                           IST%t_ice(i,j,k,4), ts_new, hf, hfd,                        &
                           IST%sw_abs_snow(i,j,k)*flux_sw, &
