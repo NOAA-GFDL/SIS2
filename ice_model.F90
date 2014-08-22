@@ -94,7 +94,7 @@ use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_r
   use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: ice_optics_SIS2, get_SIS2_thermo_coefs
-use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, temp_from_En_S
+use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
 use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze, enthalpy_liquid, e_to_melt_TS
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
@@ -999,6 +999,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb, tmp_diag
   real, dimension(G%NkIce) :: T_col, S_col ! The temperature and salinity of a column of ice.
+  real, dimension(0:G%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
   real, dimension(0:G%NkIce) :: SW_abs_col
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
@@ -1177,19 +1178,25 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                 dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
         SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
+        enth_col(0) = enth_from_TS(IST%t_snow(i,j,k), 0.0, IST%ITV)
         do m=1,NkIce
           T_col(m) = IST%t_ice(i,j,k,m)
+!          enth_col(m) = enth_from_TS(IST%t_ice(i,j,k,m), S_col(m), IST%ITV)
           SW_abs_col(m) = IST%sw_abs_ice(i,j,k,m)*flux_sw
         enddo
+        call enthalpy_from_TS(T_col(1:), S_col(1:), enth_col(1:), IST%ITV)
+
         !   This call updates the snow and ice temperatures and accumulates the
         ! surface and bottom melting/freezing energy.  The ice and snow do not
         ! actually lose or gain any mass from freezing or melting.
-        call ice_temp_SIS2(IST%mH_snow(i,j,k)*G%H_to_kg_m2, IST%t_snow(i,j,k), &
-                          IST%mH_ice(i,j,k)*G%H_to_kg_m2, &
-                          T_col, S_col, hf_0, dhf_dt, SW_abs_col, &
+        call ice_temp_SIS2(IST%mH_snow(i,j,k)*G%H_to_kg_m2, IST%mH_ice(i,j,k)*G%H_to_kg_m2, &
+                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                           T_Freeze_surf, IST%bheat(i,j), ts_new, &
                           dt_fast, NkIce, IST%tmelt(i,j,k), IST%bmelt(i,j,k), &
                           IST%ice_thm_CSp, IST%ITV, IST%column_check)
+        IST%t_snow(i,j,k) = temp_from_En_S(enth_col(0), 0.0, IST%ITV)
+!        do m=1,NkIce ; IST%t_ice(i,j,k,m) = Temp_from_En_S(enth_col(m), S_col(m), ITV) ; enddo
+        call temp_from_Enth_S(enth_col(1:), S_col(:), T_col(1:), IST%ITV)
         do m=1,NkIce ; IST%t_ice(i,j,k,m) = T_col(m) ; enddo
         dts                = ts_new - (IST%t_surf(i,j,k)-T_0degC)
         IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts
