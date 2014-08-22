@@ -20,6 +20,7 @@ use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, e_to_melt_TS
+use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -623,6 +624,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 't_snow', IST%t_snow, &
                                domain=domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow(:,:,:,1), &
+                               domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%H_to_kg_m2, &
@@ -634,6 +637,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                  IST%t_ice(:,:,:,n), domain=domain, mandatory=(n==1))
     idr = register_restart_field(Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
                                  IST%sal_ice(:,:,:,n), domain=domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'enth_ice'//trim(nstr), &
+                                 IST%enth_ice(:,:,:,n), domain=domain, mandatory=.false.)
   enddo
 
   if (IST%Cgrid_dyn) then
@@ -844,9 +849,11 @@ subroutine IST_bounds_check(IST, G, msg)
 
   character(len=512) :: mesg1, mesg2
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
+  real, dimension(G%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
-  integer :: i, j, k, l, isc, iec, jsc, jec, ncat, i_off, j_off
+  logical :: spec_thermo_sal
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
@@ -882,17 +889,15 @@ subroutine IST_bounds_check(IST, G, msg)
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max) .or. &
-        (IST%t_snow(i,j,k) < tice_min) .or. (IST%t_snow(i,j,k) > tice_max) .or. &
         (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo ; enddo
 
-  do l=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%t_ice(i,j,k,l) < tice_min) .or. (IST%t_ice(i,j,k,l) > tice_max) .or. &
-        (IST%enth_ice(i,j,k,l) < enth_min) .or. (IST%enth_ice(i,j,k,l) > enth_max) .or. &
-        (IST%sal_ice(i,j,k,l) < 0.0) .or. (IST%sal_ice(i,j,k,l) > 1000.0)) then
+  do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max) .or. &
+        (IST%sal_ice(i,j,k,m) < 0.0) .or. (IST%sal_ice(i,j,k,m) > 1000.0)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
@@ -908,13 +913,27 @@ subroutine IST_bounds_check(IST, G, msg)
       write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
             IST%t_ocn(i,j), IST%s_surf(i,j), sum_part_sz(i,j)
     endif
-    call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
+    call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//&
+                            " ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
+      call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
+                                 specified_thermo_salinity=spec_thermo_sal)
+      if (.not.spec_thermo_sal) then
+        do m=1,G%NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
+      endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
              IST%mH_ice(i,j,k)*G%H_to_kg_m2, IST%mH_snow(i,j,k)*G%H_to_kg_m2, &
-             IST%T_snow(i,j,k), IST%T_ice(i,j,k,1)
-      do l=2,G%NkIce
-        write(mesg2,'(", ", 1pe12.4)') IST%T_ice(i,j,k,l)
+             temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
+             temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
+      do m=2,G%NkIce
+        write(mesg2,'(", ", 1pe12.4)') temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
+        mesg1 = trim(mesg1)//trim(mesg2)
+      enddo
+      call SIS_error(WARNING, mesg1, all_print=.true.)
+      write(mesg1,'("enth_snow = ",1pe12.4," enth_ice = ",1pe12.4)') &
+             IST%enth_snow(i,j,k,1), IST%enth_ice(i,j,k,1)
+      do m=2,G%NkIce
+        write(mesg2,'(", ", 1pe12.4)') IST%enth_ice(i,j,k,m)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)
