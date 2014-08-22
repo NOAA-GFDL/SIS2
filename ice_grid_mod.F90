@@ -139,12 +139,12 @@ type, public :: sea_ice_grid_type
                         ! internal units of thickness to kg m-2.
   real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
                         ! the internal units of thickness.
-                                
+
   real, allocatable, dimension(:) :: &
     cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
-    M_cat_lim     ! The lower mass-per-unit area limits for each ice category,
+    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
                   ! in units of H (often kg m-2).
-    
+
 end type sea_ice_grid_type
 
 type, public :: SIS2_domain_type
@@ -336,11 +336,11 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   !     elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
   !       if ( jstart1(m) == jstart2(m) ) then ! folded north
   !          tripolar_grid=.true.
-  !       else 
+  !       else
   !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
   !            "only folded-north condition is allowed for y-boundary")
   !       endif
-  !     else 
+  !     else
   !       call SIS_error(FATAL,  &
   !            "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
   !     endif
@@ -353,9 +353,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
       'x-size of x in file '//trim(ocean_hgrid)//' should be 2*niglobal+1')
   if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
       'y-size of x in file '//trim(ocean_hgrid)//' should be 2*njglobal+1')
-  ni = dims(1)/2 
-  nj = dims(2)/2 
-  
+  ni = dims(1)/2
+  nj = dims(2)/2
+
   if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_ice_grid: "//&
     "The total i-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
   if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_ice_grid: "//&
@@ -369,7 +369,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   if (global_indexing) then
     i_off = 0 ; j_off = 0
   else
-    i_off = isda-1 ; j_off = jsda-1 
+    i_off = isda-1 ; j_off = jsda-1
     ! i_off = 1000 ; j_off = 1000 ! Use this for debugging.
   endif
 
@@ -378,7 +378,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
   G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
 
-  G%symmetric = G%Domain%symmetric 
+  G%symmetric = G%Domain%symmetric
   G%nonblocking_updates = G%Domain%nonblocking_updates
 
   G%IscB = G%isc ; G%JscB = G%jsc
@@ -434,31 +434,31 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call pass_vector(G%mask2dCu, G%mask2dCv, G%Domain, To_All+Scalar_pair)
 
   do j=G%jsd,G%jed ; do i=G%isd,G%ied
-    G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5) 
+    G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5)
   enddo ; enddo
   do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
-    G%Lmask2dCv(i,J) = (G%mask2dCv(i,J) > 0.5) 
+    G%Lmask2dCv(i,J) = (G%mask2dCv(i,J) > 0.5)
   enddo ; enddo
   do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
-    G%Lmask2dCu(I,j) = (G%mask2dCu(I,j) > 0.5) 
+    G%Lmask2dCu(I,j) = (G%mask2dCu(I,j) > 0.5)
   enddo ; enddo
   do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB
-    G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5) 
+    G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5)
   enddo ; enddo
 
 
   if (set_grid_like_SIS1) then
     call mpp_copy_domain(G%Domain%mpp_domain, domain2)
     call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
-    call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )   
-    call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )   
+    call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )
+    call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )
     call mpp_get_compute_domain(domain2, is, ie, js, je)
     if(is /= 2*isca-1 .or. ie /= 2*ieca+1 .or. js /= 2*jsca-1 .or. je /= 2*jeca+1) then
       call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
     endif
     allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
     call read_data(ocean_hgrid, 'x', tmpx, domain2)
-    call read_data(ocean_hgrid, 'y', tmpy, domain2)     
+    call read_data(ocean_hgrid, 'y', tmpy, domain2)
     do J=jsca-1,jeca ; do I=isca-1,ieca
       G%geoLonBu(I-i_off,J-j_off) = tmpx(2*i+1,2*j+1)
       G%geoLatBu(I-i_off,J-j_off) = tmpy(2*i+1,2*j+1)
@@ -477,7 +477,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     ! the MOM6 convention of using the "nominal" latitudes and longitudes,
     ! which are the actual lat & lon on spherical portions of the grid.
     allocate ( xb1d (ni+1), yb1d (nj+1) )
-    if (associated(G%Domain%maskmap)) then    
+    if (associated(G%Domain%maskmap)) then
       allocate(tmpx(ni+1,nj+1), tmpy(ni+1,nj+1))
       call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
       xb1d(:) = sum(tmpx,2)/(nj+1)
@@ -580,7 +580,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   allocate ( cell_area(isca:ieca,jsca:jeca) )
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
-  enddo ; enddo       
+  enddo ; enddo
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
@@ -604,7 +604,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%g_Earth = grav
 
   !--- z1l: loop through the pelist to find the symmetry processor.
-  !--- This is needed to address the possibility that some of the all-land processor 
+  !--- This is needed to address the possibility that some of the all-land processor
   !--- regions are masked out. This is only needed for tripolar grid.
   if (G%Domain%Y_flags == FOLD_NORTH_EDGE) then
     allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
@@ -617,7 +617,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
               "ice_model: jelist(p) /= jec but jslist(p) == jsc")
       if ( ielist(pe) + isca /= ni+1) call SIS_error(FATAL, &
               "ice_model: ielist(p) + isc /= ni+1 but islist(p) + iec == ni+1")
-      exit 
+      exit
     endif ; enddo
     deallocate(pelist, islist, ielist, jslist, jelist)
   endif
@@ -679,7 +679,7 @@ subroutine set_grid_derived_metrics(G, param_file)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
   call SIS_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
- 
+
   do j=jsd,jed ; do i=isd,ied
     if (G%dxT(i,j) < 0.0) then
       write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),0.0
@@ -756,7 +756,7 @@ end subroutine set_grid_derived_metrics
 function Adcroft_reciprocal(val) result(I_val)
   real, intent(in) :: val
   real :: I_val
-  ! This function implements Adcroft's rule for division by 0.  
+  ! This function implements Adcroft's rule for division by 0.
 
   I_val = 0.0
   if (val /= 0.0) I_val = 1.0/val
@@ -767,7 +767,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   type(param_file_type), intent(in)    :: param_file
 !   This subroutine sets the grid metrics from a mosaic file.  This should be
 ! identical to the corresponding subroutine in MOM_grid_initialize.F90.
-!  
+!
 ! Arguments:
 !  (inout)   G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -798,7 +798,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   integer, dimension(:), allocatable :: exni,exnj
   type(domain1D) :: domx, domy
   integer        :: start(4), nread(4)
- 
+
   call SIS_mesg("   MOM_grid_init.F90, set_grid_metrics_from_mosaic: reading grid", 5)
 
   call get_param(param_file, mod, "GRID_FILE", grid_file, &
@@ -973,14 +973,14 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   if (is_root_PE()) &
     call read_data(filename, "x", tmpGlbl, start, nread, no_domain=.TRUE.)
   call broadcast(tmpGlbl, 2*(ni+1), root_PE())
-  
+
   G%gridLonT(:) = tmpGlbl(2:ni:2,2)
   G%gridLonB(:) = tmpGlbl(1:ni+1:2,1)
   deallocate( tmpGlbl )
 
-  allocate  ( tmpGlbl(1, nj+1) )  
+  allocate  ( tmpGlbl(1, nj+1) )
   start(:) = 1 ; nread(:) = 1
-  start(1) = int(ni/4)+1 ; nread(2) = nj+1  
+  start(1) = int(ni/4)+1 ; nread(2) = nj+1
   if (is_root_PE()) &
     call read_data(filename, "y", tmpGlbl, start, nread, no_domain=.TRUE.)
   call broadcast(tmpGlbl, nj+1, root_PE())
@@ -1010,7 +1010,7 @@ subroutine extrapolate_metric(var, jh, missing)
   do j=ubound(var,2)-jh,ubound(var,2) ; do i=lbound(var,1),ubound(var,1)
     if (var(i,j)==badval) var(i,j) = 2.0*var(i,j-1)-var(i,j-2)
   enddo ; enddo
-  
+
   ! Fill in western halo by extrapolating from the computational domain
   do j=lbound(var,2),ubound(var,2) ; do i=lbound(var,1)+jh,lbound(var,1),-1
     if (var(i,j)==badval) var(i,j) = 2.0*var(i+1,j)-var(i+2,j)
@@ -1081,7 +1081,7 @@ subroutine allocate_metrics(G)
   ALLOC_(G%dx_Cv(isd:ied,JsdB:JedB))     ; G%dx_Cv(:,:) = 0.0
   ALLOC_(G%dy_Cu(IsdB:IedB,jsd:jed))     ; G%dy_Cu(:,:) = 0.0
   ALLOC_(G%dx_Cv_obc(isd:ied,JsdB:JedB)) ; G%dx_Cv_obc(:,:) = 0.0
-  ALLOC_(G%dy_Cu_obc(IsdB:IedB,jsd:jed)) ; G%dy_Cu_obc(:,:) = 0.0  
+  ALLOC_(G%dy_Cu_obc(IsdB:IedB,jsd:jed)) ; G%dy_Cu_obc(:,:) = 0.0
 
   ALLOC_(G%areaCu(IsdB:IedB,jsd:jed))  ; G%areaCu(:,:) = 0.0
   ALLOC_(G%areaCv(isd:ied,JsdB:JedB))  ; G%areaCv(:,:) = 0.0
@@ -1094,7 +1094,7 @@ subroutine allocate_metrics(G)
   allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
   allocate(G%cat_thick_lim(1:G%CatIce+1)) ; G%cat_thick_lim(:) = 0.0
-  allocate(G%M_cat_lim(1:G%CatIce+1)) ; G%M_cat_lim(:) = 0.0
+  allocate(G%mH_cat_bound(1:G%CatIce+1)) ; G%mH_cat_bound(:) = 0.0
 
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
@@ -1169,7 +1169,7 @@ subroutine ice_grid_end(G)
   deallocate(G%gridLonT) ; deallocate(G%gridLonB)
 
   deallocate(cell_area)
-  
+
   deallocate(G%Domain%mpp_domain)
   deallocate(G%Domain)
 

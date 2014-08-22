@@ -210,8 +210,19 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 !  (in,opt)  check_column - If true, check for column-wise heat and mass conservation.
 
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
-    ice_area, ice_extent, col_mass, col_heat, col_salt
-  real, dimension(0:G%NkIce) :: T_col, S_col, enthalpy
+    ice_area, &    ! The area of ice in each cell and hemisphere, in m2.
+    ice_extent, &  ! The extent (cells with >10% coverage) of ice in each
+                   ! cell and hemisphere, in m2.
+    col_mass, &    ! The column integrated ice and snow mass in each cell and
+                   ! hemisphere, in kg.
+    col_heat, &    ! The column integrated ice and snow heat in each cell and
+                   ! hemisphere, in J.
+    col_salt       ! The column integrated salt in the ice in each cell and
+                   ! hemisphere in kg.
+  real, dimension(0:G%NkIce) :: &
+    T_col, &       ! A column of snow and ice temperatures, in deg C.
+    S_col, &       ! A column of snow and ice salinities in g/kg.
+    enthalpy       ! A column of snow and ice enthalpies in enth_unit (J/kg).
 
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres, in m2.
@@ -251,7 +262,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
                        ! capacity of the ocean, in C.
   real :: Area         ! The total area of the sea ice in m2.
   real :: Extent       ! The total extent of the sea ice in m2.
-  real :: heat_imb     ! The column integrated heat imbalance in enth_units (J).
+  real :: heat_imb     ! The column integrated heat imbalance in enth_unit kg m-2.
   real :: mass_imb     ! The column integrated mass imbalance in kg.
   real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
@@ -397,19 +408,19 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * G%H_to_kg_m2 * &
-                          (IST%m_ice(i,j,k) + IST%m_snow(i,j,k))
+                          (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k))
 
       T_col(0) = IST%t_snow(i,j,k)
       do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
       call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:), IST%ITV)
 
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * G%H_to_kg_m2 * &
-                          (IST%m_snow(i,j,k) * enthalpy(0))
+                          (IST%mH_snow(i,j,k) * enthalpy(0))
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
-                            ((IST%m_ice(i,j,k)*kg_H_nlay) * enthalpy(L))
+                            ((IST%mH_ice(i,j,k)*kg_H_nlay) * enthalpy(L))
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
-                  ((0.001*IST%m_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
+                  ((0.001*IST%mH_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
     if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)
