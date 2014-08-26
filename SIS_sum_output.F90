@@ -219,10 +219,6 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
                    ! hemisphere, in J.
     col_salt       ! The column integrated salt in the ice in each cell and
                    ! hemisphere in kg.
-  real, dimension(0:G%NkIce) :: &
-    T_col, &       ! A column of snow and ice temperatures, in deg C.
-    S_col, &       ! A column of snow and ice salinities in g/kg.
-    enthalpy       ! A column of snow and ice enthalpies in enth_unit (J/kg).
 
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres, in m2.
@@ -399,8 +395,6 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   col_heat(:,:,:) = 0.0
   col_salt(:,:,:) = 0.0
 
-  S_col(0) = 0.0 ; call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col(1:))
-
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
@@ -410,15 +404,11 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * G%H_to_kg_m2 * &
                           (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k))
 
-      T_col(0) = IST%t_snow(i,j,k)
-      do L=1,nlay ; T_col(L) = IST%t_ice(i,j,k,L) ; enddo
-      call enthalpy_from_TS(T_col(:), S_col(:), enthalpy(:), IST%ITV)
-
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * G%H_to_kg_m2 * &
-                          (IST%mH_snow(i,j,k) * enthalpy(0))
+                          (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1))
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
-                            ((IST%mH_ice(i,j,k)*kg_H_nlay) * enthalpy(L))
+                            ((IST%mH_ice(i,j,k)*kg_H_nlay) * IST%enth_ice(i,j,k,L))
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
                   ((0.001*IST%mH_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
       enddo
