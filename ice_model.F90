@@ -1363,19 +1363,12 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   integer :: i2, j2, k2, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
 
-  real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
+  real, dimension(G%NkIce) :: S_col ! Specified thermodynamic salinity of each
+                                    ! ice layer if spec_thermo_sal is true.
   real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
   logical :: spec_thermo_sal
   logical :: do_temp_diags
-
-  real, dimension(0:G%NkIce) :: T_col0, S_col0, enthalpy
-  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb
-  real :: tot_heat_in2, tot_heat_in3, dth2, dth3, Flux_SW
-  real :: enth_units
-
-  real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col
-
-  real, parameter :: LI = hlf
+  real :: enth_units, I_enth_units
 
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
@@ -1403,11 +1396,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, "Start of update_ice_model_slow")
-
-  if (IST%column_check) then
-    S_col0(0) = 0.0
-    call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col0(1:), enthalpy_units=enth_units)
-  endif
 
   !
   ! Set up fluxes
@@ -1807,21 +1795,19 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   do_temp_diags = (IST%id_tsn > 0)
   do m=1,G%NkIce ; if (IST%id_t(m)>0) do_temp_diags = .true. ; enddo
   do_temp_diags = .true.  !### DELETE THIS WHEN T_ICE BECOMES A READ-ONLY RESTART VARIABLE.
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
+                             specified_thermo_salinity=spec_thermo_sal)
+  I_enth_units = 1.0 / enth_units
+
   if (do_temp_diags) then
-    call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
-                               specified_thermo_salinity=spec_thermo_sal)
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
       if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-        if (spec_thermo_sal) then
-          do m=1,G%NkIce
-            temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
-          enddo
-        else
-          do m=1,G%NkIce
-            temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), &
-                                                IST%sal_ice(i,j,k,m), IST%ITV)
-          enddo
-        endif
+        if (spec_thermo_sal) then ; do m=1,G%NkIce
+          temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
+        enddo ; else ; do m=1,G%NkIce
+          temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), &
+                                              IST%sal_ice(i,j,k,m), IST%ITV)
+        enddo ; endif
       else
         do m=1,G%NkIce ; temp_ice(i,j,k,m) = 0.0 ; enddo
       endif
@@ -1882,11 +1868,17 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     tmp2d(:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*G%H_to_kg_m2 * &
-                   e_to_melt_TS(IST%T_snow(i,j,k), 0.0, IST%ITV)
-      do m=1,NkIce
+                       ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
+                         IST%enth_snow(i,j,k,1)) * I_enth_units)
+      if (spec_thermo_sal) then ; do m=1,NkIce
         tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*G%H_to_kg_m2*I_Nk) * &
-                 e_to_melt_TS(IST%T_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
-      enddo
+                       ((enthalpy_liquid_freeze(S_col(m), IST%ITV) - &
+                         IST%enth_ice(i,j,k,m)) * I_enth_units)
+      enddo ; else ; do m=1,NkIce
+        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*G%H_to_kg_m2*I_Nk) * &
+                       ((enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - &
+                         IST%enth_ice(i,j,k,m)) * I_enth_units)
+      enddo ; endif
     endif ; enddo ; enddo ; enddo
     call post_data(IST%id_e2m,  tmp2d(:,:), IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   endif
@@ -2330,7 +2322,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G),1:G%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
   real, dimension(1:G%CatIce)        :: e2m
-  real, dimension(G%NkIce) :: S_col        ! The salinity of a column of ice.
+  real, dimension(G%NkIce) :: S_col        ! The salinity of a column of ice, in g/kg.
   real, dimension(G%NkIce+1) :: Salin      ! The conserved bulk salinity of each
                                            ! layer in g/kg, with the salinity of
                                            ! newly formed ice in layer NkIce+1.
@@ -2379,6 +2371,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   I_enth_units = 1.0 / enth_units
 
   heat_fill_val = Enth_from_TS(0.0, 0.0, IST%ITV)
+
+  if (.not.spec_thermo_sal) call SIS_error(FATAL, "SIS2_thermodynamics is not "//&
+    "prepared for SPECIFIED_THERMO_SALINITY to be false.")
 
   if (IST%column_check) then
     enth_prev(:,:,:) = 0.0 ; heat_in(:,:,:) = 0.0
