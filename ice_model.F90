@@ -1330,6 +1330,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_change, mass, tmp2d
   real, dimension(SZI_(G),SZJ_(G),0:G%CatIce) :: &
     part_save
+  real, dimension(SZI_(G),SZJ_(G),G%CatIce,G%NkIce) :: &
+    temp_ice    ! A diagnostic array with the ice temperature in degC.
+  real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
+    temp_snow   ! A diagnostic array with the snow temperature in degC.
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: hi_avg, h_ice_input
   real, dimension(SZI_(G),SZJ_(G))   :: ms_sum, mi_sum ! Masses per unit total area, in kg m-2.
@@ -1362,6 +1366,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(G%NkIce) :: S_col ! Specified salinity of each ice layer.
   real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
   logical :: spec_thermo_sal
+  logical :: do_temp_diags
 
   real, dimension(0:G%NkIce) :: T_col0, S_col0, enthalpy
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb
@@ -1748,31 +1753,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) + rdg_s2o(i,j)*(IST%Rho_snow/dt_slow)
   enddo ; enddo ; enddo ; endif
 
-  !   Convert from ice and snow enthalpy back to temperature for diagnostic purposes.
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
-                             specified_thermo_salinity=spec_thermo_sal)
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-      if (spec_thermo_sal) then
-        do m=1,G%NkIce
-          IST%t_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
-        enddo
-      else
-        do m=1,G%NkIce
-          IST%t_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), &
-                                              IST%sal_ice(i,j,k,m), IST%ITV)
-        enddo
-      endif
-    else
-      do m=1,G%NkIce ; IST%t_ice(i,j,k,m) = 0.0 ; enddo
-    endif
-    if (IST%part_size(i,j,k)*IST%mH_snow(i,j,k) > 0.0) then
-      IST%t_snow(i,j,k) = temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-    else
-      IST%t_snow(i,j,k) = 0.0 ! ### Should this be = IST%t_ice(i,j,k,1)?
-    endif
-  enddo ; enddo ; enddo
-
 
   ! Set appropriate surface quantities in categories with no ice.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
@@ -1823,6 +1803,44 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !    call post_avg(IST%id_obs_hi, Obs_h_ice(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,1:), &
   !                  IST%diag, G=G, mask=G%Lmask2dT(isc:iec,jsc:jec), wtd=.true.)
 
+  !   Convert from ice and snow enthalpy back to temperature for diagnostic purposes.
+  do_temp_diags = (IST%id_tsn > 0)
+  do m=1,G%NkIce ; if (IST%id_t(m)>0) do_temp_diags = .true. ; enddo
+  do_temp_diags = .true.  !### DELETE THIS WHEN T_ICE BECOMES A READ-ONLY RESTART VARIABLE.
+  if (do_temp_diags) then
+    call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
+                               specified_thermo_salinity=spec_thermo_sal)
+    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+      if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
+        if (spec_thermo_sal) then
+          do m=1,G%NkIce
+            temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
+          enddo
+        else
+          do m=1,G%NkIce
+            temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), &
+                                                IST%sal_ice(i,j,k,m), IST%ITV)
+          enddo
+        endif
+      else
+        do m=1,G%NkIce ; temp_ice(i,j,k,m) = 0.0 ; enddo
+      endif
+      if (IST%part_size(i,j,k)*IST%mH_snow(i,j,k) > 0.0) then
+        temp_snow(i,j,k) = temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
+      else
+        temp_snow(i,j,k) = 0.0 ! ### Should this be = temp_ice(i,j,k,1)?
+      endif
+    enddo ; enddo ; enddo
+  endif
+  !### DELETE THIS WHEN T_ICE# and T_SNOW BECOME READ-ONLY RESTART VARIABLES.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    IST%t_snow(i,j,k) = temp_snow(i,j,k)
+  enddo ; enddo ; enddo
+  do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    IST%t_ice(i,j,k,m) = temp_ice(i,j,k,m)
+  enddo ; enddo ; enddo ; enddo
+
+
   if (IST%id_ext>0) then
     do j=jsc,jec ; do i=isc,iec
       diagVar(i,j) = 0.0 ; if (IST%part_size(i,j,0) < 0.85) diagVar(i,j) = 1.0
@@ -1837,15 +1855,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                  scale=G%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
   if (IST%id_ts>0) call post_avg(IST%id_ts, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
                                  IST%diag, G=G, mask=G%Lmask2dT, offset=-T_0degC, wtd=.true.)
-  if (IST%id_tsn>0) call post_avg(IST%id_tsn, IST%t_snow, IST%part_size(:,:,1:), &
+  if (IST%id_tsn>0) call post_avg(IST%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   do m=1,G%NkIce
-    if (IST%id_t(m)>0) call post_avg(IST%id_t(m), IST%t_ice(:,:,:,m), IST%part_size(:,:,1:), &
+    if (IST%id_t(m)>0) call post_avg(IST%id_t(m), temp_ice(:,:,:,m), IST%part_size(:,:,1:), &
                                    IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
     if (IST%id_sal(m)>0) call post_avg(IST%id_sal(m), IST%sal_ice(:,:,:,m), IST%part_size(:,:,1:), &
                                    IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   enddo
-  if (IST%id_t_iceav>0) call post_avg(IST%id_t_iceav, IST%t_ice, IST%part_size(:,:,1:), &
+  if (IST%id_t_iceav>0) call post_avg(IST%id_t_iceav, temp_ice, IST%part_size(:,:,1:), &
                                     IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
   if (IST%id_S_iceav>0) call post_avg(IST%id_S_iceav, IST%sal_ice, IST%part_size(:,:,1:), &
                                     IST%diag, G=G, mask=G%Lmask2dT, wtd=.true.)
@@ -3161,6 +3179,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     H_to_kg_m2_tmp = G%H_to_kg_m2
     G%H_to_kg_m2 = -1.0
 
+    !### ADD REGISTRATION CALLS FOR ANY READ-ONLY RESTART VARIABLES HERE.
+    !### MAKE T_SNOW, T_ICE1, ... READ_ONLY RESTART VARIABLES.
+
     call restore_state(Ice%Ice_restart)
 
     if (.not.query_initialized(Ice%Ice_restart, 'sal_ice1')) &
@@ -3254,8 +3275,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%mH_snow, G%Domain, complete=.false.)
     do l=1,G%NkIce
       call pass_var(IST%t_ice(:,:,:,l), G%Domain, complete=.false.)
+      call pass_var(IST%enth_ice(:,:,:,l), G%Domain, complete=.false.)
     enddo
-    call pass_var(IST%t_snow, G%Domain, complete=.true.)
+    call pass_var(IST%t_snow, G%Domain, complete=.false.)
+    call pass_var(IST%enth_snow(:,:,:,1), G%Domain, complete=.true.)
 
     if (IST%Cgrid_dyn) then
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)

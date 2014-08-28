@@ -634,7 +634,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   do n=1,G%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
-                                 IST%t_ice(:,:,:,n), domain=domain, mandatory=(n==1))
+                                 IST%t_ice(:,:,:,n), domain=domain, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
                                  IST%sal_ice(:,:,:,n), domain=domain, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'enth_ice'//trim(nstr), &
@@ -735,12 +735,10 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   do k=1,G%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
-    call hchksum(IST%t_ice(:,:,:,k), trim(mesg)//" IST%t_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
   call hchksum(IST%mH_snow*G%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
-  call hchksum(IST%t_snow, trim(mesg)//" IST%t_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
   if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
