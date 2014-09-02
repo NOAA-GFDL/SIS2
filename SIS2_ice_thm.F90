@@ -76,6 +76,11 @@ type, public :: SIS2_ice_thm_CS ; private
   real :: opt_dep_ice     ! ice optical depth (m)
   real :: t_range_melt    ! melt albedos scaled in below melting T
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
+  real :: temp_range_est  ! An estimate of the range of snow and ice temperatures
+                          ! that is used to evaluate whether an explicit
+                          ! diffusive form of the heat fluxes or an inversion
+                          ! based on the layer heat budget is more likely to
+                          ! be the most accurate.
 
   real :: h_lo_lim        ! hi/hs lower limit for temp. calc.
   real :: frazil_temp_offset = 0.5 ! An offset between the temperature with
@@ -170,6 +175,14 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
                  "If true, a delta-Eddington radiative transfer calculation \n"//&
                  "for the shortwave radiation within the sea-ice.", default=.true.)
+  call get_param(param_file, mod, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
+                 "An estimate of the range of snow and ice temperatures \n"//&
+                 "that is used to evaluate whether an explicit diffusive \n"//&
+                 "form of the heat fluxes or an inversion based on the \n"//&
+                 "layer heat budget is more likely to be more accurate. \n"//&
+                 "Setting this to 0 causes the explicit diffusive form. \n"//&
+                 "to always be used.", units="degC", default=40.0)
+  CS%temp_range_est = abs(CS%temp_range_est)
 
   if (CS%do_deltaEdd) then
     call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
@@ -396,7 +409,6 @@ end subroutine ice_optics_SIS2
 subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
-!### CONSIDER USING THE 3-EQUATION CLOSURE FOR THE BOTTOM B.C.?
   real, intent(in   ) :: m_snow  ! snow mass per unit area (H, usually kg m-2)
   real, intent(in   ) :: m_ice   ! ice mass per unit area (H, usually kg m-2)
   real, dimension(0:NkIce) , &
@@ -409,7 +421,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   real, dimension(0:NkIce), &
         intent(in)    :: sol   ! Solar heating of the snow and ice layers (W m-2)
   real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
-  real, intent(in   ) :: fb    ! heat flux from ocean to ice bottom (W/m^2)
+  real, intent(in   ) :: fb    ! heat flux upward from ocean to ice bottom (W/m^2)
   real, intent(  out) :: tsurf ! surface temperature (deg-C)
   real, intent(in   ) :: dtt   ! timestep (sec)
   integer, intent(in   ) :: NkIce ! The number of ice layers.
@@ -447,13 +459,19 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
   real, dimension(0:NkIce) :: cc_bb ! Remaining coupling ratios.
+  real, dimension(-1:NkIce) :: heat_flux_int ! The downward heat fluxes at the
+                                ! interfaces between layers, in W m-2.
+                                ! heat_flux_int uses the index convention from
+                                ! MOM6 that interface K is below layer k.
   real :: I_liq_lim     ! The inverse of CS%liq_lim.
+  real :: heat_flux_err_rat
   real :: col_enth1, col_enth2, col_enth2b, col_enth3
   real :: d_e_extra, e_extra_sum
   real :: tflux_bot, tflux_bot_diff, tflux_bot_resid
   real :: tfb_diff_err, tfb_resid_err
   real :: tflux_sfc, sum_sol, d_tflux_bot
-  real :: hsnow_eff ! , Ks_h
+  real :: hsnow_eff
+  real :: snow_temp_new
   real :: hL_ice_eff
   real :: enth_liq_lim
   real :: enth_prev
@@ -481,7 +499,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   kk = CS%KI/hL_ice_eff       ! full ice layer conductivity
 
   tsf = tfi(1)                ! surface freezing temperature
-  if (m_snow>0.0) tsf = 0.0
+  if (mL_snow>0.0) tsf = 0.0
   
   k10 = 2.0*(CS%KS*CS%KI) / (hL_ice_eff*CS%KS + hsnow_eff*CS%KI) ! coupling ice layer 1 to snow
   k0a = (CS%KS*B) / (0.5*B*hsnow_eff + CS%KS)      ! coupling snow to "air"
@@ -492,16 +510,18 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   
   ! Determine the enthalpy for conservation checks.
   m_lay(0) = mL_snow ; do k=1,NkIce ; m_lay(k) = mL_ice ; enddo
-  col_enth1 = 0.0
-  do k=0,NkIce ; col_enth1 = col_enth1 + m_lay(k)*enthalpy(k) ; enddo
+ 
+   if (col_check) then
+    col_enth1 = 0.0
+    do k=0,NkIce ; col_enth1 = col_enth1 + m_lay(k)*enthalpy(k) ; enddo
+  endif
   e_extra_sum = 0.0
 
-  ! First get non-conservative estimate with implicit treatment of layer coupling.
+  !   First get a non-conservative estimate with a linearized implicit treatment
+  ! of layer coupling.
   
-  ! This is the start of what was ice_temp_est.
-
   ! Determine the effective layer heat capacities.
-  !   bb = dheat/dTemp.  It should be a proper linearization of the enthalpy equation.
+  !   bb = dheat/dTemp.  This should be a proper linearization of the enthalpy equation.
   bb(0) = mL_snow*ITV%Cp_ice
   do k=1,NkIce   ! load bb with heat capacity term.
     salt_part = 0.0
@@ -557,17 +577,15 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
     temp_est(0) = min(tsf, &
       (((sol(0)*dtt + bb(0)*temp_IC(0)) + k0skin*dtt*tsf) + cc(1)*temp_est(1)) * I_bb)
   endif
-  ! Go back DOWN the ice column to get the final temperatures, subject to the
+  ! Go back DOWN the ice column to get the estimated temperatures, subject to the
   ! limitation that all temperatures are assumed to be at or below freezing.
   do k=1,NkIce
     temp_est(k) = min(temp_est(k) + cc_bb(k) * temp_est(k-1), tfi(k))
   end do
 
   !
-  ! conservative pass going UP the ice column
+  ! Quasi-conservative iterative pass going UP the ice column
   !
-  !### REWRITE LAYTEMP_SIS2 TO TAKE ENTHALPY AS AN ARGUMENT, GIVE TEMPERATURES
-  !### THAT ARE BELOW FREEZING AND RETURN AN EXCESS HEAT.
   temp_est(NkIce) = laytemp_SIS2(mL_ice, tfi(NkIce), sol(NkIce) + kk*(2*tfw+temp_est(NkIce-1)), &
                                  3*kk, temp_IC(NkIce), dtt, ITV)
   do k=NkIce-1,2,-1
@@ -582,105 +600,124 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
                           k10+k0a, temp_IC(0), dtt, ITV)
   tsurf = (A + k0skin*temp_est(0)) / (B + k0skin)  ! diagnose surface skin temp.
 
+  !
+  !   The following conservative update pass going DOWN the ice column is where
+  ! the layer enthalpies are actually updated and extra heat that should drive
+  ! melting is accumulated and stored.
+  !
+
+  !   Pre-calculate a conversion factor that can be used to figure out whether it
+  ! is more accurate to use the explicit form for the fluxes or to invert enthalpy
+  ! conservation for the fluxes, depending on the relative layer masses and the 
+  ! strength of the coupling between layers.  The expression below is a simplified
+  ! form that assume that temperatures are measured in Celsius and are less than
+  ! about CS%temp_err_est, and that the heat budget has 4 terms of comparable
+  ! magnitude to the enthalpy content of the layer.  If there were a larger
+  ! tolerance for the iterative estimate of a new temperature, that would go into
+  ! the numerator but not the denominator.  The present form is based on the
+  ! assumption that floating-point roundoff dominates the errors.
+  heat_flux_err_rat = 0.7071 * dtt * (CS%temp_range_est) / (CS%temp_range_est * ITV%Cp_Ice + ITV%LI)
+
   e_extra = 0.0
-  if (tsurf > tsf) then ! surface is melting, redo with surf. at melt temp.
+  if (tsurf > tsf) then ! The surface is melting: update enthalpy with the surface at melt temp.
     tsurf = tsf
     ! Accumulate surface melt energy.
     if (mL_snow>0.0) then
-!  ### enth_prev = enthalpy(0)
-      temp_est(0) = lay_temp_enth(mL_snow, 0.0, sol(0) + k10*temp_est(1) + k0skin*tsf,&
-                          k10+k0skin, enthalpy(0), dtt, ITV, e_extra)
+      heat_flux_int(-1) = k0skin * tsf
+      heat_flux_int(0) = -k10*temp_est(1)
+      call update_lay_enth(mL_snow, 0.0, enthalpy(0), heat_flux_int(-1), &
+                           sol(0), heat_flux_int(0), -k0skin, k10, dtt, &
+                           heat_flux_err_rat, ITV, e_extra)
 
-      tmelt = tmelt + e_extra + dtt*((A-B*tsurf) - k0skin*(tsurf-temp_est(0)))
-      tflux_sfc = dtt*k0skin*(tsurf-temp_est(0))
+      tmelt = tmelt + e_extra + dtt*((A-B*tsf) - heat_flux_int(-1))
+      tflux_sfc = dtt*heat_flux_int(-1)
       e_extra_sum = e_extra_sum + e_extra
-!  ###   Consider using the heat budget for purposes of recalculating temp_est(0)
-!  ### when  dtt*(k10+k0skin)*1e-15*(2deg) > 1e-15*m*IST%Cp_ice*abs(enth_liq_lim)
-!  ###   i.e., at this point, reset    temp_est(0) = temp_est(1) + &
-!  ### (mL_snow*(enth_prev - enthalpy(0)) + tflux_sfc + dtt*sol(0) - e_extra)/(dtt*k10))
-!  ### alternately, carry heat_flux_interface downward instead of recalculating it.
     else
-      temp_est(0) = ( sol(0) + k10*temp_est(1) + k0skin*tsf ) / ( k10+k0skin )
-
-      ! Replace temp_est(0) with tsurf in the calculation of tmelt
-      tmelt = tmelt + dtt*((sol(0)+A-B*tsurf) - k10*(tsurf-temp_est(1)))
-      tflux_sfc = dtt*(k10*(tsurf-temp_est(1)) - sol(0))
-
-      ! Convert tsnow to enthalpy.
-      if (temp_est(0) > 0.0) then
-        enthalpy(0) = ITV%Cp_ice*temp_est(0) + enth_liq_lim
+      ! There is no snow mass, so just convert tsnow = tsf to enthalpy.
+      if (tsf > 0.0) then  ! This never happens?
+        enthalpy(0) = ITV%Cp_ice*tsf + enth_liq_lim
       else
-        enthalpy(0) = enth_from_TS(temp_est(0), 0.0, ITV)
+        enthalpy(0) = enth_from_TS(tsf, 0.0, ITV)
       endif
+
+      heat_flux_int(0) = k10*(tsf - temp_est(1))
+      heat_flux_int(-1) = heat_flux_int(0)
+
+      ! Replace use tsurf in the calculation of tmelt
+      tmelt = tmelt + dtt*((sol(0)+(A-B*tsf)) - heat_flux_int(0))
+      tflux_sfc = dtt*heat_flux_int(0)
+
     endif
   else
-    temp_est(0) = lay_temp_enth(mL_snow, 0.0, sol(0) + (k10*temp_est(1)+k0a_x_ta), &
-                             k10+k0a, enthalpy(0), dtt, ITV, e_extra)
-    tsurf = (A + k0skin*temp_est(0)) / (B + k0skin)  ! diagnose surface skin temp.
+    heat_flux_int(-1) = k0a_x_ta
+    heat_flux_int(0) = -k10*temp_est(1)
+    call update_lay_enth(mL_snow, 0.0, enthalpy(0), heat_flux_int(-1), &
+                         sol(0), heat_flux_int(0), -k0a, k10, dtt, &
+                         heat_flux_err_rat, ITV, e_extra, temp_new=snow_temp_new)
+    tsurf = (A + k0skin*snow_temp_new) / (B + k0skin)  ! diagnose surface skin temp.
+    ! This is equivalent to, but safer than, tsurf = (A - heat_flux_int(-1)) / B
 
-    tflux_sfc = dtt*(A - B*tsurf)
+    tflux_sfc = dtt*heat_flux_int(-1)
     e_extra_sum = e_extra_sum + e_extra
     tmelt = tmelt + e_extra
   endif
 
-  !
-  ! conservative pass going DOWN the ice column
-  !
-  temp_new(0) = temp_est(0)
-  temp_new(1)  = lay_temp_enth(mL_ice, Sice(1), sol(1)+kk*temp_est(1+1) &
-                          + k10*(temp_new(0)-temp_est(1)), kk, enthalpy(1), &
-                          dtt, ITV, e_extra)
-  e_extra_sum = e_extra_sum + e_extra 
-  tmelt = tmelt + e_extra
-  do k=2,NkIce-1 ! flux from above is fixed, only have downward feedback
-    temp_new(k) = lay_temp_enth(mL_ice, Sice(k), sol(k)+kk*temp_est(k+1) &
-                                       +kk*(temp_new(k-1)-temp_est(k)), kk, &
-                           enthalpy(k), dtt, ITV, e_extra)
+  do k=1,NkIce-1 ! flux from above is fixed, only have downward feedback
+    heat_flux_int(K) = -kk*temp_est(k+1)
+    call update_lay_enth(mL_ice, Sice(k), enthalpy(k), heat_flux_int(K-1), &
+                         sol(k), heat_flux_int(K), 0.0, kk, dtt, &
+                         heat_flux_err_rat, ITV, e_extra)
+
     e_extra_sum = e_extra_sum + e_extra
     if (k <= NkIce/2) then ; tmelt = tmelt + e_extra
     else ; bmelt = bmelt + e_extra ; endif
   enddo
-  temp_new(NkIce) = lay_temp_enth(mL_ice, Sice(NkIce), sol(NkIce)+2*kk*tfw &
-                             +kk*(temp_new(NkIce-1)-temp_est(NkIce)), 2*kk, &
-                             enthalpy(NkIce), dtt, ITV, e_extra)
+  
+  heat_flux_int(NkIce) = -2.0*kk*tfw
+  call update_lay_enth(mL_ice, Sice(NkIce), enthalpy(NkIce), heat_flux_int(NkIce-1), &
+                       sol(NkIce), heat_flux_int(NkIce), 0.0, 2.0*kk, dtt, &
+                       heat_flux_err_rat, ITV, e_extra)
   e_extra_sum = e_extra_sum + e_extra 
   bmelt = bmelt + e_extra
   !
-  ! END conservative update
+  ! END of the conservative update of enthalpy.
   !
 
-  col_enth2 = e_extra_sum*ITV%enth_unit ; sum_sol = 0.0 ; col_enth2b = 0.0
-  do k=0,NkIce
-    col_enth2 = col_enth2 + m_lay(k)*enthalpy(k)
-    col_enth2b = col_enth2b + m_lay(k)*enthalpy(k)
-    sum_sol = sum_sol + dtt*sol(k)
-  enddo 
-  !   tflux_bot_resid and tflux_bot_diff are two mathematically equivalent
-  ! estimates of the heat flux at the base of the ice.
-  tflux_bot_resid = (col_enth2 - col_enth1) - (sum_sol + tflux_sfc)
-  tflux_bot_diff = 2*kk*(tfw-temp_new(NkIce))*dtt
-
-  ! Estimate the errors with these two expressions from 64-bit roundoff.
-  tfb_diff_err = 1e-15*2.0*kk*dtt * sqrt(tfw**2 + temp_new(NkIce)**2)
-  tfb_resid_err = 1e-15*sqrt(col_enth2**2 + col_enth1**2 + sum_sol**2 + tflux_sfc**2)
-  !   The two estimates of tflux_bot can go badly wrong due to truncation errors
-  ! in different limits.  Take the estimate that has the smaller errors.
-  if (tfb_diff_err < tfb_resid_err) then
-    tflux_bot = tflux_bot_diff
-  else
-    tflux_bot = tflux_bot_resid
-  endif 
-  !   Accumulate the difference between the ocean's heat flux to the ice-ocean
-  ! interface and the sea-ice heat flux to evaluate bottom melting/freezing.
-  bmelt = bmelt + (dtt*fb - tflux_bot)
-
   if (col_check) then
+    col_enth2 = e_extra_sum*ITV%enth_unit ; sum_sol = 0.0 ; col_enth2b = 0.0
+    do k=0,NkIce
+      col_enth2 = col_enth2 + m_lay(k)*enthalpy(k)
+      col_enth2b = col_enth2b + m_lay(k)*enthalpy(k)
+      sum_sol = sum_sol + dtt*sol(k)
+    enddo 
+    !   tflux_bot_resid and tflux_bot_diff are two mathematically equivalent
+    ! estimates of the heat flux at the base of the ice.
+    tflux_bot_resid = (col_enth2 - col_enth1) - (sum_sol + tflux_sfc)
+    tflux_bot_diff = -heat_flux_int(NkIce)*dtt
+
+    ! Estimate the errors with these two expressions from 64-bit roundoff.
+    tfb_diff_err = 1e-15*2.0*kk*dtt * sqrt(tfw**2 + 10.0**2)  ! The -10 deg is arbitrary but good enough?
+    tfb_resid_err = 1e-15*sqrt(col_enth2**2 + col_enth1**2 + sum_sol**2 + tflux_sfc**2)
+    !   The two estimates of tflux_bot can go badly wrong due to truncation errors
+    ! in different limits.  Take the estimate that has the smaller errors.
+    !### if (tfb_diff_err < tfb_resid_err) then
+    !###   tflux_bot = tflux_bot_diff
+    !### else
+    !###   tflux_bot = tflux_bot_resid
+    !### endif 
+
     d_tflux_bot = tflux_bot_diff - tflux_bot_resid
     if (abs(d_tflux_bot) > 1.0e-9*(abs(tflux_bot_resid) + abs(tflux_bot_diff) + &
                                    abs(col_enth2 - col_enth1))) then
       d_tflux_bot = tflux_bot_diff - tflux_bot_resid
     endif
   endif
+
+  tflux_bot = -heat_flux_int(NkIce)*dtt
+
+  !   Accumulate the difference between the ocean's heat flux to the ice-ocean
+  ! interface and the sea-ice heat flux to evaluate bottom melting/freezing.
+  bmelt = bmelt + (dtt*fb - tflux_bot)
 
   e_extra_sum = 0.0
 
@@ -795,19 +832,31 @@ function laytemp_SIS2(m, tfi, f, b, tp, dtt, ITV) result (new_temp)
 end function laytemp_SIS2
 
 !
-! lay_temp_enth - implicit calculation of new layer temperature
+! update_lay_enth - implicit calculation of new layer enthalpy
 !
-function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_temp)
-  real ::  new_temp
-  real, intent(in) :: m    ! mass of ice in kg/m2
-  real, intent(in) :: sice ! ice salinity in g/kg
-  real, intent(in) :: f    ! Inward forcing in W/m2
-  real, intent(in) :: b    ! response of outward heat flux to local temperature in W/m2/K
-  real, intent(inout) :: enth ! ice enthalpy
-  real, intent(in) :: dtt  ! timestep in s.
+subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
+                           dfbot_dT, dtt, hf_err_rat, ITV, extra_heat, temp_new)
+  real, intent(in) :: m_lay    ! This layers mass of ice in kg/m2
+  real, intent(in) :: sice     ! ice salinity in g/kg
+  real, intent(inout) :: enth  ! ice enthalpy in enth_units (proportional to J kg-1).
+  real, intent(inout) :: ftop  ! Downward heat flux atop the layer in W/m2.
+  real, intent(in) :: ht_body  ! Body forcing  to layer in W/m2
+  real, intent(inout) :: fbot  ! Downward heat below the layer in W/m2.
+  real, intent(in) :: dftop_dT ! The linearization of ftop with layer temperature in W m-2 K-1.
+  real, intent(in) :: dfbot_dT ! The linearization of fbot with layer temperature in W m-2 K-1.
+  real, intent(in) :: dtt      ! The timestep in s.
+  real, intent(in) :: hf_err_rat  ! A conversion factor for comparing the errors
+                               ! in explicit and implicit estimates of the updated
+                               ! heat fluxes, in (kg m-2) / (W m-2 K-1).
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, intent(out) :: extra_heat ! The heat above the melt point, in J.
+  real, optional, intent(out) :: temp_new
 
+  real :: htg      ! The rate of heating of the layer in W m-2.
+  real :: new_temp ! The new layer temperature, in degC.
+  real :: fb       ! The negative of the dependence of layer heating on
+                   ! temperature, in W m-2 K-1. fb > 0.
+  real :: extra_enth ! Excess enthalpy above the melt point, in kg enth_units.
   real :: enth_in  ! The initial enthalpy, in enth_units.
   real :: enth_fp  ! The enthalpy at the freezing point, in enth_units.
   real :: AA, BB, CC ! Temporary variables used to solve a quadratic equation.
@@ -816,8 +865,19 @@ function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_te
                    ! in units of K / Enth_unit.
   real :: En_J     ! The enthalpy in Joules with 0 offset for liquid at 0 C.
   real :: tfi      ! ice freezing temp. (determined by salinity)
+  real :: fbot_in, ftop_in ! Input values of fbot and ftop in W m-2.
+  real :: dflux_dtot_dT  ! A temporary work array in units of degC.
 
-  extra_heat = 0.0
+  ! Solve m_lay*(enth - enth_in) + extra_heat = dt * (ht_body + ftop - fbot)
+  !  ftop = ftop_in + temp*dftop_dT
+  !  fbot = fbot_in + temp*dfbot_dT
+  !    enth <= enth_fp and extra_heat >= 0
+
+  ftop_in = ftop ; fbot_in = fbot
+  htg = (ht_body + ftop_in) - fbot_in
+  fb = -(dftop_dT - dfbot_dT)   !  = -dhgt_dt > 0
+
+  extra_heat = 0.0 ; extra_enth = 0.0
   if (sice > 0.0) then
     tfi = T_freeze(sice, ITV)
     enth_fp = enthalpy_liquid_freeze(sice, ITV)
@@ -828,16 +888,17 @@ function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_te
   enth_in = enth
   dtEU = ITV%enth_unit * dtt
   
-  ! Solve m * (enth_new - enth) = dtEU * (f - b*t_new)
+  ! Solve m_lay * (enth_new - enth) = dtEU * (htg - fb*t_new)
   !       t_new = Temp_from_En_S(enth_new, Sice, ITV)
-  if (m == 0.0) then
-    new_temp = min(f / b, tfi)
+  if (m_lay == 0.0) then
+    new_temp = min(htg / fb, tfi)
     enth = enth_from_TS(new_temp, sice, ITV)
-  elseif (dtEU * (f - b*tfi) >= m*(enth_fp - enth_in)) then
+  elseif (dtEU * (htg - fb*tfi) >= m_lay*(enth_fp - enth_in)) then
     ! There is enough heat being applied here that the ice would be above the
     ! freezing point.  The ice should be set to the freezing temperature and
     ! enthalpy, and the extra heat stored for later use in melting.
-    extra_heat = (m*(enth_in - enth_fp) + dtEU * (f - b*tfi)) / ITV%enth_unit
+    extra_enth = m_lay*(enth_in - enth_fp) + dtEU * (htg - fb*tfi)
+    extra_heat = extra_enth / ITV%enth_unit
     new_temp = tfi
     enth = enth_fp
   elseif ( sice == 0.0 ) then  ! Note that tfi = 0.
@@ -845,27 +906,27 @@ function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_te
     !   dT_dEnth = dTemp_dEnth(enth_in, Sice, ITV)
     dT_dEnth = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
 
-    ! Solve for enth:  m * (enth - enth_in) = 
-    !       dtEU * (f - b*tfi - b*dT_dEnth*(enth - enth_fp))
-    !  enth = enth_in + dtEU * (f - b*(0.0 - dT_dEnth*(enth_fp-enth_in))) / &
-    !                          (m + dtEU*b*dT_dEnth)
+    ! Solve for enth:  m_lay  * (enth - enth_in) = 
+    !       dtEU * (htg - fb*tfi - fb*dT_dEnth*(enth - enth_fp))
+    !  enth = enth_in + dtEU * (htg - fb*(0.0 - dT_dEnth*(enth_fp-enth_in))) / &
+    !                          (m_lay + dtEU*b*dT_dEnth)
     ! Or equivalently...  (noting that tfi = 0.0)
-    enth = enth_fp + (dtEU * (f - b*0.0) + m * (enth_in-enth_fp)) / &
-                     (m + dtEU*(b*dT_dEnth))
+    enth = enth_fp + (dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
+                     (m_lay  + dtEU*(fb*dT_dEnth))
     ! The following is equivalent to new_temp = Temp_from_En_S(enth, 0.0, ITV)
     !     or  new_temp = dT_dEnth * (enth - enth_fp) ! + tfi==0.
     ! but it avoids serious roundoff issues later on when b is large.
-    new_temp = dT_dEnth * ((dtEU * (f - b*0.0) + m * (enth_in-enth_fp)) / &
-                           (m + dtEU*(b*dT_dEnth)))
+    new_temp = dT_dEnth * ((dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
+                           (m_lay  + dtEU*(fb*dT_dEnth)))
   else
     En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
     ! Solve a quadratic equation for the new layer temperature, tn:
     !
-    !   m * (En_J + L + f*dt/m) = (m*Cp_Ice + b*dt) *tn + m*LI*tfi/tn
+    !   m * (En_J + L + htg*dt/m) = (m*Cp_Ice + b*dt) *tn + m*LI*tfi/tn
     !
-    AA = m*ITV%Cp_Ice + b*dtt
-    BB = -(m*(En_J + ITV%LI) + f*dtt)
-    CC = m*ITV%LI*tfi
+    AA = m_lay *ITV%Cp_Ice + fb*dtt
+    BB = -(m_lay*(En_J + ITV%LI) + htg*dtt)
+    CC = m_lay *ITV%LI*tfi
     ! This form avoids round-off errors.
     if (BB >= 0) then
       new_temp = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
@@ -877,7 +938,42 @@ function lay_temp_enth(m, sice, f, b, enth, dtt, ITV, extra_heat) result (new_te
     enth = enth_from_TS(new_temp, sice, ITV)
   endif
 
-end function lay_temp_enth
+
+!    Figure out whether it is more accurate to use the explicit form for the
+!  fluxes or to invert enthalpy conservation for the fluxes.
+  if (abs(hf_err_rat*dftop_dT) <= m_lay) then
+    ! This branch currently applies in all interior ice layers.
+    ftop = ftop_in + dftop_dT*new_temp
+    ! An explicit estimate (or no update) is used for the top flux.
+    if (hf_err_rat*dfbot_dT <= m_lay) then  ! Use the explicit expression for fbot.
+      fbot = fbot_in + dfbot_dT*new_temp
+    else ! Use conservation to invert for fbot.
+      fbot = (ht_body + ftop) - (m_lay*(enth - enth_in) + extra_enth)/dtEU
+    endif
+  elseif (hf_err_rat*dfbot_dT <= m_lay) then
+    ! Use the explicit expression for fbot and invert for ftop.
+    fbot = fbot_in + dfbot_dT*new_temp
+    ftop = (fbot - ht_body) + (m_lay*(enth - enth_in) + extra_enth)/dtEU
+  else
+    ! Conservation is used to invert for both fbot and ftop, partitioning
+    ! the changes in proportion to their sensitivities.
+    !   dflux = (htg - (m*(enth - enth_in) + extra_enth)/dtEU)
+    !   dflux = dfbot - dftop ; dftop / dfbot = dftop_dT / dfbot_dT
+
+    if (dfbot_dT - dftop_dT > 0.0) then
+      dflux_dtot_dT = (htg - (m_lay*(enth - enth_in) + extra_enth)/dtEU) / &
+                      (dfbot_dT - dftop_dT)
+    else
+      dflux_dtot_dT = 0.0 ! This should never occur.
+    endif
+
+    ftop = ftop_in + dftop_dT * dflux_dtot_dT
+    fbot = fbot_in + dfbot_dT * dflux_dtot_dT
+  endif
+
+  if (present(temp_new)) temp_new = new_temp
+
+end subroutine update_lay_enth
 
 subroutine temp_check(ts, ms, mi, enthalpy, s_ice, NkIce, bmelt, tmelt, ITV)
   real, intent(in) :: ts, ms, mi, bmelt, tmelt
