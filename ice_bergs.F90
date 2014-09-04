@@ -858,6 +858,7 @@ integer,    optional, intent(in) :: stagger, stress_stagger
   logical :: lerr, sample_traj, lbudget, lverbose
   real :: unused_calving, tmpsum, grdd_berg_mass, grdd_bergy_mass
   real :: mask
+  real, dimension(:,:), allocatable :: uC_tmp, vC_tmp
   integer :: stderrunit
   integer :: vel_stagger, str_stagger
 
@@ -963,14 +964,25 @@ integer,    optional, intent(in) :: stagger, stress_stagger
     ju_off = (size(tauxa,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
     iv_off = (size(tauya,1) - (grd%iec - grd%isc))/2 - grd%isc + 1
     Jv_off = (size(tauya,2) - (grd%jec - grd%jsc))/2 - grd%jsc + 1
+    allocate(uC_tmp(grd%isd:grd%ied,grd%jsd:grd%jed), &
+             vC_tmp(grd%isd:grd%ied,grd%jsd:grd%jed))
+    !   If the iceberg model used symmetric memory, the starting value of these
+    ! copies would need to be decremented by 1.
+    do I=grd%isc,grd%iec ; do j=grd%jsc,grd%jec
+      uC_tmp(I,j) = tauxa(I+Iu_off, j+ju_off)
+    enddo ; enddo
+    do i=grd%isc,grd%iec ; do J=grd%jsc,grd%jec
+      vC_tmp(i,J) = tauxa(i+iv_off, J+Jv_off)
+    enddo ; enddo
+    call mpp_update_domains(uC_tmp, vC_tmp, grd%domain, gridtype=CGRID_NE)
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
       ! Interpolate wind stresses from C-grid velocity-points.
-      Iu = i + Iu_off ; ju = j + ju_off ; iv = i + iv_off ; Jv = j + Jv_off
       ! This masking is needed for now to prevent icebergs from running up on to land.
       mask = min(grd%msk(i,j), grd%msk(i+1,j), grd%msk(i,j+1), grd%msk(i+1,j+1))
-      grd%ua(I,J) = mask * 0.5*(tauxa(Iu,ju)+tauxa(Iu,ju+1))
-      grd%va(I,J) = mask * 0.5*(tauya(iv,Jv)+tauya(iv+1,Jv))
+      grd%ua(I,J) = mask * 0.5*(uC_tmp(I,j)+uC_tmp(I,j+1))
+      grd%va(I,J) = mask * 0.5*(vC_tmp(i,J)+uC_tmp(i+1,J))
     enddo ; enddo
+    deallocate(uC_tmp, vC_tmp)
   else
     call error_mesg('diamonds, iceberg_run', 'Unrecognized value of stress_stagger!', FATAL)
   endif
