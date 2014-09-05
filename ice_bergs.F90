@@ -972,15 +972,16 @@ integer,    optional, intent(in) :: stagger, stress_stagger
       uC_tmp(I,j) = tauxa(I+Iu_off, j+ju_off)
     enddo ; enddo
     do i=grd%isc,grd%iec ; do J=grd%jsc,grd%jec
-      vC_tmp(i,J) = tauxa(i+iv_off, J+Jv_off)
+      vC_tmp(i,J) = tauya(i+iv_off, J+Jv_off)
     enddo ; enddo
+
     call mpp_update_domains(uC_tmp, vC_tmp, grd%domain, gridtype=CGRID_NE)
     do I=grd%isc-1,grd%iec ; do J=grd%jsc-1,grd%jec
       ! Interpolate wind stresses from C-grid velocity-points.
       ! This masking is needed for now to prevent icebergs from running up on to land.
       mask = min(grd%msk(i,j), grd%msk(i+1,j), grd%msk(i,j+1), grd%msk(i+1,j+1))
       grd%ua(I,J) = mask * 0.5*(uC_tmp(I,j)+uC_tmp(I,j+1))
-      grd%va(I,J) = mask * 0.5*(vC_tmp(i,J)+uC_tmp(i+1,J))
+      grd%va(I,J) = mask * 0.5*(vC_tmp(i,J)+vC_tmp(i+1,J))
     enddo ; enddo
     deallocate(uC_tmp, vC_tmp)
   else
