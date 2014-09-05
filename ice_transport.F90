@@ -189,9 +189,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
           (G%mask2dBu(I,J)+G%mask2dBu(I,J-1)==0.) .and. &  ! =0 => no vels
           (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
         grad_eta=(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j) ! delta_i eta/dx
-        u_visc=-G%g_Earth*((G%dyCu(I,j)*G%dyCu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+        u_visc=-G%g_Earth*((G%dy_Cu(I,j)*G%dy_Cu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
                  *grad_eta                                                  ! d/dx eta
-        u_ocn=sqrt( G%g_Earth*G%dyCu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+        u_ocn=sqrt( G%g_Earth*G%dy_Cu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
         u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
         cnn=max(ice_cover(i,j),ice_cover(i+1,j))**2. ! Use the larger concentration
         uc(I,j)=cnn*u_visc+(1.-cnn)*u_ocn
@@ -211,9 +211,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
           (G%mask2dBu(I,J)+G%mask2dBu(I-1,J)==0.) .and. &  ! =0 => no vels
           (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
         grad_eta=(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J) ! delta_i eta/dy
-        u_visc=-G%g_Earth*((G%dxCv(i,J)*G%dxCv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
+        u_visc=-G%g_Earth*((G%dx_Cv(i,J)*G%dx_Cv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
                 *grad_eta                                                  ! d/dx eta
-        u_ocn=sqrt( G%g_Earth*G%dxCv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
+        u_ocn=sqrt( G%g_Earth*G%dx_Cv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
         u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
         cnn=max(ice_cover(i,j),ice_cover(i,j+1))**2. ! Use the larger concentration
         vc(i,J)=cnn*u_visc+(1.-cnn)*u_ocn
@@ -458,17 +458,15 @@ subroutine ice_continuity(u, v, h_in, h, uh, vh, dt, G, CS)
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
   do k=1,G%CatIce ; do j=js,je ; do I=is-1,ie
-    if (u(I,j) >= 0.0) then ; h_up = h(i,j,k)
-    else ; h_up = h(i+1,j,k) ; endif
-!###   uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
-    uh(I,j,k) = G%dyCu(I,j) * u(I,j) * h_up
+    if (u(I,j) >= 0.0) then ; h_up = h_in(i,j,k)
+    else ; h_up = h_in(i+1,j,k) ; endif
+    uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
   enddo ; enddo ; enddo
 
   do k=1,G%CatIce ; do J=js-1,je ; do i=is,ie
-    if (v(i,J) >= 0.0) then ; h_up = h(i,j,k)
-    else ; h_up = h(i,j+1,k) ; endif
-!###   vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
-    vh(i,J,k) = G%dxCv(i,J) * v(i,J) * h_up
+    if (v(i,J) >= 0.0) then ; h_up = h_in(i,j,k)
+    else ; h_up = h_in(i,j+1,k) ; endif
+    vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
   enddo ; enddo ; enddo
 
   do k=1,G%CatIce ; do j=js,je ; do i=is,ie
@@ -877,9 +875,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
       if( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
         uflx(I,j) = 0.0
       else if( uc(i,j) > 0.0 ) then
-        uflx(I,j) = uc(I,j) * trc(i,j) * G%dyCu(I,j)
+        uflx(I,j) = uc(I,j) * trc(i,j) * G%dy_Cu(I,j)
       else
-        uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dyCu(I,j)
+        uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dy_Cu(I,j)
       endif
     enddo ; enddo
 
@@ -889,9 +887,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
       if( avg > stop_lim .and. vc(i,J) * dif > 0.0) then
         vflx(i,J) = 0.0
       else if( vc(i,J) > 0.0 ) then
-        vflx(i,J) = vc(i,J) * trc(i,j) * G%dxCv(i,J)
+        vflx(i,J) = vc(i,J) * trc(i,j) * G%dx_Cv(i,J)
       else
-        vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dxCv(i,J)
+        vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dx_Cv(i,J)
       endif
     enddo ; enddo
 
