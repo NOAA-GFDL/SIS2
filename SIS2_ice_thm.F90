@@ -842,6 +842,9 @@ function laytemp_SIS2(m, tfi, f, b, tp, dtt, ITV) result (new_temp)
     endif
   endif
 
+  ! Only return temperatures that are at or below the freezing point.
+  new_temp = min(new_temp, tfi)
+
 end function laytemp_SIS2
 
 !
