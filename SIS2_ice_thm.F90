@@ -51,7 +51,11 @@ public :: e_to_melt_TS
 
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
-  real :: Cp_Water = 4.2e3  ! The heat capacity of liquid seawater 4200 J/(kg K)
+  real :: Cp_SeaWater       ! The heat capacity of liquid seawater, in J/(kg K).
+  real :: Cp_water          ! The heat capacity of liquid water in the ice,
+                            ! in J/(kg K).  Cp_water should be set equal to
+                            ! Cp_SeaWater, but for convenience has often been
+                            ! set equal to Cp_ice.
   real :: rho_ice, rho_snow, rho_water  ! The nominal densities of ice and water in kg m-3.
   real :: LI                ! The latent heat of fusion, in J kg-1.
   real :: dTf_dS            ! The derivative of the freezing point with salinity, 
@@ -107,12 +111,13 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS2_ice_thm_init(param_file, CS, ITV )
 
-  use ice_thm_mod, only : TFI
   use constants_mod, only : hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
   type(param_file_type),       intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
+
+  real :: sal_ice_top(1)  ! A specified surface salinity of ice.
 
   real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
   real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
@@ -122,7 +127,6 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   if (.not.associated(CS)) allocate(CS)
   if (.not.associated(ITV)) allocate(ITV)
 
-  CS%temp_ice_freeze = TFI
 
   ! LI must be taken from the constants mod for internal consistency in the
   ! coupled climate model.
@@ -137,16 +141,25 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   call get_param(param_file, mod, "RHO_SNOW", ITV%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
-  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
-                 "The heat capacity of sea water, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=4200.0)
   call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
                  "The heat capacity of fresh ice, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=2100.0)
+  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
+                 "The heat capacity of water in sea-ice, approximated as \n"//&
+                 "a constant.  CP_WATER and CP_SEAWATER should be equal, \n"//&
+                 "but for computational convenience CP_WATER has often \n"//&
+                 "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
+                 default=ITV%Cp_ice)  !### CHANGE TO default=4200.0)
+  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
+                 "The heat capacity of sea water, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=4200.0)
   call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
   ITV%mu_TS = -ITV%dTf_dS
+
+  call get_thermo_coefs(ice_salinity=sal_ice_top)
+  CS%temp_ice_freeze = T_freeze(sal_ice_top(1), ITV)
 
   call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
                  "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
@@ -1131,7 +1144,7 @@ function enthalpy_liquid(T, S, ITV)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: enthalpy_liquid
 
-  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%CP_Water*T)
+  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%CP_SeaWater*T)
 
 end function enthalpy_liquid
 

@@ -1005,6 +1005,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: Cp_Ice  ! The heat capacity of ice, in J kg-1 K-1.
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
+  real :: T_freeze_ice_top ! The freezing temperature at the salinity of the
+                        ! upper layer of the ice, in deg C.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   type(time_type) :: Dt_ice
@@ -1158,6 +1160,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     enddo ; enddo ; enddo
   else
     call get_SIS2_thermo_coefs(IST%ITV, Cp_Ice=Cp_Ice)
+    T_freeze_ice_top = T_Freeze(S_col(1), IST%ITV)
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
       if (IST%mH_ice(i,j,k) > 0.0) then
@@ -1173,7 +1176,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         else
           !### This appears to be inconsistent with the expression above for snow,
           !### in that it is missing a term like -Cp_Ice*T_col(1).
-          latent         = hlv + hlf*(1-TFI/T_col(1))
+          latent         = hlv + hlf*(1 - T_freeze_ice_top/T_col(1))
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
