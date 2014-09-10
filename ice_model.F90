@@ -1002,7 +1002,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   real :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
   real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
-  real :: Cp_Ice  ! The heat capacity of ice, in J kg-1 K-1.
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
   real :: T_freeze_ice_top ! The freezing temperature at the salinity of the
@@ -1014,7 +1013,10 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
-  real :: enth_units
+  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
+                     ! enthalpy units (sometimes J kg-1).
+  real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
+  real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
 
@@ -1159,32 +1161,32 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
       endif
     enddo ; enddo ; enddo
   else
-    call get_SIS2_thermo_coefs(IST%ITV, Cp_Ice=Cp_Ice)
+    enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
+
     T_freeze_ice_top = T_Freeze(S_col(1), IST%ITV)
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
       if (IST%mH_ice(i,j,k) > 0.0) then
         enth_col(0) = IST%enth_snow(i,j,k,1)
         do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
-        T_col(0) = Temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-        do m=1,NkIce ; T_col(m) = Temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV) ; enddo
-
+        
+        ! In the case of sublimation of either snow or ice, the vapor is at 0 C. 
+        ! If the vapor should be at a different temperature, a correction would be
+        ! made here.
         if (IST%slab_ice) then
-          latent         = hlv + hlf
+          latent = hlv + hlf
         elseif (IST%mH_snow(i,j,k)>0.0) then
-          latent         = hlv + (hlf - Cp_Ice*T_col(0))
+          latent = hlv + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
         else
-          !### This appears to be inconsistent with the expression above for snow,
-          !### in that it is missing a term like -Cp_Ice*T_col(1).
-          latent         = hlv + hlf*(1 - T_freeze_ice_top/T_col(1))
+          latent = hlv + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
 
         dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
-        hf_0  = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-                 (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
-                dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
+        hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
+                (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
+               dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
         SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
         do m=1,NkIce ; SW_abs_col(m) = IST%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
@@ -1200,8 +1202,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
         IST%enth_snow(i,j,k,1) = enth_col(0)
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
-        dts                = ts_new - (IST%t_surf(i,j,k)-T_0degC)
-        IST%t_surf(i,j,k)  = IST%t_surf(i,j,k) + dts
+        dts               = ts_new - (IST%t_surf(i,j,k)-T_0degC)
+        IST%t_surf(i,j,k) = IST%t_surf(i,j,k) + dts
         flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
         flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
         flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
