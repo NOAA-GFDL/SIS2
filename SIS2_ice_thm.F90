@@ -52,9 +52,12 @@ public :: e_to_melt_TS
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
   real :: Cp_SeaWater       ! The heat capacity of liquid seawater, in J/(kg K).
-  real :: Cp_water          ! The heat capacity of liquid water in the ice,
-                            ! in J/(kg K).  Cp_water should be set equal to
-                            ! Cp_SeaWater, but for convenience has often been
+  real :: Cp_water          ! The heat capacity of liquid water in the ice model,
+                            ! but not in the brine pockets, in J/(kg K).
+  real :: Cp_brine          ! The heat capacity of liquid water in the brine
+                            ! pockets within the ice, in J/(kg K).  Cp_brine
+                            ! should be set equal to Cp_SeaWater, but for
+                            ! algorithmic convenience has often been
                             ! set equal to Cp_ice.
   real :: rho_ice, rho_snow, rho_water  ! The nominal densities of ice and water in kg m-3.
   real :: LI                ! The latent heat of fusion, in J kg-1.
@@ -150,6 +153,12 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
                  "but for computational convenience CP_WATER has often \n"//&
                  "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
                  default=ITV%Cp_ice)  !### CHANGE TO default=4200.0)
+  call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
+                 "The heat capacity of water in brine pockets within the \n"//&
+                 "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
+                 "CP_WATER should be equal, but for computational \n"//&
+                 "convenience CP_BRINE has often been set equal to CP_ICE.", &
+                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE TO default=CP_WATER)
   call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
                  "The heat capacity of sea water, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=4200.0)
@@ -539,6 +548,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   do k=1,NkIce   ! load bb with heat capacity term.
     salt_part = 0.0
     if (sice(k)>0.0) salt_part = tfi(k)*ITV%LI/(temp_IC(k)*temp_IC(k))
+    !### ADD TERM TO ACCOUNT FOR DIFFERENCE BETWEEN CP_ICE AND CP_Brine.
     bb(k) = mL_ice*(ITV%Cp_ice-salt_part) ! add coupling to this later
   enddo
 
@@ -647,11 +657,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
       e_extra_sum = e_extra_sum + e_extra
     else
       ! There is no snow mass, so just convert tsnow = tsf to enthalpy.
-      if (tsf > 0.0) then  ! This never happens?
-        enthalpy(0) = ITV%Cp_ice*tsf + enth_liq_lim
-      else
-        enthalpy(0) = enth_from_TS(tsf, 0.0, ITV)
-      endif
+      enthalpy(0) = enth_from_TS(tsf, 0.0, ITV)
 
       heat_flux_int(0) = k10*(tsf - temp_est(1))
       heat_flux_int(-1) = heat_flux_int(0)
@@ -792,30 +798,16 @@ function laytemp_SIS2(m, tfi, f, b, tp, dtt, ITV) result (new_temp)
 
   if ( tfi == 0.0 ) then
     ! For fresh water, avoid the degeneracy of the enthalpy-temperature
-    ! relationship by extending the linear expression for frozen water.
+    ! relationship by extending the linear expression for frozen water, then
+    ! limit it later to be at or below freezing.
     !
     !   m * {Cp_Ice} * (tn-tp) = dtt * (f - b*tn)
     !
     new_temp = (m*Cp_Ice*tp + f*dtt) / (m*Cp_Ice + b*dtt) ! = -BB/AA
-    ! 
-    ! if (tp > 0.0) then
-    !   E0 = Cp_Ice*tp + LI  ! >= LI
-    ! else
-    !   E0 = Cp_Ice*tp  ! < 0
-    ! endif
-    ! ! Determine whether the new solution will be above, at, or below freezing.
-    ! if (m*E0 + dtt * (f - b*tfi) >= m*LI) then
-    !   new_temp = (m*(E0 - LI) + f*dtt) / (m*Cp_Ice + b*dtt)
-    !   extra_heat = LI
-    ! elseif (m*E0 + dtt * (f - b*tfi) >= 0) then
-    !   new_temp = 0.0 ; extra_heat = m*E0 + ddt * (f - b*tfi)
-    ! else
-    !   new_temp = (m*E0 + f*dtt) / (m*Cp_Ice + b*dtt)
-    !   extra_heat = 0.0
-    ! endif
-  else
+
+  elseif (ITV%Cp_ice == ITV%Cp_brine) then
     if (tp >= tfi) then
-      E0 = Cp_Ice*(tp - tfi)  ! >= 0
+      E0 = ITV%Cp_Water*(tp - tfi)  ! >= 0
     else
       E0 = Cp_Ice*(tp - tfi) - LI*(1 - tfi/tp)  ! < 0
     endif
@@ -840,6 +832,8 @@ function laytemp_SIS2(m, tfi, f, b, tp, dtt, ITV) result (new_temp)
         new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
       endif
     endif
+  else
+    call SIS_error(FATAL, "Write laytemp_SIS2 for Cp_ice /= Cp_brine.")
   endif
 
   ! Only return temperatures that are at or below the freezing point.
@@ -934,14 +928,15 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     ! but it avoids serious roundoff issues later on when b is large.
     new_temp = dT_dEnth * ((dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
                            (m_lay  + dtEU*(fb*dT_dEnth)))
-  else
+  elseif (ITV%Cp_ice == ITV%Cp_brine) then
     En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
     ! Solve a quadratic equation for the new layer temperature, tn:
     !
-    !   m * (En_J + L + htg*dt/m) = (m*Cp_Ice + b*dt) *tn + m*LI*tfi/tn
+    !   m * (En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + L + htg*dt/m) = 
+    !        (m*Cp_Ice + b*dt) *tn + m*LI*tfi/tn
     !
     AA = m_lay *ITV%Cp_Ice + fb*dtt
-    BB = -(m_lay*(En_J + ITV%LI) + htg*dtt)
+    BB = -(m_lay*((En_J - (ITV%Cp_Water-ITV%Cp_Ice)*tfi) + ITV%LI) + htg*dtt)
     CC = m_lay *ITV%LI*tfi
     ! This form avoids round-off errors.
     if (BB >= 0) then
@@ -952,6 +947,8 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
 !  These should be equivalent.
 !   enth = enth_in + (dtEU/m) * (f - b*new_temp)
     enth = enth_from_TS(new_temp, sice, ITV)
+  else
+    call SIS_error(FATAL, "Write update_lay_enth for Cp_ice /= Cp_brine.")
   endif
 
 
@@ -1106,20 +1103,25 @@ function enth_from_TS(T, S, ITV) result(enthalpy)
   real, intent(in)  :: T, S
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: enthalpy
-  
-  real :: Mu_TS, Cp_Ice, Enth_liq_0, LI, enth_unit
-  Mu_TS = ITV%mu_TS ; Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
+
+  real :: T_fr  ! The freezing temperature in deg C.  
+  real :: Cp_Ice, Enth_liq_0, LI, enth_unit
+  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
   Enth_liq_0 = ITV%Enth_liq_0 ; enth_unit = ITV%enth_unit
 
-  ! This makes the assumption that all water in the ice and snow categories,
-  ! both fluid and in pockets, has the same heat capacity.
+  T_fr = -ITV%mu_TS*S
+
   if ((S == 0.0) .and. (T <= 0.0)) then
+    ! Note that at the freezing point, fresh water is assumed to be all ice,
+    ! due to the degeneracy in inverting temperature for enthalpy.
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + Cp_Ice*T)
-  elseif (T <= -MU_TS*S) then
-    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 + MU_TS*S/T)) + Cp_Ice*T)
-       !### + enth_unit * (-MU_TS*S) * (CP_Water - Cp_Ice)
-  else  ! This layer is already melted, so just warm it to 0 C.
-    enthalpy = enth_unit * (ENTH_LIQ_0 + Cp_Ice*T)  !### Change Cp_Ice to CP_Water.
+  elseif (T >= T_fr) then ! This layer is already melted, so just warm or cool it to 0 C.
+    enthalpy = enth_unit * (ENTH_LIQ_0 + ITV%Cp_Water*T)
+  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
+                  (Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr))
+  else
+    call SIS_error(FATAL, "Write enth_from_TS for Cp_ice /= Cp_brine.")
   endif
 
 end function enth_from_TS
@@ -1134,7 +1136,7 @@ function enthalpy_liquid_freeze(S, ITV)
   real :: enthalpy_liquid_freeze
 
   enthalpy_liquid_freeze = ITV%enth_unit * &
-    ((-ITV%Cp_Ice*ITV%mu_TS)*S + ITV%ENTH_LIQ_0)  !### Change Cp_Ice to CP_Water.
+    ((-ITV%Cp_water*ITV%mu_TS)*S + ITV%ENTH_LIQ_0)  !### Redo parentheses.
 
 end function enthalpy_liquid_freeze
 
@@ -1170,31 +1172,11 @@ subroutine Temp_from_Enth_S(En, S, Temp, ITV)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
 
   integer :: k, nk_ice
-  real :: I_Cp_Ice, BB
-  real :: I_enth_unit
-  real :: En_J  ! Enthalpy in Joules with 0 offset.
   
   nk_ice = size(Temp)
-!  I_Cp_Ice = 1.0 / ITV%Cp_Ice
-!  I_enth_unit = 1.0 / ITV%enth_unit
  
   do k=1,nk_ice
     Temp(k) = Temp_from_En_S(En(k), S(k), ITV)
-!   En_J = En(k) * I_enth_unit - ENTH_LIQ_0
-!   ! This makes the assumption that all water in the ice and snow categories,
-!   ! both fluid and in pockets, has the same heat capacity.
-!   if (S(k) <= 0.0) then ! There is a step function for fresh water.
-!     if (En_J >= 0.0) then ; Temp(k) = En_J * I_Cp_Ice
-!     elseif (En_J >= -ITV%LI) then ; Temp(k) = 0.0
-!     else ; Temp(k) = I_Cp_Ice * (En_J + ITV%LI) ; endif
-!   else
-!     if (En_J < -ITV%MU_TS*S(k)*ITV%Cp_Ice) then
-!       BB = 0.5*(En_J + ITV%LI)
-!       Temp(k) = I_Cp_Ice * (BB - sqrt(BB**2 + ITV%MU_TS*S(k)*ITV%Cp_Ice*ITV%LI))
-!     else  ! This layer is already melted, so just warm it to 0 C.
-!       Temp(k) = En_J * I_Cp_Ice
-!     endif
-!   endif
   enddo
 
 end subroutine Temp_from_Enth_S
@@ -1204,30 +1186,36 @@ function dTemp_dEnth(En, S, ITV) result(dT_dE)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
 
-  real :: I_Cp_Ice, BB, I_CpI_Eu
+  real :: I_Cp_Ice, BB, I_CpI_Eu, I_CpW_Eu
   real :: I_enth_unit
   real :: Cp_Ice, LI, Mu_TS
+  real :: T_fr  ! The freezing temperature in deg C.  
   real :: En_J  ! Enthalpy in Joules with 0 offset.
   Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
 
   I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
   I_CpI_Eu = 1.0 / (Cp_Ice * ITV%enth_unit)
-  ! I_Cp_Water = 1.0 / CP_Water
+  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
+  ! I_Cp_Water = 1.0 / ITV%CP_Water
+
+  T_fr = -ITV%mu_TS*S
 
   En_J = En * I_enth_unit - ITV%enth_liq_0
-  ! This makes the assumption that all water in the ice and snow categories,
-  ! both fluid and in pockets, has the same heat capacity.
   if (S <= 0.0) then ! There is a step function for fresh water.
-    if (En_J >= 0.0) then ; dT_dE = I_CpI_Eu ! ### Change to I_Cp_Water
+    if (En_J >= 0.0) then ; dT_dE = I_CpW_Eu
     elseif (En_J > -LI) then ; dT_dE = 0.0
     else ; dT_dE = I_CpI_Eu ; endif
-  else
-    if (En_J < -MU_TS*S*Cp_Ice) then  ! ### Change Cp_Ice to Cp_Water
-      BB = 0.5*(En_J + LI)        ! ### Change En_J to En_J - (-MU_TS*S) * (CP_Water - Cp_Ice)
-      dT_dE = I_Cp_Ice * 0.5 * (1.0 - BB / sqrt(BB**2 + MU_TS*S*Cp_Ice*LI))
+  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
+    ! This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity.
+    if (En_J < T_fr * ITV%Cp_water) then
+      BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
+      dT_dE = I_Cp_Ice * 0.5 * (1.0 - BB / sqrt(BB**2 - T_fr*Cp_Ice*LI))
     else  ! This layer is already melted, so just warm it to 0 C.
-      dT_dE = I_CpI_Eu ! ### Change to I_Cp_Water
+      dT_dE = I_CpW_Eu
     endif
+  else
+    call SIS_error(FATAL, "Write dTemp_dEnth for Cp_ice /= Cp_brine.")
   endif
 
 end function dTemp_dEnth
@@ -1237,29 +1225,40 @@ function Temp_from_En_S(En, S, ITV) result(Temp)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: Temp  ! Temperature in deg C.
 
-  real :: I_Cp_Ice, BB
+  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities, in kg K J-1.
+  real :: BB
   real :: I_enth_unit
-  real :: Cp_Ice, LI, Mu_TS
+  real :: T_fr  ! The freezing temperature in deg C.  
+  real :: Cp_Ice, Cp_Water, LI, Mu_TS
   real :: En_J  ! Enthalpy in Joules with 0 offset.
-  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
+  Cp_Ice = ITV%Cp_Ice ; Cp_water = ITV%Cp_water ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
   
   I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
-  ! I_Cp_Water = 1.0 / CP_Water
+  I_Cp_Water = 1.0 / CP_Water
 
+  T_fr = -ITV%mu_TS*S
   En_J = En * I_enth_unit - ITV%enth_liq_0
-  ! This makes the assumption that all water in the ice and snow categories,
-  ! both fluid and in pockets, has the same heat capacity.
+
   if (S <= 0.0) then ! There is a step function for fresh water.
-    if (En_J >= 0.0) then ; Temp = En_J * I_Cp_Ice  ! ### Change to I_Cp_Water
+    if (En_J >= 0.0) then ; Temp = En_J * I_Cp_Water
     elseif (En_J >= -LI) then ; Temp = 0.0
     else ; Temp = I_Cp_Ice * (En_J + LI) ; endif
-  else
-    if (En_J < -MU_TS*S*Cp_Ice) then  ! ### Change Cp_Ice to Cp_Water
-      BB = 0.5*(En_J + LI)        ! ### Change En_J to En_J - (-MU_TS*S) * (CP_Water - Cp_Ice)
-      Temp = I_Cp_Ice * (BB - sqrt(BB**2 + MU_TS*S*Cp_Ice*LI))
-    else  ! This layer is already melted, so just warm it to 0 C.
-      Temp = En_J * I_Cp_Ice          ! ### Change to I_Cp_Water
+  elseif (Cp_Ice == ITV%Cp_brine) then
+    ! This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity.
+
+    !   LI * (T_fr/T) + Cp_Ice*T = En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + LI 
+    !   LI * (T_fr/T) + Cp_Ice*T = 2.0*BB
+    !   Cp_Ice*T**2 - 2.0*BB*T + LI * T_fr = 0.0
+
+    if (En_J < T_fr*Cp_Water) then
+      BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
+      Temp = I_Cp_Ice * (BB - sqrt(BB**2 - T_fr*Cp_Ice*LI))
+    else  ! This layer is completely melted.
+      Temp = En_J * I_Cp_Water
     endif
+  else
+    call SIS_error(FATAL, "Write Temp_from_En_S for Cp_ice /= Cp_brine.")
   endif
 
 end function Temp_from_En_S
@@ -1275,10 +1274,15 @@ function e_to_melt_TS(T, S, ITV) result(e_to_melt)
   real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
                      ! and warm it to its bulk freezing temperature, in J kg-1.
 
-  if (T < -ITV%mu_TS*S) then
-    e_to_melt = (ITV%LI - ITV%Cp_ice*T) * (1.0 + ITV%mu_TS*S/T)
-  else  ! This layer is already melted and has excess heat.
-    e_to_melt = ITV%Cp_Water * (-T - ITV%mu_TS*S)
+  real :: T_fr  ! The freezing temperature in deg C.  
+  T_fr = -ITV%mu_TS*S
+
+  if (T >= T_Fr) then ! This layer is already melted and has excess heat.
+    e_to_melt = ITV%Cp_Water * (-T + T_Fr)
+  elseif (ITV%Cp_Ice == ITV%Cp_brine) then
+    e_to_melt = (ITV%LI - ITV%Cp_ice*T) * (1.0 - T_Fr/T)
+  else
+    call SIS_error(FATAL, "Write e_to_melt_TS for Cp_ice /= Cp_brine.")
   endif
 
 end function e_to_melt_TS
