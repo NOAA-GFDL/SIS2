@@ -147,21 +147,21 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
   call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
                  "The heat capacity of fresh ice, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=2100.0)
+  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
+                 "The heat capacity of sea water, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=4200.0)
   call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
                  "The heat capacity of water in sea-ice, approximated as \n"//&
                  "a constant.  CP_WATER and CP_SEAWATER should be equal, \n"//&
                  "but for computational convenience CP_WATER has often \n"//&
                  "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
-                 default=ITV%Cp_ice)  !### CHANGE TO default=4200.0)
+                 default=ITV%Cp_SeaWater)
   call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
                  "The heat capacity of water in brine pockets within the \n"//&
                  "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
                  "CP_WATER should be equal, but for computational \n"//&
                  "convenience CP_BRINE has often been set equal to CP_ICE.", &
-                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE TO default=CP_WATER)
-  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
-                 "The heat capacity of sea water, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=4200.0)
+                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE LATER TO default=CP_WATER)
   call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
@@ -717,13 +717,6 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
     ! Estimate the errors with these two expressions from 64-bit roundoff.
     tfb_diff_err = 1e-15*2.0*kk*dtt * sqrt(tfw**2 + 10.0**2)  ! The -10 deg is arbitrary but good enough?
     tfb_resid_err = 1e-15*sqrt(col_enth2**2 + col_enth1**2 + sum_sol**2 + tflux_sfc**2)
-    !   The two estimates of tflux_bot can go badly wrong due to truncation errors
-    ! in different limits.  Take the estimate that has the smaller errors.
-    !### if (tfb_diff_err < tfb_resid_err) then
-    !###   tflux_bot = tflux_bot_diff
-    !### else
-    !###   tflux_bot = tflux_bot_resid
-    !### endif 
 
     d_tflux_bot = tflux_bot_diff - tflux_bot_resid
     if (abs(d_tflux_bot) > 1.0e-9*(abs(tflux_bot_resid) + abs(tflux_bot_diff) + &
@@ -1136,7 +1129,7 @@ function enthalpy_liquid_freeze(S, ITV)
   real :: enthalpy_liquid_freeze
 
   enthalpy_liquid_freeze = ITV%enth_unit * &
-    ((-ITV%Cp_water*ITV%mu_TS)*S + ITV%ENTH_LIQ_0)  !### Redo parentheses.
+    (ITV%Cp_water*(-ITV%mu_TS*S) + ITV%ENTH_LIQ_0)
 
 end function enthalpy_liquid_freeze
 
