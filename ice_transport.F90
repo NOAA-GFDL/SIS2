@@ -370,13 +370,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
   call pass_var(mH_snow, G%Domain, complete=.false.)
   call pass_var(mH_ice, G%Domain, complete=.true.)
 
-  ! Recalculate part_sz(:,:,0) to ensure that the sum of part_sz adds up to 1.
-  part_sz(:,:,0) = 1.0
-  do k=1,G%CatIce ; part_sz(:,:,0) = part_sz(:,:,0) - part_sz(:,:,k) ; enddo
-!###  This would handle roundoff in a slightly better way.
-!  ice_cover(:,:) = 0.0
-!  do k=1,G%CatIce ; ice_cover(:,:) = ice_cover(:,:) + part_sz(:,:,k) ; enddo
-!  part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
+  !   Recalculate part_sz(:,:,0) to ensure that the sum of part_sz adds up to 1.
+  ! Compress_ice should already have taken care of this within the computational
+  ! domain, but with a slightly different order of arithmetic.  The max is here
+  ! to avoid tiny negative values of order -1e-16 from round-off in the
+  ! difference between ice_cover and 1.
+  ice_cover(:,:) = 0.0
+  do k=1,G%CatIce ; ice_cover(:,:) = ice_cover(:,:) + part_sz(:,:,k) ; enddo
+  part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
 
   if (CS%check_conservation) then
     do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
