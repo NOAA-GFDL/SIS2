@@ -2578,9 +2578,9 @@ end subroutine send_bergs_to_other_pes
 ! ##############################################################################
 
 subroutine icebergs_init(bergs, &
-             gni, gnj, layout, io_layout, axes, maskmap, dom_x_flags, dom_y_flags, &
+             gni, gnj, layout, io_layout, axes, dom_x_flags, dom_y_flags, &
              dt, Time, ice_lon, ice_lat, ice_wet, ice_dx, ice_dy, ice_area, &
-             cos_rot, sin_rot)
+             cos_rot, sin_rot, maskmap)
 ! Arguments
 type(icebergs), pointer :: bergs
 integer, intent(in) :: gni, gnj, layout(2), io_layout(2), axes(2)
