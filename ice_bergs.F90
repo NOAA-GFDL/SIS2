@@ -2668,7 +2668,7 @@ integer :: stdlogunit, stderrunit
 ! Set up iceberg domain
  !write(stderrunit,*) 'diamonds: defining domain'
   call mpp_define_domains( (/1,gni,1,gnj/), layout, grd%domain, &
-!                          maskmap=maskmap, &
+                           maskmap=maskmap, &
                            xflags=dom_x_flags, xhalo=halo,  &
                            yflags=dom_y_flags, yhalo=halo, name='diamond')
   call mpp_define_io_domain(grd%domain, io_layout)
@@ -2765,8 +2765,8 @@ integer :: stdlogunit, stderrunit
   enddo; enddo
 
   do j=grd%jsd,grd%jed; do i=grd%isd,grd%ied
-      if (grd%lon(i,j).gt.900.) write(stderrunit,*) 'bad lon: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1
-      if (grd%lat(i,j).gt.900.) write(stderrunit,*) 'bad lat: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1
+      if (grd%lon(i,j).gt.900.) write(stderrunit,*) 'bad lon: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1,grd%lon(i,j)
+      if (grd%lat(i,j).gt.900.) write(stderrunit,*) 'bad lat: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1,grd%lat(i,j)
   enddo; enddo
 
   ! Sanitize lon for the tile (need continuous longitudes within one tile)
