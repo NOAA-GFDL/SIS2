@@ -2764,10 +2764,12 @@ integer :: stdlogunit, stderrunit
       if (grd%lat(i,j).gt.900.) grd%lat(i,j)=2.*grd%lat(i,j+1)-grd%lat(i,j+2)
   enddo; enddo
 
-  do j=grd%jsd,grd%jed; do i=grd%isd,grd%ied
+  if (.not. present(maskmap)) then ! Using a maskmap causes tickles this sanity check
+    do j=grd%jsd,grd%jed; do i=grd%isd,grd%ied
       if (grd%lon(i,j).gt.900.) write(stderrunit,*) 'bad lon: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1,grd%lon(i,j)
       if (grd%lat(i,j).gt.900.) write(stderrunit,*) 'bad lat: ',mpp_pe(),i-grd%isc+1,j-grd%jsc+1,grd%lat(i,j)
-  enddo; enddo
+    enddo; enddo
+  endif
 
   ! Sanitize lon for the tile (need continuous longitudes within one tile)
   j=grd%jsc; do i=grd%isc+1,grd%ied
