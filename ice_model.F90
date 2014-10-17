@@ -1682,7 +1682,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-		    IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+        IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
            (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
       IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
     enddo ; enddo ; enddo
