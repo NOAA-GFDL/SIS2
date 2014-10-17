@@ -53,7 +53,7 @@ use ice_grid_mod, only : sea_ice_grid_type
 
 implicit none ; private
 
-#include <MOM_memory.h>
+#include <SIS2_memory.h>
 
 public ice_continuity, SIS_continuity_init, SIS_continuity_end
 
@@ -109,7 +109,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_continuity_init.
 
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
     h_input      ! Left and right face thicknesses, in H.
   type(loop_bounds_type) :: LB
   real    :: h_up
@@ -143,8 +143,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * &
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
-  !   This line should be unnecessary.
-      if (h(i,j,k) < 0.0) h(i,j,k) = 0.0
+      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in ice_continuity().')
     enddo ; enddo ; enddo
 
   elseif (x_first) then
@@ -157,8 +157,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(LB,ncat,G,uh,hin,dt,h)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
-  !   Uncomment this line to prevent underflow.
-  !   if (h(i,j,k) < 0.0) h(i,j,k) = 0.0
+      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in u-pass of ice_continuity().')
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -172,8 +172,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,vh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
-  !   This line prevents underflow.
-      if (h(i,j,k) < 0.0) h(i,j,k) = 0.0
+      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in v-pass of ice_continuity().')
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -188,6 +188,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,hin,dt,G,vh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
+      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in v-pass of ice_continuity().')
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -200,8 +202,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,uh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
-  !   This line prevents underflow.
-      if (h(i,j,k) < 0.0) h(i,j,k) = 0.0
+      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in u-pass of ice_continuity().')
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -228,9 +230,9 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
 !                 SIS_continuity_init.
 !  (in)      LB - A structure with the active loop bounds.
 
-  real, dimension(SZIB_(G),SZK_(G)) :: &
+  real, dimension(SZIB_(G),SZCAT_(G)) :: &
     duhdu      ! Partial derivative of uh with u, in H m.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
     hl, hr      ! Left and right face thicknesses, in H.
   real, dimension(SZIB_(G)) :: &
     du, &      ! Corrective barotropic change in the velocity, in m s-1.
@@ -240,7 +242,7 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
     uh_tot_0, & ! Summed transport with no barotropic correction in H m2 s-1.
     visc_rem_max  ! The column maximum of visc_rem.
   logical, dimension(SZIB_(G)) :: do_i
-  real, dimension(SZIB_(G),SZK_(G)) :: &
+  real, dimension(SZIB_(G),SZCAT_(G)) :: &
     visc_rem      ! A 2-D copy of visc_rem_u or an array of 1's.
   real :: I_vrm   ! 1.0 / visc_rem_max, nondim.
   real :: du_lim  ! The velocity change that give a relative CFL of 1, in m s-1.
@@ -365,9 +367,9 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
 !                 SIS_continuity_init.
 !  (in)      LB - A structure with the active loop bounds.
 
-  real, dimension(SZI_(G),SZK_(G)) :: &
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
     dvhdv      ! Partial derivative of vh with v, in m2.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
     hl, hr      ! Left and right face thicknesses, in m.
   real, dimension(SZI_(G)) :: &
     dv, &      ! Corrective barotropic change in the velocity, in m s-1.
@@ -377,7 +379,7 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
     vh_tot_0, &   ! Summed transport with no barotropic correction in H m2 s-1.
     visc_rem_max  ! The column maximum of visc_rem.
   logical, dimension(SZI_(G)) :: do_i
-  real, dimension(SZI_(G),SZK_(G)) :: &
+  real, dimension(SZI_(G),SZCAT_(G)) :: &
     visc_rem      ! A 2-D copy of visc_rem_v or an array of 1's.
   real :: I_vrm   ! 1.0 / visc_rem_max, nondim.
   real :: dv_lim  ! The velocity change that give a relative CFL of 1, in m s-1.
