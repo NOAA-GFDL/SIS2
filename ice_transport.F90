@@ -35,6 +35,8 @@ use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
+use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
+use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
 
 use ice_grid_mod, only : sea_ice_grid_type
 use ice_ridging_mod, only : ice_ridging
@@ -69,6 +71,8 @@ type, public :: ice_transport_CS ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
   logical :: do_ridging
+  logical :: use_SIS_continuity ! Use the mroe modern continuity solver from SIS.
+  type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
   type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
   integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
@@ -274,8 +278,13 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
     mca0_ice(i,j,k) = mca_ice(i,j,k)
     mca0_snow(i,j,k) = mca_snow(i,j,k)
   enddo ; enddo ; enddo
-  call ice_continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, CS)
-  call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, CS)
+  if (CS%use_SIS_continuity) then
+    call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, CS%continuity_CSp)
+    call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, CS%continuity_CSp)
+  else
+    call ice_continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, CS)
+    call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, CS)
+  endif
 
   call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_slow, G, CS)
 
@@ -1069,7 +1078,10 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "is expensive and should be used sparingly.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
                  "Apply a ridging scheme as imported by Torge Martin.", default=.false.)
+  call get_param(param_file, mod, "USE_SIS_CONTINUITY", CS%use_SIS_continuity, &
+                 "If true, uses a continuity solver from SIS that has more options.", default=.true.)
 
+  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
 
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
@@ -1097,6 +1109,7 @@ end subroutine ice_transport_init
 subroutine ice_transport_end(CS)
   type(ice_transport_CS), pointer :: CS
 
+  call SIS_continuity_end(CS%continuity_CSp)
   call SIS_tracer_advect_end(CS%SIS_tr_adv_CSp)
 
   deallocate(CS)
