@@ -158,6 +158,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
   real :: dt_adv
   character(len=200) :: mesg
   integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL
+  integer :: iTransportSubcycles ! For transport sub-cycling
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
@@ -274,24 +275,34 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
   call adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
                              TrReg, G, CS)!Niki: add ridging and age
 
-  do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
-    mca0_ice(i,j,k) = mca_ice(i,j,k)
-    mca0_snow(i,j,k) = mca_snow(i,j,k)
-  enddo ; enddo ; enddo
-  if (CS%use_SIS_continuity) then
-    call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, CS%continuity_CSp)
-    call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, CS%continuity_CSp)
-  else
-    call ice_continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, CS)
-    call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, CS)
-  endif
+  dt_adv = dt_slow / real(CS%adv_sub_steps)
+  do iTransportSubcycles = 1, CS%adv_sub_steps
+    if (iTransportSubcycles>1) then ! Do not need to update on first iteration
+      call update_SIS_tracer_halos(TrReg, G, complete=.false.)
+      call pass_var(mca_ice,  G%Domain, complete=.false.)
+      call pass_var(mca_snow, G%Domain, complete=.false.)
+      call pass_var(mH_ice, G%Domain, complete=.true.)
+    endif
 
-  call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_slow, G, CS)
+    do k=1,G%CatIce ; do j=jsd,jed ; do i=isd,ied
+      mca0_ice(i,j,k) = mca_ice(i,j,k)
+      mca0_snow(i,j,k) = mca_snow(i,j,k)
+    enddo ; enddo ; enddo
+    if (CS%use_SIS_continuity) then
+      call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS%continuity_CSp)
+    else
+      call ice_continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS)
+      call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS)
+    endif
 
-  call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_slow, G, &
-                          CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
-  call advect_SIS_tracers(mca0_snow, mca_snow, uh_snow, vh_snow, dt_slow, G, &
-                          CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
+    call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_adv, G, CS)
+
+    call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, &
+                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
+    call advect_SIS_tracers(mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, &
+                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
+  enddo ! iTransportSubcycles
 
   ! Add code to make sure that mH_ice(i,j,1) > mH_lim(1).
   do j=jsc,jec ; do i=isc,iec
