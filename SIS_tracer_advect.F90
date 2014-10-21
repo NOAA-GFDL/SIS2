@@ -126,11 +126,18 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr
 
   call cpu_clock_begin(id_clock_advect)
   if (snow_tr) then
-    call advect_upwind_2d(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+    if (CS%use_upwind2d) then
+      call advect_upwind_2d(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+    else
+      call advect_tracer(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS)
+    endif
   else
-    call advect_upwind_2d(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+    if (CS%use_upwind2d) then
+      call advect_upwind_2d(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+    else
+      call advect_tracer(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS)
+    endif
   endif
-
   call cpu_clock_end(id_clock_advect)
 
 end subroutine advect_SIS_tracers
@@ -197,7 +204,6 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracer.")
   if (ntr==0) return
-  call cpu_clock_begin(id_clock_advect)
 
   x_first = (MOD(G%first_direction,2) == 0)
 
@@ -364,8 +370,6 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
     endif
 
   enddo ! Iterations loop
-
-  call cpu_clock_end(id_clock_advect)
 
 end subroutine advect_tracer
 
@@ -1070,10 +1074,10 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
            "Unknown SIS_TRACER_ADVECTION_SCHEME = "//trim(mesg))
   end select
 
-  if (.not.CS%use_upwind2d) then
-      call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
-           "Only SIS_TRACER_ADVECTION_SCHEME = UPWIND_2D is implemented yet.")
-  endif
+! if (.not.CS%use_upwind2d) then
+!     call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
+!          "Only SIS_TRACER_ADVECTION_SCHEME = UPWIND_2D is implemented yet.")
+! endif
 
   id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)
   id_clock_pass = cpu_clock_id('(Ocean tracer halo updates)', grain=CLOCK_ROUTINE)
