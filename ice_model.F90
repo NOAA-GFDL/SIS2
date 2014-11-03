@@ -380,27 +380,25 @@ subroutine avg_top_quantities(Ice, IST, G)
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ice_bottom_state - Translate ice-bottom quantities from the ice model's  !
-!   internal state to the public ice data type for use by the ocean model.     !
+! set_ocean_top_fluxes - Translate ice-bottom fluxes of heat, mass, salt, and  !
+!   tracers from the ice model's internal state to the public ice data type    !
+!   for use by the ocean model.                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_bottom_state (Ice, IST, part_size, G)
+subroutine set_ocean_top_fluxes (Ice, IST, G)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
 
-  real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
-  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off, ind
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  integer :: i, j, isc, iec, jsc, jec, m, n, i2, j2, i_off, j_off, ind
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ice_bottom_state", IST, G)
-    call Ice_public_type_chksum("Start set_ice_bottom_state", Ice)
+    call IST_chksum("Start set_ocean_top_fluxes", IST, G)
+    call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
   endif
 
   ! This block of code is probably unneccessary.
-  Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
   Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
   Ice%flux_sw_vis_dir(:,:) = 0.0 ; Ice%flux_sw_vis_dif(:,:) = 0.0
@@ -409,6 +407,60 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
     Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
   enddo ; enddo
+
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%flux_t(i2,j2) = IST%flux_t_ocn_top(i,j)
+    Ice%flux_q(i2,j2) = IST%flux_q_ocn_top(i,j)
+    Ice%flux_sw_vis_dir(i2,j2) = IST%flux_sw_vis_dir_ocn(i,j)
+    Ice%flux_sw_vis_dif(i2,j2) = IST%flux_sw_vis_dif_ocn(i,j)
+    Ice%flux_sw_nir_dir(i2,j2) = IST%flux_sw_nir_dir_ocn(i,j)
+    Ice%flux_sw_nir_dif(i2,j2) = IST%flux_sw_nir_dif_ocn(i,j)
+    Ice%flux_lw(i2,j2) = IST%flux_lw_ocn_top(i,j)
+    Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
+    Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
+    Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
+  enddo ; enddo
+  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+    ind = IST%tr_flux_index(m,n)
+    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
+        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IST%tr_flux_ocn_top(i,j,ind)
+    enddo ; enddo
+  enddo ; enddo
+
+  if (IST%debug) then
+    call IST_chksum("End set_ocean_top_fluxes", IST, G)
+    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
+  endif
+
+end subroutine set_ocean_top_fluxes
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! set_ocean_top_stresses - Calculate the stresses on the ocean integrated      !
+!   across all the thickness categories with the appropriate staggering, and   !
+!   store them in the public ice data type for use by the ocean model.         !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine set_ocean_top_stresses(Ice, IST, part_size, G)
+  type(ice_data_type),  intent(inout) :: Ice
+  type(ice_state_type), intent(inout) :: IST
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
+
+  real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, i2, j2, k2, i_off, j_off
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
+
+  if (IST%debug) then
+    call IST_chksum("Start set_ocean_top_stresses", IST, G)
+    call Ice_public_type_chksum("Start set_ocean_top_stresses", Ice)
+  endif
+
+  ! This block of code is probably unneccessary.
+  Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
 
   !   Copy and interpolate the ice-ocean stresses.  This code is slightly
   ! complicated because there are 6 different options supported.
@@ -536,37 +588,15 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
       enddo ; enddo ; enddo
     endif ! Cgrid_dyn
   else
-    call SIS_error(FATAL, "set_ice_bottom_state: Unrecognized flux_uv_stagger.")
+    call SIS_error(FATAL, "set_ocean_top_stresses: Unrecognized flux_uv_stagger.")
   endif
-
-  do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_t(i2,j2) = IST%flux_t_ocn_top(i,j)
-    Ice%flux_q(i2,j2) = IST%flux_q_ocn_top(i,j)
-    Ice%flux_sw_vis_dir(i2,j2) = IST%flux_sw_vis_dir_ocn(i,j)
-    Ice%flux_sw_vis_dif(i2,j2) = IST%flux_sw_vis_dif_ocn(i,j)
-    Ice%flux_sw_nir_dir(i2,j2) = IST%flux_sw_nir_dir_ocn(i,j)
-    Ice%flux_sw_nir_dif(i2,j2) = IST%flux_sw_nir_dif_ocn(i,j)
-    Ice%flux_lw(i2,j2) = IST%flux_lw_ocn_top(i,j)
-    Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
-    Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
-    Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
-  enddo ; enddo
-  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = IST%tr_flux_index(m,n)
-    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ice_bottom_state.")
-    do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
-        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IST%tr_flux_ocn_top(i,j,ind)
-    enddo ; enddo
-  enddo ; enddo
 
   if (IST%debug) then
-    call IST_chksum("End set_ice_bottom_state", IST, G)
-    call Ice_public_type_chksum("End set_ice_bottom_state", Ice)
+    call IST_chksum("End set_ocean_top_stresses", IST, G)
+    call Ice_public_type_chksum("End set_ocean_top_stresses", Ice)
   endif
 
-end subroutine set_ice_bottom_state
+end subroutine set_ocean_top_stresses
 
 !
 ! Coupler interface to provide ocean surface data to atmosphere.
@@ -1352,8 +1382,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   real, dimension(SZIB_(G),SZJB_(G))       :: fx_wat, fy_wat
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_change, mass, tmp2d
-  real, dimension(SZI_(G),SZJ_(G),0:G%CatIce) :: &
-    part_save
   real, dimension(SZI_(G),SZJ_(G),G%CatIce,G%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature in degC.
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
@@ -1485,10 +1513,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
   enddo ; enddo
 
-  do k=0,ncat ; do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    part_save(i,j,k) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
-
   !
   ! conservation checks: top fluxes
   !
@@ -1498,8 +1522,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                               message="    Start of update", check_column=.true.)
-
-  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
 
   call mpp_clock_end(iceClock7)
 
@@ -1655,6 +1677,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo ; enddo
     call mpp_clock_end(iceClockc)
   endif ! End of B-grid dynamics
+  call set_ocean_top_stresses(Ice, IST, IST%part_size, G)
 
   call mpp_clock_end(iceClock4)
 
@@ -1680,7 +1703,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                     IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   call disable_SIS_averaging(IST%diag)
 
-!  call accumulate_input_2(IST, Ice, part_save, dt_slow, G, IST%sum_output_CSp)
+  call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
@@ -1712,7 +1735,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
 
   ! Set up the fluxes in the externally visible structure Ice.
-  call set_ice_bottom_state(Ice, IST, part_save, G)
+  call set_ocean_top_fluxes(Ice, IST, G)
 
   call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
