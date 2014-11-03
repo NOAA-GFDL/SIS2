@@ -154,11 +154,36 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
 
   real,dimension(G%isc:G%iec,G%jsc:G%jec)                 :: tmp
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
+  integer :: ind, max_num_fields, next_index
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
   i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
   j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
+
+  if (IST%num_tr_fluxes < 0) then
+    ! Determine how many atmospheric boundary fluxes have been passed in, and
+    ! set up both an indexing array for these and a space to take their average.
+    ! This code is only exercised the first time that sum_top_quantities is called.
+    IST%num_tr_fluxes = 0
+    if (Atmos_boundary_fluxes%num_bcs > 0) then
+      max_num_fields = 0
+      do n=1,Atmos_boundary_fluxes%num_bcs
+        IST%num_tr_fluxes = IST%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
+        max_num_fields = max(max_num_fields, Atmos_boundary_fluxes%bc(n)%num_fields)
+      enddo
+      if (IST%num_tr_fluxes > 0) then
+        allocate(IST%tr_flux_top(SZI_(G), SZJ_(G), 0:G%CatIce, IST%num_tr_fluxes))
+        allocate(IST%tr_flux_ocn_top(SZI_(G), SZJ_(G), IST%num_tr_fluxes))
+        IST%tr_flux_top(:,:,:,:) = 0.0 ; IST%tr_flux_ocn_top(:,:,:) = 0.0
+        allocate(IST%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
+        IST%tr_flux_index(:,:) = -1 ; next_index = 1
+        do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+          IST%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
+        enddo ; enddo
+      endif
+    endif
+  endif
 
   if (IST%avg_count == 0) then
     ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
@@ -169,9 +194,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
     IST%flux_sw_nir_dir_top(:,:,:) = 0.0 ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0
     IST%flux_sw_vis_dir_top(:,:,:) = 0.0 ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0
     IST%lprec_top(:,:,:) = 0.0 ; IST%fprec_top(:,:,:) = 0.0
-    do n=1,Ice%ocean_fluxes_top%num_bcs ; do m=1,Ice%ocean_fluxes_top%bc(n)%num_fields
-      Ice%ocean_fluxes_top%bc(n)%field(m)%values(:,:,:) = 0.0
-    enddo ; enddo
+    if (IST%num_tr_fluxes > 0) IST%tr_flux_top(:,:,:,:) = 0.0
   endif
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -189,15 +212,15 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u,  flux_v
     IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
-  do n = 1, Ice%ocean_fluxes_top%num_bcs  !{
-    do m = 1, Ice%ocean_fluxes_top%bc(n)%num_fields  !{
-      do k2=1,ncat+1 ; do j2=jsc+j_off,jec+j_off ; do i2=isc+i_off,iec+i_off
-        Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
-              Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) + &
-             Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
-      enddo ; enddo ; enddo
-    enddo  !} m
-  enddo  !} n
+  do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+    ind = IST%tr_flux_index(m,n)
+    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+      IST%tr_flux_top(i,j,k,ind) = IST%tr_flux_top(i,j,k,ind) + &
+            Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
+    enddo ; enddo ; enddo
+  enddo ; enddo
 
   if (IST%id_lwdn > 0) then
     call get_avg(flux_lw(:,:,:) + STEFAN*IST%t_surf(isc:iec,jsc:jec,:)**4, &
@@ -232,15 +255,11 @@ subroutine avg_top_quantities(Ice, IST, G)
 
   real    :: u, v, divid, sign
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
   logical :: sent
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
-  i_off = 0 ; j_off = 0
-  if (Ice%ocean_fluxes_top%num_bcs>=1) then ; if (Ice%ocean_fluxes_top%bc(1)%num_fields>=1) then
-    i_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,1) - G%isc
-    j_off = LBOUND(Ice%ocean_fluxes_top%bc(1)%field(1)%values,2) - G%jsc
-  endif ; endif
+
   !
   ! compute average fluxes
   !
@@ -302,11 +321,9 @@ subroutine avg_top_quantities(Ice, IST, G)
       IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) - IST%flux_q_top(i,j,k)
       IST%flux_q_top(i,j,k) = 0.0
     endif
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    do n=1,Ice%ocean_fluxes_top%num_bcs ; do m=1,Ice%ocean_fluxes_top%bc(n)%num_fields
-      Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) = &
-          Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) * divid
-    enddo ; enddo
+    do n=1,IST%num_tr_fluxes
+      IST%tr_flux_top(i,j,k,n) = IST%tr_flux_top(i,j,k,n) * divid
+    enddo
   enddo ; enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
@@ -373,7 +390,7 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
   real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
 
   real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
-  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, m, n, i2, j2, k2, i_off, j_off, ind
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
@@ -382,6 +399,7 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
     call Ice_public_type_chksum("Start set_ice_bottom_state", Ice)
   endif
 
+  ! This block of code is probably unneccessary.
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
   Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
@@ -534,13 +552,14 @@ subroutine set_ice_bottom_state (Ice, IST, part_size, G)
     Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
   enddo ; enddo
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1  ! Use these to correct for indexing differences.
-    do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-      Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) + &
-            Ice%ocean_fluxes_top%bc(n)%field(m)%values(i2,j2,k2) * part_size(i,j,k)
+  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+    ind = IST%tr_flux_index(m,n)
+    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ice_bottom_state.")
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
+        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IST%tr_flux_ocn_top(i,j,ind)
     enddo ; enddo
-  enddo ; enddo ; enddo
+  enddo ; enddo
 
   if (IST%debug) then
     call IST_chksum("End set_ice_bottom_state", IST, G)
@@ -1985,7 +2004,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real, dimension(G%NkIce) :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
   real :: dt_slow, Idt_slow, yr_dtslow
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, k2, i_off, j_off
   real :: heat_to_ocn, h2o_to_ocn, evap_from_ocn, sn2ic, bablt
   real            :: heat_limit_ice, heat_res_ice
@@ -2034,6 +2053,15 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
   enddo ; enddo ; enddo
+  if (IST%num_tr_fluxes>0) then ; do n=1,IST%num_tr_fluxes
+    do j=jsc,jec ; do i=isc,iec
+      IST%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * IST%tr_flux_top(i,j,0,n)
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      IST%tr_flux_ocn_top(i,j,n) = IST%tr_flux_ocn_top(i,j,n) + &
+                   IST%part_size(i,j,k) * IST%tr_flux_top(i,j,k,n)
+    enddo ; enddo ; enddo
+  enddo ; endif
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
@@ -2349,7 +2377,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                               ! salinity fields for these calculations.
 
   real :: dt_slow, Idt_slow, yr_dtslow
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, k2, i_off, j_off
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt
   real :: salt_to_ice
@@ -2443,6 +2471,16 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
   enddo ; enddo ; enddo
+
+  if (IST%num_tr_fluxes>0) then ; do n=1,IST%num_tr_fluxes
+    do j=jsc,jec ; do i=isc,iec
+      IST%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * IST%tr_flux_top(i,j,0,n)
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      IST%tr_flux_ocn_top(i,j,n) = IST%tr_flux_ocn_top(i,j,n) + &
+                   IST%part_size(i,j,k) * IST%tr_flux_top(i,j,k,n)
+    enddo ; enddo ; enddo
+  enddo ; endif
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then

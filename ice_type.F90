@@ -245,10 +245,13 @@ type ice_state_type
                                ! that needs to be done.
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
+  integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
+  integer, allocatable, dimension(:,:) :: tr_flux_index
+  real, allocatable, dimension(:,:,:,:) :: tr_flux_top
+  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
-!   type(coupler_3d_bc_type)   :: ocean_fluxes_top   ! array of fluxes for averaging
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
@@ -346,7 +349,7 @@ type ice_data_type !  ice_public_type
   integer, dimension(3)    :: axes
   type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
-  type(coupler_3d_bc_type) :: ocean_fluxes_top   ! array of fluxes for averaging
+  type(coupler_3d_bc_type) :: ocean_fluxes_top   ! ###THIS IS ARCHAIC AND COULD BE DELETED!
   integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
                     ! points of the two wind stress components. Valid entries
                     ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
