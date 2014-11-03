@@ -806,7 +806,8 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   call get_param(param_file, mod, "GRID_FILE", grid_file, &
                  "Name of the file from which to read horizontal grid data.", &
                  fail_if_missing=.true.)
-  call get_param(param_file,  mod, "INPUTDIR", inputdir, default=".")
+  call get_param(param_file,  mod, "INPUTDIR", inputdir, &
+         "The directory in which input files are found.", default=".")
   inputdir = slasher(inputdir)
   filename = trim(adjustl(inputdir)) // trim(adjustl(grid_file))
   call log_param(param_file, mod, "INPUTDIR/GRID_FILE", filename)
