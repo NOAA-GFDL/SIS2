@@ -439,11 +439,12 @@ end subroutine set_ocean_top_fluxes
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ocean_top_stresses - Calculate the stresses on the ocean integrated      !
+! set_ocean_top_stress_Bgrid - Calculate the stresses on the ocean integrated  !
 !   across all the thickness categories with the appropriate staggering, and   !
-!   store them in the public ice data type for use by the ocean model.         !
+!   store them in the public ice data type for use by the ocean model.  This   !
+!   version of the routine uses wind and ice-ocean stresses on a B-grid.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_stresses(Ice, IST, part_size, G)
+subroutine set_ocean_top_stress_Bgrid(Ice, IST, part_size, G)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
@@ -455,148 +456,180 @@ subroutine set_ocean_top_stresses(Ice, IST, part_size, G)
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_stresses", IST, G)
-    call Ice_public_type_chksum("Start set_ocean_top_stresses", Ice)
+    call IST_chksum("Start set_ocean_top_stress_Bgrid", IST, G)
+    call Ice_public_type_chksum("Start set_ocean_top_stress_Bgrid", Ice)
   endif
 
   ! This block of code is probably unneccessary.
   Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
 
-  !   Copy and interpolate the ice-ocean stresses.  This code is slightly
-  ! complicated because there are 6 different options supported.
+  !   Copy and interpolate the ice-ocean stress_Bgrid.  This code is slightly
+  ! complicated because there are 3 different staggering options supported.
   if (Ice%flux_uv_stagger == AGRID) then
-    if (IST%Cgrid_dyn) then
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        Ice%flux_u(i2,j2) = ps_vel * 0.5 * (IST%flux_u_top_Cu(I,j,0) + IST%flux_u_top_Cu(I-1,j,0))
-        Ice%flux_v(i2,j2) = ps_vel * 0.5 * (IST%flux_v_top_Cv(I,j,0) + IST%flux_v_top_Cv(i,J-1,0))
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) +  part_size(i,j,k) * 0.5 * &
-                            (IST%flux_u_top_Cu(I,j,k) + IST%flux_u_top_Cu(I-1,j,k))
-        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + part_size(i,j,k) * 0.5 * &
-                            (IST%flux_v_top_Cv(I,j,k) + IST%flux_v_top_Cv(i,J-1,k))
-      endif ; enddo ; enddo ; enddo
-    else
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        Ice%flux_u(i2,j2) = ps_vel * 0.25 * &
-            ((IST%flux_u_top_bgrid(I,J,0) + IST%flux_u_top_bgrid(I-1,J-1,0)) + &
-             (IST%flux_u_top_bgrid(I-1,J,0) + IST%flux_u_top_bgrid(I,J-1,0)))
-        Ice%flux_v(i2,j2) = ps_vel * 0.25 * &
-            ((IST%flux_v_top_bgrid(I,J,0) + IST%flux_v_top_bgrid(I-1,J-1,0)) + &
-             (IST%flux_v_top_bgrid(I-1,J,0) + IST%flux_v_top_bgrid(I,J-1,0)))
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) +  part_size(i,j,k) * 0.25 * &
-            ((IST%flux_u_top_bgrid(I,J,k) + IST%flux_u_top_bgrid(I-1,J-1,k)) + &
-             (IST%flux_u_top_bgrid(I-1,J,k) + IST%flux_u_top_bgrid(I,J-1,k)))
-        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + part_size(i,j,k) * 0.25 * &
-            ((IST%flux_v_top_bgrid(I,J,k) + IST%flux_v_top_bgrid(I-1,J-1,k)) + &
-             (IST%flux_v_top_bgrid(I-1,J,k) + IST%flux_v_top_bgrid(I,J-1,k)))
-      endif ; enddo ; enddo ; enddo
-    endif
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
+      Ice%flux_u(i2,j2) = ps_vel * 0.25 * &
+          ((IST%flux_u_top_bgrid(I,J,0) + IST%flux_u_top_bgrid(I-1,J-1,0)) + &
+           (IST%flux_u_top_bgrid(I-1,J,0) + IST%flux_u_top_bgrid(I,J-1,0)))
+      Ice%flux_v(i2,j2) = ps_vel * 0.25 * &
+          ((IST%flux_v_top_bgrid(I,J,0) + IST%flux_v_top_bgrid(I-1,J-1,0)) + &
+           (IST%flux_v_top_bgrid(I-1,J,0) + IST%flux_v_top_bgrid(I,J-1,0)))
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) +  part_size(i,j,k) * 0.25 * &
+          ((IST%flux_u_top_bgrid(I,J,k) + IST%flux_u_top_bgrid(I-1,J-1,k)) + &
+           (IST%flux_u_top_bgrid(I-1,J,k) + IST%flux_u_top_bgrid(I,J-1,k)))
+      Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + part_size(i,j,k) * 0.25 * &
+          ((IST%flux_v_top_bgrid(I,J,k) + IST%flux_v_top_bgrid(I-1,J-1,k)) + &
+           (IST%flux_v_top_bgrid(I-1,J,k) + IST%flux_v_top_bgrid(I,J-1,k)))
+    endif ; enddo ; enddo ; enddo
   elseif (Ice%flux_uv_stagger == BGRID_NE) then
-    if (IST%Cgrid_dyn) then
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
-                           0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
-                                 (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        ! Consider deleting the masks here?
-        Ice%flux_u(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
-                (IST%flux_u_top_Cu(I,j,0) + IST%flux_u_top_Cu(I,j+1,0))
-        Ice%flux_v(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
-                (IST%flux_v_top_Cv(I,j,0) + IST%flux_v_top_Cv(i+1,J,0))
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
-                         (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * 0.5 * &
-                (IST%flux_u_top_Cu(I,j,k) + IST%flux_u_top_Cu(I,j+1,k))
-        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * 0.5 * &
-                (IST%flux_v_top_Cv(I,j,k) + IST%flux_v_top_Cv(i+1,J,k))
-      endif ; enddo ; enddo ; enddo
-    else
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
-                           0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
-                                 (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        Ice%flux_u(i2,j2) = IST%flux_u_top_bgrid(I,J,0) * ps_vel
-        Ice%flux_v(i2,j2) = IST%flux_v_top_bgrid(I,J,0) * ps_vel
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
-                         (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(I,J,k) * ps_vel
-        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(I,J,k) * ps_vel
-      endif ; enddo ; enddo ; enddo
-    endif ! Cgrid_dyn
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
+                         0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
+                               (part_size(i+1,j,0) + part_size(i,j+1,0)) )
+      Ice%flux_u(i2,j2) = IST%flux_u_top_bgrid(I,J,0) * ps_vel
+      Ice%flux_v(i2,j2) = IST%flux_v_top_bgrid(I,J,0) * ps_vel
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
+                       (part_size(i+1,j,k) + part_size(i,j+1,k)) )
+      Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + IST%flux_u_top_bgrid(I,J,k) * ps_vel
+      Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + IST%flux_v_top_bgrid(I,J,k) * ps_vel
+    endif ; enddo ; enddo ; enddo
   elseif (Ice%flux_uv_stagger == CGRID_NE) then
-    if (IST%Cgrid_dyn) then
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
-                           0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        Ice%flux_u(i2,j2) = ps_vel * IST%flux_u_top_Cu(I,j,0)
-        ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
-                           0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        Ice%flux_v(i2,j2) = ps_vel * IST%flux_v_top_Cv(i,J,0)
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        if (G%Lmask2dCu(I,j)) then
-          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * IST%flux_u_top_Cu(I,j,k)
-        endif
-        if (G%Lmask2dCv(i,J)) then
-          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * IST%flux_v_top_Cv(I,j,k)
-        endif
-      enddo ; enddo ; enddo
-    else
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
-                           0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        Ice%flux_u(i2,j2) = ps_vel * &
-                0.5 * (IST%flux_u_top_bgrid(I,J,0) + IST%flux_u_top_bgrid(I,J-1,0))
-        ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
-                           0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        Ice%flux_v(i2,j2) = ps_vel * &
-                0.5 * (IST%flux_v_top_bgrid(I,J,0) + IST%flux_v_top_bgrid(I-1,J,0))
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        if (G%Lmask2dCu(I,j)) then
-          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * &
-              0.5 * (IST%flux_u_top_bgrid(I,J,k) + IST%flux_u_top_bgrid(I,J-1,k))
-        endif
-        if (G%Lmask2dCv(i,J)) then
-          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * &
-                  0.5 * (IST%flux_v_top_bgrid(I,J,k) + IST%flux_v_top_bgrid(I-1,J,k))
-        endif
-      enddo ; enddo ; enddo
-    endif ! Cgrid_dyn
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
+                         0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+      Ice%flux_u(i2,j2) = ps_vel * &
+              0.5 * (IST%flux_u_top_bgrid(I,J,0) + IST%flux_u_top_bgrid(I,J-1,0))
+      ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
+                         0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+      Ice%flux_v(i2,j2) = ps_vel * &
+              0.5 * (IST%flux_v_top_bgrid(I,J,0) + IST%flux_v_top_bgrid(I-1,J,0))
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      if (G%Lmask2dCu(I,j)) then
+        ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * &
+            0.5 * (IST%flux_u_top_bgrid(I,J,k) + IST%flux_u_top_bgrid(I,J-1,k))
+      endif
+      if (G%Lmask2dCv(i,J)) then
+        ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * &
+                0.5 * (IST%flux_v_top_bgrid(I,J,k) + IST%flux_v_top_bgrid(I-1,J,k))
+      endif
+    enddo ; enddo ; enddo
   else
-    call SIS_error(FATAL, "set_ocean_top_stresses: Unrecognized flux_uv_stagger.")
+    call SIS_error(FATAL, "set_ocean_top_stress_Bgrid: Unrecognized flux_uv_stagger.")
   endif
 
   if (IST%debug) then
-    call IST_chksum("End set_ocean_top_stresses", IST, G)
-    call Ice_public_type_chksum("End set_ocean_top_stresses", Ice)
+    call IST_chksum("End set_ocean_top_stress_Bgrid", IST, G)
+    call Ice_public_type_chksum("End set_ocean_top_stress_Bgrid", Ice)
   endif
 
-end subroutine set_ocean_top_stresses
+end subroutine set_ocean_top_stress_Bgrid
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! set_ocean_top_stress_Cgrid - Calculate the stresses on the ocean integrated  !
+!   across all the thickness categories with the appropriate staggering, and   !
+!   store them in the public ice data type for use by the ocean model.  This   !
+!   version of the routine uses wind and ice-ocean stresses on a C-grid.       !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine set_ocean_top_stress_Cgrid(Ice, IST, part_size, G)
+  type(ice_data_type),  intent(inout) :: Ice
+  type(ice_state_type), intent(inout) :: IST
+  type(sea_ice_grid_type), intent(inout) :: G
+  real, dimension (SZI_(G),SZJ_(G),0:G%CatIce), intent(in) :: part_size
+
+  real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, i2, j2, k2, i_off, j_off
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
+
+  if (IST%debug) then
+    call IST_chksum("Start set_ocean_top_stress_Cgrid", IST, G)
+    call Ice_public_type_chksum("Start set_ocean_top_stress_Cgrid", Ice)
+  endif
+
+  ! This block of code is probably unneccessary.
+  Ice%flux_u(:,:) = 0.0 ; Ice%flux_v(:,:) = 0.0
+
+  !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
+  ! complicated because there are 3 different staggering options supported.
+  if (Ice%flux_uv_stagger == AGRID) then
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
+      Ice%flux_u(i2,j2) = ps_vel * 0.5 * (IST%flux_u_top_Cu(I,j,0) + IST%flux_u_top_Cu(I-1,j,0))
+      Ice%flux_v(i2,j2) = ps_vel * 0.5 * (IST%flux_v_top_Cv(I,j,0) + IST%flux_v_top_Cv(i,J-1,0))
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) +  part_size(i,j,k) * 0.5 * &
+                          (IST%flux_u_top_Cu(I,j,k) + IST%flux_u_top_Cu(I-1,j,k))
+      Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + part_size(i,j,k) * 0.5 * &
+                          (IST%flux_v_top_Cv(I,j,k) + IST%flux_v_top_Cv(i,J-1,k))
+    endif ; enddo ; enddo ; enddo
+  elseif (Ice%flux_uv_stagger == BGRID_NE) then
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
+                         0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
+                               (part_size(i+1,j,0) + part_size(i,j+1,0)) )
+      ! Consider deleting the masks here?
+      Ice%flux_u(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
+              (IST%flux_u_top_Cu(I,j,0) + IST%flux_u_top_Cu(I,j+1,0))
+      Ice%flux_v(i2,j2) = ps_vel * G%mask2dBu(I,J) * 0.5 * &
+              (IST%flux_v_top_Cv(I,j,0) + IST%flux_v_top_Cv(i+1,J,0))
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
+                       (part_size(i+1,j,k) + part_size(i,j+1,k)) )
+      Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * 0.5 * &
+              (IST%flux_u_top_Cu(I,j,k) + IST%flux_u_top_Cu(I,j+1,k))
+      Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * 0.5 * &
+              (IST%flux_v_top_Cv(I,j,k) + IST%flux_v_top_Cv(i+1,J,k))
+    endif ; enddo ; enddo ; enddo
+  elseif (Ice%flux_uv_stagger == CGRID_NE) then
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
+                         0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+      Ice%flux_u(i2,j2) = ps_vel * IST%flux_u_top_Cu(I,j,0)
+      ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
+                         0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+      Ice%flux_v(i2,j2) = ps_vel * IST%flux_v_top_Cv(i,J,0)
+    enddo ; enddo
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
+      if (G%Lmask2dCu(I,j)) then
+        ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+        Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * IST%flux_u_top_Cu(I,j,k)
+      endif
+      if (G%Lmask2dCv(i,J)) then
+        ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+        Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * IST%flux_v_top_Cv(I,j,k)
+      endif
+    enddo ; enddo ; enddo
+  else
+    call SIS_error(FATAL, "set_ocean_top_stress_Cgrid: Unrecognized flux_uv_stagger.")
+  endif
+
+  if (IST%debug) then
+    call IST_chksum("End set_ocean_top_stress_Cgrid", IST, G)
+    call Ice_public_type_chksum("End set_ocean_top_stress_Cgrid", Ice)
+  endif
+
+end subroutine set_ocean_top_stress_Cgrid
 
 !
 ! Coupler interface to provide ocean surface data to atmosphere.
@@ -1603,6 +1636,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       IST%flux_v_top_Cv(i,J,k) = fy_wat_C(i,J)
     enddo ; enddo ; enddo
 
+    call set_ocean_top_stress_Cgrid(Ice, IST, IST%part_size, G)
     call mpp_clock_end(iceClockc)
 
   else ! B-grid dynamics.
@@ -1675,9 +1709,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
       IST%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
     enddo ; enddo ; enddo
+    call set_ocean_top_stress_Bgrid(Ice, IST, IST%part_size, G)
     call mpp_clock_end(iceClockc)
   endif ! End of B-grid dynamics
-  call set_ocean_top_stresses(Ice, IST, IST%part_size, G)
 
   call mpp_clock_end(iceClock4)
 
