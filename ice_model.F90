@@ -1467,7 +1467,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_open, & ! formation rate of open water due to ridging
     rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
-    rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
+!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
     rdg_rate, & ! Niki: Where should this come from?
     snow2ocn
   real    :: tmp3
@@ -1510,6 +1510,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call post_data(IST%id_runoff_hflx, runoff_hflx, IST%diag, mask=Ice%mask )
   if (IST%id_calving_hflx>0) &
     call post_data(IST%id_calving_hflx, calving_hflx, IST%diag, mask=Ice%mask )
+  if (IST%id_frazil>0) &
+    call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag, mask=G%Lmask2dT)
 
   !TOM> assume that open water area is not up to date:
   call mpp_clock_end(iceClock)
@@ -1741,15 +1743,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   !
   ! Thermodynamics
   !
-  call mpp_clock_begin(iceClock5)
-  if (IST%id_frazil>0) call post_data(IST%id_frazil, IST%frazil(isc:iec,jsc:jec)*Idt_slow, &
-                                    IST%diag, mask=G%Lmask2dT(isc:iec,jsc:jec))
   call disable_SIS_averaging(IST%diag)
-
-  call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
+  call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
   if (IST%SIS1_5L_thermo) then
     call SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !                             runoff_hflx, calving_hflx)
@@ -1775,15 +1773,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
   !  ### This should only be called if it is used.
+  !  Other routines that do thermodynamic vertical processes should be added here
   if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
 
-  ! Set up the fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, IST, G)
-
-  call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                               message="        Post_thermo", check_column=.true.)
+
+
+
+  call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
   !
   ! Do ice transport ... all ocean fluxes have been calculated by now
@@ -1791,6 +1790,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   call mpp_clock_begin(iceClock8)
 
   if (IST%id_xprt>0) then
+    ! Store values to determine the ice and snow mass change due to transport.
     h2o_change(:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
@@ -1826,10 +1826,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                        rdg_open, rdg_vosh)
   endif
 
-  ! add snow volume dumped into ocean to flux of frozen precipitation:
-  if (IST%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) + rdg_s2o(i,j)*(IST%Rho_snow/dt_slow)
-  enddo ; enddo ; enddo ; endif
+  ! Add snow volume dumped into ocean to flux of frozen precipitation:
+  !### WARNING - rdg_s2o is never calculated!!!
+!  if (IST%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!    IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) + rdg_s2o(i,j)*(IST%Rho_snow/dt_slow)
+!  enddo ; enddo ; enddo ; endif
+
+
+  ! Set up the fluxes in the externally visible structure Ice.
+  call set_ocean_top_fluxes(Ice, IST, G)
+  call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
 
 
   ! Set appropriate surface quantities in categories with no ice.
@@ -1865,10 +1871,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call pass_var(IST%part_size, G%Domain)
   endif
 
-
   call mpp_clock_end(iceClock8)
+
   !
-  ! Thermodynamics diagnostics
+  ! Thermodynamic state diagnostics
   !
   call mpp_clock_begin(iceClock9)
   if (IST%id_cn>0) call post_data(IST%id_cn, IST%part_size(:,:,1:ncat), IST%diag, &
@@ -1996,7 +2002,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 !    if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time, mask=spread(Ice%mask,3,km-1))
 !    if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time, mask=Ice%mask)
 !    if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*cell_area(isc:iec,jsc:jec), &
-  end if
+  endif
 
   !   Copy the surface properties, fractional areas and other variables to the
   ! externally visible structure Ice.
@@ -2087,6 +2093,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   H_to_m_ice = G%H_to_kg_m2 / IST%Rho_Ice ; H_to_m_snow = G%H_to_kg_m2 / IST%Rho_Snow
 
   if (G%NkIce /= 4) call SIS_error(FATAL, "SIS1_5L_thermodynamics requires that NK_ICE=4.")
+
+  call mpp_clock_begin(iceClock5)
 
   snow_to_ice(:,:,:) = 0.0
   bsnk(:,:) = 0.0
@@ -2400,6 +2408,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   if (IST%id_qflim>0) call post_data(IST%id_qflim, qflx_lim_ice, IST%diag, mask=G%Lmask2dT)
   if (IST%id_qfres>0) call post_data(IST%id_qfres, qflx_res_ice, IST%diag, mask=G%Lmask2dT)
 
+  call disable_SIS_averaging(IST%diag)
+
 end subroutine SIS1_5L_thermodynamics
 
 subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
@@ -2504,6 +2514,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       enddo
     endif ; enddo ; enddo ; enddo
   endif
+
+  call mpp_clock_begin(iceClock5)
 
   snow_to_ice(:,:,:) = 0.0
   bsnk(:,:) = 0.0
@@ -3011,6 +3023,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                                     scale=Idt_slow, mask=G%Lmask2dT)
   if (IST%id_qflim>0) call post_data(IST%id_qflim, qflx_lim_ice, IST%diag, mask=G%Lmask2dT)
   if (IST%id_qfres>0) call post_data(IST%id_qfres, qflx_res_ice, IST%diag, mask=G%Lmask2dT)
+
+  call disable_SIS_averaging(IST%diag)
 
 end subroutine SIS2_thermodynamics
 
