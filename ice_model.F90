@@ -266,44 +266,17 @@ subroutine avg_top_quantities(Ice, IST, G)
   if (IST%avg_count == 0) call SIS_error(FATAL,'avg_top_quantities: '//&
        'no ocean model fluxes have been averaged')
 
+  ! Rotate the stress from lat/lon to ocean coordinates and possibly change the
+  ! sign to positive for downward fluxes of positive momentum.
+  sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
   divid = 1.0/real(IST%avg_count)
-
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    u = IST%flux_u_top(i,j,k) * divid
-    v = IST%flux_v_top(i,j,k) * divid
+    u = IST%flux_u_top(i,j,k) * (sign*divid)
+    v = IST%flux_v_top(i,j,k) * (sign*divid)
     IST%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
     IST%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
   enddo ; enddo ; enddo
-
-  ! Put wind stress on u,v points and change sign to +down
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
-  sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
-  if (IST%Cgrid_dyn) then
-    ! These have larger spatial extent than they usually would in case the
-    ! stresses are given to the ocean on a B-grid.
-    do k=0,ncat ; do j=jsc-1,jec+1 ; do I=isc-1,iec
-      IST%flux_u_top_Cu(I,j,k) = sign * G%mask2dCu(I,j) * &
-         0.5* (IST%flux_u_top(i,j,k) + IST%flux_u_top(i+1,j,k))
-    enddo ; enddo ; enddo
-    do k=0,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
-      IST%flux_v_top_Cv(i,J,k) = sign * G%mask2dCv(i,J) * &
-         0.5*(IST%flux_v_top(i,j,k) + IST%flux_v_top(i,j+1,k))
-    enddo ; enddo ; enddo
-  else
-    do k=0,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-      if ( G%mask2dBu(i,j) > 0.5 ) then
-        IST%flux_u_top_bgrid(I,J,k) = sign*0.25*( &
-              (IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i,j,k)) + &
-              (IST%flux_u_top(i+1,j,k) + IST%flux_u_top(i,j+1,k)) )
-        IST%flux_v_top_bgrid(I,J,k) = sign*0.25*( &
-              (IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i,j,k)) + &
-              (IST%flux_v_top(i+1,j,k) + IST%flux_v_top(i,j+1,k)) )
-      else
-        IST%flux_u_top_bgrid(I,J,k) = 0.0
-        IST%flux_v_top_bgrid(I,J,k) = 0.0
-      endif
-    enddo ; enddo ; enddo
-  endif
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  * divid
@@ -1419,7 +1392,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
 
-  real, dimension(SZIB_(G),SZJB_(G))       :: fx_wat, fy_wat
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_change, mass, tmp2d
   real, dimension(SZI_(G),SZJ_(G),G%CatIce,G%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature in degC.
@@ -1429,11 +1401,21 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G))   :: hi_avg, h_ice_input
   real, dimension(SZI_(G),SZJ_(G))   :: ms_sum, mi_sum ! Masses per unit total area, in kg m-2.
   real, dimension(SZI_(G),SZJ_(G))   :: ice_cover ! The fractional ice coverage, between 0 & 1.
-  real, dimension(SZIB_(G),SZJB_(G)) :: wind_stress_x, wind_stress_y
-  real, dimension(SZIB_(G),SZJ_(G))  :: wind_stress_Cu, fx_wat_C
-  real, dimension(SZI_(G),SZJB_(G))  :: wind_stress_Cv, fy_wat_C
+  real, dimension(SZIB_(G),SZJB_(G)) :: &
+    WindStr_x_B, WindStr_y_B, &       ! Wind stresses averaged over the ice categories on a B-grid, in Pa.
+    WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
+    str_x_ice_ocn_B, str_y_ice_ocn_B  ! Ice-ocean stresses on a B-grid, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G))  :: &
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
+    WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
+    str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points, in Pa.
+  real, dimension(SZI_(G),SZJB_(G))  :: &
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
+    WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
+    str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points, in Pa.
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
   real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
+
   real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
@@ -1463,7 +1445,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
-    mi_old      ! Old ice mass per unit area.
+    mi_old      ! Ice mass per unit area before thermodynamics.
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_open, & ! formation rate of open water due to ridging
     rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
@@ -1558,15 +1540,65 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-
   call accumulate_input_1(IST, Ice, dt_slow, G, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                               message="    Start of update", check_column=.true.)
-
   call mpp_clock_end(iceClock7)
 
-  ! Dynamics
+  !
+  ! Thermodynamics
+  !
+  if (.not.IST%interspersed_thermo) then
+
+    !TOM> Store old ice mass per unit area for calculating partial ice growth.
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      mi_old(i,j,k) = IST%mH_ice(i,j,k)
+    enddo ; enddo ; enddo
+    !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
+    !     in order to subtract ice melt proportionally from ridged ice volume (see below)
+    if (IST%do_ridging) then
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+        rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
+            rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+      enddo ; enddo ; enddo
+    endif
+
+    call disable_SIS_averaging(IST%diag)
+
+    ! The thermodynamics routines return updated values of the ice and snow
+    ! masses-per-unit area and enthalpies.
+    call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
+    if (IST%SIS1_5L_thermo) then
+      call SIS1_5L_thermodynamics(Ice, IST, G)
+    else
+      call SIS2_thermodynamics(Ice, IST, G)
+    endif
+
+    !TOM> calculate partial ice growth for ridging and aging.
+    if (IST%do_ridging) then
+      !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
+      !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
+          IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+             (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
+        IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
+      enddo ; enddo ; enddo
+    endif
+
+    !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
+    if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
+    !  Other routines that do thermodynamic vertical processes should be added here
+
+    if (IST%column_check) &
+      call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
+                                message="        Post_thermo", check_column=.true.)
+  endif
+
+  !
+  ! Dynamics - update ice velocities.
   !
   call mpp_clock_begin(iceClock4)
 
@@ -1581,24 +1613,34 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! equation) are not included in the dynamics.  All of the thickness categories
   ! are merged together.
   if (IST%Cgrid_dyn) then
-    wind_stress_Cu(:,:) = 0.0 ; wts(:,:) = 0.0
-    do k=1,ncat ; do j=jsc,jec ; do I=isc-1,iec
+    WindStr_x_Cu(:,:) = 0.0 ; wts(:,:) = 0.0 ; WindStr_x_ocn_Cu(:,:) = 0.0
+    !   The j-loop extents here are larger than they would normally be in case
+    ! the stresses are being passed to the ocean on a B-grid.
+    do k=1,ncat ; do j=jsc-1,jec+1 ; do I=isc-1,iec
       ps_vel = 0.5*G%mask2dCu(I,j) * (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
-      wind_stress_Cu(I,j) = wind_stress_Cu(I,j) + ps_vel*IST%flux_u_top_Cu(I,j,k)
+      WindStr_x_Cu(I,j) = WindStr_x_Cu(I,j) + ps_vel * (G%mask2dCu(I,j) * &
+                       0.5* (IST%flux_u_top(i,j,k) + IST%flux_u_top(i+1,j,k)) )
       wts(I,J) = wts(I,J) + ps_vel
     enddo ; enddo ; enddo
-    do j=jsc,jec ; do I=isc-1,iec
-      if (wts(I,j) > 0.) wind_stress_Cu(I,j) = wind_stress_Cu(I,j) / wts(I,j)
+    do j=jsc-1,jec+1 ; do I=isc-1,iec
+      if (wts(I,j) > 0.) WindStr_x_Cu(I,j) = WindStr_x_Cu(I,j) / wts(I,j)
+      
+      WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
+                 0.5 * (IST%flux_u_top(i,j,0) + IST%flux_u_top(i+1,j,0))
     enddo ; enddo
 
-    wind_stress_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
-    do k=1,ncat ; do J=jsc-1,jec ; do i=isc,iec
+    WindStr_y_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
+    do k=1,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
       ps_vel = 0.5*G%mask2dCv(i,J) * (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-      wind_stress_Cv(i,j) = wind_stress_Cv(i,J) + ps_vel*IST%flux_v_top_Cv(i,J,k)
+      WindStr_y_Cv(i,j) = WindStr_y_Cv(i,J) + ps_vel * ( G%mask2dCv(i,J) * &
+                     0.5*(IST%flux_v_top(i,j,k) + IST%flux_v_top(i,j+1,k)) )
       wts(i,J) = wts(i,J) + ps_vel
     enddo ; enddo ; enddo
-    do j=jsc,jec ; do I=isc-1,iec
-      if (wts(i,J) > 0.) wind_stress_Cv(i,J) = wind_stress_Cv(i,J) / wts(i,J)
+    do J=jsc-1,jec ; do i=isc-1,iec+1
+      if (wts(i,J) > 0.) WindStr_y_Cv(i,J) = WindStr_y_Cv(i,J) / wts(i,J)
+
+      WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
+                 0.5*(IST%flux_v_top(i,j,0) + IST%flux_v_top(i,j+1,0))
     enddo ; enddo
 
     if (IST%debug) then
@@ -1609,17 +1651,16 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G, haloshift=1)
       call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G)
       call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G)
-      call uchksum(wind_stress_Cu, "wind_stress_Cu before ice_C_dynamics", G)
-      call vchksum(wind_stress_Cv, "wind_stress_Cv before ice_C_dynamics", G)
-      call check_redundant_C("wind_stress before ice_C_dynamics", wind_stress_x, wind_stress_y, G)
-      call check_redundant_C("flux_u/v_top before ice_C_dynamics", IST%flux_u_top_Cu, IST%flux_v_top_Cv, G)
+      call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G)
+      call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G)
+      call check_redundant_C("WindStr before ice_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
     endif
 
     call mpp_clock_begin(iceClocka)
-    !### Ridging needs to be added with C-grid dyanmics.
+    !### Ridging needs to be added with C-grid dynamics.
     call ice_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                       IST%u_ocn_C, IST%v_ocn_C, &
-                      wind_stress_Cu, wind_stress_Cv, IST%sea_lev, fx_wat_C, fy_wat_C, &
+                      WindStr_x_Cu, WindStr_y_Cv, IST%sea_lev, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
                       dt_slow, G, IST%ice_C_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
@@ -1629,40 +1670,46 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     call mpp_clock_begin(iceClockb)
     call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
-    call pass_vector(fx_wat_C, fy_wat_C, G%Domain, stagger=CGRID_NE)
+    call pass_vector(str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, G%Domain, stagger=CGRID_NE)
     call mpp_clock_end(iceClockb)
     !
     ! Dynamics diagnostics
     !
-    if (IST%id_fax>0) call post_data(IST%id_fax, wind_stress_Cu, IST%diag)
-    if (IST%id_fay>0) call post_data(IST%id_fay, wind_stress_Cv, IST%diag)
+    if (IST%id_fax>0) call post_data(IST%id_fax, WindStr_x_Cu, IST%diag)
+    if (IST%id_fay>0) call post_data(IST%id_fay, WindStr_y_Cv, IST%diag)
 
-    do k=1,ncat ; do J=jsc-1,jec+1 ; do I=isc-1,iec
-      IST%flux_u_top_Cu(I,j,k) = fx_wat_C(I,j) ! stress of ice on ocean
-    enddo ; enddo ; enddo
-    do k=1,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
-      IST%flux_v_top_Cv(i,J,k) = fy_wat_C(i,J)
-    enddo ; enddo ; enddo
 
-    call set_ocean_top_stress_Cgrid(Ice, IST, IST%flux_u_top_Cu(:,:,0), IST%flux_v_top_Cv(:,:,0), &
-                                    fx_wat_C, fy_wat_C, IST%part_size, G)
+    call set_ocean_top_stress_Cgrid(Ice, IST, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
+                                    str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G)
     call mpp_clock_end(iceClockc)
 
   else ! B-grid dynamics.
 
-    wind_stress_x(:,:) = 0.0 ; wind_stress_y(:,:) = 0.0 ; wts(:,:) = 0.0
+    WindStr_x_B(:,:) = 0.0 ; WindStr_y_B(:,:) = 0.0 ; wts(:,:) = 0.0
     do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
       ps_vel = 0.25*G%mask2dBu(I,J) * &
           ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
            (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-      wind_stress_x(I,J) = wind_stress_x(I,J) + ps_vel * IST%flux_u_top_bgrid(I,J,k)
-      wind_stress_y(I,J) = wind_stress_y(I,J) + ps_vel * IST%flux_v_top_bgrid(I,J,k)
+      WindStr_x_B(I,J) = WindStr_x_B(I,J) + ps_vel * 0.25*( &
+              (IST%flux_u_top(i+1,j+1,k) + IST%flux_u_top(i,j,k)) + &
+              (IST%flux_u_top(i+1,j,k) + IST%flux_u_top(i,j+1,k)) )
+      WindStr_y_B(I,J) = WindStr_y_B(I,J) + ps_vel * 0.25*( &
+              (IST%flux_v_top(i+1,j+1,k) + IST%flux_v_top(i,j,k)) + &
+              (IST%flux_v_top(i+1,j,k) + IST%flux_v_top(i,j+1,k)) )
       wts(I,J) = wts(I,J) + ps_vel
     enddo ; enddo ; enddo
-    do J=jsc-1,jec ; do I=isc-1,iec ; if (wts(i,j) > 0.) then
-      wind_stress_x(I,J) = wind_stress_x(I,J) / wts(I,J)
-      wind_stress_y(I,J) = wind_stress_y(I,J) / wts(I,J)
-    endif ; enddo ; enddo
+    do J=jsc-1,jec ; do I=isc-1,iec
+      if (wts(i,j) > 0.) then
+        WindStr_x_B(I,J) = WindStr_x_B(I,J) / wts(I,J)
+        WindStr_y_B(I,J) = WindStr_y_B(I,J) / wts(I,J)
+      endif
+      WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * 0.25*( &
+              (IST%flux_u_top(i+1,j+1,0) + IST%flux_u_top(i,j,0)) + &
+              (IST%flux_u_top(i+1,j,0) + IST%flux_u_top(i,j+1,0)) )
+      WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * 0.25*( &
+              (IST%flux_v_top(i+1,j+1,0) + IST%flux_v_top(i,j,0)) + &
+              (IST%flux_v_top(i+1,j,0) + IST%flux_v_top(i,j+1,0)) )
+    enddo ; enddo
 
     if (IST%debug) then
       call IST_chksum("Before ice_dynamics", IST, G)
@@ -1672,19 +1719,17 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
       call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
       call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
-      call Bchksum(wind_stress_x, "wind_stress_x before ice_dynamics", G, symmetric=.true.)
-      call Bchksum(wind_stress_y, "wind_stress_y before ice_dynamics", G, symmetric=.true.)
-      call check_redundant_B("wind_stress before ice_dynamics",wind_stress_x, wind_stress_y, G)
-      call check_redundant_B("flux_u/v_top before ice_dynamics",IST%flux_u_top_bgrid, IST%flux_v_top_bgrid, G)
+      call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G, symmetric=.true.)
+      call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G, symmetric=.true.)
+      call check_redundant_B("WindStr before ice_dynamics",WindStr_x_B, WindStr_y_B, G)
     endif
 
     rdg_rate(:,:) = 0.0
     call mpp_clock_begin(iceClocka)
     call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice, IST%v_ice, &
-                      IST%u_ocn, IST%v_ocn, &
-                      wind_stress_x, wind_stress_y, IST%sea_lev, fx_wat, fy_wat, &
-                      IST%do_ridging, rdg_rate(isc:iec,jsc:jec), &
-                      dt_slow, G, IST%ice_B_dyn_CSp)
+                      IST%u_ocn, IST%v_ocn, WindStr_x_B, WindStr_y_B, IST%sea_lev, &
+                      str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
+                      rdg_rate(isc:iec,jsc:jec), dt_slow, G, IST%ice_B_dyn_CSp)
     call mpp_clock_end(iceClocka)
 
     if (IST%debug) then
@@ -1704,88 +1749,80 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         ps_vel = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
               ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
                (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
-        diagVarBx(I,J) = ps_vel * IST%flux_u_top_bgrid(I,J,0) + &
-                         (1.0-ps_vel) * wind_stress_x(I,J)
-        diagVarBy(I,J) = ps_vel * IST%flux_v_top_bgrid(I,J,0) + &
-                         (1.0-ps_vel) * wind_stress_y(I,J)
+        diagVarBx(I,J) = ps_vel *  WindStr_x_ocn_B(I,J) + &
+                         (1.0-ps_vel) * WindStr_x_B(I,J)
+        diagVarBy(I,J) = ps_vel * WindStr_y_ocn_B(I,J) + &
+                         (1.0-ps_vel) * WindStr_y_B(I,J)
       enddo ; enddo
 
       if (IST%id_fax>0) call post_data(IST%id_fax, diagVarBx, IST%diag)
       if (IST%id_fay>0) call post_data(IST%id_fay, diagVarBy, IST%diag)
     endif
-
-    do k=1,ncat ; do J=jsc-1,jec ; do I=isc-1,iec
-      IST%flux_u_top_bgrid(I,J,k) = fx_wat(I,J)  ! stress of ice on ocean
-      IST%flux_v_top_bgrid(I,J,k) = fy_wat(I,J)  !
-    enddo ; enddo ; enddo
   
-    call set_ocean_top_stress_Bgrid(Ice, IST, IST%flux_u_top_bgrid(:,:,0), IST%flux_v_top_bgrid(:,:,0), &
-                                    fx_wat, fy_wat, IST%part_size, G)
+    call set_ocean_top_stress_Bgrid(Ice, IST, WindStr_x_ocn_B, WindStr_y_ocn_B, &
+                                    str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G)
     call mpp_clock_end(iceClockc)
   endif ! End of B-grid dynamics
 
+
   call mpp_clock_end(iceClock4)
 
-  !TOM> Store old ice mass per unit area for calculating partial ice growth.
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    mi_old(i,j,k) = IST%mH_ice(i,j,k)
-  enddo ; enddo ; enddo
-  !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
-  !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-  if (IST%do_ridging) then
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-      rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-    enddo ; enddo ; enddo
-  endif
-
   !
-  ! Thermodynamics
+  ! Thermodynamics (The thermodynamic changes might have been applied above.)
   !
-  call disable_SIS_averaging(IST%diag)
+  if (IST%interspersed_thermo) then
 
-  ! The thermodynamics routines return updated values of the ice and snow
-  ! masses-per-unit area and enthalpies.
-  call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
-  if (IST%SIS1_5L_thermo) then
-    call SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
-!                             runoff_hflx, calving_hflx)
-  else
-
-    call SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
-!                             runoff_hflx, calving_hflx)
-
-  endif
-
-  !TOM> calculate partial ice growth for ridging and aging.
-  if (IST%do_ridging) then
-    !TOM> update ridged ice volume
-    !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
-    !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
+    !TOM> Store old ice mass per unit area for calculating partial ice growth.
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-        IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
-           (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
-      IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
+      mi_old(i,j,k) = IST%mH_ice(i,j,k)
     enddo ; enddo ; enddo
-  endif
+    !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
+    !     in order to subtract ice melt proportionally from ridged ice volume (see below)
+    if (IST%do_ridging) then
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+        rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
+            rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+      enddo ; enddo ; enddo
+    endif
 
-  !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
-  !  ### This should only be called if it is used.
-  !  Other routines that do thermodynamic vertical processes should be added here
-  if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
+    call disable_SIS_averaging(IST%diag)
 
-  if (IST%column_check) &
-    call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
-                              message="        Post_thermo", check_column=.true.)
+    ! The thermodynamics routines return updated values of the ice and snow
+    ! masses-per-unit area and enthalpies.
+    call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
+    if (IST%SIS1_5L_thermo) then
+      call SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, runoff_hflx, calving_hflx)
+    else
+      call SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, runoff_hflx, calving_hflx)
+    endif
 
+    !TOM> calculate partial ice growth for ridging and aging.
+    if (IST%do_ridging) then
+      !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
+      !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
+          IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+             (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
+        IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
+      enddo ; enddo ; enddo
+    endif
+
+    !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
+    if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
+    !  Other routines that do thermodynamic vertical processes should be added here.
+
+    if (IST%column_check) &
+      call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
+                                message="        Post_thermo", check_column=.true.)
+  endif  ! Interspersed thermo
 
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
   !
-  ! Do ice transport ... all ocean fluxes have been calculated by now
+  ! Do ice transport ... all ocean fluxes have been calculated by now.
   !
   call mpp_clock_begin(iceClock8)
 
@@ -3099,6 +3136,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "If true, use the thermodynamic calculations inhereted \n"//&
                  "from the SIS1 5 layer. Otherwise, use the newer SIS2 version.", &
                  default=.false.)
+  call get_param(param_file, mod, "INTERSPERSED_ICE_THERMO", IST%interspersed_thermo, &
+                 "If true, the sea ice thermodynamic updates are applied \n"//&
+                 "after the new velocities are determined, but before the \n"//&
+                 "transport occurs.  Otherwise, the ice thermodynamic \n"//&
+                 "updates occur at the start of the slow ice update and \n"//&
+                 "dynamics and continuity can occur together.\n"//&
+                 "The default should be changed to false.", default=.true.)
 
   dflt_stagger = "B" ; if (IST%Cgrid_dyn) dflt_stagger = "C"
   call get_param(param_file, mod, "ICE_OCEAN_STRESS_STAGGER", stagger, &

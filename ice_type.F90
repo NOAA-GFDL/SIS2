@@ -122,10 +122,6 @@ type ice_state_type
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
     flux_u_top          =>NULL(), & ! The downward? flux of zonal and meridional
     flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
-    flux_u_top_Bgrid    =>NULL(), & ! The downward? flux of zonal and meridional
-    flux_v_top_Bgrid    =>NULL(), & ! momentum on a B-grid velocity point in ???.
-    flux_u_top_Cu       =>NULL(), & ! The downward? flux of zonal and meridional
-    flux_v_top_Cv       =>NULL(), & ! momentum on a B-grid velocity point in ???.
     flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
                                     ! in W m-2.
     flux_q_top          =>NULL(), & ! The upward evaporative moisture flux at
@@ -196,6 +192,12 @@ type ice_state_type
   logical :: SIS1_5L_thermo ! If true, the thermodynamic calculations inhereted
                        ! from the 5-layer version of SIS1. Otherwise, use the
                        ! newer SIS2 version.
+  logical :: interspersed_thermo ! If true, the sea ice thermodynamic updates
+                       ! are applied after the new velocities are determined,
+                       ! but before the transport occurs.  Otherwise, the ice
+                       ! thermodynamic updates occur at the start of the slow
+                       ! ice update and dynamics and continuity can occur
+                       ! together.
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
@@ -607,15 +609,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
     allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
     allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
-    allocate(IST%flux_u_top_Cu(SZIB_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top_Cu(:,:,:) = 0.0 !NR
-    allocate(IST%flux_v_top_Cv(SZI_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_Cv(:,:,:) = 0.0 !NR
+!    allocate(IST%flux_u_top_Cu(SZIB_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top_Cu(:,:,:) = 0.0 !NR
+!    allocate(IST%flux_v_top_Cv(SZI_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_Cv(:,:,:) = 0.0 !NR
   else
     allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
     allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
     allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
     allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
-    allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-    allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
+!    allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
+!    allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
   endif
 
   ! Now register some of these arrays to be read from the restart files.
@@ -685,10 +687,8 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%part_size)
   if (IST%Cgrid_dyn) then
     deallocate(IST%u_ice_C, IST%v_ice_C, IST%u_ocn_C, IST%v_ocn_C)
-    deallocate(IST%flux_u_top_Cu, IST%flux_v_top_Cv)
   else
     deallocate(IST%u_ocn, IST%v_ocn, IST%u_ice, IST%v_ice)
-    deallocate(IST%flux_u_top_bgrid, IST%flux_v_top_bgrid)
   endif
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
