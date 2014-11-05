@@ -816,11 +816,11 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
     if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
   enddo ; enddo
   t_min = T_0degC-100. ; t_max = T_0degC+60.
