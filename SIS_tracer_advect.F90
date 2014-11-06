@@ -770,18 +770,20 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     enddo ; enddo
   endif ; enddo ! End of j-loop.
   ! Diagnostics (on southern edge?)
-  if (associated(Tr(m)%ad4d_y) .or. associated(Tr(m)%ad3d_y) .or. associated(Tr(m)%ad3d_y)) then
-    J = js-1
-    if (associated(Tr(m)%ad4d_y)) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is,ie
-      Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + flux_y(i,J,l,m)*Idt
-    enddo ; enddo ; enddo ; endif
-    if (associated(Tr(m)%ad3d_y)) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is,ie
-      Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + flux_y(i,J,l,m)*Idt
-    enddo ; enddo ; enddo ; endif
-    if (associated(Tr(m)%ad2d_y)) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is,ie
-      Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + flux_y(i,J,l,m)*Idt
-    enddo ; enddo ; enddo ; endif
-  endif
+  J = js-1
+  do m=1,ntr
+    if (associated(Tr(m)%ad4d_y) .or. associated(Tr(m)%ad3d_y) .or. associated(Tr(m)%ad3d_y)) then
+      if (associated(Tr(m)%ad4d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
+        Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + flux_y(i,J,l,m)*Idt
+      enddo ; enddo ; endif
+      if (associated(Tr(m)%ad3d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
+        Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + flux_y(i,J,l,m)*Idt
+      enddo ; enddo ; endif
+      if (associated(Tr(m)%ad2d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
+        Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + flux_y(i,J,l,m)*Idt
+      enddo ; enddo ; endif
+    endif
+  enddo ! m
 
 end subroutine advect_y
 
