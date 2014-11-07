@@ -1398,11 +1398,18 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
     temp_snow   ! A diagnostic array with the snow temperature in degC.
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
-  real, dimension(SZI_(G),SZJ_(G))   :: hi_avg, h_ice_input
-  real, dimension(SZI_(G),SZJ_(G))   :: ms_sum, mi_sum ! Masses per unit total area, in kg m-2.
-  real, dimension(SZI_(G),SZJ_(G))   :: ice_cover ! The fractional ice coverage, between 0 & 1.
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    hi_avg, &           ! The area-weighted average ice thickness, in m.
+    h_ice_input, &      ! The specified ice thickness, with specified_ice, in m.
+    ms_sum, mi_sum, &   ! Masses of snow and ice per unit total area, in kg m-2.
+    ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
+    ice_cover, &        ! The fractional ice coverage, summed across all
+                        ! thickness categories; nondimensional, between 0 & 1.
+    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses 
+    WindStr_y_A         ! averaged over the ice categories on an A-grid, in Pa.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    WindStr_x_B, WindStr_y_B, &       ! Wind stresses averaged over the ice categories on a B-grid, in Pa.
+    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses 
+    WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
     WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
     str_x_ice_ocn_B, str_y_ice_ocn_B  ! Ice-ocean stresses on a B-grid, in Pa.
   real, dimension(SZIB_(G),SZJ_(G))  :: &
@@ -1421,6 +1428,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
 
   real, dimension(SZIB_(G),SZJB_(G)) :: wts  ! A sum of the weights by category.
+  real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
@@ -1495,13 +1503,55 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag, mask=G%Lmask2dT)
 
-  !TOM> assume that open water area is not up to date:
-  call mpp_clock_end(iceClock)
-  call mpp_clock_end(iceClock2)
+  call avg_top_quantities(Ice, IST, G) ! average fluxes from update_ice_model_fast
+
+  do j=jsc,jec ; do i=isc,iec
+    IST%frazil_input(i,j) = IST%frazil(i,j)
+
+    IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
+    IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
+  enddo ; enddo
+
+  !
+  ! conservation checks: top fluxes
+  !
+  call mpp_clock_begin(iceClock7)
+  call accumulate_input_1(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+  if (IST%column_check) &
+    call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
+                              message="    Start of update", check_column=.true.)
+  call mpp_clock_end(iceClock7)
+
+  ! Determine the fractional ice coverage and the wind stresses averaged
+  ! across all the ice thickness categories on an A-grid.  This is done
+  ! over the entire data domain for safety.
+  WindStr_x_A(:,:) = 0.0 ; WindStr_y_A(:,:) = 0.0 ; ice_cover(:,:) = 0.0
+  do k=1,ncat ; do j=jsd,jed ; do i=isd,ied
+    WindStr_x_A(i,j) = WindStr_x_A(i,j) + IST%part_size(i,j,k) * IST%flux_u_top(i,j,k)
+    WindStr_y_A(i,j) = WindStr_y_A(i,j) + IST%part_size(i,j,k) * IST%flux_v_top(i,j,k)
+    ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
+  do j=jsd,jed ; do i=isd,ied
+    if (ice_cover(i,j) > 0.0) then
+      I_wts = 1.0 / ice_cover(i,j)
+      WindStr_x_A(i,j) = WindStr_x_A(i,j) * I_wts
+      WindStr_y_A(i,j) = WindStr_y_A(i,j) * I_wts
+      if (ice_cover(i,j) > 1.0) ice_cover(i,j) = 1.0
+
+      ice_free(i,j) = IST%part_size(i,j,0)
+  !    Rescale to add up to 1?
+  !    I_wts = 1.0 / (ice_free(i,j) + ice_cover(i,j))
+  !    ice_free(i,j) = ice_free(i,j) * I_wts ; ice_cover(i,j) = ice_cover(i,j) * I_wts
+    else
+      ice_free(i,j) = 1.0 ! ; ice_cover(i,j) = 0.0
+    endif
+  enddo ; enddo
+
+  
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then
+    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
     H_to_m_ice = G%H_to_kg_m2 / IST%Rho_ice
-    ice_cover(:,:) = min(sum(IST%part_size(:,:,1:ncat),dim=3),1.0)
     call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
     if (IST%Cgrid_dyn) then
@@ -1523,28 +1573,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
               Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     endif
+    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
   endif
-  call mpp_clock_begin(iceClock2)
-  call mpp_clock_begin(iceClock)
-
-  call avg_top_quantities(Ice, IST, G) ! average fluxes from update_ice_model_fast
-
-  do j=jsc,jec ; do i=isc,iec
-    IST%frazil_input(i,j) = IST%frazil(i,j)
-
-    IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
-    IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
-  enddo ; enddo
-
-  !
-  ! conservation checks: top fluxes
-  !
-  call mpp_clock_begin(iceClock7)
-  call accumulate_input_1(IST, Ice, dt_slow, G, IST%sum_output_CSp)
-  if (IST%column_check) &
-    call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
-                              message="    Start of update", check_column=.true.)
-  call mpp_clock_end(iceClock7)
 
   !
   ! Thermodynamics
@@ -1613,7 +1643,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! equation) are not included in the dynamics.  All of the thickness categories
   ! are merged together.
   if (IST%Cgrid_dyn) then
-    WindStr_x_Cu(:,:) = 0.0 ; wts(:,:) = 0.0 ; WindStr_x_ocn_Cu(:,:) = 0.0
+    WindStr_x_Cu(:,:) = 0.0 ; WindStr_x_ocn_Cu(:,:) = 0.0 ; wts(:,:) = 0.0
     !   The j-loop extents here are larger than they would normally be in case
     ! the stresses are being passed to the ocean on a B-grid.
     do k=1,ncat ; do j=jsc-1,jec+1 ; do I=isc-1,iec
@@ -1628,8 +1658,27 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
                  0.5 * (IST%flux_u_top(i,j,0) + IST%flux_u_top(i+1,j,0))
     enddo ; enddo
+!   do j=jsc-1,jec+1 ; do I=isc-1,iec
+!     weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i+1,j)*ice_cover(i+1,j))
+!     if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+!       WindStr_x_Cu(I,j) = G%mask2dCu(I,j) * &
+!           (G%areaT(i,j) * ice_cover(i,j) * WindStr_x_A(i,j) + &
+!            G%areaT(i+1,j)*ice_cover(i+1,j)*WindStr_x_A(i+1,j)) * I_wts
+!     else
+!       WindStr_x_Cu(I,j) = 0.0
+!     endif
 
-    WindStr_y_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
+!     weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
+!     if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+!       WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
+!           (G%areaT(i,j) * ice_free(i,j) * IST%flux_u_top(i,j,0) + &
+!            G%areaT(i+1,j)*ice_free(i+1,j)*IST%flux_u_top(i+1,j,0)) * I_wts
+!     else
+!       WindStr_x_ocn_Cu(I,j) = 0.0
+!     endif
+!   enddo ; enddo
+
+    WindStr_y_Cv(:,:) = 0.0 ; WindStr_y_ocn_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
     do k=1,ncat ; do J=jsc-1,jec ; do i=isc-1,iec+1
       ps_vel = 0.5*G%mask2dCv(i,J) * (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
       WindStr_y_Cv(i,j) = WindStr_y_Cv(i,J) + ps_vel * ( G%mask2dCv(i,J) * &
@@ -1642,6 +1691,25 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
                  0.5*(IST%flux_v_top(i,j,0) + IST%flux_v_top(i,j+1,0))
     enddo ; enddo
+!   do J=jsc-1,jec ; do i=isc-1,iec+1
+!     weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i,j+1)*ice_cover(i,j+1))
+!     if (G%mask2dCv(i,J) * weights > 0.0) then ; I_wts = 1.0 / weights
+!       WindStr_y_Cv(i,J) = G%mask2dCv(i,J) * &
+!           (G%areaT(i,j) * ice_cover(i,j) * WindStr_y_A(i,j) + &
+!            G%areaT(i,j+1)*ice_cover(i,j+1)*WindStr_y_A(i,j+1)) * I_wts
+!     else
+!       WindStr_y_Cv(i,J) = 0.0
+!     endif
+
+!     weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
+!     if (weights > 0.0) then ; I_wts = 1.0 / weights
+!       WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
+!           (G%areaT(i,j) * ice_free(i,j) * IST%flux_v_top(i,j,0) + &
+!            G%areaT(i,j+1)*ice_free(i,j+1)*IST%flux_v_top(i,j+1,0)) * I_wts
+!     else
+!       WindStr_y_ocn_Cv(i,J) = 0.0
+!     endif
+!   enddo ; enddo
 
     if (IST%debug) then
       call IST_chksum("Before ice_C_dynamics", IST, G)
@@ -1710,6 +1778,40 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
               (IST%flux_v_top(i+1,j+1,0) + IST%flux_v_top(i,j,0)) + &
               (IST%flux_v_top(i+1,j,0) + IST%flux_v_top(i,j+1,0)) )
     enddo ; enddo
+
+!   do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(I,J) > 0.0) then
+!     weights = ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1) + G%areaT(i,j)*ice_cover(i,j)) + &
+!                (G%areaT(i+1,j)*ice_cover(i+1,j) + G%areaT(i,j+1)*ice_cover(i,j+1)) )
+!     I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+!     WindStr_x_B(I,J) = G%mask2dBu(I,J) * &
+!             ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_x_A(i+1,j+1) + &
+!               G%areaT(i,j)   * ice_cover(i,j)   * WindStr_x_A(i,j)) + &
+!              (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_x_A(i+1,j) + &
+!               G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_x_A(i,j+1)) ) * I_wts
+!     WindStr_y_B(I,J) = G%mask2dBu(I,J) * &
+!             ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_y_A(i+1,j+1) + &
+!               G%areaT(i,j)   * ice_cover(i,j)   * WindStr_y_A(i,j)) + &
+!              (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_y_A(i+1,j) + &
+!               G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_y_A(i,j+1)) ) * I_wts
+
+
+!     weights = ((G%areaT(i+1,j+1)*ice_free(i+1,j+1) + G%areaT(i,j)*ice_free(i,j)) + &
+!                (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
+!     I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+!     WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
+!             ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*IST%flux_u_top(i+1,j+1,0) + &
+!               G%areaT(i,j)   * ice_free(i,j)   * IST%flux_u_top(i,j,0)) + &
+!              (G%areaT(i+1,j) * ice_free(i+1,j) * IST%flux_u_top(i+1,j,0) + &
+!               G%areaT(i,j+1) * ice_free(i,j+1) * IST%flux_u_top(i,j+1,0)) ) * I_wts
+!     WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
+!             ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*IST%flux_v_top(i+1,j+1,0) + &
+!               G%areaT(i,j)   * ice_free(i,j)   * IST%flux_v_top(i,j,0)) + &
+!              (G%areaT(i+1,j) * ice_free(i+1,j) * IST%flux_v_top(i+1,j,0) + &
+!               G%areaT(i,j+1) * ice_free(i,j+1) * IST%flux_v_top(i,j+1,0)) ) * I_wts
+!   else
+!     WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
+!     WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0
+!   endif ; enddo ; enddo
 
     if (IST%debug) then
       call IST_chksum("Before ice_dynamics", IST, G)
