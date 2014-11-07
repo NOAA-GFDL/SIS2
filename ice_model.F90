@@ -1406,8 +1406,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     ice_cover, &        ! The fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
     WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses 
-    WindStr_y_A         ! averaged over the ice categories on an A-grid, in Pa.
-  real, dimension(SZIB_(G),SZJB_(G)) :: &
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
+    WindStr_y_ocn_A, &  ! ice-free ocean on an A-grid, in Pa.
+    ice_free_in, &      ! The initial fractional open water; nondimensional, between 0 & 1.
+    ice_cover_in, &     ! The initial fractional ice coverage, summed across all
+                        ! thickness categories; nondimensional, between 0 & 1.
+    WindStr_x_A_in, &   ! Initial onal (_x_) and meridional (_y_) wind stresses 
+    WindStr_y_A_in      ! averaged over the ice categories on an A-grid, in Pa.
+ real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses 
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
     WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
@@ -1545,6 +1552,11 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     else
       ice_free(i,j) = 1.0 ! ; ice_cover(i,j) = 0.0
     endif
+    WindStr_x_ocn_A(i,j) = IST%flux_u_top(i,j,0)
+    WindStr_y_ocn_A(i,j) = IST%flux_v_top(i,j,0)
+
+    ice_cover_in(i,j) = ice_cover(i,j) ; ice_free_in(i,j) = ice_free(i,j)
+    WindStr_x_A_in(i,j) = WindStr_x_A(i,j) ; WindStr_y_A_in(i,j) = WindStr_y_A(i,j)
   enddo ; enddo
 
   
@@ -1580,7 +1592,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   ! Thermodynamics
   !
   if (.not.IST%interspersed_thermo) then
-
     !TOM> Store old ice mass per unit area for calculating partial ice growth.
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       mi_old(i,j,k) = IST%mH_ice(i,j,k)
@@ -1606,6 +1617,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call SIS2_thermodynamics(Ice, IST, G)
     endif
 
+    call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
+
     !TOM> calculate partial ice growth for ridging and aging.
     if (IST%do_ridging) then
       !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
@@ -1625,6 +1638,28 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%column_check) &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                                 message="        Post_thermo", check_column=.true.)
+
+    ! Correct the wind stresses for changes in the fractional ice-coverage.
+    call pass_var(IST%part_size, G%Domain)
+    ice_cover(:,:) = 0.0
+    do k=1,ncat ; do j=jsd,jed ; do i=isd,ied
+      ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+    enddo ; enddo ; enddo
+    do j=jsd,jed ; do i=isd,ied
+      ice_free(i,j) = IST%part_size(i,j,0)
+
+      if (ice_cover(i,j) > ice_cover_in(i,j)) then
+        WindStr_x_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_u_top(i,j,0) + &
+                            ice_cover_in(i,j)*WindStr_x_A_in(i,j)) / ice_cover(i,j)
+        WindStr_y_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_v_top(i,j,0) + &
+                            ice_cover_in(i,j)*WindStr_y_A_in(i,j)) / ice_cover(i,j)
+      elseif (ice_free(i,j) > ice_free_in(i,j)) then
+        WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_x_A_in(i,j) + &
+                            ice_free_in(i,j)*IST%flux_u_top(i,j,0)) / ice_free(i,j)
+        WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_y_A_in(i,j) + &
+                            ice_free_in(i,j)*IST%flux_v_top(i,j,0)) / ice_free(i,j)
+      endif
+    enddo ; enddo
   endif
 
   !
@@ -1659,8 +1694,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
         if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
           WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
-              (G%areaT(i,j) * ice_free(i,j) * IST%flux_u_top(i,j,0) + &
-               G%areaT(i+1,j)*ice_free(i+1,j)*IST%flux_u_top(i+1,j,0)) * I_wts
+              (G%areaT(i,j) * ice_free(i,j) * WindStr_x_ocn_A(i,j) + &
+               G%areaT(i+1,j)*ice_free(i+1,j)*WindStr_x_ocn_A(i+1,j)) * I_wts
         else
           WindStr_x_ocn_Cu(I,j) = 0.0
         endif
@@ -1679,8 +1714,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
         weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
         if (weights > 0.0) then ; I_wts = 1.0 / weights
           WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
-              (G%areaT(i,j) * ice_free(i,j) * IST%flux_v_top(i,j,0) + &
-               G%areaT(i,j+1)*ice_free(i,j+1)*IST%flux_v_top(i,j+1,0)) * I_wts
+              (G%areaT(i,j) * ice_free(i,j) * WindStr_y_ocn_A(i,j) + &
+               G%areaT(i,j+1)*ice_free(i,j+1)*WindStr_y_ocn_A(i,j+1)) * I_wts
         else
           WindStr_y_ocn_Cv(i,J) = 0.0
         endif
@@ -1777,15 +1812,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                    (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
         I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
         WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*IST%flux_u_top(i+1,j+1,0) + &
-                  G%areaT(i,j)   * ice_free(i,j)   * IST%flux_u_top(i,j,0)) + &
-                 (G%areaT(i+1,j) * ice_free(i+1,j) * IST%flux_u_top(i+1,j,0) + &
-                  G%areaT(i,j+1) * ice_free(i,j+1) * IST%flux_u_top(i,j+1,0)) ) * I_wts
+                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_x_ocn_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_x_ocn_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_x_ocn_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_x_ocn_A(i,j+1)) ) * I_wts
         WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*IST%flux_v_top(i+1,j+1,0) + &
-                  G%areaT(i,j)   * ice_free(i,j)   * IST%flux_v_top(i,j,0)) + &
-                 (G%areaT(i+1,j) * ice_free(i+1,j) * IST%flux_v_top(i+1,j,0) + &
-                  G%areaT(i,j+1) * ice_free(i,j+1) * IST%flux_v_top(i,j+1,0)) ) * I_wts
+                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_y_ocn_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_y_ocn_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_y_ocn_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_y_ocn_A(i,j+1)) ) * I_wts
       else
         WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
         WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0

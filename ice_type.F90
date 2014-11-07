@@ -614,15 +614,11 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
     allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
     allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
-!    allocate(IST%flux_u_top_Cu(SZIB_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top_Cu(:,:,:) = 0.0 !NR
-!    allocate(IST%flux_v_top_Cv(SZI_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_Cv(:,:,:) = 0.0 !NR
   else
     allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
     allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
     allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
     allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
-!    allocate(IST%flux_u_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_u_top_bgrid(:,:,:) = 0.0 !NR
-!    allocate(IST%flux_v_top_bgrid(SZIB_(G), SZJB_(G), 0:CatIce)) ; IST%flux_v_top_bgrid(:,:,:) = 0.0 !NR
   endif
 
   ! Now register some of these arrays to be read from the restart files.
