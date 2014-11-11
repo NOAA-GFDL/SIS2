@@ -35,6 +35,7 @@ use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
+use SIS_tracer_advect, only : advect_scalar
 use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
 
@@ -71,7 +72,8 @@ type, public :: ice_transport_CS ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
   logical :: do_ridging
-  logical :: use_SIS_continuity ! Use the mroe modern continuity solver from SIS.
+  logical :: use_SIS_continuity ! Use the more modern continuity solver from SIS.
+  logical :: use_SIS_thickness_advection ! Use the SIS tracer advection schemes for thickness.
   type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
   type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
@@ -296,7 +298,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
       call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS)
     endif
 
-    call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_adv, G, CS)
+    if (CS%use_SIS_thickness_advection) then
+      call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%SIS_tr_adv_CSp)
+    else
+      call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_adv, G, CS)
+    endif
 
     call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
@@ -1091,6 +1097,8 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "Apply a ridging scheme as imported by Torge Martin.", default=.false.)
   call get_param(param_file, mod, "USE_SIS_CONTINUITY", CS%use_SIS_continuity, &
                  "If true, uses a continuity solver from SIS that has more options.", default=.true.)
+  call get_param(param_file, mod, "USE_SIS_THICKNESS_ADVECTION", CS%use_SIS_thickness_advection, &
+                 "If true, uses the SIS tracer transport scheme for thickness.", default=.false.)
 
   call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
