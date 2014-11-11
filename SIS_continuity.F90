@@ -44,6 +44,7 @@ module SIS_continuity
 !********+*********+*********+*********+*********+*********+*********+**
 
 use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
+use MOM_obsolete_params, only : obsolete_logical
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : get_param, log_version, param_file_type
@@ -764,7 +765,8 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
 !                 for this module
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_continuity" ! This module's name.
+  character(len=40) :: mod = "SIS_continuity" ! This module's name.
+  character(len=40) :: mesg    ! Message for error messages.
 
   if (associated(CS)) then
     call SIS_error(WARNING, "SIS_continuity_init called with associated control structure.")
@@ -774,26 +776,37 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
 
 ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "UPWIND_2D_CONTINUITY", CS%use_upwind2d, &
-                 "If true, use the non-directionally split upwind continuity \n"//&
-                 "scheme that was used in SIS1.", default=.true.)
-  call get_param(param_file, mod, "MONOTONIC_CONTINUITY", CS%monotonic, &
-                 "If true, SIS_continuity uses the Colella and Woodward \n"//&
-                 "monotonic limiter.  The default (false) is to use a \n"//&
-                 "simple positive definite limiter.", default=.false.)
-  call get_param(param_file, mod, "SIMPLE_2ND_PPM_CONTINUITY", CS%simple_2nd, &
-                 "If true, SIS_continuity uses a simple 2nd order \n"//&
-                 "(arithmetic mean) interpolation of the edge values. \n"//&
-                 "This may give better PV conservation propterties. While \n"//&
-                 "it formally reduces the accuracy of the continuity \n"//&
-                 "solver itself in the strongly advective limit, it does \n"//&
-                 "not reduce the overall order of accuracy of the dynamic \n"//&
-                 "core.", default=.false.)
-  call get_param(param_file, mod, "UPWIND_1ST_CONTINUITY", CS%upwind_1st, &
-                 "If true, SIS_continuity becomes a 1st-order upwind \n"//&
-                 "continuity solver.  This scheme is highly diffusive \n"//&
-                 "but may be useful for debugging or in single-column \n"//&
-                 "mode where its minimal stensil is useful.", default=.false.)
+  call get_param(param_file, mod, "SIS_CONTINUITY_SCHEME", mesg, &
+          desc="The horizontal transport scheme used in continuity:\n"//&
+          "  UPWIND_2D - Non-directionally split upwind\n"//&
+          "  PCM       - Directionally split peicewise constant\n"//&
+          "  PPM:C2PD  - Positive definite PPM with 2nd order edge values\n"//&
+          "  PPM:C2MO  - Monotonic PPM with 2nd order edge values\n", &
+          default='UPWIND_2D')
+  CS%use_upwind2d = .false. ; CS%upwind_1st = .false. ; CS%simple_2nd = .false.
+  CS%monotonic = .false.
+  select case (trim(mesg))
+    case ("UPWIND_2D")
+      CS%use_upwind2d = .true.
+    case ("PCM")
+      CS%upwind_1st = .true.
+    case ("PPM:C2PD")
+      CS%simple_2nd = .true.
+    case ("PPM:C2MO")
+      CS%simple_2nd = .true.
+      CS%monotonic = .true.
+    case default
+      call SIS_error(FATAL, "SIS_continuity, SIS_continuity_init: "//&
+           "Unknown SIS_CONTINUITY_SCHEME = "//trim(mesg))
+  end select
+  call obsolete_logical(param_file, "MONOTONIC_CONTINUITY", &
+       hint="Use SIS_CONTINUITY_SCHEME instead.")
+  call obsolete_logical(param_file, "UPWIND_2D_CONTINUITY", &
+       hint="Use SIS_CONTINUITY_SCHEME instead.")
+  call obsolete_logical(param_file, "SIMPLE_2ND_PPM_CONTINUITY", &
+       hint="Use SIS_CONTINUITY_SCHEME instead.")
+  call obsolete_logical(param_file, "UPWIND_1ST_CONTINUITY", &
+       hint="Use SIS_CONTINUITY_SCHEME instead.")
 
   call get_param(param_file, mod, "CONT_PPM_VOLUME_BASED_CFL", CS%vol_CFL, &
                  "If true, use the ratio of the open face lengths to the \n"//&
