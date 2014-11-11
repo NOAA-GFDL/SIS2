@@ -271,7 +271,7 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
 !$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,u,h_in,hL,hR,  &
 !$OMP                                  uh,dt,G,CS) &
 !$OMP                          private(do_i,duhdu,du,du_max_CFL,du_min_CFL,uh_tot_0,duhdu_tot_0, &
-!$OMP                                  visc_rem_max, I_vrm, du_lim, dx_E, dx_W, any_simple_OBC ) &
+!$OMP                                  visc_rem_max, I_vrm, du_lim, dx_E, dx_W ) &
 !$OMP      firstprivate(visc_rem)
   do j=jsh,jeh
     do I=ish-1,ieh ; do_i(I) = .true. ; enddo
@@ -406,11 +406,11 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
-!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,v,h_in,hL,hR,vh,use_visc_rem, &
-!$OMP                                  visc_rem_v,dt,G,CS )                             &
+!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,v,h_in,hL,hR,vh, &
+!$OMP                                  dt,G,CS )                           &
 !$OMP                          private(do_i,dvhdv,dv,dv_max_CFL,dv_min_CFL,vh_tot_0,    &
 !$OMP                                  dvhdv_tot_0,visc_rem_max,I_vrm,dv_lim,dy_N,      &
-!$OMP                                  dy_S,any_simple_OBC ) &
+!$OMP                                  dy_S ) &
 !$OMP                     firstprivate(visc_rem)
   do J=jsh-1,jeh
     do i=ish,ieh ; do_i(i) = .true. ; enddo
