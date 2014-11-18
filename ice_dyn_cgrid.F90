@@ -76,6 +76,10 @@ type, public :: ice_C_dyn_CS ; private
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
   logical :: debug_redundant  ! If true, debug redundant points.
+  logical :: project_drag_vel ! If true, project forward the ice velocity used
+                              ! in the drag calculation to avoid an instability
+                              ! that can occur when an finite stress is applied
+                              ! to thin ice moving with the velocity of the ocean.
   logical :: weak_coast_stress = .false.
   logical :: weak_low_shear = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
@@ -160,8 +164,13 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
                  "Otherwise they go to -P_ice.  This setting is temporary.", &
                  default=.false.)
 
-  call get_param(param_file, mod, "ICE_YEILD_ELLIPTICITY", CS%EC, &
-                 "The ellipticity coefficient for the plastic yeild curve \n"//&
+  call get_param(param_file, mod, "PROJECT_ICE_DRAG_VEL", CS%project_drag_vel, &
+                 "If true, project forward the ice velocity used in the \n"//&
+                 "drag calculation to avoid an instability that can occur \n"//&
+                 "when an finite stress is applied to thin ice moving with \n"//&
+                 "the velocity of the ocean.", default=.false.)
+  call get_param(param_file, mod, "ICE_YIELD_ELLIPTICITY", CS%EC, &
+                 "The ellipticity coefficient for the plastic yield curve \n"//&
                  "in the sea-ice rheology.  For an infinite ellipticity \n"//&
                  "(i.e., a cavitating fluid rheology), use 0.", &
                  units = "Nondim", default=2.0)
@@ -403,7 +412,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   real :: Cor       ! A Coriolis accleration, in m s-2.
   real :: fxic_now, fyic_now  ! ice internal stress accelerations, in m s-2.
-  real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points, in s-1.
+  real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points, in kg m-2 s-1.
   real :: tot_area  ! The sum of the area of the four neighboring cells, in m2.
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings, in m.
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
@@ -420,6 +429,19 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale, ND.
   real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp)
   real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp)
+
+  real :: v2_at_u     ! The squared v-velocity interpolated to u points, in m s-1.
+  real :: u2_at_v     ! The squared u-velocity interpolated to v points, in m s-1.
+  real :: uio_init, m_uio_explicit, uio_pred ! , uio
+  real :: vio_init, m_vio_explicit, vio_pred ! , vio
+  real :: I_cdRhoDt, cdRho
+  real :: b_vel0      ! The initial difference between the velocity magnitude
+                      ! and the absolute value of the u- or v- component, plus
+                      ! the ice thickness divided by the time step and the drag
+                      ! coefficient, all in m s-1.
+  real :: drag_u_m, drag_v_m ! Drag rates with the ocean at u & v points, in s-1.
+  real :: uio_C   ! A u-velocity difference between the ocean and ice, in m s-1.
+  real :: vio_C   ! A v-velocity difference between the ocean and ice, in m s-1.  
 
   real :: Tdamp   ! The damping timescale of the stress tensor components
                   ! toward their equilibrium solution due to the elastic terms,
@@ -446,7 +468,6 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     time_end_in       ! The end time for diagnostics when this routine started.
   real :: time_int_in ! The diagnostics' time interval when this routine started.
   logical :: do_hifreq_output  ! If true, output occurs every iterative step.
-
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
   integer :: i, j, isc, iec, jsc, jec, n
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -483,6 +504,9 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   endif
 
   dt = dt_slow/CS%evp_sub_steps
+  I_cdRhoDt = 1.0 / (CS%cdw * CS%Rho_ocean * dt)
+
+
   EC2 = CS%EC**2
   I_EC = 0.0 ; if (CS%EC > 0.0) I_EC = 1.0 / CS%EC
   I_2EC = 0.0 ; if (CS%EC > 0.0) I_2EC = 0.5 / CS%EC
@@ -802,6 +826,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
 
+    cdRho = CS%cdw * CS%Rho_ocean
     ! Save the current values of u for later use in updating v.
     do I=isc-1,iec
       u_tmp(I,jsc-1) = ui(I,jsc-1) ; u_tmp(I,jec+1) = ui(I,jec+1) ;
@@ -821,37 +846,68 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                            dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j) ) * &
                   I_mi_u(i,j)
-      drag_u = CS%cdw * CS%Rho_ocean * sqrt((ui(I,j)-uo(I,j))**2 + 0.25 * &
-                  (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
-                   ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2)) + &
-                  CS%drag_bg_vel2 ) * I_mi_u(I,j)
+      v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
+                     (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
+                      ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
+                  
+      uio_init = (ui(I,j)-uo(I,j))
+      drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
 
       ! Determine the Coriolis acceleration and sum for averages...
       Cor_u(I,j) = Cor_u(I,j) + (Cor  - f2dt_u(I,j) * ui(I,j)) * I1_f2dt2_u(I,j)
 
-      !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
-      ! update of the other terms and an implicit bottom drag calculation.
-      ui(I,j) = G%mask2dCu(I,j) * ( (ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) + &
-                 dt * ((PFu(I,j) + fxat(I,j)*I_mi_u(I,j)) + &
-                       (fxic_now + drag_u * uo(I,j))) ) / &
-                (1.0 + dt * drag_u)
+      if (CS%project_drag_vel) then
+      ! Project the new u-velocity using a quasi-analytic implicit treatment for
+      ! drag, but explicit treatments for everything else, to estimate the drag
+      ! coefficient, then take the larger of the two estimates of
+      ! the ice-ocean drag.
+        if (G%mask2dCu(I,j) > 0.0) then
+          m_uio_explicit = uio_init*mi_u(I,j) + dt * &
+               ((Cor + (PFu(I,j) + fxic_now))*mi_u(I,j) + fxat(I,j))
+          b_vel0 = mi_u(I,j) * I_cdRhoDt + &
+                   ( sqrt(uio_init**2 + v2_at_u) - abs(uio_init) )
+          if (b_vel0**2 > 1e8*I_cdRhoDt*abs(m_uio_explicit)) then
+            uio_pred = m_uio_explicit * I_cdRhoDt / b_vel0
+          else
+            uio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_uio_explicit)) - &
+                              b_vel0)
+          endif
+          drag_u = cdRho * sqrt(max(uio_init**2, uio_pred**2) + v2_at_u )
+        endif
+
+        !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
+        ! update of the other terms and an implicit bottom drag calculation.
+        uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
+                   ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
+                    dt * (mi_u(I,j) * (PFu(I,j) + fxic_now) + fxat(I,j)) ) / &
+                   (mi_u(I,j) + m_neglect + dt * drag_u)
+
+        ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
+        ! Note that fxoc is the stress felt by the ocean.
+        fxoc(I,j) = fxoc(I,j) - drag_u*uio_C
+      else
+        !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
+        ! update of the other terms and an implicit bottom drag calculation.
+        drag_u_m = I_mi_u(I,j) * drag_u
+        ui(I,j) = G%mask2dCu(I,j) * ( (ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) + &
+                   dt * ((PFu(I,j) + fxat(I,j)*I_mi_u(I,j)) + &
+                         (fxic_now + drag_u_m * uo(I,j))) ) / &
+                  (1.0 + dt * drag_u_m)
+        ! Note that fxoc is the stress felt by the ocean.
+        fxoc(I,j) = fxoc(I,j) - drag_u_m*(uo(I,j) - ui(I,j))*mi_u(I,j)
+      endif
 
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now*mi_u(I,j)
-      ! Note that fxoc is the stress felt by the ocean.
-      fxoc(I,j) = fxoc(I,j) - drag_u*(uo(I,j) - ui(I,j))*mi_u(I,j)
-      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + mi_u(I,j) * &
-               ( (G%IdyCu(I,j)*(dy2T(i+1,j)*(CS%str_d(i+1,j)) - &
-                                dy2T(i,j)  *(CS%str_d(i,j))) ) * &
-                 (G%IareaCu(I,j) * I_mi_u(i,j)) )
-      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + mi_u(I,j) * &
-               ( (G%IdyCu(I,j)*(dy2T(i+1,j)*(CS%str_t(i+1,j)) - &
-                                dy2T(i,j)  *(CS%str_t(i,j))) ) * &
-                 (G%IareaCu(I,j) * I_mi_u(i,j)) )
-      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + mi_u(I,j) * &
-               ( (G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
-                                dx2B(I,J-1)*CS%str_s(I,J-1)) ) * &
-                 (G%IareaCu(I,j) * I_mi_u(i,j)) )
+
+      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * &
+                 G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j))
+      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * &
+                  G%IdyCu(I,j)*(dy2T(i+1,j)* CS%str_t(i+1,j) - &
+                                dy2T(i,j)  * CS%str_t(i,j) ) * G%IareaCu(I,j)
+      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * &
+                  G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
+                                dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
     enddo ; enddo
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
@@ -865,38 +921,67 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                             dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J) ) * &
                   I_mi_v(i,j)
-      drag_v = CS%cdw*CS%Rho_ocean * sqrt((vi(i,J)-vo(i,J))**2 + 0.25 * &
-                  (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
-                   ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2)) + &
-                  CS%drag_bg_vel2 )  * I_mi_v(i,J)
+      u2_at_v = CS%drag_bg_vel2 + 0.25 * &
+                (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
+                 ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
+                  
+      vio_init = (vi(i,J)-vo(i,J))
+      drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
 
       ! Determine the Coriolis acceleration and sum for averages...
       Cor_v(I,J) = Cor_v(I,J) + (Cor - f2dt_v(i,J) * vi(i,J)) * I1_f2dt2_v(i,J)
 
-      !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
-      ! update of the other terms and an implicit bottom drag calculation.
-      vi(i,J) = G%mask2dCv(i,J) * ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
-                 dt * ((PFv(i,J) + fyat(i,J)*I_mi_v(i,J)) + &
-                       (fyic_now + drag_v * vo(i,J))) ) / &
-                (1.0 + dt * drag_v)
+      if (CS%project_drag_vel) then
+      ! Project the new v-velocity using a quasi-analytic implicit treatment for
+      ! drag, but explicit treatments for everything else, to estimate the drag
+      ! coefficient, then take the larger of the two estimates of
+      ! the ice-ocean drag.
+      
+        if (G%mask2dCv(i,J) > 0.0) then
+          m_vio_explicit = vio_init*mi_v(i,J) + dt * &
+               ((Cor + (PFv(i,J) + fyic_now))*mi_v(i,J) + fyat(i,J))
+          b_vel0 = mi_v(i,J) * I_cdRhoDt + &
+                   (sqrt(vio_init**2 + u2_at_v) - abs(vio_init))
+          if (b_vel0**2 > 1e8*I_cdRhoDt*abs(m_vio_explicit)) then
+            vio_pred = m_vio_explicit * I_cdRhoDt / b_vel0
+          else
+            vio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_vio_explicit)) - &
+                              b_vel0)
+          endif
+          drag_v = cdRho * sqrt(max(vio_init**2, vio_pred**2) + u2_at_v )
+        endif
+
+        !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
+        ! update of the other terms and an implicit bottom drag calculation.
+        vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
+                   ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
+                    dt * (mi_v(i,J) * (PFv(i,J) + fyic_now) + fyat(i,J)) ) / &
+                   (mi_v(i,J) + m_neglect + dt * drag_v)
+
+        vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
+        ! Note that fyoc is the stress felt by the ocean.
+        fyoc(i,J) = fyoc(i,J) - drag_v*vio_C
+      else  ! not project_drag_vel
+        drag_v_m = drag_v * I_mi_v(i,J)
+        vi(i,J) = G%mask2dCv(i,J) * ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
+                   dt * ((PFv(i,J) + fyat(i,J)*I_mi_v(i,J)) + &
+                         (fyic_now + drag_v_m * vo(i,J))) ) / &
+                  (1.0 + dt * drag_v_m)
+        ! Note that fyoc is the stress felt by the ocean.
+        fyoc(i,J) = fyoc(i,J) - drag_v_m*(vo(i,J) - vi(i,J))*mi_v(i,J)
+      endif
 
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now*mi_v(i,J)
-      ! Note that fyoc is the stress felt by the ocean.
-      fyoc(i,J) = fyoc(i,J) - drag_v*(vo(i,J) - vi(i,J))*mi_v(i,J)
 
-      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + mi_v(i,J) * &
-               ( (G%IdxCv(i,J)*(dx2T(i,j+1)*(CS%str_d(i,j+1)) - &
-                                dx2T(i,j)  *(CS%str_d(i,j))) ) * &
-                 (G%IareaCv(i,J) * I_mi_v(i,j)) )
-      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + mi_v(i,J) * &
-               ( (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
-                                dx2T(i,j)  *(-CS%str_t(i,j))) ) * &
-                 (G%IareaCv(i,J) * I_mi_v(i,j)) )
-      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + mi_v(i,J) * &
-               ( (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
-                                dy2B(I-1,J)*CS%str_s(I-1,J)) ) * &
-                 (G%IareaCv(i,J) * I_mi_v(i,j)) )
+      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * &
+               G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
+      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * &
+                 (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
+                                dx2T(i,j)  *(-CS%str_t(i,j))) ) * G%IareaCv(i,J)
+      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * &
+                 (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
+                                dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
     enddo ; enddo
 
     if (do_hifreq_output) then

@@ -126,6 +126,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
   stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
 
+  do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (h(i,j,k) < 0.0) then
+    call SIS_error(FATAL, 'Negative thickness input to ice_continuity().')
+  endif ; enddo ; enddo ; enddo
+
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
     do k=1,G%CatIce ; do j=js,je ; do I=is-1,ie
@@ -144,8 +148,9 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * &
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
-      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
-        'Negative thickness encountered in ice_continuity().')
+      if (h(i,j,k) < 0.0) then
+        call SIS_error(FATAL, 'Negative thickness encountered in ice_continuity().')
+      endif
     enddo ; enddo ; enddo
 
   elseif (x_first) then
@@ -158,8 +163,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(LB,ncat,G,uh,hin,dt,h)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
-      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+      if (h(i,j,k) < 0.0) then
+        call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
+      endif
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -173,8 +180,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,vh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
-      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+      if (h(i,j,k) < 0.0) then
+        call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
+      endif
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -189,8 +198,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,hin,dt,G,vh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
-      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+      if (h(i,j,k) < 0.0) then
+        call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
+      endif
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -203,8 +214,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,uh)
     do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
-      if (h(i,j,k) < 0.0) call SIS_error(FATAL, &
+      if (h(i,j,k) < 0.0) then
+        call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
+      endif
     enddo ; enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
