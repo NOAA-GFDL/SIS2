@@ -239,9 +239,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
-  if (CS%check_conservation) &
+  if (CS%check_conservation) then
+    call get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice(1), tot_snow(1))
     call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, enth_ice(1), &
                             enth_snow(1))
+  endif
 
   !   Determine the whole-cell averaged mass of snow and ice.
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0
@@ -258,24 +260,20 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
     endif
   enddo ; enddo ; enddo
 
-  if (CS%check_conservation) then
-    call get_total_amounts(mca_ice, mca_snow, G, tot_ice(1), tot_snow(1))
-  endif
+  ! Part-size no longer matters, but make sure that ice is in the right thickness
+  ! category before advection.
+  call adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
+                             TrReg, G, CS)!Niki: add ridging and age
 
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
   ! each partition.
-
-  ! Part-size no longer matters, but make sure that ice is in the right thickness
-  ! category before advection.
   call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
   call update_SIS_tracer_halos(TrReg, G, complete=.false.)
   call pass_var(mca_ice,  G%Domain, complete=.false.)
   call pass_var(mca_snow, G%Domain, complete=.false.)
   call pass_var(mH_ice, G%Domain, complete=.true.)
 
-  call adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
-                             TrReg, G, CS)!Niki: add ridging and age
 
   dt_adv = dt_slow / real(CS%adv_sub_steps)
   do iTransportSubcycles = 1, CS%adv_sub_steps
@@ -317,6 +315,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
     endif
   enddo ; enddo
 
+  ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
@@ -340,7 +339,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
       part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
       if (mca_snow(i,j,k) > 0.0) &
         call SIS_error(FATAL, &
-          "Positive snow mcaumes should not exist without ice.")
+          "Positive mca_snow values should not exist without ice.")
       mH_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
@@ -406,12 +405,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
   part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
 
   if (CS%check_conservation) then
-    do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-      mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
-      mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
-    enddo ; enddo ; enddo
-
-    call get_total_amounts(mca_ice, mca_snow, G, tot_ice(2), tot_snow(2))
+    call get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice(2), tot_snow(2))
 
     call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, enth_ice(2), &
                             enth_snow(2))
@@ -600,29 +594,28 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
   real, dimension(SZI_(G),SZCAT_(G)) :: &
     mca0_ice, mca0_snow, trans_ice, trans_snow
   logical :: do_any, do_j(SZJ_(G))
-  integer :: i, j, k, m, is, ie, js, je, isd, ied, jsd, jed, nLay
+  integer :: i, j, k, m, is, ie, js, je, nLay
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   ! Only work on rows that have any sea ice at all.
-  do j=jsd,jed
+  do j=js,je
     do_j(j) = .false.
     do k=1,G%CatIce
-      do i=isd,ied ; if (mca_ice(i,j,k) > 0.0) then
+      do i=is,ie ; if (mca_ice(i,j,k) > 0.0) then
        do_j(j) = .true. ; exit
       endif ; enddo
       if (do_j(j)) exit
     enddo
   enddo
 
-  do j=jsd,jed ; if (do_j(j)) then
-    do k=1,G%CatIce ; do i=isd,ied
+  do j=js,je ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=is,ie
       mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
     enddo ; enddo
     trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
     do_any = .false.
 
-    do k=1,G%CatIce-1 ; do i=isd,ied
+    do k=1,G%CatIce-1 ; do i=is,ie
       if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) > mH_lim(k+1))) then
         ! Move some or all of the ice to a thicker category.
         ! For now move all of it.
@@ -654,20 +647,20 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
 
     if (do_any) then
       call advect_tracers_thicker(mca0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .false., j, isd, ied)
+                                  TrReg, .false., j, is, ie)
       call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .true., j, isd, ied)
+                                  TrReg, .true., j, is, ie)
     endif
   endif ; enddo ! j-loop
 
-  do j=jsd,jed ; if (do_j(j)) then
-    do k=1,G%CatIce ; do i=isd,ied
+  do j=js,je ; if (do_j(j)) then
+    do k=1,G%CatIce ; do i=is,ie
       mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
     enddo ; enddo
     trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
     do_any = .false.
 
-    do k=G%CatIce,2,-1 ; do i=isd,ied
+    do k=G%CatIce,2,-1 ; do i=is,ie
       if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) < mH_lim(k))) then
         ! Move some or all of the ice to a thinner category.
         ! For now move all of it.
@@ -701,16 +694,16 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
 
     if (do_any) then
       call advect_tracers_thicker(mca0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .false., j, isd, ied)
+                                  TrReg, .false., j, is, ie)
       call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .true., j, isd, ied)
+                                  TrReg, .true., j, is, ie)
     endif
   endif ; enddo
 
   ! Compress the ice in category 1 if it is thinner than the minimum.
   if (mH_lim(1) > 0.0) then
     I_mH_lim1 = 1.0 / mH_lim(1)
-    do j=jsd,jed ; do i=isd,ied
+    do j=js,je ; do i=is,ie
       if ((mca_ice(i,j,1) > 0.0) .and. (mH_ice(i,j,1) < mH_lim(1))) then
         ! Compress the ice in this category to the minimum thickness.
         part_sz(i,j,1) = part_sz(i,j,1) * (mH_ice(i,j,1) * I_mH_lim1)
@@ -930,14 +923,17 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
 
 end subroutine slab_ice_advect
 
-subroutine get_total_amounts(mca_ice, mca_snow, G, tot_ice, tot_snow)
+subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice, tot_snow)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: mca_ice, mca_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)  :: mH_ice, mH_snow
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in)  :: part_sz
   type(EFP_type), intent(out) :: tot_ice, tot_snow
-! Arguments: mca_ice - The mass per unit grid-cell area of the ice in each
-!                      category in units of H (often kg m-2).
-!  (in)      mca_snow - The mass per unit grid-cell area of the snow atop the
-!                       ice in each category in units of H (often kg m-2).
+! Arguments: part_sz - The fractional ice concentration within a cell in each
+!                      thickness category, nondimensional, 0-1 at the end, in/out.
+!  (in)      mH_ice - The mass per unit area of the ice in each
+!                    category in units of H (often kg m-2).
+!  (in)      mH_snow - The mass per unit area of the snow atop the
+!                     ice in each category in units of H (often kg m-2).
 !  (in)      G - The ocean's grid structure.
 !  (out)     tot_ice - The globally integrated total ice, in kg.
 !  (out)     tot_snow - The globally integrated total snow, in kg.
@@ -950,8 +946,8 @@ subroutine get_total_amounts(mca_ice, mca_snow, G, tot_ice, tot_snow)
   sum_mca_ice(:,:) = 0.0
   sum_mca_snow(:,:) = 0.0
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_mca_ice(i,j) = sum_mca_ice(i,j) + G%areaT(i,j) * mca_ice(i,j,k)
-    sum_mca_snow(i,j) = sum_mca_snow(i,j) + G%areaT(i,j) * mca_snow(i,j,k)
+    sum_mca_ice(i,j) = sum_mca_ice(i,j) + G%areaT(i,j) * (part_sz(i,j,k)*mH_ice(i,j,k))
+    sum_mca_snow(i,j) = sum_mca_snow(i,j) + G%areaT(i,j) * (part_sz(i,j,k)*mH_snow(i,j,k))
   enddo ; enddo ; enddo
 
   total = reproducing_sum(sum_mca_ice, EFP_sum=tot_ice)
