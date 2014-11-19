@@ -51,12 +51,16 @@ type, public :: SIS_sum_out_CS ! ; private
                                 ! mass conservation check
   real    :: imb_tol            ! The tolerance for imbalances to be flagged by
                                 ! column_check, nondim.
+  integer :: maxtrunc           ! The number of truncations per ice statistics
+                                ! save interval at which the run is stopped.
   logical :: write_stdout       ! If true, periodically write sea ice statistics
                                 ! to stdout to allow the progress to be seen.
   logical :: write_stocks       ! If true, write the integrated tracer amounts
                                 ! to stdout when the statistics files are written.
   integer :: previous_calls = 0 ! The number of times write_ice_statistics has been called.
   integer :: prev_n = 0         ! The value of n from the last call.
+  integer, pointer :: ntrunc    ! The number of times the velocity has been truncated
+                                ! since the last call to write_ice_statistics.
 !  integer :: statsfile_nc       ! NetCDF id of the statistics file.
   integer :: statsfile_ascii    ! The unit number of the ascii version of the statistics file.
 !  type(fieldtype), dimension(NUM_FIELDS+MAX_FIELDS_) :: &

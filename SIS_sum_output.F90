@@ -101,12 +101,14 @@ public accumulate_input_1, accumulate_input_2
 
 contains
 
-subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
+subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
+                               ntrunc)
   type(sea_ice_grid_type),  intent(inout) :: G
   type(param_file_type),    intent(in)    :: param_file
   character(len=*),         intent(in)    :: directory
   type(time_type),          intent(in)    :: Input_start_time
   type(SIS_sum_out_CS),     pointer       :: CS
+  integer, target, optional,intent(inout) :: ntrunc
 ! Arguments: G - The sea ice model's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
@@ -114,6 +116,8 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
 !  (in)      Input_start_time - The start time of the simulation.
 !  (in/out)  CS - A pointer that is set to point to the control structure
 !                 for this module
+!  (in/out,opt)  ntrunc - The integer that stores the number of times the velocity
+!                     has been truncated since the last call to write_ice_statistics.
   real :: Rho_0, maxvel
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -126,6 +130,9 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
   endif
   allocate(CS)
 
+  if (present(ntrunc)) then ; CS%ntrunc => ntrunc ; else ; allocate(CS%ntrunc) ; endif
+  CS%ntrunc = 0
+
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, "")
   call get_param(param_file, mod, "WRITE_STOCKS", CS%write_stocks, &
@@ -137,6 +144,12 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS)
   call get_param(param_file, mod, "DT", CS%dt, &
                  "The sea ice dynamics time step.", units="s", &
                  default=-1.0)
+  call get_param(param_file, mod, "MAXTRUNC", CS%maxtrunc, &
+                 "The run will be stopped, and the day set to a very \n"//&
+                 "large value if the velocity is truncated more than \n"//&
+                 "MAXTRUNC times between  writing ice statistics. \n"//&
+                 "Set MAXTRUNC to 0 to stop if there is any truncation \n"//&
+                 "of sea ice velocities.", units="truncations save_interval-1", default=0)
 
   call get_param(param_file, mod, "STATISTICS_FILE", statsfile, &
                  "The file to use to write the globally integrated \n"//&
@@ -268,8 +281,9 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
     mass_anom_EFP, salt_anom_EFP, heat_anom_EFP
 
   real :: CFL_trans    ! A transport-based definition of the CFL number, nondim.
-  real :: CFL_lin      ! A simpler definition of the CFL number, nondim.
-  real :: max_CFL(2)   ! The maxima of the CFL numbers, nondim.
+  real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection, nondim.
+  real :: dt_CFL       ! The timestep for calculating the CFL number, in s.
+  real :: max_CFL      ! The maximum of the CFL numbers, nondim.
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
     tmp1
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)+1) :: &
@@ -284,7 +298,8 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   real    :: reday, var
   character(len=120) :: statspath_nc
   character(len=300) :: mesg
-  character(len=32)  :: mesg_intro, time_units, day_str, n_str, msg_start
+  character(len=48)  :: msg_start
+  character(len=32)  :: mesg_intro, time_units, day_str, n_str, trunc_str
 
   integer :: isc, iec, jsc, jec
 
@@ -429,32 +444,37 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 
 
 ! Calculate the maximum CFL numbers.
-! max_CFL(1:2) = 0.0
-! dt_CFL = max(CS%dt, 0.)
-! do j=js,je ; do I=Isq,Ieq
-!   if (u(I,j) < 0.0) then
-!     CFL_trans = (-u(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
-!   else
-!     CFL_trans = (u(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
-!   endif
-!   CFL_lin = abs(u(I,j) * dt_CFL) * G%IdxCu(I,j)
-!   max_CFL(1) = max(max_CFL(1), CFL_trans)
-!   max_CFL(2) = max(max_CFL(2), CFL_lin)
-! enddo ; enddo
-! do J=Jsq,Jeq ; do i=is,ie
-!   if (v(i,J) < 0.0) then
-!     CFL_trans = (-v(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
-!   else
-!     CFL_trans = (v(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
-!   endif
-!   CFL_lin = abs(v(i,J) * dt_CFL) * G%IdyCv(i,J)
-!   max_CFL(1) = max(max_CFL(1), CFL_trans)
-!   max_CFL(2) = max(max_CFL(2), CFL_lin)
-! enddo ; enddo
+  max_CFL = 0.0
+  dt_CFL = max(CS%dt, 0.)
+  if (associated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
+    if (IST%u_ice_C(I,j) < 0.0) then
+      CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+    else
+      CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+    endif
+    max_CFL = max(max_CFL, CFL_trans)
+  enddo ; enddo ; endif
+  if (associated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
+    if (IST%v_ice_C(i,J) < 0.0) then
+      CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+    else
+      CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+    endif
+    max_CFL = max(max_CFL, CFL_trans)
+  enddo ; enddo ; endif
+  if ( .not.(associated(IST%u_ice_C) .or. associated(IST%v_ice_C)) .and. &
+       (associated(IST%u_ice_B) .and. associated(IST%v_ice_B)) ) then
+    do J=js-1,je ; do I=is-1,ie
+      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
+      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
+      max_CFL = max(max_CFL, CFL_u, CFL_v)
+    enddo ; enddo
+  endif
 
+  call sum_across_PEs(CS%ntrunc)
 !  if (nTr_stocks > 0) call sum_across_PEs(Tr_stocks,nTr_stocks)
-!  call max_across_PEs(max_CFL(1))
-!  call max_across_PEs(max_CFL(2))
+  call max_across_PEs(max_CFL)
+
   if (CS%previous_calls == 0) then
     CS%mass_prev = Mass ; CS%fresh_water_input = 0.0
     CS%salt_prev = Salt ; CS%net_salt_input = 0.0
@@ -519,16 +539,22 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   elseif (n < 100000000) then ; write(n_str, '(I8)')  n
   else                        ; write(n_str, '(I10)') n ; endif
 
+  if     (CS%ntrunc < 1000000)   then ; write(trunc_str, '(I6)')  CS%ntrunc
+  elseif (CS%ntrunc < 10000000)  then ; write(trunc_str, '(I7)')  CS%ntrunc
+  elseif (CS%ntrunc < 100000000) then ; write(trunc_str, '(I8)')  CS%ntrunc
+  else                                ; write(trunc_str, '(I10)') CS%ntrunc ; endif
+
   msg_start = trim(n_str)//","//trim(day_str)
   if (present(message)) msg_start = trim(message)
+  msg_start = trim(msg_start)//", "//trim(trunc_str)
 
   if (is_root_pe()) then
     Heat_anom_norm = 0.0 ; if (Heat /= 0.0) Heat_anom_norm = Heat_anom/Heat
     Salt_anom_norm = 0.0 ; if (Salt /= 0.0) Salt_anom_norm = Salt_anom/Salt
-    write(CS%statsfile_ascii,'(A,", Area", 2(ES19.12), ", Ext", 2(es11.4), &
+    write(CS%statsfile_ascii,'(A,", Area", 2(ES19.12), ", Ext", 2(es11.4), ", CFL", F6.3, &
                 &", M",2(ES12.5),", Enth",2(ES13.5),", S ",2(f8.4),", Me ",ES9.2,&
                 &", Te ",ES9.2,", Se ",ES9.2)') &
-          trim(msg_start), Area_NS(1:2), Extent_NS(1:2), mass_NS(1:2), &
+          trim(msg_start), Area_NS(1:2), Extent_NS(1:2), max_CFL, mass_NS(1:2), &
           heat_NS(1:2), 1000.*salinity_NS(1:2), mass_anom * I_Mass, &
           Heat_anom_norm, salt_anom_norm
   endif
@@ -539,10 +565,10 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       trim(mesg_intro), trim(day_str(1:3))//trim(day_str(4:)), trim(n_str), &
       Area_NS(1:2), mass_NS(1:2)
 
-!    if (CS%ntrunc > 0) then
-!      write(*,'(A," Energy/Mass:",ES12.5," Truncations ",I0)') &
-!        trim(mesg_intro)//trim(day_str), En_mass, CS%ntrunc
-!    endif
+    if (CS%ntrunc > 0) then
+      write(*,'(A," Sea Ice Truncations ",I0)') &
+        trim(mesg_intro)//trim(day_str), CS%ntrunc
+    endif
 
     if (CS%write_stocks) then
       msg_start = " Total"
@@ -626,6 +652,11 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 
 ! call flush_file(CS%statsfile_nc)
 
+  if (is_root_pe() .and. (CS%ntrunc>CS%maxtrunc)) then
+    call SIS_error(FATAL, "write_ice_statistics: Sea ice velocity has been "//&
+                          "truncated too many times.")
+  endif
+  CS%ntrunc = 0
   CS%previous_calls = CS%previous_calls + 1
   if (CS%column_check) then ; do j=js,je ; do i=is,ie
     CS%water_col_prev(i,j) = col_mass(i,j,1) + col_mass(i,j,2)

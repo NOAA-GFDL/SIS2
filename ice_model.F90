@@ -921,10 +921,10 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
                                     (IST%u_ocn(I,J-1) + IST%u_ocn(I-1,J)) )
         Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(I,J) + IST%v_ocn(I-1,J-1)) + &
                                     (IST%v_ocn(I,J-1) + IST%v_ocn(I-1,J)) )
-        Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice(I,J) + IST%u_ice(I-1,J-1)) + &
-                                    (IST%u_ice(I,J-1) + IST%u_ice(I-1,J)) )
-        Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice(I,J) + IST%v_ice(I-1,J-1)) + &
-                                    (IST%v_ice(I,J-1) + IST%v_ice(I-1,J)) )
+        Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
+                                    (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
+        Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
+                                    (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
       else
         Ice%u_surf(i2,j2,1) = 0.0 ; Ice%v_surf(i2,j2,1) = 0.0
         Ice%u_surf(i2,j2,2) = 0.0 ; Ice%v_surf(i2,j2,2) = 0.0
@@ -1578,8 +1578,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     else
       call icebergs_run( Ice%icebergs, IST%Time, &
               Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ice(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE, &
@@ -1868,7 +1868,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     rdg_rate(:,:) = 0.0
     call mpp_clock_begin(iceClocka)
-    call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice, IST%v_ice, &
+    call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                       IST%u_ocn, IST%v_ocn, WindStr_x_B, WindStr_y_B, IST%sea_lev, &
                       str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
                       rdg_rate(isc:iec,jsc:jec), dt_slow, G, IST%ice_B_dyn_CSp)
@@ -1879,7 +1879,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     endif
 
     call mpp_clock_begin(iceClockb)
-    call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
+    call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
     call mpp_clock_end(iceClockb)
 
     call mpp_clock_begin(iceClockc)
@@ -1992,10 +1992,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     ! Convert the velocities to C-grid points for transport.
     uc(:,:) = 0.0; vc(:,:) = 0.0
     do j=jsc,jec ; do I=isc-1,iec
-      uc(I,j) = 0.5 * ( IST%u_ice(I,J-1) + IST%u_ice(I,J) )
+      uc(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
     enddo ; enddo
     do J=jsc-1,jec ; do i = isc,iec
-      vc(i,J) = 0.5 * ( IST%v_ice(I-1,J) + IST%v_ice(I,J) )
+      vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
     enddo ; enddo
 
     call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, uc, vc, &
@@ -3593,7 +3593,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     if (IST%Cgrid_dyn) then
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
     else
-      call pass_vector(IST%u_ice, IST%v_ice, G%Domain, stagger=BGRID_NE)
+      call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
     endif
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
@@ -3630,7 +3630,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_thm_param(IST%slab_ice, k_snow, h_lo_lim)
 
   if (IST%Cgrid_dyn) then
-    call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp)
+    call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp, IST%ntrunc)
   else
     call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
   endif
@@ -3649,7 +3649,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call register_SIS_tracer(IST%age_ice, G, 1, "age_ice", param_file, &
                              IST%TrReg, snow_tracer=.false.)
 
-  call SIS_sum_output_init(G, param_file, "./", Time_Init, IST%sum_output_CSp)
+  call SIS_sum_output_init(G, param_file, "./", Time_Init, IST%sum_output_CSp, IST%ntrunc)
 
   call close_param_file(param_file)
 

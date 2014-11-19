@@ -72,6 +72,12 @@ type, public :: ice_C_dyn_CS ; private
                               ! value of minimum shears used in the denominator
                               ! of the stress equations, nondim.  I suspect that
                               ! this needs to be greater than 1.
+  real    :: CFL_trunc        ! Velocity components will be truncated when they
+                              ! are large enough that the corresponding CFL number
+                              ! exceeds this value, nondim.
+  logical :: CFL_check_its    ! If true, check the CFL number for every iteration
+                              ! of the rheology solver; otherwise only check the
+                              ! final velocities that are used for transport.
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
@@ -87,6 +93,8 @@ type, public :: ice_C_dyn_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
+  integer, pointer :: ntrunc  ! The number of times the velocity has been truncated
+                              ! since the last call to write_ice_statistics.
   logical :: FirstCall = .true.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
@@ -108,12 +116,13 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_C_dyn_init - initialize the ice dynamics and set parameters.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
+subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   type(time_type),     target, intent(in)    :: Time
   type(sea_ice_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(ice_C_dyn_CS),          pointer       :: CS
+  integer, target, optional,   intent(inout) :: ntrunc
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -121,6 +130,8 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
 !  (in)      diag - A structure that is used to regulate diagnostic output.
 !  (in/out)  CS - A pointer that is set to point to the control structure
 !                 for this module.
+!  (in/out,opt)  ntrunc - The integer that stores the number of times the velocity
+!                     has been truncated since the last call to write_ice_statistics.
 
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
@@ -139,6 +150,8 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
 
   CS%diag => diag
   CS%Time => Time
+  if (present(ntrunc)) then ; CS%ntrunc => ntrunc ; else ; allocate(CS%ntrunc) ; endif
+  CS%ntrunc = 0
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
@@ -198,6 +211,15 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS)
                  units="kg m-3", default=905.0)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
+  call get_param(param_file, mod, "CFL_TRUNCATE", CS%CFL_trunc, &
+                 "The value of the CFL number that will cause ice velocity \n"//&
+                 "components to be truncated; instability can occur past 0.5.", &
+                 units="nondim", default=0.5)
+  call get_param(param_file, mod, "CFL_TRUNC_DYN_ITS", CS%CFL_check_its, &
+                 "If true, check the CFL number for every iteration of the \n"//&
+                 "rheology solver; otherwise only the final velocities that \n"//&
+                 "are used for transport are checked.", &
+                 default=.false.)
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
@@ -374,6 +396,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     fxic, &  ! Zonal force due to internal stresses, in Pa.
     fxic_d, fxic_t, fxic_s, &
+    ui_min_trunc, &  ! The range of v-velocities beyond which the velocities
+    ui_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
     Cor_u, & ! Zonal Coriolis acceleration, in m s-2.
     PFu, &   ! Zonal hydrostatic pressure driven acceleration, in m s-2.
     u_tmp, & ! A temporary copy of the old values of ui, in m s-1.
@@ -385,6 +409,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real, dimension(SZI_(G),SZJB_(G)) :: &
     fyic, &  ! Meridional force due to internal stresses, in Pa.
     fyic_d, fyic_t, fyic_s, &
+    vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
+    vi_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration, in m s-2.
     PFv, &   ! Meridional hydrostatic pressure driven acceleration, in m s-2.
     mi_v, &  ! The total ice and snow mass interpolated to v points, in kg m-2.
@@ -468,6 +494,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     time_end_in       ! The end time for diagnostics when this routine started.
   real :: time_int_in ! The diagnostics' time interval when this routine started.
   logical :: do_hifreq_output  ! If true, output occurs every iterative step.
+  logical :: do_trunc_its  ! If true, overly large velocities in the iterations are truncated.
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
   integer :: i, j, isc, iec, jsc, jec, n
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -505,7 +532,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   dt = dt_slow/CS%evp_sub_steps
   I_cdRhoDt = 1.0 / (CS%cdw * CS%Rho_ocean * dt)
-
+  do_trunc_its = (CS%CFL_check_its .and. (CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0))
 
   EC2 = CS%EC**2
   I_EC = 0.0 ; if (CS%EC > 0.0) I_EC = 1.0 / CS%EC
@@ -529,6 +556,19 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     Tdamp = max(0.36*dt_slow, 3.0*dt)
   endif
   dt_2Tdamp = dt / (2.0 * Tdamp)
+
+  ui_min_trunc(:,:) = 0.0 ; ui_max_trunc(:,:) = 0.0
+  vi_min_trunc(:,:) = 0.0 ; vi_max_trunc(:,:) = 0.0
+  if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
+    do j=jsc,jec ; do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
+      ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
+      ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
+    endif ; enddo ; enddo
+    do J=jsc-1,jec ; do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
+      vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
+      vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
+    endif ; enddo ; enddo
+  endif
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     ! Store the total snow and ice mass.
@@ -908,6 +948,14 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * &
                   G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                                 dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
+
+      if (do_trunc_its) then
+        if (ui(I,j) < ui_min_trunc(I,j)) then
+          ui(I,j) = ui_min_trunc(I,j)
+        elseif (ui(I,j) > ui_max_trunc(I,j)) then
+          ui(I,j) = ui_max_trunc(I,j)
+        endif
+      endif
     enddo ; enddo
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
@@ -982,6 +1030,14 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
+
+      if (do_trunc_its) then
+        if (vi(i,J) < vi_min_trunc(i,J)) then
+          vi(i,J) = vi_min_trunc(i,J)
+        elseif (vi(i,J) > vi_max_trunc(i,J)) then
+          vi(i,J) = vi_max_trunc(i,J)
+        endif
+      endif
     enddo ; enddo
 
     if (do_hifreq_output) then
@@ -1058,6 +1114,30 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     fyic_t(i,J) = fyic_t(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
     fyic_s(i,J) = fyic_s(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
   enddo ; enddo
+
+  !   Truncate any overly large velocity components.  These final velocities
+  ! are the ones that are used for continuity and transport, and hence have
+  ! CFL limitations that must be satisfied for numerical stability.
+  if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
+    do j=jsc,jec ; do I=isc-1,iec
+      if (ui(I,j) < ui_min_trunc(I,j)) then
+        ui(I,j) = 0.95 * ui_min_trunc(I,j)
+        if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+      elseif (ui(I,j) > ui_max_trunc(I,j)) then
+        ui(I,j) = 0.95*ui_max_trunc(I,j)
+        if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+      endif
+    enddo ; enddo
+    do J=jsc-1,jec ; do i=isc,iec
+      if (vi(i,J) < vi_min_trunc(i,J)) then
+        vi(i,J) = 0.95 * vi_min_trunc(i,J)
+        if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+      elseif (vi(i,J) > vi_max_trunc(i,J)) then
+        vi(i,J) = 0.95*vi_max_trunc(i,J)
+        if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+      endif
+    enddo ; enddo
+  endif
 
   ! Write out diagnostics associated with the ice dynamics.
   if (query_SIS_averaging_enabled(CS%diag)) then

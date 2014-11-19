@@ -73,8 +73,8 @@ type ice_state_type
 
   ! The following are the 6 variables that constitute the sea-ice state.
   real, pointer, dimension(:,:) :: &
-    u_ice =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
-    v_ice =>NULL(), & ! along the model's grid directions on a B-grid, in m s-1.
+    u_ice_B =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
+    v_ice_B =>NULL(), & ! along the model's grid directions on a B-grid, in m s-1.
                       ! All thickness categories are assumed to have the same
                       ! velocity.
     u_ice_C =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
@@ -244,6 +244,8 @@ type ice_state_type
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
 
+  integer :: ntrunc = 0      ! The number of times the velocity has been truncated
+                             ! since the last call to write_ice_statistics.
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
                              ! has been called.
   integer :: n_fast = 0      ! The number of times update_ice_model_fast
@@ -615,8 +617,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
     allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
   else
-    allocate(IST%u_ice(SZIB_(G), SZJB_(G))) ; IST%u_ice(:,:) = 0.0
-    allocate(IST%v_ice(SZIB_(G), SZJB_(G))) ; IST%v_ice(:,:) = 0.0
+    allocate(IST%u_ice_B(SZIB_(G), SZJB_(G))) ; IST%u_ice_B(:,:) = 0.0
+    allocate(IST%v_ice_B(SZIB_(G), SZJB_(G))) ; IST%v_ice_B(:,:) = 0.0
     allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
     allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
   endif
@@ -653,9 +655,9 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
                                  domain=domain, position=NORTH, mandatory=.false.)
   else
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice, &
+    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
                                  domain=domain, position=CORNER, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice, &
+    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
                                  domain=domain, position=CORNER, mandatory=.false.)
   endif
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen, &
@@ -689,7 +691,7 @@ subroutine dealloc_IST_arrays(IST)
   if (IST%Cgrid_dyn) then
     deallocate(IST%u_ice_C, IST%v_ice_C, IST%u_ocn_C, IST%v_ocn_C)
   else
-    deallocate(IST%u_ocn, IST%v_ocn, IST%u_ice, IST%v_ice)
+    deallocate(IST%u_ocn, IST%v_ocn, IST%u_ice_B, IST%v_ice_B)
   endif
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
@@ -744,9 +746,9 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   enddo
   call hchksum(IST%mH_snow*G%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
-  if (associated(IST%u_ice)) call Bchksum(IST%u_ice, mesg//" IST%u_ice",G,haloshift=hs)
-  if (associated(IST%v_ice)) call Bchksum(IST%v_ice, mesg//" IST%v_ice",G,haloshift=hs)
-  call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice, IST%v_ice, G)
+  if (associated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B",G,haloshift=hs)
+  if (associated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B",G,haloshift=hs)
+  call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   if (IST%Cgrid_dyn) then
     call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C",G,haloshift=hs)
     call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C",G,haloshift=hs)
