@@ -587,10 +587,9 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
-  real :: mca_trans  ! The cell-averaged mass transfered between categories, in kg m-2.
+  real :: mca_trans  ! The cell-averaged ice mass transfered between categories, in kg m-2.
   real :: part_trans ! The fractional area transfered between categories, nondim.
   real :: snow_trans ! The cell-averaged snow transfered between categories, in kg m-2.
-  real :: Imca_new
   real :: I_mH_lim1  ! The inverse of the lower thickness limit, in m2 kg-1.
   real, dimension(SZI_(G),SZCAT_(G)) :: &
     mca0_ice, mca0_snow, & ! Initial ice and snow masses per unit cell area, in kg m-2.
@@ -621,7 +620,7 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
       if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) > mH_lim(k+1))) then
         ! Move some or all of the ice to a thicker category.
         ! For now move all of it.
-        mca_trans = mca_ice(i,j,k) ; Imca_new = 1.0 / (mca_trans + mca_ice(i,j,k+1))
+        mca_trans = mca_ice(i,j,k)
         part_trans = part_sz(i,j,k) ! * (mca_trans / mca_ice) * (mH_ice / h_trans)
         snow_trans = mca_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
@@ -629,8 +628,13 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
         trans_snow(i,K) = snow_trans
         do_any = .true.
 
-        mH_ice(i,j,k+1) = (mca_trans*mH_ice(i,j,k) + &
-                          mca_ice(i,j,k+1)*mH_ice(i,j,k+1)) * Imca_new
+        ! Use area-weighted remapped thicknesses so that the total ice area and
+        ! mass are both conserved in the remapping operation.  Using a mass-
+        ! weighted average thickness instead would cause the ice to systematically
+        ! contract in area.
+        mH_ice(i,j,k+1) = (part_trans*mH_ice(i,j,k) + &
+                           part_sz(i,j,k+1)*mH_ice(i,j,k+1)) / &
+                          (part_trans + part_sz(i,j,k+1))
         ! h should be the first thing to correct via a non-constant profile, and
         ! can be improved independent of T & S.
         mH_ice(i,j,k) = mH_lim(k+1)
@@ -653,9 +657,7 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
       call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
                                   TrReg, .true., j, is, ie)
     endif
-!  endif ; enddo ! j-loop
 
-!  do j=js,je ; if (do_j(j)) then
     do k=1,G%CatIce ; do i=is,ie
       mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
     enddo ; enddo
@@ -666,7 +668,7 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
       if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) < mH_lim(k))) then
         ! Move some or all of the ice to a thinner category.
         ! For now move all of it.
-        mca_trans = mca_ice(i,j,k) ; Imca_new = 1.0 / (mca_trans + mca_ice(i,j,k-1))
+        mca_trans = mca_ice(i,j,k)
         part_trans = part_sz(i,j,k) ! * (mca_trans / mca_ice) * (mH_ice / h_trans)
         snow_trans = mca_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
@@ -674,8 +676,11 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
         trans_ice(i,K-1) = -mca_trans  ! Note the shifted index conventions!
         trans_snow(i,K-1) = -snow_trans
 
-        mH_ice(i,j,k-1) = (mca_trans*mH_ice(i,j,k) + &
-                          mca_ice(i,j,k-1)*mH_ice(i,j,k-1)) * Imca_new
+        ! Use area-weighted remapped thicknesses so that the total ice area and
+        ! mass are both conserved in the remapping operation.
+        mH_ice(i,j,k-1) = (part_trans*mH_ice(i,j,k) + &
+                           part_sz(i,j,k-1)*mH_ice(i,j,k-1)) / &
+                          (part_trans + part_sz(i,j,k-1))
 
         ! h should be the first thing to correct via a non-constant profile, and
         ! can be improved independently from T & S.
