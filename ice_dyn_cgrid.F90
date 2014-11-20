@@ -924,7 +924,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
         ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
         ! Note that fxoc is the stress felt by the ocean.
-        fxoc(I,j) = fxoc(I,j) - drag_u*uio_C
+        fxoc(I,j) = fxoc(I,j) + drag_u*uio_C
       else
         !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
         ! update of the other terms and an implicit bottom drag calculation.
@@ -1008,7 +1008,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
         vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
         ! Note that fyoc is the stress felt by the ocean.
-        fyoc(i,J) = fyoc(i,J) - drag_v*vio_C
+        fyoc(i,J) = fyoc(i,J) + drag_v*vio_C
       else  ! not project_drag_vel
         drag_v_m = drag_v * I_mi_v(i,J)
         vi(i,J) = G%mask2dCv(i,J) * ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
