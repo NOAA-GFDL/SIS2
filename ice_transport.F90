@@ -90,22 +90,22 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
                          sea_lev, mH_lim, dt_slow, G, CS, &
                          rdg_hice, age_ice, snow2ocn, rdg_rate, rdg_open, &
                          rdg_vosh)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: mH_ice, mH_snow
-  type(SIS_tracer_registry_type),              pointer       :: TrReg
-  real, dimension(SZIB_(G),SZJ_(G)),           intent(inout) :: uc
-  real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vc
-  real, dimension(SZI_(G),SZJ_(G)),            intent(in)    :: sea_lev
-  real, dimension(:),                          intent(in)    :: mH_lim  ! Move to grid type?
-  real,                                        intent(in)    :: dt_slow
-  type(ice_transport_CS),                      pointer       :: CS
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: rdg_hice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: age_ice
-  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
-  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_rate
-  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_open ! formation rate of open water due to ridging
-  real, dimension(SZI_(G),SZJ_(G)),            intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(inout) :: part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(inout) :: mH_ice, mH_snow
+  type(SIS_tracer_registry_type),               pointer       :: TrReg
+  real, dimension(SZIB_(G),SZJ_(G)),            intent(inout) :: uc
+  real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vc
+  real, dimension(SZI_(G),SZJ_(G)),             intent(in)    :: sea_lev
+  real, dimension(:),                           intent(in)    :: mH_lim  ! Move to grid type?
+  real,                                         intent(in)    :: dt_slow
+  type(ice_transport_CS),                       pointer       :: CS
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(inout) :: rdg_hice
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(inout) :: age_ice
+  real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
+  real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_rate
+  real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_open ! formation rate of open water due to ridging
+  real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_vosh ! rate of ice volume shifted from level to ridged ice
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1, in/out.
 !  (inout)   mH_ice - The mass per unit area of the ice in each category in H (often kg m-2).
@@ -568,7 +568,8 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
                                  TrReg, G, CS)
   type(sea_ice_grid_type),                    intent(inout) :: G
   real, dimension(:),                         intent(in)    :: mH_lim  ! Move to grid type?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: mca_ice, mca_snow, mH_ice, part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: mca_ice, mca_snow, mH_ice
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(inout) :: part_sz
   type(SIS_tracer_registry_type),             pointer       :: TrReg
   type(ice_transport_CS),                     pointer       :: CS
 
@@ -586,13 +587,14 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in/out)  CS - A pointer to the control structure for this module.
-  real :: mca_trans
-  real :: part_trans
-  real :: snow_trans
+  real :: mca_trans  ! The cell-averaged mass transfered between categories, in kg m-2.
+  real :: part_trans ! The fractional area transfered between categories, nondim.
+  real :: snow_trans ! The cell-averaged snow transfered between categories, in kg m-2.
   real :: Imca_new
-  real :: I_mH_lim1
+  real :: I_mH_lim1  ! The inverse of the lower thickness limit, in m2 kg-1.
   real, dimension(SZI_(G),SZCAT_(G)) :: &
-    mca0_ice, mca0_snow, trans_ice, trans_snow
+    mca0_ice, mca0_snow, & ! Initial ice and snow masses per unit cell area, in kg m-2.
+    trans_ice, trans_snow  ! Cross-catagory transfers of ice and snow mass, in kg m-2.
   logical :: do_any, do_j(SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nLay
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
@@ -651,9 +653,9 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
       call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
                                   TrReg, .true., j, is, ie)
     endif
-  endif ; enddo ! j-loop
+!  endif ; enddo ! j-loop
 
-  do j=js,je ; if (do_j(j)) then
+!  do j=js,je ; if (do_j(j)) then
     do k=1,G%CatIce ; do i=is,ie
       mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
     enddo ; enddo
@@ -665,7 +667,6 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
         ! Move some or all of the ice to a thinner category.
         ! For now move all of it.
         mca_trans = mca_ice(i,j,k) ; Imca_new = 1.0 / (mca_trans + mca_ice(i,j,k-1))
-  !      snow_trans = mca_snow(i,j,k) ! * (mca_trans / mca_ice) = 1
         part_trans = part_sz(i,j,k) ! * (mca_trans / mca_ice) * (mH_ice / h_trans)
         snow_trans = mca_snow(i,j,k) ! * (part_trans / part_sz) = 1
 
@@ -716,12 +717,12 @@ end subroutine adjust_ice_categories
 
 subroutine compress_ice(part_sz, mH_lim, mca_ice, mca_snow, mH_ice, mH_snow, &
                         TrReg, G, CS)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(inout) :: part_sz
-  real, dimension(:),                          intent(in)    :: mH_lim  ! Move to grid type?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: mca_ice, mca_snow, mH_ice, mH_snow
-  type(SIS_tracer_registry_type),              pointer       :: TrReg
-  type(ice_transport_CS),                      pointer       :: CS
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(inout) :: part_sz
+  real, dimension(:),                           intent(in)    :: mH_lim  ! Move to grid type?
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(inout) :: mca_ice, mca_snow, mH_ice, mH_snow
+  type(SIS_tracer_registry_type),               pointer       :: TrReg
+  type(ice_transport_CS),                       pointer       :: CS
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
 ! the sum over all categories (including ice free) of part_sz is 1, but that the
@@ -925,8 +926,8 @@ end subroutine slab_ice_advect
 
 subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice, tot_snow)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)  :: mH_ice, mH_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in)  :: part_sz
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in)  :: mH_ice, mH_snow
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(in)  :: part_sz
   type(EFP_type), intent(out) :: tot_ice, tot_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
@@ -957,11 +958,11 @@ end subroutine get_total_amounts
 
 subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
                               G, enth_ice, enth_snow)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)  :: mH_ice, mH_snow
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in)  :: part_sz
-  type(SIS_tracer_registry_type),              pointer     :: TrReg
-  type(EFP_type),                              intent(out) :: enth_ice, enth_snow
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in)  :: mH_ice, mH_snow
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(in)  :: part_sz
+  type(SIS_tracer_registry_type),               pointer     :: TrReg
+  type(EFP_type),                               intent(out) :: enth_ice, enth_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
 !  (in)      mH_ice - The mass per unit area of the ice in each
