@@ -245,35 +245,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
                             enth_snow(1))
   endif
 
-  !   Determine the whole-cell averaged mass of snow and ice.
-  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (mH_ice(i,j,k)>0.0) then
-      mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
-      mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
-    else
-      if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
-        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
-      endif
-      part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
-      mca_snow(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
-
-  ! Part-size no longer matters, but make sure that ice is in the right thickness
-  ! category before advection.
-  call adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
-                             TrReg, G, CS) !Niki: add ridging and age
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if ((mca_snow(i,j,k)>0.0) .and. (part_sz(i,j,k) <= 0.0)) then
-      call SIS_error(FATAL, "Nonzero snow mass exists on zero area.")
-    endif
-    if (mca_snow(i,j,k)>0.0) then
-      mH_snow(i,j,k) = mca_snow(i,j,k) / part_sz(i,j,k)
-    else
-      mH_snow(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
+  ! Make sure that ice is in the right thickness category before advection.
+  call adjust_ice_categories(mH_lim, mH_ice, mH_snow, part_sz, &
+                             TrReg, G, CS) !Niki: add ridging?
 
   !   Determine the whole-cell averaged mass of snow and ice.
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0
@@ -589,11 +563,11 @@ subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
 
 end subroutine advect_ice_tracer
 
-subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
+subroutine adjust_ice_categories(mH_lim, mH_ice, mH_snow, part_sz, &
                                  TrReg, G, CS)
   type(sea_ice_grid_type),                    intent(inout) :: G
   real, dimension(:),                         intent(in)    :: mH_lim  ! Move to grid type?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: mca_ice, mca_snow, mH_ice
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: mH_ice, mH_snow
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(inout) :: part_sz
   type(SIS_tracer_registry_type),             pointer       :: TrReg
   type(ice_transport_CS),                     pointer       :: CS
@@ -617,18 +591,34 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
   real :: snow_trans ! The cell-averaged snow transfered between categories, in kg m-2.
   real :: I_mH_lim1  ! The inverse of the lower thickness limit, in m2 kg-1.
   real, dimension(SZI_(G),SZCAT_(G)) :: &
+    mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a
+                          ! cell, in units of H (often kg m-2).  "mca" stands
+                          ! for "mass cell averaged"
     mca0_ice, mca0_snow, & ! Initial ice and snow masses per unit cell area, in kg m-2.
     trans_ice, trans_snow  ! Cross-catagory transfers of ice and snow mass, in kg m-2.
   logical :: do_any, do_j(SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nLay
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+ 
+  I_mH_lim1 = 1.0 / mH_lim(1)
+
+  ! Zero out the part_size of any massless categories.
+  do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
+    if (mH_ice(i,j,k) < 0.0) then
+      call SIS_error(FATAL, "Input to adjust_ice_categories, negative ice mass.")
+    endif
+    if (mH_snow(i,j,k) > 0.0) then
+      call SIS_error(FATAL, "Input to adjust_ice_categories, non-zero snow mass rests atop no ice.")
+    endif
+    part_sz(i,j,k) = 0.0
+  endif ; enddo ; enddo ; enddo
 
   ! Only work on rows that have any sea ice at all.
   do j=js,je
     do_j(j) = .false.
     do k=1,G%CatIce
-      do i=is,ie ; if (mca_ice(i,j,k) > 0.0) then
-       do_j(j) = .true. ; exit
+      do i=is,ie ; if (part_sz(i,j,k)*mH_ice(i,j,k) > 0.0) then
+        do_j(j) = .true. ; exit
       endif ; enddo
       if (do_j(j)) exit
     enddo
@@ -636,18 +626,20 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
 
   do j=js,je ; if (do_j(j)) then
     do k=1,G%CatIce ; do i=is,ie
-      mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
+      mca_ice(i,k) = part_sz(i,j,k)*mH_ice(i,j,k)
+      mca_snow(i,k) = part_sz(i,j,k)*mH_snow(i,j,k)
+      mca0_ice(i,k) = mca_ice(i,k) ; mca0_snow(i,k) = mca_snow(i,k)
     enddo ; enddo
     trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
     do_any = .false.
 
     do k=1,G%CatIce-1 ; do i=is,ie
-      if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) > mH_lim(k+1))) then
+      if ((mca_ice(i,k) > 0.0) .and. (mH_ice(i,j,k) > mH_lim(k+1))) then
         ! Move some or all of the ice to a thicker category.
         ! For now move all of it.
-        mca_trans = mca_ice(i,j,k)
+        mca_trans = mca_ice(i,k)
         part_trans = part_sz(i,j,k) ! * (mca_trans / mca_ice) * (mH_ice / h_trans)
-        snow_trans = mca_snow(i,j,k) ! * (part_trans / part_sz) = 1
+        snow_trans = mca_snow(i,k) ! * (part_trans / part_sz) = 1
 
         trans_ice(i,K) = mca_trans
         trans_snow(i,K) = snow_trans
@@ -666,13 +658,15 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
         part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_trans
         part_sz(i,j,k) = part_sz(i,j,k) - part_trans
 
-        mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
-        mca_ice(i,j,k) = mca_ice(i,j,k) - mca_trans
+        mca_ice(i,k+1) = mca_ice(i,k+1) + mca_trans
+        mca_ice(i,k) = mca_ice(i,k) - mca_trans
 
-        if (snow_trans > 0.0) then
-          mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + snow_trans
-          mca_snow(i,j,k) = mca_snow(i,j,k) - snow_trans
-        endif
+        mca_snow(i,k+1) = mca_snow(i,k+1) + snow_trans
+        mca_snow(i,k) = mca_snow(i,k) - snow_trans
+        
+        mH_snow(i,j,k) = 0.0 ; mH_snow(i,j,k+1) = 0.0
+        if (part_sz(i,j,k)>0.0) mH_snow(i,j,k) = mca_snow(i,k) / part_sz(i,j,k)
+        if (part_sz(i,j,k+1)>0.0) mH_snow(i,j,k+1) = mca_snow(i,k+1) / part_sz(i,j,k+1)
       endif
     enddo ; enddo
 
@@ -684,18 +678,18 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
     endif
 
     do k=1,G%CatIce ; do i=is,ie
-      mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
+      mca0_ice(i,k) = mca_ice(i,k) ; mca0_snow(i,k) = mca_snow(i,k)
     enddo ; enddo
     trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
     do_any = .false.
 
     do k=G%CatIce,2,-1 ; do i=is,ie
-      if ((mca_ice(i,j,k) > 0.0) .and. (mH_ice(i,j,k) < mH_lim(k))) then
+      if ((mca_ice(i,k) > 0.0) .and. (mH_ice(i,j,k) < mH_lim(k))) then
         ! Move some or all of the ice to a thinner category.
         ! For now move all of it.
-        mca_trans = mca_ice(i,j,k)
+        mca_trans = mca_ice(i,k)
         part_trans = part_sz(i,j,k) ! * (mca_trans / mca_ice) * (mH_ice / h_trans)
-        snow_trans = mca_snow(i,j,k) ! * (part_trans / part_sz) = 1
+        snow_trans = mca_snow(i,k) ! * (part_trans / part_sz) = 1
 
         do_any = .true.
         trans_ice(i,K-1) = -mca_trans  ! Note the shifted index conventions!
@@ -713,13 +707,15 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
         part_sz(i,j,k-1) = part_sz(i,j,k-1) + part_trans
         part_sz(i,j,k) = part_sz(i,j,k) - part_trans
 
-        mca_ice(i,j,k-1) = mca_ice(i,j,k-1) + mca_trans
-        mca_ice(i,j,k) = mca_ice(i,j,k) - mca_trans
+        mca_ice(i,k-1) = mca_ice(i,k-1) + mca_trans
+        mca_ice(i,k) = mca_ice(i,k) - mca_trans
 
-        if (snow_trans > 0.0) then
-          mca_snow(i,j,k-1) = mca_snow(i,j,k-1) + snow_trans
-          mca_snow(i,j,k) = mca_snow(i,j,k) - snow_trans
-        endif
+        mca_snow(i,k-1) = mca_snow(i,k-1) + snow_trans
+        mca_snow(i,k) = mca_snow(i,k) - snow_trans
+
+        mH_snow(i,j,k) = 0.0 ; mH_snow(i,j,k-1) = 0.0
+        if (part_sz(i,j,k)>0.0) mH_snow(i,j,k) = mca_snow(i,k) / part_sz(i,j,k)
+        if (part_sz(i,j,k-1)>0.0) mH_snow(i,j,k-1) = mca_snow(i,k-1) / part_sz(i,j,k-1)
       endif
     enddo ; enddo
 
@@ -729,19 +725,34 @@ subroutine adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
       call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
                                   TrReg, .true., j, is, ie)
     endif
-  endif ; enddo
 
-  ! Compress the ice in category 1 if it is thinner than the minimum.
-  if (mH_lim(1) > 0.0) then
-    I_mH_lim1 = 1.0 / mH_lim(1)
-    do j=js,je ; do i=is,ie
-      if ((mca_ice(i,j,1) > 0.0) .and. (mH_ice(i,j,1) < mH_lim(1))) then
-        ! Compress the ice in this category to the minimum thickness.
-        part_sz(i,j,1) = part_sz(i,j,1) * (mH_ice(i,j,1) * I_mH_lim1)
-        mH_ice(i,j,1) = mH_lim(1)
+    ! Compress the ice in category 1 if it is thinner than the minimum.
+    if (mH_lim(1) > 0.0) then
+      do i=is,ie
+        if ((mH_ice(i,j,1)*part_sz(i,j,1) > 0.0) .and. (mH_ice(i,j,1) < mH_lim(1))) then
+          ! Compress the ice in this category to the minimum thickness.
+          ! mH_snow(i,j,1) = mH_snow(i,j,1) * (mH_lim(1) / mH_ice(i,j,1))
+          part_sz(i,j,1) = part_sz(i,j,1) * (mH_ice(i,j,1) * I_mH_lim1)
+          mH_ice(i,j,1) = mH_lim(1)
+          mH_snow(i,j,1) = mca_snow(i,1) / part_sz(i,j,1)
+        endif
+      enddo
+    endif
+
+    ! Recalculate _all_ snow thicknesses.
+    !  This should be unnecessary but probably changes answers at the level of roundoff.
+    do k=1,G%CatIce ; do i=is,ie
+      if ((mca_snow(i,k)>0.0) .and. (part_sz(i,j,k) <= 0.0)) then
+        call SIS_error(FATAL, "Nonzero snow mass exists on zero area.")
+      endif
+      if (mca_snow(i,k)>0.0) then
+        mH_snow(i,j,k) = mca_snow(i,k) / part_sz(i,j,k)
+      else
+        mH_snow(i,j,k) = 0.0
       endif
     enddo ; enddo
-  endif
+
+  endif ; enddo  ! j-loop and do_j
 
 end subroutine adjust_ice_categories
 
