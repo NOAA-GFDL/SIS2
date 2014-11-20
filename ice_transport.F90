@@ -263,7 +263,32 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, &
   ! Part-size no longer matters, but make sure that ice is in the right thickness
   ! category before advection.
   call adjust_ice_categories(mH_lim, mca_ice, mca_snow, mH_ice, part_sz, &
-                             TrReg, G, CS)!Niki: add ridging and age
+                             TrReg, G, CS) !Niki: add ridging and age
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if ((mca_snow(i,j,k)>0.0) .and. (part_sz(i,j,k) <= 0.0)) then
+      call SIS_error(FATAL, "Nonzero snow mass exists on zero area.")
+    endif
+    if (mca_snow(i,j,k)>0.0) then
+      mH_snow(i,j,k) = mca_snow(i,j,k) / part_sz(i,j,k)
+    else
+      mH_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
+
+  !   Determine the whole-cell averaged mass of snow and ice.
+  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (mH_ice(i,j,k)>0.0) then
+      mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
+      mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
+    else
+      if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
+        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
+      endif
+      part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
+      mca_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
 
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
