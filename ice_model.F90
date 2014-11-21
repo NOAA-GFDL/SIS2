@@ -99,6 +99,7 @@ use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze, enthalpy_liquid, e_to_mel
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
+use ice_transport_mod, only : adjust_ice_categories
 use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
 implicit none ; private
@@ -1635,6 +1636,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here
 
+    call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
+                               IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
+
     if (IST%column_check) &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                                 message="        Post_thermo", check_column=.true.)
@@ -1955,6 +1959,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here.
 
+    call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
+                               IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
+
     if (IST%column_check) &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                                 message="        Post_thermo", check_column=.true.)
@@ -1983,8 +1990,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   if (IST%Cgrid_dyn) then
     call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%u_ice_C, IST%v_ice_C, &
-                       IST%TrReg, IST%sea_lev, G%mH_cat_bound, dt_slow, &
-                       G, IST%ice_transport_CSp, &
+                       IST%TrReg, IST%sea_lev, dt_slow, G, IST%ice_transport_CSp, &
                        IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
   else
@@ -1999,8 +2005,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     enddo ; enddo
 
     call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, uc, vc, &
-                       IST%TrReg, IST%sea_lev, G%mH_cat_bound, dt_slow, &
-                       G, IST%ice_transport_CSp, &
+                       IST%TrReg, IST%sea_lev, dt_slow, G, IST%ice_transport_CSp, &
                        IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                        rdg_open, rdg_vosh)
   endif
