@@ -914,6 +914,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
           endif
           drag_u = cdRho * sqrt(max(uio_init**2, uio_pred**2) + v2_at_u )
         endif
+      endif
 
         !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
         ! update of the other terms and an implicit bottom drag calculation.
@@ -925,17 +926,17 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
         ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
         ! Note that fxoc is the stress felt by the ocean.
         fxoc(I,j) = fxoc(I,j) + drag_u*uio_C
-      else
-        !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
-        ! update of the other terms and an implicit bottom drag calculation.
-        drag_u_m = I_mi_u(I,j) * drag_u
-        ui(I,j) = G%mask2dCu(I,j) * ( (ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) + &
-                   dt * ((PFu(I,j) + fxat(I,j)*I_mi_u(I,j)) + &
-                         (fxic_now + drag_u_m * uo(I,j))) ) / &
-                  (1.0 + dt * drag_u_m)
-        ! Note that fxoc is the stress felt by the ocean.
-        fxoc(I,j) = fxoc(I,j) - drag_u_m*(uo(I,j) - ui(I,j))*mi_u(I,j)
-      endif
+!     else
+!       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
+!       ! update of the other terms and an implicit bottom drag calculation.
+!       drag_u_m = I_mi_u(I,j) * drag_u
+!       ui(I,j) = G%mask2dCu(I,j) * ( (ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) + &
+!                  dt * ((PFu(I,j) + fxat(I,j)*I_mi_u(I,j)) + &
+!                        (fxic_now + drag_u_m * uo(I,j))) ) / &
+!                 (1.0 + dt * drag_u_m)
+!       ! Note that fxoc is the stress felt by the ocean.
+!       fxoc(I,j) = fxoc(I,j) - drag_u_m*(uo(I,j) - ui(I,j))*mi_u(I,j)
+!     endif
 
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now*mi_u(I,j)
@@ -998,6 +999,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
           endif
           drag_v = cdRho * sqrt(max(vio_init**2, vio_pred**2) + u2_at_v )
         endif
+      endif
 
         !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
         ! update of the other terms and an implicit bottom drag calculation.
@@ -1009,15 +1011,15 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
         vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
         ! Note that fyoc is the stress felt by the ocean.
         fyoc(i,J) = fyoc(i,J) + drag_v*vio_C
-      else  ! not project_drag_vel
-        drag_v_m = drag_v * I_mi_v(i,J)
-        vi(i,J) = G%mask2dCv(i,J) * ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
-                   dt * ((PFv(i,J) + fyat(i,J)*I_mi_v(i,J)) + &
-                         (fyic_now + drag_v_m * vo(i,J))) ) / &
-                  (1.0 + dt * drag_v_m)
-        ! Note that fyoc is the stress felt by the ocean.
-        fyoc(i,J) = fyoc(i,J) - drag_v_m*(vo(i,J) - vi(i,J))*mi_v(i,J)
-      endif
+!     else  ! not project_drag_vel
+!       drag_v_m = drag_v * I_mi_v(i,J)
+!       vi(i,J) = G%mask2dCv(i,J) * ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) + &
+!                  dt * ((PFv(i,J) + fyat(i,J)*I_mi_v(i,J)) + &
+!                        (fyic_now + drag_v_m * vo(i,J))) ) / &
+!                 (1.0 + dt * drag_v_m)
+!       ! Note that fyoc is the stress felt by the ocean.
+!       fyoc(i,J) = fyoc(i,J) - drag_v_m*(vo(i,J) - vi(i,J))*mi_v(i,J)
+!     endif
 
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now*mi_v(i,J)
