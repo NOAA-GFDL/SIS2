@@ -1479,8 +1479,11 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "DT", CS%dt, default = -1., &
-          desc="The (baroclinic) dynamics time step.", units="s")
+  call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt, &
+                 "The time step used for the slow ice dynamics, including "//&
+                 "stepping the continuity equation and interactions between "//&
+                 "the ice mass field and velocities.", units="s", &
+                 default=-1.0, do_not_log=.true.)
   call get_param(param_file, mod, "DEBUG", CS%debug, default=.false.)
   call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&

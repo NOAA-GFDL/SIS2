@@ -141,9 +141,11 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
   call get_param(param_file, mod, "STDOUT_HEARTBEAT", CS%write_stdout, &
                  "If true, periodically write sea ice statistics to \n"//&
                  "stdout to allow the progress to be seen.", default=.true.)
-  call get_param(param_file, mod, "DT", CS%dt, &
-                 "The sea ice dynamics time step.", units="s", &
-                 default=-1.0)
+  call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt, &
+                 "The time step used for the slow ice dynamics, including "//&
+                 "stepping the continuity equation and interactions between "//&
+                 "the ice mass field and velocities.", units="s", &
+                 default=-1.0, do_not_log=.true.)
   call get_param(param_file, mod, "MAXTRUNC", CS%maxtrunc, &
                  "The run will be stopped, and the day set to a very \n"//&
                  "large value if the velocity is truncated more than \n"//&
@@ -701,7 +703,10 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
-  if (CS%dt < 0.0) CS%dt = dt
+  if (CS%dt < 0.0) then
+    if (IST%dt_ice_dyn > 0.0) then ; CS%dt = IST%dt_ice_dyn
+    else ; CS%dt = dt ; endif
+  endif
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &

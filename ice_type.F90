@@ -62,7 +62,10 @@ public  :: earth_area
 type ice_state_type
   type(time_type) :: Time_Init, Time
   type(time_type) :: Time_step_fast, Time_step_slow
-  integer :: avg_count
+  integer :: avg_count  ! The number of times that surface fluxes to the ice
+                        ! have been incremented.
+  integer :: stress_count ! The number of times that the stresses from the ice
+                        ! to the ocean have been incremented.
 !   logical                            :: pe
 
 !   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
@@ -220,7 +223,10 @@ type ice_state_type
   type(time_type) :: ice_stats_interval ! The interval between writes of the
                              ! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
-
+  real    :: dt_ice_dyn  ! The time step used for the slow ice dynamics, including
+                         ! stepping the continuity equation and interactions
+                         ! between the ice mass field and velocities, in s. If
+                         ! 0 or negative, the coupling time step will be used.
 
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
