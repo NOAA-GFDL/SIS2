@@ -90,6 +90,7 @@ type, public :: ice_C_dyn_CS ; private
   logical :: weak_low_shear = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
+  real    :: dt_Rheo           ! The maximum sub-cycling time step for the EVP dynamics.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
@@ -159,14 +160,21 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
-    CS%evp_sub_steps = 0
+    CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
     call log_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations in the EVP dynamics for each \n"//&
                  "slow time step.  With SPECIFIED_ICE this is always 0.")
   else
-    call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
-                 "The number of iterations in the EVP dynamics for each \n"//&
-                 "slow time step.", default=432)
+    call get_param(param_file, mod, "DT_RHEOLOGY", CS%dt_Rheo, &
+                 "The sub-cycling time step for iterating the rheology \n"//&
+                 "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
+                 "the time step is set via NSTEPS_DYN.", units="seconds", &
+                 default=-1.0)
+    CS%evp_sub_steps = -1
+    if (CS%dt_Rheo <= 0.0) &
+      call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+                 "The number of iterations of the rheology and ice \n"//&
+                 "momentum equations for each slow ice time step.", default=432)
   endif
   call get_param(param_file, mod, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
                  "The damping timescale associated with the elastic terms \n"//&
@@ -473,6 +481,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                   ! in s.
   real :: dt      ! The short timestep associated with the EVP dynamics, in s.
   real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale.
+  integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps  ! The number inverse of the number of EVP time steps per
                   ! slow time step.
   real :: EC2     ! EC^2, where EC is the yield curve axis ratio.
@@ -519,7 +528,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     return
   end if
 
-  if (CS%evp_sub_steps==0) return
+  if ((CS%evp_sub_steps<=0) .and. (CS%dt_Rheo<=0.0)) return
 
   if (CS%FirstCall) then
     !   These halo updates are only needed if the str_... arrays have just
@@ -529,7 +538,13 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     CS%FirstCall = .false.
   endif
 
-  dt = dt_slow/CS%evp_sub_steps
+  if (CS%dt_Rheo > 0.0) then
+    EVP_steps = max(CEILING(dt_slow/CS%dt_Rheo - 0.0001), 1)
+  else
+    EVP_steps = CS%evp_sub_steps
+  endif
+  dt = dt_slow/EVP_steps
+
   I_cdRhoDt = 1.0 / (CS%cdw * CS%Rho_ocean * dt)
   do_trunc_its = (CS%CFL_check_its .and. (CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0))
 
@@ -788,7 +803,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   endif
 
   ! Do the iterative time steps.
-  do n=1,CS%evp_sub_steps
+  do n=1,EVP_steps
 
     ! If there is a 2-point wide halo and symmetric memory, this is the only
     ! halo update that is needed per iteration.  With a 1-point wide halo and
@@ -1065,7 +1080,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       call check_redundant_C("ui/vi in ice_C_dynamics steps", ui, vi, G)
     endif
 
-  enddo ! l=1,CS%evp_sub_steps
+  enddo ! l=1,EVP_steps
 
   if (CS%debug) then
     call uchksum(ui, "ui end ice_C_dynamics", G)
@@ -1078,7 +1093,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
 
   ! make averages
-  I_sub_steps = 1.0/CS%evp_sub_steps
+  I_sub_steps = 1.0/EVP_steps
   do j=jsc,jec ; do I=isc-1,iec
     fxoc(I,j) = fxoc(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
     fxic(I,j) = fxic(I,j) * (G%mask2dCu(I,j) * I_sub_steps)

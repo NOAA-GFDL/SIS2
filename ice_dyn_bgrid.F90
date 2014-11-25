@@ -66,6 +66,8 @@ type, public :: ice_B_dyn_CS ; private
   logical :: debug_redundant  ! If true, debug redundant points
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
+  real    :: dt_Rheo          ! The maximum sub-cycling time step for the rheology
+                              ! and momentum equations.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
@@ -117,14 +119,21 @@ subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
-    CS%evp_sub_steps = 0
+    CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
     call log_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations in the EVP dynamics for each \n"//&
                  "slow time step.  With SPECIFIED_ICE this is always 0.")
   else
-    call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
-                 "The number of iterations in the EVP dynamics for each \n"//&
-                 "slow time step.", default=432)
+    call get_param(param_file, mod, "DT_RHEOLOGY", CS%dt_Rheo, &
+                 "The sub-cycling time step for iterating the rheology \n"//&
+                 "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
+                 "the time step is set via NSTEPS_DYN.", units="seconds", &
+                 default=-1.0)
+    CS%evp_sub_steps = -1
+    if (CS%dt_Rheo <= 0.0) &
+      call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+                 "The number of iterations of the rheology and ice \n"//&
+                 "momentum equations for each slow ice time step.", default=432)
   endif
 
   call get_param(param_file, mod, "ICE_STRENGTH_PSTAR", CS%p0, &
@@ -314,8 +323,9 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
   ! for velocity calculation
   real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
-  real :: dt_evp  ! The short timestep associated with the EVP dynamics, in s.
-  real :: I_2dt_evp ! 1.0 / (2*dt_evp)
+  real :: dt_Rheo  ! The short timestep associated with the rheology, in s.
+  real :: I_2dt_Rheo ! 1.0 / (2*dt_Rheo)
+  integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
   complex                             :: newuv
@@ -346,9 +356,14 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
      return
   end if
 
-  if (CS%evp_sub_steps==0) return;
+  if ((CS%evp_sub_steps<=0) .and. (CS%dt_Rheo<=0.0)) return
 
-  dt_evp = dt_slow/CS%evp_sub_steps
+  if (CS%dt_Rheo > 0.0) then
+    EVP_steps = max(CEILING(dt_slow/CS%dt_Rheo - 0.0001), 1)
+  else
+    EVP_steps = CS%evp_sub_steps
+  endif
+  dt_Rheo = dt_slow/EVP_steps
 
   do J=jsc-1,jec ; do I=isc-1,iec
     dydx(I,J) = 0.5*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
@@ -370,9 +385,9 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
   ! sea level slope force
   do J=jsc-1,jec ; do I=isc-1,iec
-    sldx(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
+    sldx(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
          + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
-    sldy(I,J) = -dt_evp*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
+    sldy(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
          + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
   enddo ; enddo
 
@@ -394,24 +409,24 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   !TOM> towards a leaner calculation of the ice stress
   if (evp_new) then
     ! calculate elastic parameter: 
-    ! E=zeta/(E_0*dt) => E*dt_evp=zeta/(E_0*N_evp), where dt_evp=dt/N_evp
-    ! here, edt_new is 2*zeta/(E*dt_evp) = 2*E_0*N_evp for computational reasons
-    edt_new = 2. *e0 *float(CS%evp_sub_steps)
+    ! E=zeta/(E_0*dt) => E*dt_Rheo=zeta/(E_0*N_evp), where dt_Rheo=dt/N_evp
+    ! here, edt_new is 2*zeta/(E*dt_Rheo) = 2*E_0*N_evp for computational reasons
+    edt_new = 2. *e0 *float(EVP_steps)
   else
     ! This is H&D97, Eq. 44, with their E_0 = 0.25.
-    I_2dt_evp = 1.0 / (2.0*dt_evp)
+    I_2dt_Rheo = 1.0 / (2.0*dt_Rheo)
     do j=jsc,jec ; do i=isc,iec
       if (G%dxT(i,j) < G%dyT(i,j) ) then
-        edt(i,j) = I_2dt_evp * (G%dxT(i,j)**2 * mice(i,j))
+        edt(i,j) = I_2dt_Rheo * (G%dxT(i,j)**2 * mice(i,j))
       else
-        edt(i,j) = I_2dt_evp * (G%dyT(i,j)**2 * mice(i,j))
+        edt(i,j) = I_2dt_Rheo * (G%dyT(i,j)**2 * mice(i,j))
       endif
     enddo ; enddo
   endif
 
   do J=jsc-1,jec ; do I=isc-1,iec
      if ((G%mask2dBu(I,J)>0.5) .and. (miv(I,J) > CS%MIV_MIN) ) then ! values for velocity calculation (on v-grid)
-        dtmiv(I,J) = dt_evp/miv(I,J)
+        dtmiv(I,J) = dt_Rheo/miv(I,J)
      else
         ui(I,J) = 0.0 ; vi(I,J) = 0.0
      endif
@@ -435,7 +450,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
      call check_redundant_B("ui/vi pre-steps ice_dynamics",ui, vi, G)
   endif
 
-  do l=1,CS%evp_sub_steps
+  do l=1,EVP_steps
 
     ! calculate strain tensor for viscosities and forcing elastic eqn.
     call pass_vector(ui, vi, G%Domain, stagger=BGRID_NE)
@@ -560,7 +575,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
         ! second, timestep implicit parts (Coriolis and ice part of water stress)
         !
         newuv = cmplx(ui(I,J),vi(I,J)) / &
-             (1 + dt_evp*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
+             (1 + dt_Rheo*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
         ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
         !
         ! sum for averages
@@ -596,7 +611,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
       call check_redundant_B("ui/vi in ice_dynamics steps", ui, vi, G)
     endif
 
-  enddo ! l=1,CS%evp_sub_steps
+  enddo ! l=1,EVP_steps
 
   if (CS%debug) then
     call Bchksum(ui, "ui end ice_dynamics", G, symmetric=.true.)
@@ -606,7 +621,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
 
   ! make averages
-  I_sub_steps = 1.0/CS%evp_sub_steps
+  I_sub_steps = 1.0/EVP_steps
   do J=jsc-1,jec ; do I=isc-1,iec
     if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
       fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
