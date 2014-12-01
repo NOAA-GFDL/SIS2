@@ -1570,12 +1570,15 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       WindStr_y_A(i,j) = WindStr_y_A(i,j) * I_wts
       if (ice_cover(i,j) > 1.0) ice_cover(i,j) = 1.0
 
-      ice_free(i,j) = IST%part_size(i,j,0)
+      ! The max with 0 in the following line is here for safety; the only known
+      ! instance where it has been required is when reading a SIS-1-derived
+      ! restart file with tiny negative concentrations. SIS2 should not need it.
+      ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
   !    Rescale to add up to 1?
   !    I_wts = 1.0 / (ice_free(i,j) + ice_cover(i,j))
   !    ice_free(i,j) = ice_free(i,j) * I_wts ; ice_cover(i,j) = ice_cover(i,j) * I_wts
     else
-      ice_free(i,j) = 1.0 ! ; ice_cover(i,j) = 0.0
+      ice_free(i,j) = 1.0 ; ice_cover(i,j) = 0.0
     endif
     WindStr_x_ocn_A(i,j) = IST%flux_u_top(i,j,0)
     WindStr_y_ocn_A(i,j) = IST%flux_v_top(i,j,0)
