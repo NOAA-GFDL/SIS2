@@ -27,10 +27,11 @@ module ice_transport_mod
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_coms, only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
+use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
+use MOM_obsolete_params, only : obsolete_logical
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
@@ -284,13 +285,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
       mca0_ice(i,j,k) = mca_ice(i,j,k)
       mca0_snow(i,j,k) = mca_snow(i,j,k)
     enddo ; enddo ; enddo
-    if (CS%use_SIS_continuity) then
-      call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS%continuity_CSp)
-    else
-      call ice_continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS)
-      call ice_continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS)
-    endif
+    call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%continuity_CSp)
+    call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS%continuity_CSp)
 
     if (CS%use_SIS_thickness_advection) then
       call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%SIS_tr_adv_CSp)
@@ -443,57 +439,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 
 end subroutine ice_transport
 
-subroutine ice_continuity(u, v, h_in, h, uh, vh, dt, G, CS)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZIB_(G),SZJ_(G)),           intent(in)    :: u
-  real, dimension(SZI_(G),SZJB_(G)),           intent(in)    :: v
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)    :: h_in
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(out)   :: h
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(out)   :: uh
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(out)   :: vh
-  real,                                        intent(in)    :: dt
-  type(ice_transport_CS),                      pointer       :: CS
-!    This subroutine time steps the category thicknesses averaged over the whole
-!  grid cell, initially using directionally unsplit using upwind advection.  But
-!  in subsequent versions this will be replaced with a directionally split
-!  algorithm derived from MOM_continuity_PPM.F90.  In the following
-!  documentation, H is used for the units of thickness (usually m or kg m-2.)
-
-! Arguments: u - Zonal velocity, in m s-1.
-!  (in)      v - Meridional velocity, in m s-1.
-!  (in)      h_in - Initial layer thickness, in H (kg m-2).
-!  (out)     h - Final layer thickness, in H (kg m-2).
-!  (out)     uh - Mass flux through zonal faces = u*h*dy, H m2 s-1.
-!  (out)     vh - Mass flux through meridional faces = v*h*dx, in H m2 s-1.
-!  (in)      dt - Time increment in s.
-!  (in)      G - The ocean's grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 ice_transport_init.
-  real h_up
-  integer :: i, j, k, is, ie, js, je
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
-
-  do k=1,G%CatIce ; do j=js,je ; do I=is-1,ie
-    if (u(I,j) >= 0.0) then ; h_up = h_in(i,j,k)
-    else ; h_up = h_in(i+1,j,k) ; endif
-    uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
-  enddo ; enddo ; enddo
-
-  do k=1,G%CatIce ; do J=js-1,je ; do i=is,ie
-    if (v(i,J) >= 0.0) then ; h_up = h_in(i,j,k)
-    else ; h_up = h_in(i,j+1,k) ; endif
-    vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
-  enddo ; enddo ; enddo
-
-  do k=1,G%CatIce ; do j=js,je ; do i=is,ie
-    h(i,j,k) = h_in(i,j,k) - dt* G%IareaT(i,j) * &
-         ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
-
-!   This line should be unnecessary.
-    if (h(i,j,k) < 0.0) h(i,j,k) = 0.0
-  enddo ; enddo ; enddo
-
-end subroutine ice_continuity
 
 subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
   type(sea_ice_grid_type),                     intent(inout) :: G
@@ -1112,8 +1057,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "is expensive and should be used sparingly.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
                  "Apply a ridging scheme as imported by Torge Martin.", default=.false.)
-  call get_param(param_file, mod, "USE_SIS_CONTINUITY", CS%use_SIS_continuity, &
-                 "If true, uses a continuity solver from SIS that has more options.", default=.true.)
+  call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call get_param(param_file, mod, "USE_SIS_THICKNESS_ADVECTION", CS%use_SIS_thickness_advection, &
                  "If true, uses the SIS tracer transport scheme for thickness.", default=.false.)
 
