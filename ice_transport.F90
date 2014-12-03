@@ -74,10 +74,9 @@ type, public :: ice_transport_CS ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
   logical :: do_ridging
-  logical :: use_SIS_continuity ! Use the more modern continuity solver from SIS.
-  logical :: use_SIS_thickness_advection ! Use the SIS tracer advection schemes for thickness.
   type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
   type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
+  type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
   integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
   integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
   integer :: id_ix_trans = -1, id_iy_trans = -1
@@ -288,11 +287,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
     call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%continuity_CSp)
     call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, CS%continuity_CSp)
 
-    if (CS%use_SIS_thickness_advection) then
-      call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%SIS_tr_adv_CSp)
-    else
-      call advect_ice_tracer(mca0_ice, mca_ice, uh_ice, vh_ice, mH_ice, dt_adv, G, CS)
-    endif
+    call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, CS%SIS_thick_adv_CSp)
 
     call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
@@ -436,73 +431,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
   if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
 
-
 end subroutine ice_transport
 
-
-subroutine advect_ice_tracer(h_prev, h_end, uhtr, vhtr, tr, dt, G, CS) !, Reg)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)    :: h_prev, h_end
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in)    :: uhtr
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(in)    :: vhtr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: tr
-  real,                                        intent(in)    :: dt
-  type(ice_transport_CS),                      pointer       :: CS
-!  type(tracer_registry_type),                 pointer       :: Reg
-!    This subroutine time steps the tracer concentrations.
-!  A monotonic, conservative, weakly diffusive scheme will eventually used, but
-!  for now a simple upwind scheme is used.
-
-! Arguments: h_prev - Category thickness times fractional coverage before advection, in m or kg m-2.
-!  (in)      h_end - Layer thickness times fractional coverage after advection, in m or kg m-2.
-!  (in)      uhtr - Accumulated volume or mass fluxes through zonal faces,
-!                   in m3 or kg.
-!  (in)      vhtr - Accumulated volume or mass fluxes through meridional faces,
-!                   in m3 or kg.
-!    (inout) tr - The tracer concentration being worked on (###Move to registry.)
-!  (in)      dt - Time increment in s.
-!  (in)      G - The ocean's grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 tracer_advect_init.
-!  (in)      Reg - A pointer to the tracer registry.
-
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: flux_x
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)) :: flux_y
-  real    :: tr_up
-  real    :: vol_end, Ivol_end
-  integer :: i, j, k, m, is, ie, js, je !, isd, ied, jsd, jed
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
-!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-
-  ! Reconstruct the old value of h ???
-  ! if (h_prev(i,j,k) > 0.0) then
-  ! h_last(i,j,k) = h_end(i,j,k) + dt * G%IareaT(i,j) * &
-  !        ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
-
-  ! For now this is just non-directionally split upwind advection.
-  do k=1,G%CatIce
-    do j=js,je ; do I=is-1,ie
-      if (uhtr(I,j,k) >= 0.0) then ; tr_up = tr(i,j,k)
-      else ; tr_up = tr(i+1,j,k) ; endif
-      flux_x(I,j,k) = (dt*uhtr(I,j,k)) * tr_up
-    enddo ; enddo
-
-    do J=js-1,je ; do i=is,ie
-      if (vhtr(i,J,k) >= 0.0) then ; tr_up = tr(i,j,k)
-      else ; tr_up = tr(i,j+1,k) ; endif
-      flux_y(i,J,k) = (dt*vhtr(i,J,k)) * tr_up
-    enddo ; enddo
-
-    do j=js,je ; do i=is,ie
-      vol_end = (G%areaT(i,j) * h_end(i,j,k))
-      Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
-      tr(i,j,k) = ( (G%areaT(i,j)*h_prev(i,j,k))*tr(i,j,k) - &
-                   ((flux_x(I,j,k) - flux_x(I-1,j,k)) + &
-                    (flux_y(i,J,k) - flux_y(i,J-1,k))) ) * Ivol_end
-    enddo ; enddo
-  enddo
-
-end subroutine advect_ice_tracer
 
 subroutine adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS)
   type(sea_ice_grid_type),                    intent(inout) :: G
@@ -992,6 +922,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "ice_transport" ! This module's name.
+  character(len=80)  :: scheme   ! A string for identifying an advection scheme.
   real, parameter :: missing = -1e34
 
   if (associated(CS)) then
@@ -1058,11 +989,19 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
                  "Apply a ridging scheme as imported by Torge Martin.", default=.false.)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
-  call get_param(param_file, mod, "USE_SIS_THICKNESS_ADVECTION", CS%use_SIS_thickness_advection, &
-                 "If true, uses the SIS tracer transport scheme for thickness.", default=.false.)
+  call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
+  call get_param(param_file, mod, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
+          desc="The horizontal transport scheme for tracers:\n"//&
+          "  UPWIND_2D - Non-directionally split upwind\n"//&
+          "  PCM    - Directionally split peicewise constant\n"//&
+          "  PLM    - Piecewise Linear Method\n"//&
+          "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
+          default='UPWIND_2D')
 
   call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+
+  call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
               'channel transport velocity - x component', 'm/s', missing_value=missing)

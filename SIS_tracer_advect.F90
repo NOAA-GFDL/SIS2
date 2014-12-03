@@ -85,6 +85,7 @@ type, public :: SIS_tracer_advect_CS ; private
   logical :: usePCM         ! If true, use PCM tracer advection instead of PLM.
 end type SIS_tracer_advect_CS
 
+logical :: first_call = .true.
 integer :: id_clock_advect, id_clock_pass, id_clock_sync
 
 contains
@@ -402,6 +403,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   logical :: x_first            ! If true, advect in the x-direction first.
   integer :: max_iter           ! The maximum number of iterations in
                                 ! each layer.
+
+  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
+  real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
+  real    :: tr_up              ! Upwind tracer concentrations, in conc.
+  real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
+
   integer :: domore_k(SZCAT_(G))
   integer :: stensil            ! The stensil of the advection scheme.
   integer :: nsten_halo         ! The number of stensils that fit in the halos.
@@ -414,140 +421,164 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   landvolfill = 1.0e-20         ! This is arbitrary, but must be positive.
   stensil = 2                   ! The scheme's stensil; 2 for PLM.
 
-  if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
-       "SIS_tracer_advect_init must be called before advect_tracer.")
+  if (.not. associated(CS)) call SIS_error(FATAL, "advect_scalar: "// &
+       "SIS_tracer_advect_init must be called before advect_scalar.")
 
-  x_first = (MOD(G%first_direction,2) == 0)
+  if (CS%use_upwind2d) then
+    do k=1,ncat
+      do j=js,je ; do I=is-1,ie
+        if (uhtr(I,j,k) >= 0.0) then ; tr_up = scalar(i,j,k)
+        else ; tr_up = scalar(i+1,j,k) ; endif
+        flux_x(I,j) = (dt*uhtr(I,j,k)) * tr_up
+      enddo ; enddo
 
-  Idt = 1.0/dt
+      do J=js-1,je ; do i=is,ie
+        if (vhtr(i,J,k) >= 0.0) then ; tr_up = scalar(i,j,k)
+        else ; tr_up = scalar(i,j+1,k) ; endif
+        flux_y(i,J) = (dt*vhtr(i,J,k)) * tr_up
+      enddo ; enddo
 
-  max_iter = 3
-  if (CS%dt > 0.0) max_iter = 2*INT(CEILING(dt/CS%dt)) + 1
+      do j=js,je ; do i=is,ie
+        vol_end = (G%areaT(i,j) * h_end(i,j,k))
+        Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
+        scalar(i,j,k) = ( (G%areaT(i,j)*h_prev(i,j,k))*scalar(i,j,k) - &
+                         ((flux_x(I,j) - flux_x(I-1,j)) + &
+                          (flux_y(i,J) - flux_y(i,J-1))) ) * Ivol_end
+      enddo ; enddo
+    enddo
+  else
+    x_first = (MOD(G%first_direction,2) == 0)
 
-! This initializes the halos of uhr and vhr because pass_vector might do
-! calculations on them, even though they are never used.
-  uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
-  hprev(:,:,:) = landvolfill
+    Idt = 1.0/dt
 
-  do k=1,ncat
-    domore_k(k)=1
-!  Put the remaining (total) thickness fluxes into uhr and vhr.
-    do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
-    do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
-!   This loop reconstructs the thickness field the last time that the
-! tracers were updated, probably just after the diabatic forcing.  A useful
-! diagnostic could be to compare this reconstruction with that older value.
-    do i=is,ie ; do j=js,je
-      hprev(i,j,k) = max(0.0, G%areaT(i,j)*h_end(i,j,k) + &
-           ((uhr(I,j,k) - uhr(I-1,j,k)) + (vhr(i,J,k) - vhr(i,J-1,k))))
-! In the case that the layer is now dramatically thinner than it was previously,
-! add a bit of mass to avoid truncation errors.  This will lead to
-! non-conservation of tracers, but not mass.
-      hprev(i,j,k) = hprev(i,j,k) + &
-                     max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
+    max_iter = 3
+    if (CS%dt > 0.0) max_iter = 2*INT(CEILING(dt/CS%dt)) + 1
+
+  ! This initializes the halos of uhr and vhr because pass_vector might do
+  ! calculations on them, even though they are never used.
+    uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
+    hprev(:,:,:) = landvolfill
+
+    do k=1,ncat
+      domore_k(k)=1
+  !  Put the remaining (total) thickness fluxes into uhr and vhr.
+      do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
+      do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
+  !   This loop reconstructs the thickness field the last time that the
+  ! tracers were updated, probably just after the diabatic forcing.  A useful
+  ! diagnostic could be to compare this reconstruction with that older value.
+      do i=is,ie ; do j=js,je
+        hprev(i,j,k) = max(0.0, G%areaT(i,j)*h_end(i,j,k) + &
+             ((uhr(I,j,k) - uhr(I-1,j,k)) + (vhr(i,J,k) - vhr(i,J-1,k))))
+  ! In the case that the layer is now dramatically thinner than it was previously,
+  ! add a bit of mass to avoid truncation errors.  This will lead to
+  ! non-conservation of tracers, but not mass.
+        hprev(i,j,k) = hprev(i,j,k) + &
+                       max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
+      enddo ; enddo
+    enddo
+  !   h_neglect = G%H_subroundoff
+    h_neglect = 1e-30
+    do j=jsd,jed ; do I=isd,ied-1
+      uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
     enddo ; enddo
-  enddo
-!   h_neglect = G%H_subroundoff
-  h_neglect = 1e-30
-  do j=jsd,jed ; do I=isd,ied-1
-    uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
-  enddo ; enddo
-  do J=jsd,jed-1 ; do i=isd,ied
-    vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
-  enddo ; enddo
+    do J=jsd,jed-1 ; do i=isd,ied
+      vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
+    enddo ; enddo
 
-  isv = is ; iev = ie ; jsv = js ; jev = je
+    isv = is ; iev = ie ; jsv = js ; jev = je
 
-  do itt=1,max_iter
+    do itt=1,max_iter
 
-    if (isv > is-stensil) then
-      call cpu_clock_begin(id_clock_pass)
-      call pass_vector(uhr, vhr, G%Domain)
-      call pass_var(scalar, G%Domain, complete=.false.)
-      call pass_var(hprev, G%Domain)
-      call cpu_clock_end(id_clock_pass)
+      if (isv > is-stensil) then
+        call cpu_clock_begin(id_clock_pass)
+        call pass_vector(uhr, vhr, G%Domain)
+        call pass_var(scalar, G%Domain, complete=.false.)
+        call pass_var(hprev, G%Domain)
+        call cpu_clock_end(id_clock_pass)
 
-      nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stensil
-      isv = is-nsten_halo*stensil ; jsv = js-nsten_halo*stensil
-      iev = ie+nsten_halo*stensil ; jev = je+nsten_halo*stensil
-      ! Reevaluate domore_u & domore_v unless the valid range is the same size as
-      ! before.  Also, do this if there is Strang splitting.
-      if ((nsten_halo > 1) .or. (itt==1)) then
-        do k=1,ncat ; if (domore_k(k) > 0) then
-          do j=jsv,jev ; if (.not.domore_u(j,k)) then
-            do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
-              domore_u(j,k) = .true. ; exit
-            endif ; enddo ! i-loop
-          endif ; enddo
-          do J=jsv+stensil-1,jev-stensil ; if (.not.domore_v(J,k)) then
-            do i=isv+stensil,iev-stensil; if (vhr(i,J,k) /= 0.0) then
-              domore_v(J,k) = .true. ; exit
-            endif ; enddo ! i-loop
-          endif ; enddo
+        nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stensil
+        isv = is-nsten_halo*stensil ; jsv = js-nsten_halo*stensil
+        iev = ie+nsten_halo*stensil ; jev = je+nsten_halo*stensil
+        ! Reevaluate domore_u & domore_v unless the valid range is the same size as
+        ! before.  Also, do this if there is Strang splitting.
+        if ((nsten_halo > 1) .or. (itt==1)) then
+          do k=1,ncat ; if (domore_k(k) > 0) then
+            do j=jsv,jev ; if (.not.domore_u(j,k)) then
+              do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
+                domore_u(j,k) = .true. ; exit
+              endif ; enddo ! i-loop
+            endif ; enddo
+            do J=jsv+stensil-1,jev-stensil ; if (.not.domore_v(J,k)) then
+              do i=isv+stensil,iev-stensil; if (vhr(i,J,k) /= 0.0) then
+                domore_v(J,k) = .true. ; exit
+              endif ; enddo ! i-loop
+            endif ; enddo
 
-          !   At this point, domore_k is global.  Change it so that it indicates
-          ! whether any work is needed on a layer on this processor.
+            !   At this point, domore_k is global.  Change it so that it indicates
+            ! whether any work is needed on a layer on this processor.
+            domore_k(k) = 0
+            do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
+            do J=jsv+stensil-1,jev-stensil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+
+          endif ; enddo ! k-loop
+        endif
+      endif
+
+      ! Set the range of valid points after this iteration.
+      isv = isv + stensil ; iev = iev - stensil
+      jsv = jsv + stensil ; jev = jev - stensil
+
+      do k=1,ncat ; if (domore_k(k) > 0) then
+  !    To ensure positive definiteness of the thickness at each iteration, the
+  !  mass fluxes out of each layer are checked each step, and limited to keep
+  !  the thicknesses positive.  This means that several iteration may be required
+  !  for all the transport to happen.  The sum over domore_k keeps the processors
+  !  synchronized.  This may not be very efficient, but it should be reliable.
+
+        if (x_first) then
+    !    First, advect zonally.
+          call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
+                        isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM) !(, OBC)
+
+    !    Next, advect meridionally.
+          call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
+                        isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+
+          domore_k(k) = 0
+          do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
+          do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+        else
+    !    First, advect meridionally.
+          call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
+                        isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM) !(, OBC)
+
+    !    Next, advect zonally.
+          call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
+                        isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
-          do J=jsv+stensil-1,jev-stensil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+          do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+        endif
 
-        endif ; enddo ! k-loop
-      endif
-    endif
+      endif ; enddo ! End of k-loop
 
-    ! Set the range of valid points after this iteration.
-    isv = isv + stensil ; iev = iev - stensil
-    jsv = jsv + stensil ; jev = jev - stensil
+      ! If the advection just isn't finishing after max_iter, move on.
+      if (itt >= max_iter) exit
 
-    do k=1,ncat ; if (domore_k(k) > 0) then
-!    To ensure positive definiteness of the thickness at each iteration, the
-!  mass fluxes out of each layer are checked each step, and limited to keep
-!  the thicknesses positive.  This means that several iteration may be required
-!  for all the transport to happen.  The sum over domore_k keeps the processors
-!  synchronized.  This may not be very efficient, but it should be reliable.
-
-      if (x_first) then
-  !    First, advect zonally.
-        call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM) !(, OBC)
-
-  !    Next, advect meridionally.
-        call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
-
-        domore_k(k) = 0
-        do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
-        do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
-      else
-  !    First, advect meridionally.
-        call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM) !(, OBC)
-
-  !    Next, advect zonally.
-        call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
-
-        domore_k(k) = 0
-        do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
-        do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+      ! Exit if there are no layers that need more iterations.
+      if (isv > is-stensil) then
+        do_any = 0
+        call cpu_clock_begin(id_clock_sync)
+        call sum_across_PEs(domore_k(:), ncat)
+        call cpu_clock_end(id_clock_sync)
+        do k=1,ncat ; do_any = do_any + domore_k(k) ; enddo
+        if (do_any == 0) exit
       endif
 
-    endif ; enddo ! End of k-loop
-
-    ! If the advection just isn't finishing after max_iter, move on.
-    if (itt >= max_iter) exit
-
-    ! Exit if there are no layers that need more iterations.
-    if (isv > is-stensil) then
-      do_any = 0
-      call cpu_clock_begin(id_clock_sync)
-      call sum_across_PEs(domore_k(:), ncat)
-      call cpu_clock_end(id_clock_sync)
-      do k=1,ncat ; do_any = do_any + domore_k(k) ; enddo
-      if (do_any == 0) exit
-    endif
-
-  enddo ! Iterations loop
+    enddo ! Iterations loop
+  endif
 
 end subroutine advect_scalar
 
@@ -1330,20 +1361,20 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
 !  (in)      h_prev - Category thickness times fractional coverage before advection, in m or kg m-2.
 !  (in)      h_end - Layer thickness times fractional coverage after advection, in m or kg m-2.
 !  (in)      uhtr - Accumulated volume or mass fluxes through zonal faces,
-!                   in m3 or kg.
+!                   in m3 s-1 or kg s-1.
 !  (in)      vhtr - Accumulated volume or mass fluxes through meridional faces,
-!                   in m3 or kg.
+!                   in m3 s-1 or kg s-1.
 !  (in)      dt - Time increment in s.
 !  (in)      G - The ocean's grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 tracer_advect_init.
 !  (in)      Reg - A pointer to the tracer registry.
 
-  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x
-  real, dimension(SZI_(G),SZJB_(G)) :: flux_y
-  real    :: tr_up
+  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
+  real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
+  real    :: tr_up              ! Upwind tracer concentrations, in conc.
   real    :: Idt
-  real    :: vol_end, Ivol_end
+  real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
   integer :: i, j, k, l, m, is, ie, js, je
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
@@ -1451,12 +1482,13 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
 
 end subroutine advect_tracers_thicker
 
-subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
+subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
   type(time_type), target, intent(in)    :: Time
   type(sea_ice_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(SIS_tracer_advect_CS),  pointer       :: CS
+  character(len=*), optional, intent(in) :: scheme
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -1478,20 +1510,23 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
   CS%diag => diag
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
+  if ((first_call) .or. .not.present(scheme)) &
+    call log_version(param_file, mod, version, "")
   call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
                  "the ice mass field and velocities.", units="s", &
                  default=-1.0, do_not_log=.true.)
   call get_param(param_file, mod, "DEBUG", CS%debug, default=.false.)
-  call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
+  if (present(scheme)) then ; mesg = scheme ; else
+    call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
           "  PCM    - Directionally split peicewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')
+  endif
   CS%use_upwind2d = .false. ; CS%usePPM = .false. ; CS%usePCM = .false.
   select case (trim(mesg))
     case ("UPWIND_2D")
@@ -1503,18 +1538,21 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS)
     case ("PPM:H3")
       CS%usePPM = .true.
     case default
-      call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
+      if (present(scheme)) then
+        call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
+           "Unknown input scheme "//trim(mesg))
+      else
+        call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
            "Unknown SIS_TRACER_ADVECTION_SCHEME = "//trim(mesg))
+      endif
   end select
 
-! if (.not.CS%use_upwind2d) then
-!     call SIS_error(FATAL, "SIS_tracer_advect, SIS_tracer_advect_init: "//&
-!          "Only SIS_TRACER_ADVECTION_SCHEME = UPWIND_2D is implemented yet.")
-! endif
-
-  id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)
-  id_clock_pass = cpu_clock_id('(Ocean tracer halo updates)', grain=CLOCK_ROUTINE)
-  id_clock_sync = cpu_clock_id('(Ocean tracer global synch)', grain=CLOCK_ROUTINE)
+  if (first_call) then
+    id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)
+    id_clock_pass = cpu_clock_id('(Ocean tracer halo updates)', grain=CLOCK_ROUTINE)
+    id_clock_sync = cpu_clock_id('(Ocean tracer global synch)', grain=CLOCK_ROUTINE)
+    first_call = .false.
+  endif
 
 end subroutine SIS_tracer_advect_init
 
