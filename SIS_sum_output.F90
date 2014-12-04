@@ -286,10 +286,6 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection, nondim.
   real :: dt_CFL       ! The timestep for calculating the CFL number, in s.
   real :: max_CFL      ! The maximum of the CFL numbers, nondim.
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: &
-    tmp1
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)+1) :: &
-    PE_pt
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int
   logical :: check_col

@@ -379,9 +379,9 @@ subroutine SIS_tracer_chksum(mesg, Reg, G)
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      Reg - A pointer to the tracer registry.
 !  (in)      G - The ocean's grid structure.
-  integer :: is, ie, js, je, nz, l, m
+  integer :: is, ie, js, je, l, m
   character(len=8) :: mesg_l
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = G%ke
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
   do m=1,Reg%ntr_ice ; do l=1,Reg%Tr_ice(m)%nL
     write(mesg_l,'("i")') l

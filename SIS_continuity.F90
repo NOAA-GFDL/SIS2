@@ -400,8 +400,7 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
   real :: dy_N, dy_S ! Effective y-grid spacings to the north and south, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
-  ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = G%ke
-
+  ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = G%CatIce
 
   call cpu_clock_begin(id_clock_update)
 !$OMP parallel do default(none) shared(nz,ish,ieh,jsh,jeh,h_in,hl,hr,G,LB,CS,visc_rem)

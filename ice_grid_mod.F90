@@ -51,7 +51,7 @@ type, public :: sea_ice_grid_type
   integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indicies.
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
-  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
+!  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
   integer :: CatIce             ! The number of sea ice categories.
   integer :: NkIce              ! The number of vertical partitions within the
                                 ! sea ice.
@@ -376,7 +376,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
   G%isd = isda-i_off ; G%ied = ieda-i_off ; G%jsd = jsda-j_off ; G%jed = jeda-j_off
   G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
-  G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
+!  G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
 
   G%symmetric = G%Domain%symmetric
   G%nonblocking_updates = G%Domain%nonblocking_updates

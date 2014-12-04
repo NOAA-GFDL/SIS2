@@ -133,14 +133,13 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
 !  (inout)   diag - A structure that is used to regulate diagnostic output.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
-  integer :: k, nz
+  integer :: k
   real :: zlev_ice(G%NkIce), zinter_ice(G%NkIce+1)
   logical :: set_vert, Cartesian_grid
   character(len=80) :: grid_config, units_temp
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
-  nz = G%ke
 
   set_vert = .true. ; if (present(set_vertical)) set_vert = set_vertical
 
