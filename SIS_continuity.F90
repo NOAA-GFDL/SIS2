@@ -244,57 +244,60 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
 !                 SIS_continuity_init.
 !  (in)      LB - A structure with the active loop bounds.
 
-  real, dimension(SZIB_(G),SZCAT_(G)) :: &
+  real, dimension(SZIB_(G)) :: &
     duhdu      ! Partial derivative of uh with u, in H m.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G)) :: &
+    htot, &    ! The total thickness summed across categories, in H.
+    I_htot, &  ! The inverse of htot or 0, in H-1.
     hl, hr      ! Left and right face thicknesses, in H.
   real, dimension(SZIB_(G)) :: &
-    du, &      ! Corrective barotropic change in the velocity, in m s-1.
-    du_min_CFL, & ! Min/max limits on du correction
-    du_max_CFL, & ! to avoid CFL violations
-    duhdu_tot_0, & ! Summed partial derivative of uh with u, in H m.
-    uh_tot_0, & ! Summed transport with no barotropic correction in H m2 s-1.
-    visc_rem_max  ! The column maximum of visc_rem.
+    uhtot      ! The total transports in H m2 s-1.
   logical, dimension(SZIB_(G)) :: do_i
-  real, dimension(SZIB_(G),SZCAT_(G)) :: &
+  real, dimension(SZIB_(G)) :: &
     visc_rem      ! A 2-D copy of visc_rem_u or an array of 1's.
-  real :: I_vrm   ! 1.0 / visc_rem_max, nondim.
-  real :: du_lim  ! The velocity change that give a relative CFL of 1, in m s-1.
   real :: dx_E, dx_W ! Effective x-grid spacings to the east and west, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = G%CatIce
 
   call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,CS,hl,h_in,hr,G,LB,visc_rem)
-  do k=1,nz
-    ! This sets hl and hr.
-    if (CS%upwind_1st) then
-      do j=jsh,jeh ; do i=ish-1,ieh+1
-        hl(i,j,k) = h_in(i,j,k) ; hr(i,j,k) = h_in(i,j,k)
-      enddo ; enddo
-    else
-      call PPM_reconstruction_x(h_in(:,:,k), hl(:,:,k), hr(:,:,k), G, LB, &
-                                0.0, CS%monotonic, simple_2nd=CS%simple_2nd)
-    endif
-    do I=ish-1,ieh ; visc_rem(I,k) = 1.0 ; enddo
-  enddo
+
+  htot(:,:) = 0.0
+  do k=1,nz ; do j=jsh,jeh ; do i=G%isd,G%ied
+    htot(i,j) = htot(i,j) + h_in(i,j,k)
+  enddo ; enddo ; enddo
+  do j=jsh,jeh ; do i=G%isd,G%ied
+    I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
+  enddo ; enddo
+
+  ! This sets hl and hr.
+  if (CS%upwind_1st) then
+    do j=jsh,jeh ; do i=ish-1,ieh+1
+      hl(i,j) = htot(i,j) ; hr(i,j) = htot(i,j)
+    enddo ; enddo
+  else
+    call PPM_reconstruction_x(htot, hl, hr, G, LB, 0.0, CS%monotonic, &
+                              simple_2nd=CS%simple_2nd)
+  endif
+  do I=ish-1,ieh ; visc_rem(I) = 1.0 ; enddo
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
-!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,u,h_in,hL,hR,  &
-!$OMP                                  uh,dt,G,CS) &
-!$OMP                          private(do_i,duhdu,du,du_max_CFL,du_min_CFL,uh_tot_0,duhdu_tot_0, &
-!$OMP                                  visc_rem_max, I_vrm, du_lim, dx_E, dx_W ) &
-!$OMP      firstprivate(visc_rem)
+
   do j=jsh,jeh
     do I=ish-1,ieh ; do_i(I) = .true. ; enddo
-    ! Set uh and duhdu.
-    do k=1,nz
-      call zonal_flux_layer(u(:,j), h_in(:,j,k), hL(:,j,k), hR(:,j,k), &
-                            uh(:,j,k), duhdu(:,k), visc_rem(:,k), &
-                            dt, G, j, ish, ieh, do_i, CS%vol_CFL)
-    enddo
+    ! Set uhtot and duhdu.
+    call zonal_flux_layer(u(:,j), htot(:,j), hL(:,j), hR(:,j), uhtot, duhdu, &
+                          visc_rem, dt, G, j, ish, ieh, do_i, CS%vol_CFL)
+
+    ! Partition the transports by category in proportion to their relative masses.
+    do k=1,nz ; do I=ish-1,ieh
+      if (u(I,j) >= 0.0) then
+        uh(I,j,k) = uhtot(I) * (h_in(i,j,k) * I_htot(i,j))
+      else
+        uh(I,j,k) = uhtot(I) * (h_in(i+1,j,k) * I_htot(i+1,j))
+      endif
+    enddo ; enddo
 
   enddo ! j-loop
   call cpu_clock_end(id_clock_correct)
@@ -381,58 +384,59 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
 !                 SIS_continuity_init.
 !  (in)      LB - A structure with the active loop bounds.
 
-  real, dimension(SZI_(G),SZCAT_(G)) :: &
-    dvhdv      ! Partial derivative of vh with v, in m2.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
-    hl, hr      ! Left and right face thicknesses, in m.
   real, dimension(SZI_(G)) :: &
-    dv, &      ! Corrective barotropic change in the velocity, in m s-1.
-    dv_min_CFL, & ! Min/max limits on dv correction
-    dv_max_CFL, & ! to avoid CFL violations
-    dvhdv_tot_0, & ! Summed partial derivative of vh with v, in H m.
-    vh_tot_0, &   ! Summed transport with no barotropic correction in H m2 s-1.
-    visc_rem_max  ! The column maximum of visc_rem.
+    dvhdv      ! Partial derivative of vh with v, in m2.
+  real, dimension(SZI_(G),SZJ_(G)) :: &
+    htot, &    ! The total thickness summed across categories, in H.
+    I_htot, &  ! The inverse of htot or 0, in H-1.
+    hl, hr     ! Left and right face thicknesses, in m.
+  real, dimension(SZI_(G),SZJB_(G)) :: &
+    vhtot      ! The total transports in H m2 s-1.
   logical, dimension(SZI_(G)) :: do_i
-  real, dimension(SZI_(G),SZCAT_(G)) :: &
-    visc_rem      ! A 2-D copy of visc_rem_v or an array of 1's.
-  real :: I_vrm   ! 1.0 / visc_rem_max, nondim.
-  real :: dv_lim  ! The velocity change that give a relative CFL of 1, in m s-1.
+  real, dimension(SZI_(G)) :: &
+    visc_rem      ! A 1-D copy of visc_rem_v or an array of 1's.
   real :: dy_N, dy_S ! Effective y-grid spacings to the north and south, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = G%CatIce
 
   call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(nz,ish,ieh,jsh,jeh,h_in,hl,hr,G,LB,CS,visc_rem)
-  do k=1,nz
-    ! This sets hl and hr.
-    if (CS%upwind_1st) then
-      do j=jsh-1,jeh+1 ; do i=ish,ieh
-        hl(i,j,k) = h_in(i,j,k) ; hr(i,j,k) = h_in(i,j,k)
-      enddo ; enddo
-    else
-      call PPM_reconstruction_y(h_in(:,:,k), hl(:,:,k), hr(:,:,k), G, LB, &
-                                0.0, CS%monotonic, simple_2nd=CS%simple_2nd)
-    endif
-    do i=ish,ieh ; visc_rem(i,k) = 1.0 ; enddo
-  enddo
+
+  htot(:,:) = 0.0
+  do k=1,nz ; do j=G%jsd,G%jed ; do i=ish,ieh
+    htot(i,j) = htot(i,j) + h_in(i,j,k)
+  enddo ; enddo ; enddo
+  do j=G%jsd,G%jed ;  do i=ish,ieh
+    I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
+  enddo ; enddo
+
+  ! This sets hl and hr.
+  if (CS%upwind_1st) then
+    do j=jsh-1,jeh+1 ; do i=ish,ieh
+      hl(i,j) = htot(i,j) ; hr(i,j) = htot(i,j)
+    enddo ; enddo
+  else
+    call PPM_reconstruction_y(htot, hl, hr, G, LB, 0.0, CS%monotonic, &
+                              simple_2nd=CS%simple_2nd)
+  endif
+  do i=ish,ieh ; visc_rem(i) = 1.0 ; enddo
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
-!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,nz,v,h_in,hL,hR,vh, &
-!$OMP                                  dt,G,CS )                           &
-!$OMP                          private(do_i,dvhdv,dv,dv_max_CFL,dv_min_CFL,vh_tot_0,    &
-!$OMP                                  dvhdv_tot_0,visc_rem_max,I_vrm,dv_lim,dy_N,      &
-!$OMP                                  dy_S ) &
-!$OMP                     firstprivate(visc_rem)
   do J=jsh-1,jeh
     do i=ish,ieh ; do_i(i) = .true. ; enddo
     ! This sets vh and dvhdv.
-    do k=1,nz
-      call merid_flux_layer(v(:,J), h_in(:,:,k), hL(:,:,k), hR(:,:,k), &
-                            vh(:,J,k), dvhdv(:,k), visc_rem(:,k), &
-                            dt, G, J, ish, ieh, do_i, CS%vol_CFL)
-    enddo ! k-loop
+    call merid_flux_layer(v(:,J), htot, hL, hR, vhtot(:,J), dvhdv, visc_rem, &
+                          dt, G, J, ish, ieh, do_i, CS%vol_CFL)
+
+    ! Partition the transports by category in proportion to their relative masses.
+    do k=1,nz ; do i=ish,ieh
+      if (v(i,J) >= 0.0) then
+        vh(i,J,k) = vhtot(i,J) * (h_in(i,j,k) * I_htot(i,j))
+      else
+        vh(i,J,k) = vhtot(i,J) * (h_in(i,j+1,k) * I_htot(i,j+1))
+      endif
+    enddo ; enddo
 
   enddo ! j-loop
   call cpu_clock_end(id_clock_correct)
