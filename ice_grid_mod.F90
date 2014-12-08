@@ -139,6 +139,9 @@ type, public :: sea_ice_grid_type
                         ! internal units of thickness to kg m-2.
   real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
                         ! the internal units of thickness.
+  real :: H_subroundoff !   A thickness that is so small that it can be added to
+                        ! any physically meaningflu positive thickness without
+                        ! changing it at the bit level, in thickness units.
 
   real, allocatable, dimension(:) :: &
     cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
@@ -294,6 +297,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
                default=1.0)
   G%kg_m2_to_H = 1.0 / G%H_to_kg_m2
+  G%H_subroundoff = 1e-30*G%kg_m2_to_H
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &

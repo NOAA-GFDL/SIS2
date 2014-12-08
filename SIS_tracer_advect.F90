@@ -239,8 +239,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
                      max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
     enddo ; enddo
   enddo
-!   h_neglect = G%H_subroundoff
-  h_neglect = 1e-30
+  h_neglect = G%H_subroundoff
   do j=jsd,jed ; do I=isd,ied-1
     uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
   enddo ; enddo
@@ -332,11 +331,11 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       if (x_first) then
   !    First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM) !(, OBC)
+                      isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -344,11 +343,11 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       else
   !    First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                      isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -477,8 +476,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
                        max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
       enddo ; enddo
     enddo
-  !   h_neglect = G%H_subroundoff
-    h_neglect = 1e-30
+    h_neglect = G%H_subroundoff
     do j=jsd,jed ; do I=isd,ied-1
       uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
     enddo ; enddo
@@ -539,11 +537,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
         if (x_first) then
     !    First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM) !(, OBC)
+                        isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -551,11 +549,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
         else
     !    First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                        isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv, jev, k, G, CS%usePPM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -583,7 +581,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
 end subroutine advect_scalar
 
 subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                    is, ie, js, je, k, G, usePPM) ! (, OBC)
+                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
   type(sea_ice_grid_type),                intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: scalar
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
@@ -593,7 +591,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   logical, dimension(SZJ_(G),SZCAT_(G)),  intent(inout) :: domore_u
   real,                                   intent(in)    :: Idt
   integer,                                intent(in)    :: is, ie, js, je,k
-  logical,                                intent(in)    :: usePPM
+  logical,                                intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection in the zonal direction using
   ! a monotonic piecewise linear scheme.
   real, dimension(SZI_(G)) :: &
@@ -612,8 +610,6 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   real, dimension(SZIB_(G)) :: &
     hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
     CFL                 ! A nondimensional work variable.
-  real :: min_h         ! The minimum thickness that can be realized during
-                        ! any of the passes, in m or kg m-2.
   real :: h_neglect     ! A thickness that is so small it is usually lost
                         ! in roundoff and can be neglected, in m.
   logical :: do_i(SZIB_(G))     ! If true, work on given points.
@@ -622,12 +618,12 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not. usePPM
+  usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = 1e-30 ! h_neglect = G%H_subroundoff
-  min_h = 1e-16 ! min_h = 0.1*G%Angstrom
+  h_neglect = G%H_subroundoff
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
+  if (usePCM) then ; do i=is-1,ie+1 ; slope_x(i) = 0.0 ; enddo ; endif
 
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
@@ -656,7 +652,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
 end subroutine advect_scalar_x
 
 subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, usePPM) ! (, OBC)
+                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
   type(sea_ice_grid_type),                intent(inout) :: G
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
@@ -666,7 +662,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   logical, dimension(SZJ_(G),SZCAT_(G)),  intent(inout) :: domore_u
   real,                                   intent(in)    :: Idt
   integer,                                intent(in)    :: ntr, nL_max, is, ie, js, je,k
-  logical,                                intent(in)    :: usePPM
+  logical,                                intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection in the zonal direction using
   ! a monotonic piecewise linear scheme.
   real, dimension(SZI_(G),nL_max,ntr) :: &
@@ -685,8 +681,6 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   real, dimension(SZIB_(G)) :: &
     hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
     CFL                 ! A nondimensional work variable.
-  real :: min_h         ! The minimum thickness that can be realized during
-                        ! any of the passes, in m or kg m-2.
   real :: h_neglect     ! A thickness that is so small it is usually lost
                         ! in roundoff and can be neglected, in m.
   logical :: do_i(SZIB_(G))     ! If true, work on given points.
@@ -695,12 +689,15 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not. usePPM
+  usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = 1e-30 ! h_neglect = G%H_subroundoff
-  min_h = 1e-16 ! min_h = 0.1*G%Angstrom
+  h_neglect = G%H_subroundoff
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
+
+  if (usePCM) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is-1,ie+1
+    slope_x(i,l,m) = 0.0
+  enddo ; enddo ; enddo ; endif
 
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
@@ -759,17 +756,16 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u)
   logical,                           intent(inout) :: domore_u
   ! Local
   integer :: i
-  real :: hup, hlos, h_neglect, min_h
+  real :: hup, hlos, h_neglect
 
-  h_neglect = 1e-30
-  min_h = 1e-16
+  h_neglect = G%H_subroundoff
 
   do I=is,ie
     if (uhr(I,j) == 0.0) then
       uhh(I) = 0.0
       CFL(I) = 0.0
     elseif (uhr(I,j) < 0.0) then
-      hup = (hprev(i+1,j)-G%areaT(i+1,j)*min_h)
+      hup = hprev(i+1,j)
       hlos = MAX(0.0,uhr(I+1,j))
       if (((hup + uhr(I,j) - hlos) < 0.0) .and. &
           ((0.5*hup + uhr(I,j)) < 0.0)) then
@@ -780,7 +776,7 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u)
       endif
       CFL(I) = - uhh(I)/(hprev(i+1,j)+h_neglect) ! CFL is positive
     else
-      hup = (hprev(i,j)-G%areaT(i,j)*min_h)
+      hup = hprev(i,j)
       hlos = MAX(0.0,-uhr(I-1,j))
       if (((hup - uhr(I,j) - hlos) < 0.0) .and. &
           ((0.5*hup - uhr(I,j)) < 0.0)) then
@@ -906,7 +902,7 @@ subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, 
   integer :: i
   real :: h_neglect
 
-  h_neglect = 1e-30
+  h_neglect = G%H_subroundoff
 
   do I=is-1,ie
     uhr(I,j) = uhr(I,j) - uhh(I)
@@ -951,7 +947,7 @@ subroutine kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x, scalar)
 end subroutine kernel_tracer_div_x
 
 subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                    is, ie, js, je, k, G, usePPM) ! (, OBC)
+                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
   type(sea_ice_grid_type),                     intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: scalar
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
@@ -961,7 +957,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   logical, dimension(SZJB_(G),SZCAT_(G)),      intent(inout) :: domore_v
   real,                                        intent(in)    :: Idt
   integer,                                     intent(in)    :: is, ie, js, je,k
-  logical,                                     intent(in)    :: usePPM
+  logical,                                     intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -980,8 +976,6 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   real, dimension(SZIB_(G)) :: &
     hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
     CFL                 ! A nondimensional work variable.
-  real :: min_h         ! The minimum thickness that can be realized during
-                        ! any of the passes, in m or kg m-2.
   real :: h_neglect     ! A thickness that is so small it is usually lost
                         ! in roundoff and can be neglected, in m.
   logical :: do_j_tr(SZJ_(G))   ! If true, calculate the tracer profiles.
@@ -991,10 +985,9 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not. usePPM
+  usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = 1e-30 ! h_neglect = G%H_subroundoff
-  min_h = 1e-16 ! min_h = 0.1*G%Angstrom
+  h_neglect = G%H_subroundoff
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1004,6 +997,8 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     do j=js-1,je+1 ; if (do_j_tr(j)) then
       call kernel_PLM_slope_y(G, is, ie, j, scalar(:,:,k), G%mask2dCv(:,:), slope_y(:,j))
     endif ; enddo
+  elseif (usePCM) then
+    do j=js-1,je+1 ; do i=is,ie ; slope_y(i,j) = 0.0 ; enddo ; enddo
   endif ! usePLMslope
 
   do J=js-1,je ; if (domore_v(J,k)) then
@@ -1034,7 +1029,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 end subroutine advect_scalar_y
 
 subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, usePPM) ! (, OBC)
+                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
   type(sea_ice_grid_type),                     intent(inout) :: G
   type(SIS_tracer_type), dimension(ntr),  intent(inout) :: Tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
@@ -1044,7 +1039,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   logical, dimension(SZJB_(G),SZCAT_(G)),      intent(inout) :: domore_v
   real,                                        intent(in)    :: Idt
   integer,                                     intent(in)    :: ntr, nL_max, is, ie, js, je,k
-  logical,                                     intent(in)    :: usePPM
+  logical,                                     intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
   real, dimension(SZI_(G),SZJ_(G),nL_max,ntr) :: &
@@ -1063,8 +1058,6 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   real, dimension(SZIB_(G)) :: &
     hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
     CFL                 ! A nondimensional work variable.
-  real :: min_h         ! The minimum thickness that can be realized during
-                        ! any of the passes, in m or kg m-2.
   real :: h_neglect     ! A thickness that is so small it is usually lost
                         ! in roundoff and can be neglected, in m.
   logical :: do_j_tr(SZJ_(G))   ! If true, calculate the tracer profiles.
@@ -1074,10 +1067,9 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not. usePPM
+  usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = 1e-30 ! h_neglect = G%H_subroundoff
-  min_h = 1e-16 ! min_h = 0.1*G%Angstrom
+  h_neglect = G%H_subroundoff
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1087,6 +1079,10 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     do j=js-1,je+1 ; if (do_j_tr(j)) then ; do m=1,ntr ; do l=1,Tr(m)%nL
       call kernel_PLM_slope_y(G, is, ie, j, Tr(m)%t(:,:,k,l), G%mask2dCv(:,:), slope_y(:,j,l,m))
     enddo ; enddo ; endif ; enddo ! End of l-, m-, & j- loops.
+  elseif (usePCM) then
+    do m=1,ntr ; do l=1,Tr(m)%nL ; do j=js-1,je+1 ; do i=is,ie
+      slope_y(i,j,l,m) = 0.0
+    enddo ; enddo ; enddo ; enddo
   endif ! usePLMslope
 
   do J=js-1,je ; if (domore_v(J,k)) then
@@ -1162,10 +1158,9 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v)
   logical, dimension(SZJB_(G)),      intent(inout) :: domore_v
   ! Local
   integer :: i
-  real :: hup, hlos, h_neglect, min_h
+  real :: hup, hlos, h_neglect
 
-  h_neglect = 1e-30
-  min_h = 1e-16
+  h_neglect = G%H_subroundoff
 
   domore_v(J) = .false.
   do i=is,ie
@@ -1173,7 +1168,7 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v)
       vhh(i,J) = 0.0
       CFL(i) = 0.0
     elseif (vhr(i,J) < 0.0) then
-      hup = (hprev(i,j+1)-G%areaT(i,j+1)*min_h)
+      hup = hprev(i,j+1)
       hlos = MAX(0.0,vhr(i,J+1))
       if ((((hup - hlos) + vhr(i,J)) < 0.0) .and. &
           ((0.5*hup + vhr(i,J)) < 0.0)) then
@@ -1184,7 +1179,7 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v)
       endif
       CFL(i) = - vhh(i,J) / (hprev(i,j+1)+h_neglect) ! CFL is positive
     else
-      hup = (hprev(i,j)-G%areaT(i,j)*min_h)
+      hup = hprev(i,j)
       hlos = MAX(0.0,-vhr(i,J-1))
       if ((((hup - hlos) - vhr(i,J)) < 0.0) .and. &
           ((0.5*hup - vhr(i,J)) < 0.0)) then
@@ -1309,7 +1304,7 @@ subroutine kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev, hlst, Ihnew, do_i
   integer :: i
   real :: h_neglect
 
-  h_neglect = 1e-30
+  h_neglect = G%H_subroundoff
 
   do i=is,ie
     if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
