@@ -410,7 +410,6 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     PFu, &   ! Zonal hydrostatic pressure driven acceleration, in m s-2.
     u_tmp, & ! A temporary copy of the old values of ui, in m s-1.
     mi_u, &  ! The total ice and snow mass interpolated to u points, in kg m-2.
-    I_mi_u, &! The inverse of mi_u (plus a tiny mass to avoid NaNs), in m2 kg-1.
     f2dt_u, &! The squared effective Coriolis parameter at u-points times a
              ! time step, in s-1.
     I1_f2dt2_u  ! 1 / ( 1 + f^2 dt^2) at u-points, nondimensional.
@@ -422,7 +421,6 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     Cor_v, &  ! Meridional Coriolis acceleration, in m s-2.
     PFv, &   ! Meridional hydrostatic pressure driven acceleration, in m s-2.
     mi_v, &  ! The total ice and snow mass interpolated to v points, in kg m-2.
-    I_mi_v, &! The inverse of mi_v (plus a tiny mass to avoid NaNs), in m2 kg-1.
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
              ! time step, in s-1.
     I1_f2dt2_v  ! 1 / ( 1 + f^2 dt^2) at v-points, nondimensional.
@@ -492,7 +490,6 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                                            ! can be cubed without underflow.
   real :: m_neglect  ! A tiny mass per unit area, in kg m-2.
   real :: m_neglect2 ! A tiny mass per unit area squared, in kg2 m-4.
-  real :: m_neglect3 ! A tiny mass per unit area cubed, in kg3 m-6.
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power, in kg4 m-8.
   real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
 
@@ -699,7 +696,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   enddo ; enddo
 
   m_neglect = H_subroundoff*CS%Rho_ice
-  m_neglect2 = m_neglect**2 ; m_neglect3 = m_neglect**3 ; m_neglect4 = m_neglect**4
+  m_neglect2 = m_neglect**2 ; m_neglect4 = m_neglect**4
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
       sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
@@ -743,12 +740,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   do j=jsc-1,jec+1 ; do I=isc-1,iec
     mi_u(I,j) = 0.5*(mis(i+1,j) + mis(i,j))
-    I_mi_u(I,j) = G%mask2dCu(I,j) / (mi_u(I,j) + m_neglect)
   enddo ; enddo
 
   do J=jsc-1,jec ; do i=isc-1,iec+1
     mi_v(i,J) = 0.5*(mis(i,j+1) + mis(i,j))
-    I_mi_v(i,J) = G%mask2dCv(i,J) / (mi_v(i,J) + m_neglect)
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
@@ -1231,9 +1226,6 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
   real :: strength_sum  ! The sum of the 4 neighboring strengths, in Pa.
   real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
-  real, parameter :: H_subroundoff = 1e-30 ! A thickness that is so small it is
-                    ! usually lost in roundoff and can be neglected, but can be
-                    ! cubed without being lost to underflow, in H.
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
