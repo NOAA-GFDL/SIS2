@@ -148,6 +148,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   real :: hca_in_m        ! The ice thickness averaged over the whole cell in m.
   real, dimension(SZI_(G),SZJ_(G)) :: opnwtr
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
 
   real :: I_mca_ice
@@ -247,11 +248,13 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   endif
 
   !   Determine the whole-cell averaged mass of snow and ice.
-  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0
+  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0 ; ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
   do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     if (mH_ice(i,j,k)>0.0) then
       mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
       mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
+      ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
+      mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
     else
       if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
         call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
@@ -260,6 +263,23 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
       mca_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
+    mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
+  endif ; enddo ; enddo
+
+  !   Handle massless categories.
+  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+    if (mca_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
+      if (mHi_avg(i,j) <= G%mH_cat_bound(k)) then
+        mH_ice(i,j,k) = G%mH_cat_bound(k)
+      elseif (mHi_avg(i,j) >= G%mH_cat_bound(k+1)) then
+        mH_ice(i,j,k) = G%mH_cat_bound(k+1)
+      else
+        mH_ice(i,j,k) = mHi_avg(i,j)
+      endif
+    endif
+  enddo ; enddo ; enddo
+!   call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true.)
 
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
@@ -318,6 +338,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
              sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
                   (CS%roll_factor * mH_ice(i,j,k)) ), G%mH_cat_bound(1))
       endif
+
+      ! Make sure that mH_ice(i,j,k) > G%mH_cat_bound(1).
+      if (mH_ice(i,j,k) < G%mH_cat_bound(1)) mH_ice(i,j,k) = G%mH_cat_bound(1)
 
       part_sz(i,j,k) = mca_ice(i,j,k) / mH_ice(i,j,k)
       mH_snow(i,j,k) = mH_ice(i,j,k) * (mca_snow(i,j,k) / mca_ice(i,j,k))
@@ -991,7 +1014,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
   call get_param(param_file, mod, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
-          desc="The horizontal transport scheme for tracers:\n"//&
+          desc="The horizontal transport scheme for thickness:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
           "  PCM    - Directionally split peicewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
