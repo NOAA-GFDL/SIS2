@@ -358,7 +358,7 @@ end subroutine avg_top_quantities
 !   tracers from the ice model's internal state to the public ice data type    !
 !   for use by the ocean model.                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_fluxes (Ice, IST, G)
+subroutine set_ocean_top_fluxes(Ice, IST, G)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
@@ -371,12 +371,6 @@ subroutine set_ocean_top_fluxes (Ice, IST, G)
   if (IST%debug) then
     call IST_chksum("Start set_ocean_top_fluxes", IST, G)
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
-  endif
-
-  if (IST%stress_count > 1) then
-    I_count = 1.0 / IST%stress_count
-    Ice%flux_u(:,:) = Ice%flux_u(:,:) * I_count
-    Ice%flux_v(:,:) = Ice%flux_v(:,:) * I_count
   endif
 
   ! This block of code is probably unneccessary.
@@ -418,6 +412,28 @@ subroutine set_ocean_top_fluxes (Ice, IST, G)
 
 end subroutine set_ocean_top_fluxes
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
+!   them through the stresses by the number of times they have been augmented. !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine finish_ocean_top_stresses(Ice, IST, G)
+  type(ice_data_type),  intent(inout) :: Ice
+  type(ice_state_type), intent(inout) :: IST
+  type(sea_ice_grid_type), intent(inout) :: G
+
+  real :: I_count
+
+  if (IST%stress_count > 1) then
+    I_count = 1.0 / IST%stress_count
+    Ice%flux_u(:,:) = Ice%flux_u(:,:) * I_count
+    Ice%flux_v(:,:) = Ice%flux_v(:,:) * I_count
+  endif
+
+  if (IST%debug) then
+    call Ice_public_type_chksum("finish_ocean_top_stresses", Ice)
+  endif
+
+end subroutine finish_ocean_top_stresses
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ocean_top_stress_Bgrid - Calculate the stresses on the ocean integrated  !
@@ -1663,6 +1679,13 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%id_age>0) call ice_aging(G, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here
 
+    ! Set up the thermodynamic fluxes in the externally visible structure Ice.
+    call set_ocean_top_fluxes(Ice, IST, G)
+    call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+
+    if (IST%column_check) &
+      call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
+                                message="      Post_thermo A", check_column=.true.)
     call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
                                IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
     call pass_var(IST%part_size, G%Domain)
@@ -1671,7 +1694,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     if (IST%column_check) &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
-                                message="        Post_thermo", check_column=.true.)
+                                message="      Post_thermo B ", check_column=.true.)
   endif
 
   if (IST%id_xprt>0) then
@@ -2000,6 +2023,10 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
                                  IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
 
+      ! Set up the thermodynamic fluxes in the externally visible structure Ice.
+      call set_ocean_top_fluxes(Ice, IST, G)
+      call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+
       if (IST%column_check) &
         call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                                   message="        Post_thermo", check_column=.true.)
@@ -2043,6 +2070,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                          IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     endif
+    if (IST%column_check) &
+      call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
+                                message="      Post_transport")! , check_column=.true.)
 
     if (IST%id_xprt>0) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       h2o_chg_xprt(i,j) = h2o_chg_xprt(i,j) + IST%part_size(i,j,k) * &
@@ -2061,10 +2091,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call mpp_clock_begin(iceClock8)
 
-  ! Set up the fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, IST, G)
-  call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
-
+  call finish_ocean_top_stresses(Ice, IST, G)
 
   ! Set appropriate surface quantities in categories with no ice.
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
