@@ -187,6 +187,10 @@ type ice_state_type
 
   real, pointer, dimension(:,:)   :: frazil       =>NULL()
   real, pointer, dimension(:,:)   :: frazil_input =>NULL()
+
+  real, pointer, dimension(:,:)   :: frazil_nudge =>NULL()
+  real, pointer, dimension(:,:)   :: melt_nudge   =>NULL()
+
   real, pointer, dimension(:,:)   :: bheat        =>NULL()
   real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
@@ -260,6 +264,11 @@ type ice_state_type
                                ! that needs to be done.
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
+  logical :: nudge_sea_ice = .false. ! nudge sea ice concentrations towards observations
+  real    :: nudge_sea_ice_coeff = 0.0 ! dimensional coefficient controls how strongly sea ice
+                              ! is constrained to observatios. Units are kg m-2.  A suggested value
+                              ! is 1.e2
+
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   integer, allocatable, dimension(:,:) :: tr_flux_index
   real, allocatable, dimension(:,:,:,:) :: tr_flux_top

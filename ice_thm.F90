@@ -39,7 +39,7 @@ use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 implicit none ; private
 
-public :: DS, DI, DW, MU_TS, TFI, CI, slab_ice_optics, get_thermo_coefs
+public :: DS, DI, DW, MU_TS, TFI,CW, CI, slab_ice_optics, get_thermo_coefs
 public :: ice5lay_temp, ice5lay_resize, ice_thm_param, e_to_melt
           ! test driver needs line below
           !,LI, KS, KI, CI, DT, SI1, SI2, SI3, SI4
