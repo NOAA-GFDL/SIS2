@@ -47,7 +47,7 @@ public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
 public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2, ice_resize_SIS2
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
-public :: e_to_melt_TS
+public :: e_to_melt_TS, energy_melt_enthS
 
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
@@ -1279,6 +1279,21 @@ function e_to_melt_TS(T, S, ITV) result(e_to_melt)
   endif
 
 end function e_to_melt_TS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! energy_melt_enthS - return the energy needed to melt a given snow/ice        !
+!      configuration, in J kg-1.                                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function energy_melt_enthS(En, S, ITV) result(e_to_melt)
+  real, intent(in) :: En, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
+                     ! and warm it to its bulk freezing temperature, in J kg-1.
+
+  e_to_melt = ITV%enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
+
+end function energy_melt_enthS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
