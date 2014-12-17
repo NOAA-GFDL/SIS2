@@ -22,6 +22,7 @@ use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All, AGRID
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : slasher
 
 use fms_io_mod,      only : file_exist, parse_mask_table
@@ -208,7 +209,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 
   logical :: symmetric       ! If true, use symmetric memory allocation.
   logical :: global_indexing
-  logical :: set_grid_like_SIS1
   character(len=256) :: grid_file, ocean_topog
   character(len=256) :: ocean_hgrid, ocean_mosaic
   character(len=200) :: mesg
@@ -217,7 +217,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   type(domain2d), pointer :: Domain => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
-  ocean_topog = 'INPUT/topog.nc'
 
   ! Set up the SIS_domain_type.  This will later occur via a call to MOM_domains_init.
   ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
@@ -289,9 +288,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
 
-  call get_param(param_file, mod_nm, "SET_GRID_LIKE_SIS1", set_grid_like_SIS1, &
-                 "If true, use SIS1 code to set the grid values.  Otherwise \n"//&
-                 "use code derived from MOM6.", default=.false.)
+  call obsolete_logical(param_file, "SET_GRID_LIKE_SIS1", .false.)
   call get_param(param_file, mod_nm, "H_TO_KG_M2", G%H_to_kg_m2, &
                "A constant that translates thicknesses from the model's \n"//&
                "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
@@ -403,6 +400,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 
   !--- read data from grid_spec.nc
   allocate(depth(G%isc:G%iec,G%jsc:G%jec))
+  ocean_topog = 'INPUT/topog.nc'
   call read_data(ocean_topog, 'depth', depth(G%isc:G%iec,G%jsc:G%jec), G%Domain%mpp_domain)
   do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (depth(i,j) > 0) then
     G%mask2dT(i,j) = 1.0
@@ -450,133 +448,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
     G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5)
   enddo ; enddo
 
+  call set_grid_metrics_from_mosaic(G, param_file)
 
-  if (set_grid_like_SIS1) then
-    call mpp_copy_domain(G%Domain%mpp_domain, domain2)
-    call mpp_set_compute_domain(domain2, 2*isca-1, 2*ieca+1, 2*jsca-1, 2*jeca+1, 2*(ieca-isca)+3, 2*(jeca-jsca)+3 )
-    call mpp_set_data_domain   (domain2, 2*isda-1, 2*ieda+1, 2*jsda-1, 2*jeda+1, 2*(ieda-isda)+3, 2*(jeda-jsda)+3 )
-    call mpp_set_global_domain (domain2, 2*isg-1, 2*ieg+1, 2*jsg-1, 2*jeg+1, 2*(ieg-isg)+3, 2*(jeg-jsg)+3 )
-    call mpp_get_compute_domain(domain2, is, ie, js, je)
-    if(is /= 2*isca-1 .or. ie /= 2*ieca+1 .or. js /= 2*jsca-1 .or. je /= 2*jeca+1) then
-      call SIS_error(FATAL, 'ice_grid_mod: supergrid domain is not set properly')
-    endif
-    allocate(tmpx(is:ie, js:je), tmpy(is:ie, js:je) )
-    call read_data(ocean_hgrid, 'x', tmpx, domain2)
-    call read_data(ocean_hgrid, 'y', tmpy, domain2)
-    do J=jsca-1,jeca ; do I=isca-1,ieca
-      G%geoLonBu(I-i_off,J-j_off) = tmpx(2*i+1,2*j+1)
-      G%geoLatBu(I-i_off,J-j_off) = tmpy(2*i+1,2*j+1)
-    enddo ; enddo
-    deallocate(tmpx, tmpy)
-    call calc_mosaic_grid_area(G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
-                               G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec)*pi/180, &
-                               G%areaT(G%isc:G%iec,G%jsc:G%jec))
-    call mpp_deallocate_domain(domain2)
-
-!    call pass_var(G%geoLonBu, G%Domain, position=CORNER)
-!    call pass_var(G%geoLatBu, G%Domain, position=CORNER)
-
-    ! Determine the domain-averaged latitudes and longitudes on the grid for
-    ! diagnostic purposes. This is a hold-over and will be changed to match
-    ! the MOM6 convention of using the "nominal" latitudes and longitudes,
-    ! which are the actual lat & lon on spherical portions of the grid.
-    allocate ( xb1d (ni+1), yb1d (nj+1) )
-    if (associated(G%Domain%maskmap)) then
-      allocate(tmpx(ni+1,nj+1), tmpy(ni+1,nj+1))
-      call get_grid_cell_vertices('OCN', 1, tmpx, tmpy)
-      xb1d(:) = sum(tmpx,2)/(nj+1)
-      yb1d(:) = sum(tmpy,1)/(ni+1)
-      deallocate(tmpx, tmpy)
-    else
-      Domain => G%Domain%mpp_domain
-      allocate ( tmpx(isca:ieca+1, nj+1) )
-      call mpp_set_domain_symmetry(Domain, .TRUE.)
-      call mpp_global_field(Domain, G%geoLonBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
-                           tmpx, flags=YUPDATE, position=CORNER)
-      allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
-      tmp_2d = 0
-      tmp_2d(isca:ieca+1,jsca) = sum(tmpx,2)/(nj+1);
-      deallocate(tmpx)
-      allocate ( tmpx(ni+1, jsca:jeca+1) )
-
-      call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), &
-                           tmpx, flags=XUPDATE, position=CORNER)
-      xb1d(:) = tmpx(:,jsca)
-      deallocate(tmpx, tmp_2d)
-
-      allocate ( tmpy(ni+1, jsca:jeca+1) )
-      call mpp_global_field(Domain, G%geoLatBu(G%isc-1:G%iec,G%jsc-1:G%jec), tmpy, &
-                           flags=XUPDATE, position=CORNER)
-      allocate ( tmp_2d(isca:ieca+1, jsca:jeca+1) )
-      tmp_2d = 0
-      tmp_2d(isca,jsca:jeca+1) = sum(tmpy,1)/(ni+1);
-      deallocate(tmpy)
-      allocate ( tmpy(isca:ieca+1, nj+1) )
-      call mpp_global_field(Domain, tmp_2d, tmpy, flags=YUPDATE, position=CORNER)
-      yb1d(:) = tmpy(isca,:)
-      deallocate(tmpy, tmp_2d)
-      call mpp_set_domain_symmetry(Domain, G%domain%symmetric)
-    endif
-
-    G%gridLatB(jsg-1:jeg) = yb1d(1:nj+1)
-    G%gridLonB(isg-1:ieg) = xb1d(1:ni+1)
-    do i=isg,ieg ; G%gridLonT(i) = 0.5*(G%gridLonB(i-1)+G%gridLonB(i)) ; enddo
-    do j=jsg,jeg ; G%gridLatT(j) = 0.5*(G%gridLatB(j-1)+G%gridLatB(j)) ; enddo
-
-    deallocate( xb1d, yb1d )
-
-    do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
-      G%dyCu(I,j) = edge_length(G%geoLonBu(I,J-1), G%geoLatBu(I,J-1), &
-                                G%geoLonBu(I,J), G%geoLatBu(I,J))
-    enddo ; enddo
-    do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
-      G%dxCv(i,J) = edge_length(G%geoLonBu(I-1,J), G%geoLatBu(I-1,J), &
-                                G%geoLonBu(I,J), G%geoLatBu(I,J))
-    enddo ; enddo
-    call pass_vector(G%dyCu, G%dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
-
-    do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      G%dxT(i,j) = (G%dxCv(i,J-1) + G%dxCv(I,j) )/2
-      if (G%mask2dT(i,j) > 0.0) then
-        G%dyT(i,j) = G%areaT(i,j)/G%dxT(i,j)
-      else
-        G%dyT(i,j) = (G%dyCu(I-1,j) + G%dyCu(I,j) )/2
-      endif
-    enddo ; enddo
-    call pass_vector(G%dxT, G%dyT, G%Domain, To_All+Scalar_Pair, AGRID)
-
-    G%dxBu(:,:) = 1.0 ; G%IdxBu(:,:) = 1.0
-    G%dyBu(:,:) = 1.0 ; G%IdyBu(:,:) = 1.0
-
-    do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-      G%dxBu(I,J) = 0.25*((G%dxT(i+1,j+1) + G%dxT(i,j)) + &
-                          (G%dxT(i+1,j) + G%dxT(i,j+1)) )
-      G%IdxBu(I,J) = 1.0 / G%dxBu(I,j)
-      G%dyBu(I,J) = 0.25*((G%dyT(i+1,j+1) + G%dyT(i,j)) + &
-                          (G%dyT(i+1,j) + G%dyT(i,j+1)) )
-      G%IdyBu(I,J) = 1.0 / G%dyBu(I,j)
-      G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
-    enddo ; enddo
-    call pass_vector(G%dxBu, G%dyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
-    call pass_vector(G%IdxBu, G%IdyBu, G%Domain, To_All+Scalar_Pair, BGRID_NE)
-
-    do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
-      G%dxCu(I,j) = 0.5*(G%dxBu(I,J) + G%dxBu(I,J-1))
-    enddo ; enddo
-    do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
-      G%dyCv(i,J) = 0.5*(G%dyBu(I,J) + G%dyBu(I-1,J))
-    enddo ; enddo
-    call pass_vector(G%dxCu, G%dyCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
-
-    do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      G%geoLonT(i,j) = 0.5 * (lon_avg( (/ G%geoLonBu(I-1,J-1), G%geoLonBu(I,J) /) ) + &
-                              lon_avg( (/ G%geoLonBu(I,J-1), G%geoLonBu(I-1,J) /) ) )
-      G%geoLatT(i,j) = ((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J)) + &
-                        (G%geoLatBu(I,J-1) + G%geoLatBu(I-1,J)) ) * 0.25
-    enddo ; enddo
-  else
-    call set_grid_metrics_from_mosaic(G, param_file)
-  endif
   call set_grid_derived_metrics(G, param_file)
 
   ! cell_area is unfortunately used outside of the ice model for various
