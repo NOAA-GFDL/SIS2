@@ -60,10 +60,11 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_string_functions, only : uppercase
 
-use fms_mod, only: file_exist, clock_flag_default
+use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
-use mpp_mod, only: mpp_clock_id, mpp_clock_begin, mpp_clock_end
-use mpp_mod, only: CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use fms_io_mod, only : register_restart_field, restart_file_type
+use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
+use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
 use time_manager_mod, only : time_type, time_type_to_real, get_date, get_time
 use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
@@ -2169,14 +2170,6 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       endif
     enddo ; enddo ; enddo
   endif
-  !### DELETE THIS WHEN T_ICE# and T_SNOW BECOME READ-ONLY RESTART VARIABLES.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    IST%t_snow(i,j,k) = temp_snow(i,j,k)
-  enddo ; enddo ; enddo
-  do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    IST%t_ice(i,j,k,m) = temp_ice(i,j,k,m)
-  enddo ; enddo ; enddo ; enddo
-
 
   if (IST%id_ext>0) then
     do j=jsc,jec ; do i=isc,iec
@@ -3299,7 +3292,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
   logical :: spec_thermo_sal
-  character(len=128) :: restart_file
+  character(len=128) :: restart_file, restart_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
   character(len=8)   :: nstr
 
@@ -3322,6 +3315,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: H_rescale_ice, H_rescale_snow ! Rescaling factors to account for
                          ! differences in thickness units between the current
                          ! model run and the input files.
+  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
+  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
+  integer :: idr, id_sal
+  logical :: read_aux_restart
   character(len=16)  :: stagger, dflt_stagger
 
   if (associated(Ice%Ice_state)) then
@@ -3468,6 +3465,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "albedo within the sea ice model.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", IST%do_ridging, &
                  "If true, call the ridging routines.", default=.false.)
+  call get_param(param_file, mod, "RESTARTFILE", restart_file, &
+                 "The name of the restart file.", default="ice_model.res.nc")
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
@@ -3512,7 +3511,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   Ice_restart => Ice%Ice_restart
 
   ! Allocate and register fields for restarts.
-  restart_file = 'ice_model.res.nc'
   call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, &
                          param_file, Ice, Ice%Ice_restart, restart_file)
 
@@ -3561,83 +3559,119 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
                              specified_thermo_salinity=spec_thermo_sal)
 
-  restart_file = 'INPUT/ice_model.res.nc'
-  if (file_exist(restart_file)) then
+  restart_path = 'INPUT/'//trim(restart_file)
+  if (file_exist(restart_path)) then
     ! Set values of G%H_to_kg_m2 that will permit its absence from the restart
     ! file to be detected, and its difference from the value in this run to
     ! be corrected for.
     H_to_kg_m2_tmp = G%H_to_kg_m2
     G%H_to_kg_m2 = -1.0
 
-    !### ADD REGISTRATION CALLS FOR ANY READ-ONLY RESTART VARIABLES HERE.
-    !### MAKE T_SNOW, T_ICE1, ... READ_ONLY RESTART VARIABLES.
-
     call restore_state(Ice%Ice_restart)
 
-    if (.not.query_initialized(Ice%Ice_restart, 'sal_ice1')) &
-      IST%sal_ice(:,:,:,1) = IST%ice_bulk_salin
     ! Approximately initialize state fields that are not present
     ! in SIS1 restart files.
-    if (.not.(query_initialized(Ice%Ice_restart, 't_ice1') .or. &
-              query_initialized(Ice%Ice_restart, 'enth_ice1'))) then
-      call SIS_error(FATAL, "Either t_ice1 or enth_ice1 must be present in the SIS2 restart file "//restart_file)
+
+    ! Initialize the ice salinity.
+    if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
+      allocate(sal_ice_tmp(SZI_(G), SZJ_(G), G%CatIce, G%NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
+      do n=1,G%NkIce
+        write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+        id_sal = register_restart_field(Ice%Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
+                                     sal_ice_tmp(:,:,:,n), domain=G%domain%mpp_domain, &
+                                     mandatory=.false., read_only=.true.)
+        call restore_state(Ice%Ice_restart, id_sal)
+      enddo
+
+      if (query_initialized(Ice%Ice_restart, 'sal_ice1')) then
+        do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+          IST%sal_ice(i,j,k,1) = sal_ice_tmp(i,j,k,1)
+        enddo ; enddo ; enddo
+      else
+        IST%sal_ice(:,:,:,1) = IST%ice_bulk_salin
+      endif
+      do n=2,G%NkIce
+        write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+        if (query_initialized(Ice%Ice_restart, 'sal_ice'//trim(nstr))) then
+          do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+            IST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k,n)
+          enddo ; enddo ; enddo
+        else
+          IST%sal_ice(:,:,:,n) = IST%sal_ice(:,:,:,n-1)
+        endif
+      enddo
+
+      deallocate(sal_ice_tmp)
     endif
-    if (.not.query_initialized(Ice%Ice_restart, 't_ice1')) then
+
+    read_aux_restart = (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
+                       (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))
+    if (read_aux_restart) then
+      allocate(t_snow_tmp(SZI_(G), SZJ_(G), G%CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+      allocate(t_ice_tmp(SZI_(G), SZJ_(G), G%CatIce, G%NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
+
+      idr = register_restart_field(Ice%Ice_restart, restart_file, 't_snow', t_snow_tmp, &
+                                   domain=G%domain%mpp_domain, mandatory=.false., read_only=.true.)
+      call restore_state(Ice%Ice_restart, idr)
+      do n=1,G%NkIce
+        write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+        idr = register_restart_field(Ice%Ice_restart, restart_file, 't_ice'//trim(nstr), &
+                                     t_ice_tmp(:,:,:,n), domain=G%domain%mpp_domain, &
+                                     mandatory=.false., read_only=.true.)
+        call restore_state(Ice%Ice_restart, idr)
+      enddo
+    endif
+
+    ! Initialize the ice enthalpy.
+    if (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) then
+      if (.not.query_initialized(Ice%Ice_restart, 't_ice1')) then
+        call SIS_error(FATAL, "Either t_ice1 or enth_ice must be present in the SIS2 restart file "//restart_path)
+      endif
+
       if (spec_thermo_sal) then
         do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%T_ice(i,j,k,1) = Temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
+          IST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), S_col(1), IST%ITV)
         enddo ; enddo ; enddo
       else
         do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%T_ice(i,j,k,1) = Temp_from_En_S(IST%enth_ice(i,j,k,1), IST%sal_ice(i,j,k,1), IST%ITV)
+          IST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), IST%sal_ice(i,j,k,1), IST%ITV)
         enddo ; enddo ; enddo
       endif
-    endif
-    if (.not.query_initialized(Ice%Ice_restart, 'enth_ice1')) then
-      if (spec_thermo_sal) then
-        do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%enth_ice(i,j,k,1) = Enth_from_TS(IST%t_ice(i,j,k,1), S_col(1), IST%ITV)
-        enddo ; enddo ; enddo
-      else
-        do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%enth_ice(i,j,k,1) = Enth_from_TS(IST%t_ice(i,j,k,1), IST%sal_ice(i,j,k,1), IST%ITV)
-        enddo ; enddo ; enddo
-      endif
-    endif
-      
-    if (.not.query_initialized(Ice%Ice_restart, 't_snow')) then
-      if (query_initialized(Ice%Ice_restart, 'enth_snow')) then
-        IST%t_snow(:,:,:) = IST%t_ice(:,:,:,1)
-        do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%t_snow(i,j,k) = Temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-        enddo ; enddo ; enddo
-      else
-        IST%t_snow(:,:,:) = IST%t_ice(:,:,:,1)
-      endif
-    endif
-    if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
-      do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-        IST%enth_snow(i,j,k,1) = Enth_from_TS(IST%t_snow(i,j,k), 0.0, IST%ITV)
-      enddo ; enddo ; enddo
-    endif
-    do n=2,G%NkIce
-      write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-      if (.not.query_initialized(Ice%Ice_restart, 't_ice'//trim(nstr))) &
-        IST%t_ice(:,:,:,n) = IST%t_ice(:,:,:,n-1)
-      if (.not.query_initialized(Ice%Ice_restart, 'sal_ice'//trim(nstr))) &
-        IST%sal_ice(:,:,:,n) = IST%sal_ice(:,:,:,n-1)
-      if (.not.query_initialized(Ice%Ice_restart, 'enth_ice'//trim(nstr))) then
+
+      do n=2,G%NkIce
+        write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+        if (.not.query_initialized(Ice%Ice_restart, 't_ice'//trim(nstr))) &
+          t_ice_tmp(:,:,:,n) = t_ice_tmp(:,:,:,n-1)
+
         if (spec_thermo_sal) then
           do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-            IST%enth_ice(i,j,k,n) = Enth_from_TS(IST%t_ice(i,j,k,n), S_col(n), IST%ITV)
+            IST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), S_col(n), IST%ITV)
           enddo ; enddo ; enddo
         else
           do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-            IST%enth_ice(i,j,k,n) = Enth_from_TS(IST%t_ice(i,j,k,n), IST%sal_ice(i,j,k,n), IST%ITV)
+            IST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), IST%sal_ice(i,j,k,n), IST%ITV)
+          enddo ; enddo ; enddo
+        endif
+      enddo
+    endif
+
+    ! Initialize the snow enthalpy.
+    if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
+      if (.not.query_initialized(Ice%Ice_restart, 't_snow')) then
+        if (query_initialized(Ice%Ice_restart, 't_ice1')) then
+          t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
+        else
+          do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+            t_snow_tmp(i,j,k) = Temp_from_En_S(IST%enth_ice(i,j,k,1), IST%sal_ice(i,j,k,1), IST%ITV)
           enddo ; enddo ; enddo
         endif
       endif
-    enddo
+      do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+        IST%enth_snow(i,j,k,1) = Enth_from_TS(t_snow_tmp(i,j,k), 0.0, IST%ITV)
+      enddo ; enddo ; enddo
+    endif
+
+    if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
     H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
     if (G%H_to_kg_m2 == -1.0) then
@@ -3664,10 +3698,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%mH_ice, G%Domain, complete=.false.)
     call pass_var(IST%mH_snow, G%Domain, complete=.false.)
     do l=1,G%NkIce
-      call pass_var(IST%t_ice(:,:,:,l), G%Domain, complete=.false.)
       call pass_var(IST%enth_ice(:,:,:,l), G%Domain, complete=.false.)
     enddo
-    call pass_var(IST%t_snow, G%Domain, complete=.false.)
     call pass_var(IST%enth_snow(:,:,:,1), G%Domain, complete=.true.)
 
     if (IST%Cgrid_dyn) then
@@ -3683,8 +3715,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%rough_heat(:,:,:)  = heat_rough_ice
     Ice%rough_moist(:,:,:) = heat_rough_ice
     IST%t_surf(:,:,:) = T_0degC
-    IST%t_snow(:,:,:) = 0.0
-    IST%t_ice(:,:,:,:) = 0.0
     IST%sal_ice(:,:,:,:) = IST%ice_bulk_salin
     
     enth_spec_snow = Enth_from_TS(0.0, 0.0, IST%ITV)
@@ -3695,7 +3725,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     enddo
 
     IST%do_init = .true. ! Some more initialization needs to be done in ice_model.
-  endif ! file_exist(restart_file)
+  endif ! file_exist(restart_path)
   deallocate(S_col)
 
   do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec

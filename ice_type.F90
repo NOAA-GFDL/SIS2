@@ -19,7 +19,7 @@ use ice_grid_mod,     only: sea_ice_grid_type, cell_area
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, e_to_melt_TS
+use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
@@ -434,6 +434,7 @@ type :: land_ice_boundary_type
   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
 end type
 
+!### DELETE THIS?
 type(restart_file_type), pointer, save :: Ice_restart
 
 contains
@@ -603,10 +604,8 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
   allocate(IST%mH_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
-  allocate(IST%t_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%t_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%mH_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%t_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%t_ice(:,:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
   allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
 
@@ -636,24 +635,18 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 't_snow', IST%t_snow, &
-                               domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow(:,:,:,1), &
+  idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%H_to_kg_m2, &
                                longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
                                no_domain=.true., mandatory=.false.)
-  do n=1,G%NkIce
-    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-    idr = register_restart_field(Ice_restart, restart_file, 't_ice'//trim(nstr), &
-                                 IST%t_ice(:,:,:,n), domain=domain, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
-                                 IST%sal_ice(:,:,:,n), domain=domain, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'enth_ice'//trim(nstr), &
-                                 IST%enth_ice(:,:,:,n), domain=domain, mandatory=.false.)
-  enddo
+
+  idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
+                               domain=domain, mandatory=.false., units="J kg-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
+                               domain=domain, mandatory=.false., units="kg/kg")
 
   if (IST%Cgrid_dyn) then
     idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
@@ -719,7 +712,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
-  deallocate(IST%mH_snow, IST%t_snow, IST%mH_ice, IST%t_ice)
+  deallocate(IST%mH_snow, IST%mH_ice)
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
 end subroutine dealloc_IST_arrays
@@ -1251,10 +1244,10 @@ subroutine ice_stock_pe(Ice, index, value)
           part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
-                      e_to_melt_TS(IST%T_snow(i,j,k), 0.0, IST%ITV)
+                Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
             do m=1,Ice%G%NkIce
               value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
-                  e_to_melt_TS(IST%T_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
+                  Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
             enddo
           endif
         enddo ; enddo ; enddo
