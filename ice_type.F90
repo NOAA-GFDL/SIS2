@@ -89,10 +89,9 @@ type ice_state_type
                         ! in units of H (usually kg m-2).
     mH_ice =>NULL(), &  ! The mass per unit area of the ice in each category,
                         ! in units of H (usually kg m-2).
-    t_snow =>NULL()     ! The temperture of the snow in each category, in degC.
+    unused_var =>NULL() ! An unused pointer that has been left here due to an
+                        ! apparent bug with the gnu compiler's optimization.   
   real, pointer, dimension(:,:,:,:) :: &
-    t_ice =>NULL(), &   ! The temperature of the sea ice in each category and
-                        ! fractional thickness layer, in degC.
     sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
                         ! fractional thickness layer, in g/kg.
     enth_ice =>NULL(), & ! The enthalpy of the sea ice in each category and
