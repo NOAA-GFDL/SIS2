@@ -599,6 +599,9 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZIB_(G)) :: &
     flux_x          ! The tracer flux across a boundary in m3*conc or kg*conc.
+  real, dimension(SZIB_(G),SZJ_(G)) :: &
+    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+                    ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope            ! The maximum concentration slope per grid point
                               ! consistent with monotonicity, in conc. (nondim.).
   real :: hup, hlos           ! hup is the upwind volume, hlos is the
@@ -628,19 +631,24 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
 
+    if (usePPM .or. usePLMslope) then ; do I=is-2,ie+1
+      mass_mask(I,j) = 0.0
+      if (G%mask2dCu(I,j) * hprev(i,j,k)*hprev(i+1,j,k) > 0.0) mass_mask(I,j) = 1.0
+    enddo ; endif
+
     ! Calculate the i-direction profiles (slopes) of each tracer that is being advected.
     if (usePLMslope) then
-      call kernel_PLM_slope_x(G, is-1, ie+1, j, scalar(:,:,k), G%mask2dCu(:,:), slope_x(:))
+      call kernel_PLM_slope_x(G, is-1, ie+1, j, scalar(:,:,k), mass_mask, slope_x(:))
     endif ! usePLMslope
 
     call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, domore_u(j,k))
 
     if (usePPM) then
       call kernel_PPMH3_flux_x(G, is-1, ie, j, &
-             scalar(:,:,k), G%mask2dCu(:,:), uhh, CFL, flux_x(:))
+             scalar(:,:,k), mass_mask, uhh, CFL, flux_x(:))
     else ! PLM
       call kernel_PLM_flux_x(G, is-1, ie, j, &
-             scalar(:,:,k), G%mask2dCu(:,:), uhh, CFL, slope_x(:), flux_x(:))
+             scalar(:,:,k), uhh, CFL, slope_x(:), flux_x(:))
     endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
@@ -670,6 +678,9 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZIB_(G),nL_max,ntr) :: &
     flux_x          ! The tracer flux across a boundary in m3*conc or kg*conc.
+  real, dimension(SZIB_(G),SZJ_(G)) :: &
+    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+                    ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope            ! The maximum concentration slope per grid point
                               ! consistent with monotonicity, in conc. (nondim.).
   real :: hup, hlos           ! hup is the upwind volume, hlos is the
@@ -702,10 +713,15 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
 
+    if (usePPM .or. usePLMslope) then ; do I=is-2,ie+1
+      mass_mask(I,j) = 0.0
+      if (G%mask2dCu(I,j)*hprev(i,j,k)*hprev(i+1,j,k) > 0.0) mass_mask(I,j) = 1.0
+    enddo ; endif
+
     ! Calculate the i-direction profiles (slopes) of each tracer that is being advected.
     if (usePLMslope) then
       do m=1,ntr ; do l=1,Tr(m)%nL
-        call kernel_PLM_slope_x(G, is-1, ie+1, j, Tr(m)%t(:,:,k,l), G%mask2dCu(:,:), slope_x(:,l,m))
+        call kernel_PLM_slope_x(G, is-1, ie+1, j, Tr(m)%t(:,:,k,l), mass_mask, slope_x(:,l,m))
       enddo ; enddo
     endif ! usePLMslope
 
@@ -714,12 +730,12 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PPMH3_flux_x(G, is-1, ie, j, &
-               Tr(m)%t(:,:,k,l), G%mask2dCu(:,:), uhh, CFL, flux_x(:,l,m))
+               Tr(m)%t(:,:,k,l), mass_mask, uhh, CFL, flux_x(:,l,m))
       enddo ; enddo
     else ! PLM
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PLM_flux_x(G, is-1, ie, j, &
-               Tr(m)%t(:,:,k,l), G%mask2dCu(:,:), uhh, CFL, slope_x(:,l,m), flux_x(:,l,m))
+               Tr(m)%t(:,:,k,l), uhh, CFL, slope_x(:,l,m), flux_x(:,l,m))
       enddo ; enddo
     endif ! usePPM
 
@@ -811,11 +827,10 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
 
 end subroutine kernel_PLM_slope_x
 
-subroutine kernel_PLM_flux_x(G, is, ie, j, scalar, uMask, uhh, CFL, slope_x, flux_x)
+subroutine kernel_PLM_flux_x(G, is, ie, j, scalar, uhh, CFL, slope_x, flux_x)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask
   real, dimension(SZIB_(G)),         intent(in)    :: uhh, CFL
   real, dimension(SZI_(G)),          intent(in)    :: slope_x
   real, dimension(SZIB_(G)),         intent(inout) :: flux_x
@@ -965,6 +980,9 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G)) :: &
     flux_y          ! The tracer flux across a boundary in m3 * conc or kg*conc.
+  real, dimension(SZI_(G),SZJB_(G)) :: &
+    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+                    ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope            ! The maximum concentration slope per grid point
                               ! consistent with monotonicity, in conc. (nondim.).
   real :: vhh(SZI_(G),SZJB_(G)) ! The meridional flux that occurs during the
@@ -992,10 +1010,15 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
 
+  if (usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
+    mass_mask(i,J) = 0.0
+    if (G%mask2dCv(i,J)*hprev(i,j,k)*hprev(i,j+1,k) > 0.0) mass_mask(i,J) = 1.0
+  enddo ; enddo ; endif
+
   ! Calculate the j-direction profiles (slopes) of each tracer that is being advected.
   if (usePLMslope) then
     do j=js-1,je+1 ; if (do_j_tr(j)) then
-      call kernel_PLM_slope_y(G, is, ie, j, scalar(:,:,k), G%mask2dCv(:,:), slope_y(:,j))
+      call kernel_PLM_slope_y(G, is, ie, j, scalar(:,:,k), mass_mask, slope_y(:,j))
     endif ; enddo
   elseif (usePCM) then
     do j=js-1,je+1 ; do i=is,ie ; slope_y(i,j) = 0.0 ; enddo ; enddo
@@ -1005,10 +1028,10 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, domore_v(:,k))
     if (usePPM) then
       call kernel_PPMH3_flux_y(G, is, ie, J, &
-             scalar(:,:,k), G%mask2dCv(:,:), vhh, CFL, flux_y(:,J))
+             scalar(:,:,k), mass_mask, vhh, CFL, flux_y(:,J))
     else ! PLM
       call kernel_PLM_flux_y(G, is, ie, J, &
-             scalar(:,:,k), G%mask2dCv(:,:), vhh, CFL, slope_y(:,:), flux_y(:,J))
+             scalar(:,:,k), vhh, CFL, slope_y(:,:), flux_y(:,J))
     endif ! usePPM
 
   else ! not domore_v.
@@ -1047,6 +1070,9 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G),nL_max,ntr) :: &
     flux_y          ! The tracer flux across a boundary in m3 * conc or kg*conc.
+  real, dimension(SZI_(G),SZJB_(G)) :: &
+    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+                    ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope            ! The maximum concentration slope per grid point
                               ! consistent with monotonicity, in conc. (nondim.).
   real :: vhh(SZI_(G),SZJB_(G)) ! The meridional flux that occurs during the
@@ -1074,10 +1100,15 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
 
+  if (usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
+    mass_mask(i,J) = 0.0
+    if (G%mask2dCv(i,J)*hprev(i,j,k)*hprev(i,j+1,k) > 0.0) mass_mask(i,J) = 1.0
+  enddo ; enddo ; endif
+
   ! Calculate the j-direction profiles (slopes) of each tracer that is being advected.
   if (usePLMslope) then
     do j=js-1,je+1 ; if (do_j_tr(j)) then ; do m=1,ntr ; do l=1,Tr(m)%nL
-      call kernel_PLM_slope_y(G, is, ie, j, Tr(m)%t(:,:,k,l), G%mask2dCv(:,:), slope_y(:,j,l,m))
+      call kernel_PLM_slope_y(G, is, ie, j, Tr(m)%t(:,:,k,l), mass_mask, slope_y(:,j,l,m))
     enddo ; enddo ; endif ; enddo ! End of l-, m-, & j- loops.
   elseif (usePCM) then
     do m=1,ntr ; do l=1,Tr(m)%nL ; do j=js-1,je+1 ; do i=is,ie
@@ -1090,12 +1121,12 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PPMH3_flux_y(G, is, ie, J, &
-               Tr(m)%t(:,:,k,l), G%mask2dCv(:,:), vhh, CFL, flux_y(:,J,l,m))
+               Tr(m)%t(:,:,k,l), mass_mask, vhh, CFL, flux_y(:,J,l,m))
       enddo ; enddo
     else ! PLM
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PLM_flux_y(G, is, ie, J, &
-               Tr(m)%t(:,:,k,l), G%mask2dCv(:,:), vhh, CFL, slope_y(:,:,l,m), flux_y(:,J,l,m))
+               Tr(m)%t(:,:,k,l), vhh, CFL, slope_y(:,:,l,m), flux_y(:,J,l,m))
       enddo ; enddo
     endif ! usePPM
 
@@ -1214,11 +1245,10 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
 
 end subroutine kernel_PLM_slope_y
 
-subroutine kernel_PLM_flux_y(G, is, ie, J, scalar, vMask, vhh, CFL, slope_y, flux_y)
+subroutine kernel_PLM_flux_y(G, is, ie, J, scalar, vhh, CFL, slope_y, flux_y)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh
   real, dimension(SZI_(G)),          intent(in)    :: CFL
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: slope_y
