@@ -493,7 +493,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   real :: tfb_diff_err, tfb_resid_err
   real :: tflux_sfc, sum_sol, d_tflux_bot
   real :: hsnow_eff
-  real :: snow_temp_new
+  real :: snow_temp_new, snow_temp_max
   real :: hL_ice_eff
   real :: enth_liq_lim
   real :: enth_prev
@@ -670,9 +670,11 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   else
     heat_flux_int(-1) = k0a_x_ta
     heat_flux_int(0) = -k10*temp_est(1)
+    snow_temp_max = (tsf*(B + k0skin) - A) / k0skin
     call update_lay_enth(mL_snow, 0.0, enthalpy(0), heat_flux_int(-1), &
                          sol(0), heat_flux_int(0), -k0a, k10, dtt, &
-                         heat_flux_err_rat, ITV, e_extra, temp_new=snow_temp_new)
+                         heat_flux_err_rat, ITV, e_extra, &
+                         temp_new=snow_temp_new, temp_max=snow_temp_max)
     tsurf = (A + k0skin*snow_temp_new) / (B + k0skin)  ! diagnose surface skin temp.
     ! This is equivalent to, but safer than, tsurf = (A - heat_flux_int(-1)) / B
 
@@ -766,8 +768,8 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
     endif
   endif
 
-  call temp_check(tsurf, mL_snow, NkIce*mL_ice, enthalpy, sice, NkIce, &
-                  bmelt, tmelt, ITV)
+  call ice_check(mL_snow, NkIce*mL_ice, enthalpy, sice, NkIce, &
+           "at end of ice_temp_SIS2", ITV, bmelt=bmelt, tmelt=tmelt, t_sfc=tsurf)
 
 end subroutine ice_temp_SIS2
 
@@ -838,7 +840,7 @@ end function laytemp_SIS2
 ! update_lay_enth - implicit calculation of new layer enthalpy
 !
 subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
-                           dfbot_dT, dtt, hf_err_rat, ITV, extra_heat, temp_new)
+                           dfbot_dT, dtt, hf_err_rat, ITV, extra_heat, temp_new, temp_max)
   real, intent(in) :: m_lay    ! This layers mass of ice in kg/m2
   real, intent(in) :: sice     ! ice salinity in g/kg
   real, intent(inout) :: enth  ! ice enthalpy in enth_units (proportional to J kg-1).
@@ -853,10 +855,13 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                                ! heat fluxes, in (kg m-2) / (W m-2 K-1).
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, intent(out) :: extra_heat ! The heat above the melt point, in J.
-  real, optional, intent(out) :: temp_new
+  real, optional, intent(out) :: temp_new ! The new temperature, in degC.
+  real, optional, intent(in)  :: temp_max ! The maximum new temperature, in degC.
 
   real :: htg      ! The rate of heating of the layer in W m-2.
   real :: new_temp ! The new layer temperature, in degC.
+  real :: max_temp ! The maximum new layer temperature, in degC.
+  real :: max_enth ! The maximum new layer enthalpy, in degC.
   real :: fb       ! The negative of the dependence of layer heating on
                    ! temperature, in W m-2 K-1. fb > 0.
   real :: extra_enth ! Excess enthalpy above the melt point, in kg enth_units.
@@ -888,22 +893,27 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     tfi = 0.0
     enth_fp = enth_from_TS(0.0, 0.0, ITV)
   endif
+  max_temp = tfi ; max_enth = enth_fp
+  if (present(temp_max)) then ; if (temp_max < tfi) then
+    max_temp = temp_max ; max_enth = enth_from_TS(temp_max, sice, ITV)
+  endif ; endif
   enth_in = enth
   dtEU = ITV%enth_unit * dtt
   
   ! Solve m_lay * (enth_new - enth) = dtEU * (htg - fb*t_new)
   !       t_new = Temp_from_En_S(enth_new, Sice, ITV)
   if (m_lay == 0.0) then
-    new_temp = min(htg / fb, tfi)
+    new_temp = min(htg / fb, max_temp)
     enth = enth_from_TS(new_temp, sice, ITV)
-  elseif (dtEU * (htg - fb*tfi) >= m_lay*(enth_fp - enth_in)) then
+  elseif (dtEU * (htg - fb*max_temp) >= m_lay*(max_enth - enth_in)) then
     ! There is enough heat being applied here that the ice would be above the
-    ! freezing point.  The ice should be set to the freezing temperature and
-    ! enthalpy, and the extra heat stored for later use in melting.
-    extra_enth = m_lay*(enth_in - enth_fp) + dtEU * (htg - fb*tfi)
+    ! maximum temperature (often the freezing point).  The ice should be set to
+    ! the maximum temperature and enthalpy, and the extra heat stored for later
+    ! use in melting.
+    extra_enth = m_lay*(enth_in - max_enth) + dtEU * (htg - fb*max_temp)
     extra_heat = extra_enth / ITV%enth_unit
-    new_temp = tfi
-    enth = enth_fp
+    new_temp = max_temp
+    enth = max_enth
   elseif ( sice == 0.0 ) then  ! Note that tfi = 0.
     ! dT_dEnth is 0 for enth > enth_fp.
     !   dT_dEnth = dTemp_dEnth(enth_in, Sice, ITV)
@@ -981,72 +991,52 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
 
 end subroutine update_lay_enth
 
-subroutine temp_check(ts, ms, mi, enthalpy, s_ice, NkIce, bmelt, tmelt, ITV)
-  real, intent(in) :: ts, ms, mi, bmelt, tmelt
+subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
+                      bmelt, tmelt, t_sfc)
+  real, intent(in) :: ms, mi
   real, dimension(0:NkIce), intent(in) :: enthalpy
   real, dimension(NkIce), intent(in) :: s_ice
   integer, intent(in) :: NkIce
+  character(len=*), intent(in) :: msg_part
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real, optional, intent(in) :: bmelt, tmelt, t_sfc
+
+  character(len=300) :: mesg
+  character(len=80) :: msg2
   integer :: k, bad
 
   real, dimension(0:NkIce) :: t_col
 
   bad = 0
-  if (ts >0.0.or.ts <-100.0) bad = bad+1
-  t_col(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
-  call temp_from_Enth_S(enthalpy(1:), s_ice(:), t_col(1:), ITV)
-
-  do k=0,NkIce ; if (t_col(k) >0.0 .or. t_col(k) < -100.0) bad = bad+1 ; enddo
-
-  if (bad>0) then
-    print *, 'BAD ICE AFTER TEMP ', 'ms/mi=',ms,mi,'ts/tsn/tice=',ts, &
-                      t_col(0:NkIce),'tmelt/bmelt=',tmelt,bmelt
+  if (present(t_sfc)) then
+    if ((t_sfc > 1.e-14) .or. (t_sfc < -100.0)) bad = bad+1
   endif
-end subroutine temp_check
-
-subroutine resize_check(ms, mi, enthalpy, s_ice, NkIce, bmelt, tmelt, ITV)
-  real, intent(in) :: ms, mi, bmelt, tmelt
-  real, dimension(0:NkIce), intent(in) :: enthalpy
-  real, dimension(NkIce), intent(in) :: s_ice
-  integer, intent(in) :: NkIce
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  integer :: k, bad
-
-  real :: t_snow
-  real, dimension(NkIce) :: t_ice
-
-  bad = 0
   if (ms <0.0 .or. ms > 3.30e5  ) bad = bad+1
   if (mi <0.0 .or. mi > 1.0e6  ) bad = bad+1
-  t_snow = temp_from_En_S(enthalpy(0), 0.0, ITV)
 
-  if (t_snow>0.0 .or. t_snow<-100.0) bad = bad+1
-  do k=1,NkIce
-    t_ice(k) = temp_from_En_S(enthalpy(k), s_ice(k), ITV)
-    if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1
-  enddo
+  t_col(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
+  call temp_from_Enth_S(enthalpy(1:), s_ice(:), t_col(1:), ITV)
+  do k=0,NkIce ; if ((t_col(k) > 0.0) .or. (t_col(k) < -100.0)) bad = bad+1 ; enddo
 
   if (bad>0) then
-    print *, 'BAD ICE AFTER RESIZE ', 'hs/hi=',ms/330.,mi/905.,'tsn/tice=',&
-                      t_snow, t_ice(:),'tmelt/bmelt=',tmelt,bmelt
+    mesg = "BAD ICE "//trim(msg_part)
+    write (msg2,'(" ms,mi=",2(ES11.3))') ms*1e-3,mi*1e-3 ; mesg = trim(mesg)//trim(msg2)
+    if (present(t_sfc)) then
+      write (msg2,'(" t_sfc,tsn,tice=",ES11.3)') t_sfc ; mesg = trim(mesg)//trim(msg2)
+    else
+      mesg = trim(mesg)//"tsn,tice="
+    endif
+    do k=0,NkIce ; write (msg2,'(ES11.3)') t_col(k) ; mesg = trim(mesg)//trim(msg2) ; enddo
+    if (present(bmelt)) then
+      write (msg2,'(" bmelt=",ES11.3)') bmelt ; mesg = trim(mesg)//trim(msg2)
+    endif
+    if (present(tmelt)) then
+      write (msg2,'(" tmelt=",ES11.3)') tmelt ; mesg = trim(mesg)//trim(msg2)
+    endif
+    call SIS_error(WARNING, mesg, all_print=.true.)
   endif
-end subroutine resize_check
 
-subroutine unpack_check(hs, tsn, hi, t_ice, NkIce, cn)
-  real, intent(in) :: hs, tsn, hi, cn
-  real, dimension(NkIce), intent(in) :: t_ice
-  integer, intent(in) :: NkIce
-  integer :: k, bad
-
-  bad = 0
-  if (hs <0.0.or.hs > 1e3  ) bad = bad+1
-  if (hi <0.0.or.hi > 1e3  ) bad = bad+1
-  if (tsn>0.0.or.tsn<-100.0) bad = bad+1
-  do k=1,NkIce ; if (t_ice(k) >0.0 .or. t_ice(k) < -100.0) bad = bad+1 ; enddo
-
-  if (bad>0) print *, 'BAD ICE AFTER UNPACK ', 'hs/hi=',hs,hi,'tsn/tice=', &
-                      tsn,t_ice(:),'cn=',cn
-end subroutine unpack_check
+end subroutine ice_check
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! T_Freeze - Return the freezing temperature as a function of salinity (and    !
@@ -1627,8 +1617,9 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
     h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
   endif
 
-  call resize_check(mH_snow*H_to_kg_m2, mH_ice*H_to_kg_m2, enthalpy, Sice_therm, &
-                    NkIce, bot_melt/enth_unit, top_melt/enth_unit, ITV)
+  call ice_check(mH_snow*H_to_kg_m2, mH_ice*H_to_kg_m2, enthalpy, Sice_therm, &
+                    NkIce, "at end of ice_resize_SIS2", ITV, &
+                    bmelt=bot_melt/enth_unit, tmelt=top_melt/enth_unit)
 
 end subroutine ice_resize_SIS2
 
