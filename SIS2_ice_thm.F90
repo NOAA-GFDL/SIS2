@@ -533,7 +533,7 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   ! Determine the enthalpy for conservation checks.
   m_lay(0) = mL_snow ; do k=1,NkIce ; m_lay(k) = mL_ice ; enddo
  
-   if (col_check) then
+  if (col_check) then
     col_enth1 = 0.0
     do k=0,NkIce ; col_enth1 = col_enth1 + m_lay(k)*enthalpy(k) ; enddo
   endif
@@ -1552,14 +1552,12 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
 
     m_lay(0) = m_lay(0) - snow_to_ice
 
-    ! Add ice to the topmost layer.  Currently, the salinity of the target layer
-    ! and the bulk ice salinity do not change.
+    ! Add ice to the topmost layer and dilute its salinity.
     Enthalpy(1) = (m_lay(1)*Enthalpy(1) + snow_to_ice*Enthalpy(0)) / &
                   (m_lay(1) + snow_to_ice)
-
-    ! Pick one of the following...
-    ! Salt_to_ice = Salt_to_ice + Salin(k) * snow_to_ice
     Salin(1) = Salin(1) * m_lay(1) / (m_lay(1) + snow_to_ice)
+    ! ### THIS NEEDS TO WORK WITH THE TRACER REGISTRY TO ADD SNOW TRACERS TO
+    ! ### THE CORRESPONDING ICE TRACER.
 
     m_lay(1) = m_lay(1) + snow_to_ice
   else
