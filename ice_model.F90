@@ -76,7 +76,7 @@ use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, ice_state_type, Ice_restart
+use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
@@ -3506,9 +3506,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call set_domain(G%Domain%mpp_domain)
   CatIce = G%CatIce
-
-  ! Eliminate this after the Tikal release interface changes.
-  Ice_restart => Ice%Ice_restart
 
   ! Allocate and register fields for restarts.
   call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, &

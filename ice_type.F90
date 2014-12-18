@@ -41,7 +41,7 @@ implicit none ; private
 public :: ice_data_type, ice_state_type
 public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 public :: ice_data_type_register_restarts, ice_state_register_restarts
-public :: ice_diagnostics_init, ice_stock_pe, Ice_restart, check_ice_model_nml
+public :: ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
@@ -432,9 +432,6 @@ type :: land_ice_boundary_type
   real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
   integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
 end type
-
-!### DELETE THIS?
-type(restart_file_type), pointer, save :: Ice_restart
 
 contains
 
@@ -950,17 +947,11 @@ end subroutine IST_bounds_check
 !  Write out restart files registered through register_restart_file
 ! </DESCRIPTION>
 subroutine ice_model_restart(Ice, time_stamp)
-  type(ice_data_type), intent(inout), optional :: Ice
+  type(ice_data_type), intent(inout) :: Ice
   character(len=*),    intent(in), optional :: time_stamp
 
-  if (present(Ice)) then
-    call save_restart(Ice%Ice_restart, time_stamp)
-    call icebergs_save_restart(Ice%icebergs)
-  else
-    ! This option is here only to accomodate an old and inappropriate interface.
-    ! Redo the order of the arguments when done right.
-    call save_restart(Ice_restart, time_stamp)
-  endif
+  call save_restart(Ice%Ice_restart, time_stamp)
+  call icebergs_save_restart(Ice%icebergs)
 
 end subroutine ice_model_restart
 ! </SUBROUTINE>
