@@ -226,17 +226,17 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
 !  Put the remaining (total) thickness fluxes into uhr and vhr.
     do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
     do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
-!   This loop reconstructs the thickness field the last time that the
-! tracers were updated, probably just after the diabatic forcing.  A useful
-! diagnostic could be to compare this reconstruction with that older value.
+    ! Find the previous total mass (or volume) of ice, but in the case that this
+    ! category is now dramatically thinner than it was previously, add a tiny
+    ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
+    ! lead rarely to a very slight non-conservation of tracers, but not mass.
     do i=is,ie ; do j=js,je
-      hprev(i,j,k) = max(0.0, G%areaT(i,j)*h_end(i,j,k) + &
-           ((uhr(I,j,k) - uhr(I-1,j,k)) + (vhr(i,J,k) - vhr(i,J-1,k))))
-! In the case that the layer is now dramatically thinner than it was previously,
-! add a bit of mass to avoid truncation errors.  This will lead to
-! non-conservation of tracers, but not mass.
-      hprev(i,j,k) = hprev(i,j,k) + &
-                     max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
+      hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
+                       max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
+      if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
+                            (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
+          1e-10*(h_end(i,j,k) + h_prev(i,j,k))) &
+        call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
     enddo ; enddo
   enddo
   h_neglect = G%H_subroundoff
@@ -463,17 +463,17 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   !  Put the remaining (total) thickness fluxes into uhr and vhr.
       do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
       do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
-  !   This loop reconstructs the thickness field the last time that the
-  ! tracers were updated, probably just after the diabatic forcing.  A useful
-  ! diagnostic could be to compare this reconstruction with that older value.
+      ! Find the previous total mass (or volume) of ice, but in the case that this
+      ! category is now dramatically thinner than it was previously, add a tiny
+      ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
+      ! lead rarely to a very slight non-conservation of tracers, but not mass.
       do i=is,ie ; do j=js,je
-        hprev(i,j,k) = max(0.0, G%areaT(i,j)*h_end(i,j,k) + &
-             ((uhr(I,j,k) - uhr(I-1,j,k)) + (vhr(i,J,k) - vhr(i,J-1,k))))
-  ! In the case that the layer is now dramatically thinner than it was previously,
-  ! add a bit of mass to avoid truncation errors.  This will lead to
-  ! non-conservation of tracers, but not mass.
-        hprev(i,j,k) = hprev(i,j,k) + &
-                       max(0.0, 1.0e-13*hprev(i,j,k) - G%areaT(i,j)*h_end(i,j,k))
+        hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
+                         max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
+        if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
+                              (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
+            1e-10*(h_end(i,j,k) + h_prev(i,j,k))) &
+          call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
       enddo ; enddo
     enddo
     h_neglect = G%H_subroundoff
