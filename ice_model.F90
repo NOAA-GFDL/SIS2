@@ -3312,6 +3312,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion
                          ! factor.
+  real :: enth_unit      ! A conversion factor for enthalpy from Joules kg-1.                      
+  real :: massless_ice_enth, massless_snow_enth, massless_ice_salin
   real :: H_rescale_ice, H_rescale_snow ! Rescaling factors to account for
                          ! differences in thickness units between the current
                          ! model run and the input files.
@@ -3481,6 +3483,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                    "and ICE_RELATIVE_SALINITY set to positive values.")
   if (IST%ice_bulk_salin < 0.0) IST%ice_bulk_salin = 0.0
 
+  call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
+                 "The ice enthalpy fill value for massless categories.", &
+                 units="J kg-1", default=0.0, do_not_log=.true.)
+  call get_param(param_file, mod, "MASSLESS_SNOW_ENTH", massless_snow_enth, &
+                 "The snow enthalpy fill value for massless categories.", &
+                 units="J kg-1", default=0.0, do_not_log=.true.)
+  call get_param(param_file, mod, "MASSLESS_ICE_SALIN", massless_ice_salin, &
+                 "The ice salinity fill value for massless categories.", &
+                 units="g kg-1", default=0.0, do_not_log=.true.)
+
   call check_ice_model_nml(param_file)
 
   if (IST%specified_ice) IST%slab_ice = .true.
@@ -3553,7 +3565,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Read the restart file, if it exists.
   !
   allocate(S_col(G%NkIce)) ; S_col(:) = 0.0
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_unit, &
                              specified_thermo_salinity=spec_thermo_sal)
 
   restart_path = 'INPUT/'//trim(restart_file)
@@ -3745,12 +3757,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! Register tracers that will be advected around.
   call register_SIS_tracer(IST%enth_ice, G, G%NkIce, "enth_ice", param_file, &
-                           IST%TrReg, snow_tracer=.false.)
+                           IST%TrReg, snow_tracer=.false., &
+                           massless_val=massless_ice_enth*enth_unit)
   call register_SIS_tracer(IST%enth_snow, G, 1, "enth_snow", param_file, &
-                           IST%TrReg, snow_tracer=.true.)
+                           IST%TrReg, snow_tracer=.true., &
+                           massless_val=massless_snow_enth*enth_unit)
   if (IST%ice_rel_salin > 0.0) then
     call register_SIS_tracer(IST%sal_ice, G, G%NkIce, "salin_ice", param_file, &
-                             IST%TrReg, snow_tracer=.false.)
+                             IST%TrReg, snow_tracer=.false., &
+                             massless_val=massless_ice_salin)
   endif
   if (IST%id_age>0) &
     call register_SIS_tracer(IST%age_ice, G, 1, "age_ice", param_file, &
