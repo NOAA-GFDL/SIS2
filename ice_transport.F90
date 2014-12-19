@@ -279,7 +279,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
       endif
     endif
   enddo ; enddo ; enddo
-!   call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true.)
+  call set_massless_SIS_tracers(mca_snow, TrReg, G, compute_domain=.true., do_ice=.false.)
+  call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true., do_snow=.false.)
 
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
@@ -370,7 +371,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
       mH_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
-  call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true.)
+  call set_massless_SIS_tracers(mca_snow, TrReg, G, compute_domain=.true., do_ice=.false.)
+  call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true., do_snow=.false.)
 
     ! Is sum(part_sz) = 1 ?
 

@@ -119,6 +119,7 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
 !                         model parameter values.
 !  (in/out)  Reg - A pointer to the tracer registry.
 !  (in,opt)  snow_tracer - If present and true, this is a snow tracer.
+!  (in,opt)  massless_val - The value to use to fill in massless categories.
 !  (in,opt)  ad_2d_x - An array in which the zonal advective fluxes summed
 !                      vertically and across ice category are stored in units of
 !                      CONC m3 s-1.
@@ -241,29 +242,38 @@ subroutine update_SIS_tracer_halos(Reg, G, complete)
 end subroutine update_SIS_tracer_halos
 
 
-subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain)
+subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain, do_snow, do_ice)
   type(sea_ice_grid_type),                 intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(in) :: mass
   type(SIS_tracer_registry_type),          intent(inout) :: Reg
-  logical,                       optional, intent(in)    :: compute_domain
+  logical,                       optional, intent(in)    :: compute_domain, do_snow, do_ice
 
   integer :: i, j, k, m, n, is, ie, js, je
+  logical :: do_snow_tr, do_ice_tr
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   if (present(compute_domain)) then ; if (compute_domain) then
     is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
   endif ; endif
+  
+  do_snow_tr = .true. ; do_ice_tr = .true.
+  if (present(do_snow)) do_snow_tr = do_snow
+  if (present(do_ice))  do_ice_tr = do_ice
 
-  do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
-    do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
-      Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
-    enddo ; enddo ; enddo
-  enddo ; enddo
-  do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
-    do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
-      Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
-    enddo ; enddo ; enddo
-  enddo ; enddo
+  if (do_snow_tr) then
+    do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
+      do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+        Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
+      enddo ; enddo ; enddo
+    enddo ; enddo
+  endif
+  if (do_ice_tr) then
+    do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
+      do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+        Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
+      enddo ; enddo ; enddo
+    enddo ; enddo
+  endif
 
 end subroutine set_massless_SIS_tracers
 
