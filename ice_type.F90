@@ -847,6 +847,7 @@ subroutine IST_bounds_check(IST, G, msg)
   character(len=*),        intent(in) :: msg
 
   character(len=512) :: mesg1, mesg2
+  character(len=24) :: err
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
   real, dimension(G%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
@@ -857,7 +858,7 @@ subroutine IST_bounds_check(IST, G, msg)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
 
-  n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
+  n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
   m_max = 1.0e6*G%kg_m2_to_H
 
@@ -872,7 +873,7 @@ subroutine IST_bounds_check(IST, G, msg)
         (IST%s_surf(i,j) < 0.0) .or. (IST%s_surf(i,j) > 100.0) .or. &
         (IST%t_ocn(i,j) < tOcn_min) .or. (IST%t_ocn(i,j) > tOcn_max)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
     endif
   enddo ; enddo
   tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
@@ -882,23 +883,29 @@ subroutine IST_bounds_check(IST, G, msg)
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
     endif
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max) .or. &
-        (IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
+    if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "large mass" ; endif
+    endif
+    if ((IST%enth_snow(i,j,k,1) < enth_min) .or. (IST%enth_snow(i,j,k,1) > enth_max)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_snow" ; endif
     endif
   enddo ; enddo ; enddo
 
   do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max) .or. &
-        (IST%sal_ice(i,j,k,m) < 0.0) .or. (IST%sal_ice(i,j,k,m) > 1000.0)) then
+    if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max)) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif
+    endif
+    if ((IST%sal_ice(i,j,k,m) < 0.0) .or. (IST%sal_ice(i,j,k,m) > 1000.0)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "sal_ice" ; endif
     endif
   enddo ; enddo ; enddo ; enddo
 
@@ -912,7 +919,7 @@ subroutine IST_bounds_check(IST, G, msg)
       write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
             IST%t_ocn(i,j), IST%s_surf(i,j), sum_part_sz(i,j)
     endif
-    call SIS_error(WARNING, "Bad ice state "//trim(msg)//" ; "//trim(mesg1)//&
+    call SIS_error(WARNING, "Bad ice state "//trim(err)//" "//trim(msg)//" ; "//trim(mesg1)//&
                             " ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
       call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
@@ -933,6 +940,12 @@ subroutine IST_bounds_check(IST, G, msg)
              IST%enth_snow(i,j,k,1), IST%enth_ice(i,j,k,1)
       do m=2,G%NkIce
         write(mesg2,'(", ", 1pe12.4)') IST%enth_ice(i,j,k,m)
+        mesg1 = trim(mesg1)//trim(mesg2)
+      enddo
+      call SIS_error(WARNING, mesg1, all_print=.true.)
+      write(mesg1,'("salin_ice = ",1pe12.4)') IST%sal_ice(i,j,k,1)
+      do m=2,G%NkIce
+        write(mesg2,'(", ", 1pe12.4)') IST%sal_ice(i,j,k,m)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)
