@@ -980,8 +980,13 @@ integer,    optional, intent(in) :: stagger, stress_stagger
       ! Interpolate wind stresses from C-grid velocity-points.
       ! This masking is needed for now to prevent icebergs from running up on to land.
       mask = min(grd%msk(i,j), grd%msk(i+1,j), grd%msk(i,j+1), grd%msk(i+1,j+1))
-      grd%ua(I,J) = mask * 0.5*(uC_tmp(I,j)+uC_tmp(I,j+1))
-      grd%va(I,J) = mask * 0.5*(vC_tmp(i,J)+vC_tmp(i+1,J))
+      if (mask > 0.) then
+        grd%ua(I,J) = mask * 0.5*(uC_tmp(I,j)+uC_tmp(I,j+1))
+        grd%va(I,J) = mask * 0.5*(vC_tmp(i,J)+vC_tmp(i+1,J))
+      else
+        grd%ua(I,J) = 0.
+        grd%va(I,J) = 0.
+      endif
     enddo ; enddo
     deallocate(uC_tmp, vC_tmp)
   else
