@@ -3796,13 +3796,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
        G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
        Ice%axes(1:2), G%Domain%X_flags, G%Domain%Y_flags, &
        time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-       G%mask2dT, G%dxCv, G%dyCu, Ice%area, G%cos_rot, G%sin_rot, maskmap=G%Domain%maskmap )
+       G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+       G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+       Ice%area, &
+       G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+       maskmap=G%Domain%maskmap )
      else
        call icebergs_init(Ice%icebergs, &
        G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
        Ice%axes(1:2), G%Domain%X_flags, G%Domain%Y_flags, &
        time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-       G%mask2dT, G%dxCv, G%dyCu, Ice%area, G%cos_rot, G%sin_rot )
+       G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+       G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+       Ice%area, &
+       G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1) )
      endif
   endif
 
