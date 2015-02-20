@@ -669,8 +669,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
     enddo ; enddo
 
     do j=jsl,jel ; do i=isl,iel
-      ! Neighboring values should take into account any boundaries.  The 3
-      ! following sets of expressions are equivalent.
+      ! Neighboring values should take into account any boundaries.
       h_jm1 = G%mask2dT(i,j-1) * h_in(i,j-1) + (1.0-G%mask2dT(i,j-1)) * h_in(i,j)
       h_jp1 = G%mask2dT(i,j+1) * h_in(i,j+1) + (1.0-G%mask2dT(i,j+1)) * h_in(i,j)
       ! Left/right values following Eq. B2 in Lin 1994, MWR (132)
