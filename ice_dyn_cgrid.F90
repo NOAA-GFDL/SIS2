@@ -35,12 +35,15 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_error_checking, only : chksum, Bchksum, uchksum, vchksum, hchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER
+use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
+use MOM_io, only : open_file
+use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use ice_grid_mod,     only : sea_ice_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
+use time_manager_mod, only : set_date, get_time, get_date
 
 implicit none ; private
 
@@ -96,6 +99,16 @@ type, public :: ice_C_dyn_CS ; private
                              ! timing of diagnostic output.
   integer, pointer :: ntrunc  ! The number of times the velocity has been truncated
                               ! since the last call to write_ice_statistics.
+  character(len = 200) :: u_trunc_file ! The complete path to files in which a
+  character(len = 200) :: v_trunc_file ! column's worth of accelerations are
+                                       ! written if velocity truncations occur.
+  integer :: u_file, v_file ! The unit numbers for opened u- or v- truncation
+                            ! files, or -1 if they have not yet been opened.
+  integer :: cols_written   ! The number of columns whose output has been
+                            ! written by this PE during the current run.
+  integer :: max_writes     ! The maximum number of times any PE can write out
+                            ! a column's worth of accelerations during a run.
+
   logical :: FirstCall = .true.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
@@ -234,6 +247,29 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "If true, debug redundant data points.", default=CS%debug)
   call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  call get_param(param_file, mod, "U_TRUNC_FILE", CS%u_trunc_file, &
+                 "The absolute path to the file where the accelerations \n"//&
+                 "leading to zonal velocity truncations are written. \n"//&
+                 "Leave this empty for efficiency if this diagnostic is \n"//&
+                 "not needed.", default="")
+  call get_param(param_file, mod, "V_TRUNC_FILE", CS%v_trunc_file, &
+                 "The absolute path to the file where the accelerations \n"//&
+                 "leading to meridional velocity truncations are written. \n"//&
+                 "Leave this empty for efficiency if this diagnostic is \n"//&
+                 "not needed.", default="")
+  call get_param(param_file, mod, "MAX_TRUNC_FILE_SIZE_PER_PE", CS%max_writes, &
+                 "The maximum number of colums of truncations that any PE \n"//&
+                 "will write out during a run.", default=50)
+
+!  if (len_trim(dirs%output_directory) > 0) then
+!    if (len_trim(CS%u_trunc_file) > 0) &
+!      CS%u_trunc_file = trim(dirs%output_directory)//trim(CS%u_trunc_file)
+!    if (len_trim(CS%v_trunc_file) > 0) &
+!      CS%v_trunc_file = trim(dirs%output_directory)//trim(CS%v_trunc_file)
+!    call log_param(param_file, mod, "output_dir/U_TRUNC_FILE", CS%u_trunc_file)
+!    call log_param(param_file, mod, "output_dir/V_TRUNC_FILE", CS%v_trunc_file)
+!  endif
+  CS%u_file = -1 ; CS%v_file = -1 ; CS%cols_written = 0
 
   CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,         &
             'first stress invariant', 'none', missing_value=missing)
@@ -409,6 +445,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     Cor_u, & ! Zonal Coriolis acceleration, in m s-2.
     PFu, &   ! Zonal hydrostatic pressure driven acceleration, in m s-2.
     u_tmp, & ! A temporary copy of the old values of ui, in m s-1.
+    u_IC, &  ! The initial zonal ice velocities, in m s-1.
     mi_u, &  ! The total ice and snow mass interpolated to u points, in kg m-2.
     f2dt_u, &! The squared effective Coriolis parameter at u-points times a
              ! time step, in s-1.
@@ -420,6 +457,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     vi_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration, in m s-2.
     PFv, &   ! Meridional hydrostatic pressure driven acceleration, in m s-2.
+    v_IC, &  ! The initial meridional ice velocities, in m s-1.
     mi_v, &  ! The total ice and snow mass interpolated to v points, in kg m-2.
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
              ! time step, in s-1.
@@ -579,6 +617,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
       vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
     endif ; enddo ; enddo
+    do j=jsc,jec ; do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo ; enddo
+    do J=jsc-1,jec ; do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo ; enddo
   endif
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
@@ -1112,24 +1152,58 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   ! are the ones that are used for continuity and transport, and hence have
   ! CFL limitations that must be satisfied for numerical stability.
   if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
-    do j=jsc,jec ; do I=isc-1,iec
-      if (ui(I,j) < ui_min_trunc(I,j)) then
-        ui(I,j) = 0.95 * ui_min_trunc(I,j)
-        if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
-      elseif (ui(I,j) > ui_max_trunc(I,j)) then
-        ui(I,j) = 0.95*ui_max_trunc(I,j)
-        if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
-      endif
-    enddo ; enddo
-    do J=jsc-1,jec ; do i=isc,iec
-      if (vi(i,J) < vi_min_trunc(i,J)) then
-        vi(i,J) = 0.95 * vi_min_trunc(i,J)
-        if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
-      elseif (vi(i,J) > vi_max_trunc(i,J)) then
-        vi(i,J) = 0.95*vi_max_trunc(i,J)
-        if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
-      endif
-    enddo ; enddo
+    if (len_trim(CS%u_trunc_file) > 0) then
+      do j=jsc,jec ; do I=isc-1,iec
+        if ((ui(I,j) < ui_min_trunc(I,j)) .or. (ui(I,j) > ui_max_trunc(I,j))) then
+          if (mi_u(I,j) > m_neglect) then
+            CS%ntrunc = CS%ntrunc + 1
+            call write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, &
+                               PFu, fxat, dt_slow, G, CS)
+          endif
+          if (ui(I,j) < ui_min_trunc(I,j)) then
+            ui(I,j) = 0.95 * ui_min_trunc(I,j)
+          else
+            ui(I,j) = 0.95*ui_max_trunc(I,j)
+          endif
+        endif
+      enddo ; enddo
+    else
+      do j=jsc,jec ; do I=isc-1,iec
+        if (ui(I,j) < ui_min_trunc(I,j)) then
+          ui(I,j) = 0.95 * ui_min_trunc(I,j)
+          if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+        elseif (ui(I,j) > ui_max_trunc(I,j)) then
+          ui(I,j) = 0.95*ui_max_trunc(I,j)
+          if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+        endif
+      enddo ; enddo
+    endif
+    if (len_trim(CS%u_trunc_file) > 0) then
+      do J=jsc-1,jec ; do i=isc,iec
+        if ((vi(i,J) < vi_min_trunc(i,J)) .or. (vi(i,J) > vi_max_trunc(i,J))) then
+          if (mi_v(i,J) > m_neglect) then
+            CS%ntrunc = CS%ntrunc + 1
+            call write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, &
+                               PFv, fyat, dt_slow, G, CS)
+          endif
+          if (vi(i,J) < vi_min_trunc(i,J)) then
+            vi(i,J) = 0.95 * vi_min_trunc(i,J)
+          else
+            vi(i,J) = 0.95*vi_max_trunc(i,J)
+          endif
+        endif
+      enddo ; enddo
+    else
+      do J=jsc-1,jec ; do i=isc,iec
+        if (vi(i,J) < vi_min_trunc(i,J)) then
+          vi(i,J) = 0.95 * vi_min_trunc(i,J)
+          if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+        elseif (vi(i,J) > vi_max_trunc(i,J)) then
+          vi(i,J) = 0.95*vi_max_trunc(i,J)
+          if (mi_v(i,J) > m_neglect) CS%ntrunc = CS%ntrunc + 1
+        endif
+      enddo ; enddo
+    endif
   endif
 
   ! Write out diagnostics associated with the ice dynamics.
@@ -1297,6 +1371,130 @@ subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
   id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
                domain=G%Domain%mpp_domain, position=CORNER, mandatory=.false.)
 end subroutine ice_C_dyn_register_restarts
+
+
+! The following two subroutines are used to record the location of velocity
+! truncations and related fields.
+
+subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, &
+                         dt_slow, G, CS)
+  integer, intent(in) :: I, j
+  type(sea_ice_grid_type),           intent(in) :: G
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui, u_IC, uo
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc, fxic, Cor_u, PFu, fxat
+  real,                              intent(in) :: dt_slow
+  type(ice_C_dyn_CS),                pointer    :: CS
+
+  real :: dt_mi, CFL
+  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
+                                           ! can be cubed without underflow.
+  integer :: file
+  integer :: yr, mo, day, hr, minute, sec, yearday
+
+  if (CS%cols_written < CS%max_writes) then
+    CS%cols_written = CS%cols_written + 1
+
+  ! Open up the file for output if this is the first call.
+    if (CS%u_file < 0) then
+      if (len_trim(CS%u_trunc_file) < 1) return
+      call open_file(CS%u_file, trim(CS%u_trunc_file), action=APPEND_FILE, &
+                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      if (CS%u_file < 0) then
+        call SIS_error(NOTE, 'Unable to open file '//trim(CS%u_trunc_file)//'.')
+        return
+      endif
+    endif
+    file = CS%u_file
+
+    if (ui(I,j) > 0.0) then
+      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i,j)
+    else
+      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i+1,j)
+    endif
+
+
+    call get_date(CS%Time, yr, mo, day, hr, minute, sec)
+    call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
+    write (file,'(/,"--------------------------")')
+    write (file,'("Time ",i5,i4,F6.2," U-trunc at ",I4,": ",2(I3), &
+        & " (",F7.2," E "F7.2," N) u = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
+        yr, yearday, (REAL(sec)/3600.0), pe_here(), I, j, &
+        G%geoLonCu(I,j), G%geoLatCu(I,j), ui(I,j), CFL, u_IC(I,j), dt_slow
+
+    dt_mi = dt_slow / (0.5*(mis(i,j) + mis(i+1,j)) + H_subroundoff*CS%Rho_ice)
+
+    write (file, '("ui, uo, dui = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
+      ui(I,j), uo(I,j), ui(I,j) - u_IC(I,j), mis(i,j), mis(i+1,j)
+
+    write (file, '("U change due to fxat, fxoc, fxic, Cor_u, PFu = ", 5ES11.3, " sum = ",ES11.3)') &
+      fxat(I,j)*dt_mi, -fxoc(I,j)*dt_mi, fxic(I,j)*dt_mi, Cor_u(I,j)*dt_slow, PFu(I,j)*dt_slow, &
+      (fxat(I,j) - fxoc(I,j) + fxic(I,j))*dt_mi + (Cor_u(I,j) + PFu(I,j))*dt_slow
+
+    call flush(file)
+  endif
+
+end subroutine write_u_trunc
+
+subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, &
+                         dt_slow, G, CS)
+  integer, intent(in) :: i, j
+  type(sea_ice_grid_type),           intent(in) :: G
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi, v_IC, vo
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc, fyic, Cor_v, PFv, fyat
+  real,                              intent(in) :: dt_slow
+  type(ice_C_dyn_CS),                pointer    :: CS
+
+  real :: dt_mi, CFL
+  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
+                                           ! can be cubed without underflow.
+  integer :: file
+  integer :: yr, mo, day, hr, minute, sec, yearday
+
+
+  if (CS%cols_written < CS%max_writes) then
+    CS%cols_written = CS%cols_written + 1
+
+  ! Open up the file for output if this is the first call.
+    if (CS%v_file < 0) then
+      if (len_trim(CS%v_trunc_file) < 1) return
+      call open_file(CS%v_file, trim(CS%v_trunc_file), action=APPEND_FILE, &
+                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      if (CS%v_file < 0) then
+        call SIS_error(NOTE, 'Unable to open file '//trim(CS%v_trunc_file)//'.')
+        return
+      endif
+    endif
+    file = CS%v_file
+
+    if (vi(i,J) > 0.0) then
+      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j)
+    else
+      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j+1)
+    endif
+
+    call get_date(CS%Time, yr, mo, day, hr, minute, sec)
+    call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
+    write (file,'(/,"--------------------------")')
+    write (file,'("Time ",i5,i4,F6.2," V-trunc at ",I4,": ",2(I3), &
+        & " (",F7.2," E ",F7.2," N) v = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
+        yr, yearday, (REAL(sec)/3600.0), pe_here(), i, J, &
+        G%geoLonCv(i,J), G%geoLatCv(i,J), vi(i,J), CFL, v_IC(i,J), dt_slow
+
+    dt_mi = dt_slow / (0.5*(mis(i,j) + mis(i,j+1)) + H_subroundoff*CS%Rho_ice)
+
+    write (file, '("vi, vo, dvi = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
+      vi(i,J), vo(i,J), vi(i,J) - v_IC(i,J), mis(i,j), mis(i,j+1)
+
+    write (file, '("V change due to fyat, fyoc, fyic, Cor_v, PFv = ", 5ES11.3, " sum = ",ES11.3)') &
+      fyat(i,J)*dt_mi, -fyoc(i,J)*dt_mi, fyic(i,J)*dt_mi, Cor_v(i,J)*dt_slow, PFv(i,J)*dt_slow, &
+      (fyat(i,J) - fyoc(i,J) + fyic(i,J))*dt_mi + (Cor_v(i,J) + PFv(i,J))*dt_slow
+
+    call flush(file)
+  endif
+
+end subroutine write_v_trunc
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_dyn_end - deallocate the memory associated with this module.             !
