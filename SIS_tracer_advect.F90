@@ -652,8 +652,33 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
-    call kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr(:,:,k), hprev(:,:,k), hlst, Ihnew, do_i)
-    call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:), scalar(:,:,k))
+!    call kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr(:,:,k), hprev(:,:,k), hlst, Ihnew, do_i)
+    do I=is-1,ie
+      uhr(I,j,k) = uhr(I,j,k) - uhh(I)
+      if (abs(uhr(I,j,k)) < uh_neglect(I,j)) uhr(I,j,k) = 0.0
+    enddo
+    do i=is,ie
+      if ((uhh(I) /= 0.0) .or. (uhh(I-1) /= 0.0)) then
+        do_i(i) = .true.
+        hlst(i) = hprev(i,j,k)
+        hprev(i,j,k) = hprev(i,j,k) - (uhh(I) - uhh(I-1))
+        if (hprev(i,j,k) <= 0.0) then
+          do_i(i) = .false.
+        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
+          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+        else
+          Ihnew(i) = 1.0 / hprev(i,j,k)
+        endif
+      else
+        do_i(i) = .false.
+      endif
+    enddo
+    do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
+      scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
+                        (flux_x(I) - flux_x(I-1))) * Ihnew(i)
+    endif ; enddo
+!    call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:), scalar(:,:,k))
 
   endif ; enddo ! End of j-loop.
 
@@ -740,9 +765,34 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
     endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
-    call kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr(:,:,k), hprev(:,:,k), hlst, Ihnew, do_i)
+!    call kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr(:,:,k), hprev(:,:,k), hlst, Ihnew, do_i)
+    do I=is-1,ie
+      uhr(I,j,k) = uhr(I,j,k) - uhh(I)
+      if (abs(uhr(I,j,k)) < uh_neglect(I,j)) uhr(I,j,k) = 0.0
+    enddo
+    do i=is,ie
+      if ((uhh(I) /= 0.0) .or. (uhh(I-1) /= 0.0)) then
+        do_i(i) = .true.
+        hlst(i) = hprev(i,j,k)
+        hprev(i,j,k) = hprev(i,j,k) - (uhh(I) - uhh(I-1))
+        if (hprev(i,j,k) <= 0.0) then
+          do_i(i) = .false.
+        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
+          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+        else
+          Ihnew(i) = 1.0 / hprev(i,j,k)
+        endif
+      else
+        do_i(i) = .false.
+      endif
+    enddo
     do m=1,ntr ; do l=1,Tr(m)%nL
-      call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:,l,m), Tr(m)%t(:,:,k,l))
+!       call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:,l,m), Tr(m)%t(:,:,k,l))
+      do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
+        Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
+                          (flux_x(I,l,m) - flux_x(I-1,l,m))) * Ihnew(i)
+      endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_x)) then ; do i=is,ie ; if (do_i(i)) then
         Tr(m)%ad4d_x(I,j,k,l) = Tr(m)%ad4d_x(I,j,k,l) + flux_x(I,l,m)*Idt
@@ -1045,8 +1095,29 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 
   ! Calculate new tracer concentration in each cell after accounting for the j-direction fluxes.
   do j=js,je ; if (do_j_tr(j)) then
-    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
-    call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:), scalar(:,:,k))
+!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
+!    call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:), scalar(:,:,k))
+    do i=is,ie
+      if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
+        do_i(i) = .true.
+        hlst(i) = hprev(i,j,k)
+        hprev(i,j,k) = max(hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1)), 0.0)
+        if (hprev(i,j,k) <= 0.0) then
+          do_i(i) = .false.
+        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
+          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+        else
+          Ihnew(i) = 1.0 / hprev(i,j,k)
+        endif
+      else
+        do_i(i) = .false.
+      endif
+    enddo
+    do i=is,ie ; if (do_i(i)) then
+      scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
+                       (flux_y(i,J) - flux_y(i,J-1))) * Ihnew(i)
+    endif ; enddo
   endif ; enddo ! End of j-loop.
 
 end subroutine advect_scalar_y
@@ -1142,9 +1213,30 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
 
   ! Calculate new tracer concentration in each cell after accounting for the j-direction fluxes.
   do j=js,je ; if (do_j_tr(j)) then
-    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
+!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
+    do i=is,ie
+      if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
+        do_i(i) = .true.
+        hlst(i) = hprev(i,j,k)
+        hprev(i,j,k) = max(hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1)), 0.0)
+        if (hprev(i,j,k) <= 0.0) then
+          do_i(i) = .false.
+        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
+          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+        else
+          Ihnew(i) = 1.0 / hprev(i,j,k)
+        endif
+      else
+        do_i(i) = .false.
+      endif
+    enddo
     do m=1,ntr ; do l=1,Tr(m)%nL
-      call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:,l,m), Tr(m)%t(:,:,k,l))
+!      call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:,l,m), Tr(m)%t(:,:,k,l))
+      do i=is,ie ; if (do_i(i)) then
+        Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
+                          (flux_y(i,J,l,m) - flux_y(i,J-1,l,m))) * Ihnew(i)
+      endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_y)) then ; do i=is,ie ; if (do_i(i)) then
         Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + flux_y(i,J,l,m)*Idt
