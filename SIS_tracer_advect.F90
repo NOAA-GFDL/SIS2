@@ -403,8 +403,8 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   integer :: max_iter           ! The maximum number of iterations in
                                 ! each layer.
 
-  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
-  real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
+  real, dimension(SZIB_(G),SZJ_(G)) :: flux_U2d_x  ! x-direction tracer fluxes, in conc * kg
+  real, dimension(SZI_(G),SZJB_(G)) :: flux_U2d_y  ! y-direction tracer fluxes, in conc * kg
   real    :: tr_up              ! Upwind tracer concentrations, in conc.
   real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
 
@@ -428,21 +428,21 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
       do j=js,je ; do I=is-1,ie
         if (uhtr(I,j,k) >= 0.0) then ; tr_up = scalar(i,j,k)
         else ; tr_up = scalar(i+1,j,k) ; endif
-        flux_x(I,j) = (dt*uhtr(I,j,k)) * tr_up
+        flux_U2d_x(I,j) = (dt*uhtr(I,j,k)) * tr_up
       enddo ; enddo
 
       do J=js-1,je ; do i=is,ie
         if (vhtr(i,J,k) >= 0.0) then ; tr_up = scalar(i,j,k)
         else ; tr_up = scalar(i,j+1,k) ; endif
-        flux_y(i,J) = (dt*vhtr(i,J,k)) * tr_up
+        flux_U2d_y(i,J) = (dt*vhtr(i,J,k)) * tr_up
       enddo ; enddo
 
       do j=js,je ; do i=is,ie
         vol_end = (G%areaT(i,j) * h_end(i,j,k))
         Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
         scalar(i,j,k) = ( (G%areaT(i,j)*h_prev(i,j,k))*scalar(i,j,k) - &
-                         ((flux_x(I,j) - flux_x(I-1,j)) + &
-                          (flux_y(i,J) - flux_y(i,J-1))) ) * Ivol_end
+                         ((flux_U2d_x(I,j) - flux_U2d_x(I-1,j)) + &
+                          (flux_U2d_y(i,J) - flux_U2d_y(i,J-1))) ) * Ivol_end
       enddo ; enddo
     enddo
   else
@@ -598,7 +598,8 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     slope_x         ! The concentration slope per grid point in units of
                     ! concentration (nondim.).
   real, dimension(SZIB_(G)) :: &
-    flux_x          ! The tracer flux across a boundary in m3*conc or kg*conc.
+    Tr_x            ! The tracer concentration averaged over the water flux
+                    ! across a zonal boundary in conc.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
@@ -644,11 +645,11 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, domore_u(j,k))
 
     if (usePPM) then
-      call kernel_PPMH3_flux_x(G, is-1, ie, j, &
-             scalar(:,:,k), mass_mask, uhh, CFL, flux_x(:))
+      call kernel_PPMH3_Tr_x(G, is-1, ie, j, &
+             scalar(:,:,k), mass_mask, uhh, CFL, Tr_x(:))
     else ! PLM
-      call kernel_PLM_flux_x(G, is-1, ie, j, &
-             scalar(:,:,k), uhh, CFL, slope_x(:), flux_x(:))
+      call kernel_PLM_Tr_x(G, is-1, ie, j, &
+             scalar(:,:,k), uhh, CFL, slope_x(:), Tr_x(:))
     endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
@@ -676,7 +677,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     enddo
     do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
       scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
-                        (flux_x(I) - flux_x(I-1))) * Ihnew(i)
+                       (uhh(I)*Tr_x(I) - uhh(I-1)*Tr_x(I-1))) * Ihnew(i)
     endif ; enddo
 !    call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:), scalar(:,:,k))
 
@@ -702,7 +703,8 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
     slope_x         ! The concentration slope per grid point in units of
                     ! concentration (nondim.).
   real, dimension(SZIB_(G),nL_max,ntr) :: &
-    flux_x          ! The tracer flux across a boundary in m3*conc or kg*conc.
+    Tr_x            ! The tracer concentration averaged over the water flux
+                    ! across a zonal boundary in conc.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
@@ -754,13 +756,13 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
 
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
-        call kernel_PPMH3_flux_x(G, is-1, ie, j, &
-               Tr(m)%t(:,:,k,l), mass_mask, uhh, CFL, flux_x(:,l,m))
+        call kernel_PPMH3_Tr_x(G, is-1, ie, j, &
+               Tr(m)%t(:,:,k,l), mass_mask, uhh, CFL, Tr_x(:,l,m))
       enddo ; enddo
     else ! PLM
       do m=1,ntr ; do l=1,Tr(m)%nL
-        call kernel_PLM_flux_x(G, is-1, ie, j, &
-               Tr(m)%t(:,:,k,l), uhh, CFL, slope_x(:,l,m), flux_x(:,l,m))
+        call kernel_PLM_Tr_x(G, is-1, ie, j, &
+               Tr(m)%t(:,:,k,l), uhh, CFL, slope_x(:,l,m), Tr_x(:,l,m))
       enddo ; enddo
     endif ! usePPM
 
@@ -791,17 +793,17 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
 !       call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:,l,m), Tr(m)%t(:,:,k,l))
       do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
         Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
-                          (flux_x(I,l,m) - flux_x(I-1,l,m))) * Ihnew(i)
+                          (uhh(I)*Tr_x(I,l,m) - uhh(I-1)*Tr_x(I-1,l,m))) * Ihnew(i)
       endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_x)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad4d_x(I,j,k,l) = Tr(m)%ad4d_x(I,j,k,l) + flux_x(I,l,m)*Idt
+        Tr(m)%ad4d_x(I,j,k,l) = Tr(m)%ad4d_x(I,j,k,l) + uhh(I)*Tr_x(I,l,m)*Idt
       endif ; enddo ; endif
       if (associated(Tr(m)%ad3d_x)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad3d_x(I,j,k) = Tr(m)%ad3d_x(I,j,k) + flux_x(I,l,m)*Idt
+        Tr(m)%ad3d_x(I,j,k) = Tr(m)%ad3d_x(I,j,k) + uhh(I)*Tr_x(I,l,m)*Idt
       endif ; enddo ; endif
       if (associated(Tr(m)%ad2d_x)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad2d_x(I,j) = Tr(m)%ad2d_x(I,j) + flux_x(I,l,m)*Idt
+        Tr(m)%ad2d_x(I,j) = Tr(m)%ad2d_x(I,j) + uhh(I)*Tr_x(I,l,m)*Idt
       endif ; enddo ; endif
     enddo ; enddo
 
@@ -877,13 +879,13 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
 
 end subroutine kernel_PLM_slope_x
 
-subroutine kernel_PLM_flux_x(G, is, ie, j, scalar, uhh, CFL, slope_x, flux_x)
+subroutine kernel_PLM_Tr_x(G, is, ie, j, scalar, uhh, CFL, slope_x, Tr_x)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZIB_(G)),         intent(in)    :: uhh, CFL
   real, dimension(SZI_(G)),          intent(in)    :: slope_x
-  real, dimension(SZIB_(G)),         intent(inout) :: flux_x
+  real, dimension(SZIB_(G)),         intent(inout) :: Tr_x
   ! Local
   integer :: i
   real :: Tc
@@ -891,22 +893,22 @@ subroutine kernel_PLM_flux_x(G, is, ie, j, scalar, uhh, CFL, slope_x, flux_x)
   do I=is,ie
     if (uhh(I) >= 0.0) then
       Tc = scalar(i,j)
-      flux_x(I) = uhh(I)*( Tc + 0.5 * slope_x(i) * ( 1. - CFL(I) ) )
+      Tr_x(I) = Tc + 0.5 * slope_x(i) * ( 1. - CFL(I) )
     else
       Tc = scalar(i+1,j)
-      flux_x(I) = uhh(I)*( Tc - 0.5 * slope_x(i+1) * ( 1. - CFL(I) ) )
+      Tr_x(I) = Tc - 0.5 * slope_x(i+1) * ( 1. - CFL(I) )
     endif
   enddo
 
-end subroutine kernel_PLM_flux_x
+end subroutine kernel_PLM_Tr_x
 
-subroutine kernel_PPMH3_flux_x(G, is, ie, j, scalar, uMask, uhh, CFL, flux_x)
+subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask
   real, dimension(SZIB_(G)),         intent(in)    :: uhh, CFL
-  real, dimension(SZIB_(G)),         intent(inout) :: flux_x
+  real, dimension(SZIB_(G)),         intent(inout) :: Tr_x
   ! Local
   integer :: i
   real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
@@ -928,7 +930,7 @@ subroutine kernel_PPMH3_flux_x(G, is, ie, j, scalar, uMask, uhh, CFL, flux_x)
         aR = 3.*Tc - 2.*aL
       endif
       a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
-      flux_x(I) = uhh(I)*( aR - 0.5 * CFL(I) * ( &
+      Tr_x(I) = ( aR - 0.5 * CFL(I) * ( &
               ( aR - aL ) - a6 * ( 1. - 2./3. * CFL(I) ) ) )
     else
       ! Implementation of PPM-H3
@@ -947,12 +949,12 @@ subroutine kernel_PPMH3_flux_x(G, is, ie, j, scalar, uMask, uhh, CFL, flux_x)
         aR = 3.*Tc - 2.*aL
       endif
       a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
-      flux_x(I) = uhh(I)*( aL + 0.5 * CFL(I) * ( &
+      Tr_x(I) = ( aL + 0.5 * CFL(I) * ( &
               ( aR - aL ) + a6 * ( 1. - 2./3. * CFL(I) ) ) )
     endif
   enddo
 
-end subroutine kernel_PPMH3_flux_x
+end subroutine kernel_PPMH3_Tr_x
 
 subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, do_i)
   type(sea_ice_grid_type),           intent(in)    :: G
@@ -1029,7 +1031,8 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     slope_y         ! The concentration slope per grid point in units of
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    flux_y          ! The tracer flux across a boundary in m3 * conc or kg*conc.
+    Tr_y            ! The tracer concentration averaged over the water flux
+                    ! across a meridional boundary in conc.
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
@@ -1077,15 +1080,15 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   do J=js-1,je ; if (domore_v(J,k)) then
     call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, domore_v(:,k))
     if (usePPM) then
-      call kernel_PPMH3_flux_y(G, is, ie, J, &
-             scalar(:,:,k), mass_mask, vhh, CFL, flux_y(:,J))
+      call kernel_PPMH3_Tr_y(G, is, ie, J, &
+             scalar(:,:,k), mass_mask, vhh, CFL, Tr_y(:,J))
     else ! PLM
-      call kernel_PLM_flux_y(G, is, ie, J, &
-             scalar(:,:,k), vhh, CFL, slope_y(:,:), flux_y(:,J))
+      call kernel_PLM_Tr_y(G, is, ie, J, &
+             scalar(:,:,k), vhh, CFL, slope_y(:,:), Tr_y(:,J))
     endif ! usePPM
 
   else ! not domore_v.
-    do i=is,ie ; vhh(i,J) = 0.0 ; flux_y(i,J) = 0.0 ; enddo
+    do i=is,ie ; vhh(i,J) = 0.0 ; Tr_y(i,J) = 0.0 ; enddo
   endif ; enddo ! End of j-loop
 
   do J=js-1,je ; do i=is,ie
@@ -1116,7 +1119,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     enddo
     do i=is,ie ; if (do_i(i)) then
       scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
-                       (flux_y(i,J) - flux_y(i,J-1))) * Ihnew(i)
+                       (vhh(i,J)*Tr_y(i,J) - vhh(i,J-1)*Tr_y(i,J-1))) * Ihnew(i)
     endif ; enddo
   endif ; enddo ! End of j-loop.
 
@@ -1140,7 +1143,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     slope_y         ! The concentration slope per grid point in units of
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G),nL_max,ntr) :: &
-    flux_y          ! The tracer flux across a boundary in m3 * conc or kg*conc.
+    Tr_y            ! The tracer concentration averaged over the water flux
+                    ! across a meridional boundary in conc.
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
@@ -1191,19 +1195,19 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, domore_v(:,k))
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
-        call kernel_PPMH3_flux_y(G, is, ie, J, &
-               Tr(m)%t(:,:,k,l), mass_mask, vhh, CFL, flux_y(:,J,l,m))
+        call kernel_PPMH3_Tr_y(G, is, ie, J, &
+               Tr(m)%t(:,:,k,l), mass_mask, vhh, CFL, Tr_y(:,J,l,m))
       enddo ; enddo
     else ! PLM
       do m=1,ntr ; do l=1,Tr(m)%nL
-        call kernel_PLM_flux_y(G, is, ie, J, &
-               Tr(m)%t(:,:,k,l), vhh, CFL, slope_y(:,:,l,m), flux_y(:,J,l,m))
+        call kernel_PLM_Tr_y(G, is, ie, J, &
+               Tr(m)%t(:,:,k,l), vhh, CFL, slope_y(:,:,l,m), Tr_y(:,J,l,m))
       enddo ; enddo
     endif ! usePPM
 
   else ! not domore_v.
     do i=is,ie ; vhh(i,J) = 0.0 ; enddo
-    do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is,ie ; flux_y(i,J,l,m) = 0.0 ; enddo ; enddo ; enddo
+    do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is,ie ; Tr_y(i,J,l,m) = 0.0 ; enddo ; enddo ; enddo
   endif ; enddo ! End of j-loop
 
   do J=js-1,je ; do i=is,ie
@@ -1235,17 +1239,17 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
 !      call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:,l,m), Tr(m)%t(:,:,k,l))
       do i=is,ie ; if (do_i(i)) then
         Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
-                          (flux_y(i,J,l,m) - flux_y(i,J-1,l,m))) * Ihnew(i)
+               (vhh(i,J)*Tr_y(i,J,l,m) - vhh(i,J-1)*Tr_y(i,J-1,l,m))) * Ihnew(i)
       endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_y)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       endif ; enddo ; endif
       if (associated(Tr(m)%ad3d_y)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       endif ; enddo ; endif
       if (associated(Tr(m)%ad2d_y)) then ; do i=is,ie ; if (do_i(i)) then
-        Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       endif ; enddo ; endif
     enddo ; enddo
   endif ; enddo ! End of j-loop.
@@ -1254,13 +1258,13 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   do m=1,ntr
     if (associated(Tr(m)%ad4d_y) .or. associated(Tr(m)%ad3d_y) .or. associated(Tr(m)%ad3d_y)) then
       if (associated(Tr(m)%ad4d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
-        Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad4d_y(i,J,k,l) = Tr(m)%ad4d_y(i,J,k,l) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       enddo ; enddo ; endif
       if (associated(Tr(m)%ad3d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
-        Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad3d_y(i,J,k) = Tr(m)%ad3d_y(i,J,k) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       enddo ; enddo ; endif
       if (associated(Tr(m)%ad2d_y)) then ; do l=1,Tr(m)%nL ; do i=is,ie
-        Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + flux_y(i,J,l,m)*Idt
+        Tr(m)%ad2d_y(i,J) = Tr(m)%ad2d_y(i,J) + vhh(i,J)*Tr_y(i,J,l,m)*Idt
       enddo ; enddo ; endif
     endif
   enddo ! m
@@ -1337,14 +1341,14 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
 
 end subroutine kernel_PLM_slope_y
 
-subroutine kernel_PLM_flux_y(G, is, ie, J, scalar, vhh, CFL, slope_y, flux_y)
+subroutine kernel_PLM_Tr_y(G, is, ie, J, scalar, vhh, CFL, slope_y, Tr_y)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh
   real, dimension(SZI_(G)),          intent(in)    :: CFL
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: slope_y
-  real, dimension(SZI_(G)),          intent(inout) :: flux_y
+  real, dimension(SZI_(G)),          intent(inout) :: Tr_y
   ! Local
   integer :: i
   real :: Tc
@@ -1352,23 +1356,23 @@ subroutine kernel_PLM_flux_y(G, is, ie, J, scalar, vhh, CFL, slope_y, flux_y)
   do i=is,ie
     if (vhh(i,J) >= 0.0) then
       Tc = scalar(i,j)
-      flux_y(i) = vhh(i,J)*( Tc + 0.5 * slope_y(i,j) * ( 1. - CFL(i) ) )
+      Tr_y(i) = Tc + 0.5 * slope_y(i,j) * ( 1. - CFL(i) )
     else
       Tc = scalar(i,j+1)
-      flux_y(i) = vhh(i,J)*( Tc - 0.5 * slope_y(i,j+1) * ( 1. - CFL(i) ) )
+      Tr_y(i) = Tc - 0.5 * slope_y(i,j+1) * ( 1. - CFL(i) )
     endif
   enddo
 
-end subroutine kernel_PLM_flux_y
+end subroutine kernel_PLM_Tr_y
 
-subroutine kernel_PPMH3_flux_y(G, is, ie, J, scalar, vMask, vhh, CFL, flux_y)
+subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh
   real, dimension(SZI_(G)),          intent(in)    :: CFL
-  real, dimension(SZI_(G)),          intent(inout) :: flux_y
+  real, dimension(SZI_(G)),          intent(inout) :: Tr_y
   ! Local
   integer :: i
   real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
@@ -1390,7 +1394,7 @@ subroutine kernel_PPMH3_flux_y(G, is, ie, J, scalar, vMask, vhh, CFL, flux_y)
         aR = 3.*Tc - 2.*aL
       endif
       a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
-      flux_y(i) = vhh(i,J)*( aR - 0.5 * CFL(i) * ( &
+      Tr_y(i) = ( aR - 0.5 * CFL(i) * ( &
             ( aR - aL ) - a6 * ( 1. - 2./3. * CFL(i) ) ) )
     else
       ! Implementation of PPM-H3
@@ -1408,12 +1412,12 @@ subroutine kernel_PPMH3_flux_y(G, is, ie, J, scalar, vMask, vhh, CFL, flux_y)
         aR = 3.*Tc - 2.*aL
       endif
       a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
-      flux_y(i) = vhh(i,J)*( aL + 0.5 * CFL(i) * ( &
+      Tr_y(i) = ( aL + 0.5 * CFL(i) * ( &
             ( aR - aL ) + a6 * ( 1. - 2./3. * CFL(i) ) ) )
     endif
   enddo
 
-end subroutine kernel_PPMH3_flux_y
+end subroutine kernel_PPMH3_Tr_y
 
 subroutine kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev, hlst, Ihnew, do_i)
   type(sea_ice_grid_type),           intent(in)    :: G
