@@ -603,23 +603,22 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
-  real :: maxslope            ! The maximum concentration slope per grid point
-                              ! consistent with monotonicity, in conc. (nondim.).
-  real :: hup, hlos           ! hup is the upwind volume, hlos is the
-                              ! part of that volume that might be lost
-                              ! due to advection out the other side of
-                              ! the grid box, both in m3 or kg.
-  real :: uhh(SZIB_(G))       ! The zonal flux that occurs during the
-                              ! current iteration, in m3 or kg.
+  real :: maxslope  ! The maximum concentration slope per grid point consistent
+                    ! with monotonicity, in conc. (nondim.).
+  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+                    ! that might be lost due to advection out the other side of
+                    ! the grid box, both in m3 or kg.
   real, dimension(SZIB_(G)) :: &
-    hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
-    CFL                 ! A nondimensional work variable.
-  real :: h_neglect     ! A thickness that is so small it is usually lost
-                        ! in roundoff and can be neglected, in m.
-  logical :: do_i(SZIB_(G))     ! If true, work on given points.
+    uhh, &          ! The zonal flux that occurs during the current iteration, in m3 or kg.
+    CFL             ! A nondimensional work variable.
+  real, dimension(SZI_(G)) :: &
+    hlst, Ihnew     ! Work variables with units of m3 or kg and m-3 or kg-1.
+  real :: h_neglect ! A thickness that is so small it is usually lost
+                    ! in roundoff and can be neglected, in m.
+  logical :: do_i(SZI_(G))  ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j
-  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
+!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -708,23 +707,22 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
-  real :: maxslope            ! The maximum concentration slope per grid point
-                              ! consistent with monotonicity, in conc. (nondim.).
-  real :: hup, hlos           ! hup is the upwind volume, hlos is the
-                              ! part of that volume that might be lost
-                              ! due to advection out the other side of
-                              ! the grid box, both in m3 or kg.
-  real :: uhh(SZIB_(G))       ! The zonal flux that occurs during the
-                              ! current iteration, in m3 or kg.
+  real :: maxslope  ! The maximum concentration slope per grid point consistent
+                    ! with monotonicity, in conc. (nondim.).
+  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+                    ! that might be lost due to advection out the other side of
+                    ! the grid box, both in m3 or kg.
   real, dimension(SZIB_(G)) :: &
-    hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
-    CFL                 ! A nondimensional work variable.
-  real :: h_neglect     ! A thickness that is so small it is usually lost
-                        ! in roundoff and can be neglected, in m.
-  logical :: do_i(SZIB_(G))     ! If true, work on given points.
+    uhh, &          ! The zonal flux that occurs during the current iteration, in m3 or kg.
+    CFL             ! A nondimensional work variable.
+  real, dimension(SZI_(G)) :: &
+    hlst, Ihnew     ! Work variables with units of m3 or kg and m-3 or kg-1.
+  real :: h_neglect ! A thickness that is so small it is usually lost
+                    ! in roundoff and can be neglected, in m.
+  logical :: do_i(SZI_(G))  ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j, l, m
-  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
+!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -1034,26 +1032,25 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     Tr_y            ! The tracer concentration averaged over the water flux
                     ! across a meridional boundary in conc.
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+    mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
-  real :: maxslope            ! The maximum concentration slope per grid point
-                              ! consistent with monotonicity, in conc. (nondim.).
-  real :: vhh(SZI_(G),SZJB_(G)) ! The meridional flux that occurs during the
-                              ! current iteration, in m3 or kg.
-  real :: hup, hlos           ! hup is the upwind volume, hlos is the
-                              ! part of that volume that might be lost
-                              ! due to advection out the other side of
-                              ! the grid box, both in m3 or kg.
-  real, dimension(SZIB_(G)) :: &
-    hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
-    CFL                 ! A nondimensional work variable.
-  real :: h_neglect     ! A thickness that is so small it is usually lost
-                        ! in roundoff and can be neglected, in m.
-  logical :: do_j_tr(SZJ_(G))   ! If true, calculate the tracer profiles.
-  logical :: do_i(SZIB_(G))     ! If true, work on given points.
+    vhh             ! The meridional flux that occurs during the current
+                    ! iteration, in m3 or kg.
+  real :: maxslope  ! The maximum concentration slope per grid point consistent
+                    ! with monotonicity, in conc. (nondim.).
+  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+                    ! that might be lost due to advection out the other side of
+                    ! the grid box, both in m3 or kg.
+  real, dimension(SZI_(G)) :: &
+    hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    CFL             ! A nondimensional work variable.
+  real :: h_neglect ! A thickness that is so small it is usually lost
+                    ! in roundoff and can be neglected, in m.
+  logical :: do_j_tr(SZJ_(G))  ! If true, calculate the tracer profiles.
+  logical :: do_i(SZI_(G))     ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j, l, m
-  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
+!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -1146,26 +1143,25 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     Tr_y            ! The tracer concentration averaged over the water flux
                     ! across a meridional boundary in conc.
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    mass_mask       ! A multiplicative mask at velocity points that is 1 if
+    mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
-  real :: maxslope            ! The maximum concentration slope per grid point
-                              ! consistent with monotonicity, in conc. (nondim.).
-  real :: vhh(SZI_(G),SZJB_(G)) ! The meridional flux that occurs during the
-                              ! current iteration, in m3 or kg.
-  real :: hup, hlos           ! hup is the upwind volume, hlos is the
-                              ! part of that volume that might be lost
-                              ! due to advection out the other side of
-                              ! the grid box, both in m3 or kg.
-  real, dimension(SZIB_(G)) :: &
-    hlst, Ihnew, &      ! Work variables with units of m3 or kg and m-3 or kg-1.
-    CFL                 ! A nondimensional work variable.
-  real :: h_neglect     ! A thickness that is so small it is usually lost
-                        ! in roundoff and can be neglected, in m.
-  logical :: do_j_tr(SZJ_(G))   ! If true, calculate the tracer profiles.
-  logical :: do_i(SZIB_(G))     ! If true, work on given points.
+    vhh             ! The meridional flux that occurs during the current
+                    ! iteration, in m3 or kg.
+  real :: maxslope  ! The maximum concentration slope per grid point consistent
+                    ! with monotonicity, in conc. (nondim.).
+  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+                    ! that might be lost due to advection out the other side of
+                    ! the grid box, both in m3 or kg.
+  real, dimension(SZI_(G)) :: &
+    hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    CFL             ! A nondimensional work variable.
+  real :: h_neglect ! A thickness that is so small it is usually lost
+                    ! in roundoff and can be neglected, in m.
+  logical :: do_j_tr(SZJ_(G))  ! If true, calculate the tracer profiles.
+  logical :: do_i(SZI_(G))     ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j, l, m
-  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
+!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
