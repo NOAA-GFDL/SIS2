@@ -612,7 +612,16 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     uhh, &          ! The zonal flux that occurs during the current iteration, in m3 or kg.
     CFL             ! A nondimensional work variable.
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew     ! Work variables with units of m3 or kg and m-3 or kg-1.
+    hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    haddE, haddW    ! Tiny amounts of thickness that should be added to the
+                    ! tracer update with concentrations that match the average
+                    ! over the fluxes through the faces to the nominal east
+                    ! and west of the present cell, in m3 or kg.
+  real :: hnew      ! The projected thickness, in m3 or kg.
+  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+                    ! well defined in the limit of vanishing layers in m3 or kg.
+  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+                    ! out of a cell, in m3 or kg.
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected, in m.
   logical :: do_i(SZI_(G))  ! If true, work on given points.
@@ -660,23 +669,35 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
     do i=is,ie
       if ((uhh(I) /= 0.0) .or. (uhh(I-1) /= 0.0)) then
         do_i(i) = .true.
-        hlst(i) = hprev(i,j,k)
-        hprev(i,j,k) = hprev(i,j,k) - (uhh(I) - uhh(I-1))
-        if (hprev(i,j,k) <= 0.0) then
-          do_i(i) = .false.
-        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
-          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+        hlst(i) = max(hprev(i,j,k), 0.0) ! This max is here just for safety.
+        hnew = hprev(i,j,k) - (uhh(I) - uhh(I-1))
+        haddW(i) = 0.0 ; haddE(i) = 0.0
+        if (hnew <= 0.0) then
+          hnew = 0.0 ; do_i(i) = .false.
+        elseif (hnew < h_neglect*G%areaT(i,j)) then
+          ! Add a bit of thickness with tracer concentrations that are
+          ! proportional to the mass associated with fluxes and the previous
+          ! mass in the cell.
+          h_add = h_neglect*G%areaT(i,j) - hnew
+          I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
+          hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
+          haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
+          haddE(i) = h_add * (abs(uhh(I))*I_htot)
+
           Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
         else
-          Ihnew(i) = 1.0 / hprev(i,j,k)
+          Ihnew(i) = 1.0 / hnew
         endif
-      else
+        ! Store hnew as hprev for the next iteration.
+        hprev(i,j,k) = hnew
+      else ! Nothing changes in this cell, so skip it.
         do_i(i) = .false.
       endif
     enddo
     do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
       scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
-                       (uhh(I)*Tr_x(I) - uhh(I-1)*Tr_x(I-1))) * Ihnew(i)
+                       ((uhh(I)-haddE(i))*Tr_x(I) - &
+                        (uhh(I-1)+haddW(i))*Tr_x(I-1))) * Ihnew(i)
     endif ; enddo
 !    call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:), scalar(:,:,k))
 
@@ -716,7 +737,16 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
     uhh, &          ! The zonal flux that occurs during the current iteration, in m3 or kg.
     CFL             ! A nondimensional work variable.
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew     ! Work variables with units of m3 or kg and m-3 or kg-1.
+    hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    haddE, haddW    ! Tiny amounts of thickness that should be added to the
+                    ! tracer update with concentrations that match the average
+                    ! over the fluxes through the faces to the nominal east
+                    ! and west of the present cell, in m3 or kg.
+  real :: hnew      ! The projected thickness, in m3 or kg.
+  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+                    ! well defined in the limit of vanishing layers in m3 or kg.
+  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+                    ! out of a cell, in m3 or kg.
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected, in m.
   logical :: do_i(SZI_(G))  ! If true, work on given points.
@@ -773,17 +803,28 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
     do i=is,ie
       if ((uhh(I) /= 0.0) .or. (uhh(I-1) /= 0.0)) then
         do_i(i) = .true.
-        hlst(i) = hprev(i,j,k)
-        hprev(i,j,k) = hprev(i,j,k) - (uhh(I) - uhh(I-1))
-        if (hprev(i,j,k) <= 0.0) then
-          do_i(i) = .false.
-        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
-          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+        hlst(i) = max(hprev(i,j,k), 0.0) ! This max is here just for safety.
+        hnew = hprev(i,j,k) - (uhh(I) - uhh(I-1))
+        haddW(i) = 0.0 ; haddE(i) = 0.0
+        if (hnew <= 0.0) then
+          hnew = 0.0 ; do_i(i) = .false.
+        elseif (hnew < h_neglect*G%areaT(i,j)) then
+          ! Add a bit of thickness with tracer concentrations that are
+          ! proportional to the mass associated with fluxes and the previous
+          ! mass in the cell.
+          h_add = h_neglect*G%areaT(i,j) - hnew
+          I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
+          hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
+          haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
+          haddE(i) = h_add * (abs(uhh(I))*I_htot)
+
           Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
         else
-          Ihnew(i) = 1.0 / hprev(i,j,k)
+          Ihnew(i) = 1.0 / hnew
         endif
-      else
+        ! Store hnew as hprev for the next iteration.
+        hprev(i,j,k) = hnew
+      else ! Nothing changes in this cell, so skip it.
         do_i(i) = .false.
       endif
     enddo
@@ -791,7 +832,8 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
 !       call kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x(:,l,m), Tr(m)%t(:,:,k,l))
       do i=is,ie ; if ((do_i(i)) .and. (Ihnew(i) > 0.0)) then
         Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
-                          (uhh(I)*Tr_x(I,l,m) - uhh(I-1)*Tr_x(I-1,l,m))) * Ihnew(i)
+                            ((uhh(I)-haddE(i))*Tr_x(I,l,m) - &
+                             (uhh(I-1)+haddW(i))*Tr_x(I-1,l,m))) * Ihnew(i)
       endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_x)) then ; do i=is,ie ; if (do_i(i)) then
@@ -1043,7 +1085,16 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     ! the grid box, both in m3 or kg.
   real, dimension(SZI_(G)) :: &
     hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    haddN, haddS, & ! Tiny amounts of thickness that should be added to the
+                    ! tracer update with concentrations that match the average
+                    ! over the fluxes through the faces to the nominal north
+                    ! and south of the present cell, in m3 or kg.
     CFL             ! A nondimensional work variable.
+  real :: hnew      ! The projected thickness, in m3 or kg.
+  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+                    ! well defined in the limit of vanishing layers in m3 or kg.
+  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+                    ! out of a cell, in m3 or kg.
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected, in m.
   logical :: do_j_tr(SZJ_(G))  ! If true, calculate the tracer profiles.
@@ -1100,23 +1151,35 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
     do i=is,ie
       if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
         do_i(i) = .true.
-        hlst(i) = hprev(i,j,k)
-        hprev(i,j,k) = max(hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1)), 0.0)
-        if (hprev(i,j,k) <= 0.0) then
-          do_i(i) = .false.
-        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
-          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+        hlst(i) = max(hprev(i,j,k), 0.0) ! This max is here just for safety.
+        hnew = hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1))
+        haddS(i) = 0.0 ; haddN(i) = 0.0
+        if (hnew <= 0.0) then
+          hnew = 0.0 ; do_i(i) = .false.
+        elseif (hnew < h_neglect*G%areaT(i,j)) then
+          ! Add a tiny bit of thickness with tracer concentrations that are
+          ! proportional to the mass associated with fluxes and the previous
+          ! mass in the cell.
+          h_add = h_neglect*G%areaT(i,j) - hnew
+          I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
+          hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
+          haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
+          haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
+
           Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
         else
-          Ihnew(i) = 1.0 / hprev(i,j,k)
+          Ihnew(i) = 1.0 / hnew
         endif
-      else
+        ! Store hnew as hprev for the next iteration.
+        hprev(i,j,k) = hnew
+      else ! Nothing changes in this cell, so skip it.
         do_i(i) = .false.
       endif
     enddo
     do i=is,ie ; if (do_i(i)) then
       scalar(i,j,k) = (scalar(i,j,k) * hlst(i) - &
-                       (vhh(i,J)*Tr_y(i,J) - vhh(i,J-1)*Tr_y(i,J-1))) * Ihnew(i)
+                       ((vhh(i,J)-haddN(i))*Tr_y(i,J) - &
+                        (vhh(i,J-1)+haddS(i))*Tr_y(i,J-1))) * Ihnew(i)
     endif ; enddo
   endif ; enddo ! End of j-loop.
 
@@ -1154,7 +1217,16 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     ! the grid box, both in m3 or kg.
   real, dimension(SZI_(G)) :: &
     hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
+    haddN, haddS, & ! Tiny amounts of thickness that should be added to the
+                    ! tracer update with concentrations that match the average
+                    ! over the fluxes through the faces to the nominal north
+                    ! and south of the present cell, in m3 or kg.
     CFL             ! A nondimensional work variable.
+  real :: hnew      ! The projected thickness, in m3 or kg.
+  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+                    ! well defined in the limit of vanishing layers in m3 or kg.
+  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+                    ! out of a cell, in m3 or kg.
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected, in m.
   logical :: do_j_tr(SZJ_(G))  ! If true, calculate the tracer profiles.
@@ -1217,17 +1289,28 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
     do i=is,ie
       if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
         do_i(i) = .true.
-        hlst(i) = hprev(i,j,k)
-        hprev(i,j,k) = max(hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1)), 0.0)
-        if (hprev(i,j,k) <= 0.0) then
-          do_i(i) = .false.
-        elseif (hprev(i,j,k) < h_neglect*G%areaT(i,j)) then
-          hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - hprev(i,j,k))
+        hlst(i) = max(hprev(i,j,k), 0.0) ! This max is here just for safety.
+        hnew = hprev(i,j,k) - (vhh(i,J) - vhh(i,J-1))
+        haddS(i) = 0.0 ; haddN(i) = 0.0
+        if (hnew <= 0.0) then
+          hnew = 0.0 ; do_i(i) = .false.
+        elseif (hnew < h_neglect*G%areaT(i,j)) then
+          ! Add a tiny bit of thickness with tracer concentrations that are
+          ! proportional to the mass associated with fluxes and the previous
+          ! mass in the cell.
+          h_add = h_neglect*G%areaT(i,j) - hnew
+          I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
+          hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
+          haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
+          haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
+
           Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
         else
-          Ihnew(i) = 1.0 / hprev(i,j,k)
+          Ihnew(i) = 1.0 / hnew
         endif
-      else
+        ! Store hnew as hprev for the next iteration.
+        hprev(i,j,k) = hnew
+      else ! Nothing changes in this cell, so skip it.
         do_i(i) = .false.
       endif
     enddo
@@ -1235,7 +1318,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
 !      call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:,l,m), Tr(m)%t(:,:,k,l))
       do i=is,ie ; if (do_i(i)) then
         Tr(m)%t(i,j,k,l) = (Tr(m)%t(i,j,k,l) * hlst(i) - &
-               (vhh(i,J)*Tr_y(i,J,l,m) - vhh(i,J-1)*Tr_y(i,J-1,l,m))) * Ihnew(i)
+               ((vhh(i,J)-haddN(i))*Tr_y(i,J,l,m) - &
+                (vhh(i,J-1)+haddS(i))*Tr_y(i,J-1,l,m))) * Ihnew(i)
       endif ; enddo
       ! Diagnostics
       if (associated(Tr(m)%ad4d_y)) then ; do i=is,ie ; if (do_i(i)) then
