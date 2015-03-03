@@ -358,8 +358,8 @@ type ice_data_type !  ice_public_type
   real, pointer, dimension(:,:) :: mi   => NULL() ! The total ice+snow mass, in kg m-2.
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
-			       ! removed, if the information on ice thickness can be derived from
-			       ! eventually from h_ice outside the ice module.
+             ! removed, if the information on ice thickness can be derived from
+             ! eventually from h_ice outside the ice module.
   integer, dimension(3)    :: axes
   type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -1110,10 +1110,17 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'Ice Limit heat flux', 'W/m^2', missing_value=missing)
   IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
                'strain angle', 'none', missing_value=missing)
-  IST%id_uo       = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
+  if (IST%Cgrid_dyn) then
+    IST%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
                'surface current - x component', 'm/s', missing_value=missing)
-  IST%id_vo       = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
+    IST%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
                'surface current - y component', 'm/s', missing_value=missing)
+  else
+    IST%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
+               'surface current - x component', 'm/s', missing_value=missing)
+    IST%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
+               'surface current - y component', 'm/s', missing_value=missing)
+  endif
   IST%id_sw_vis   = register_SIS_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time, &
                'visible short wave heat flux', 'W/m^2', missing_value=missing)
   IST%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
