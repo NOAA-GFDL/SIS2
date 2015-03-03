@@ -1030,9 +1030,13 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%Cgrid_dyn) then
     if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn_C, IST%diag, mask=G%Lmask2dCu)
     if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn_C, IST%diag, mask=G%Lmask2dCv)
+    if (IST%id_uo_filt>0) call post_data(IST%id_uo_filt, IST%u_ocn_filt, IST%diag, mask=G%Lmask2dCu)
+    if (IST%id_vo_filt>0) call post_data(IST%id_vo_filt, IST%v_ocn_filt, IST%diag, mask=G%Lmask2dCv)
   else
     if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn, IST%diag, mask=G%Lmask2dBu)
     if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn, IST%diag, mask=G%Lmask2dBu)
+    if (IST%id_uo_filt>0) call post_data(IST%id_uo_filt, IST%u_ocn_filt, IST%diag, mask=G%Lmask2dBu)
+    if (IST%id_vo_filt>0) call post_data(IST%id_vo_filt, IST%v_ocn_filt, IST%diag, mask=G%Lmask2dBu)
   endif
   if (IST%id_bheat>0) call post_data(IST%id_bheat, IST%bheat, IST%diag, mask=G%Lmask2dT)
   call disable_SIS_averaging(IST%diag)
@@ -1491,7 +1495,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
   logical :: spec_thermo_sal
   logical :: do_temp_diags
-  real :: enth_units, I_enth_units
+  real :: enth_units, I_enth_units, alpha_filt, beta_filt
 
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
@@ -1509,6 +1513,14 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   I_Nk = 1.0 / G%NkIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
+
+  if (IST%ocean_filter_dt>0.) then
+    ! TBD: To initialize the running mean we should set alpha=1,beta=0 for the
+    ! first time-step of a new run. -AJA
+    ! if (query_initialized(Ice%Ice_restart, 'sea_lev_filt')) then ...
+    alpha_filt = min(1., (2. * dt_slow) / ( dt_slow + IST%ocean_filter_dt ) )
+    beta_filt = max(0., (IST%ocean_filter_dt - dt_slow) / ( dt_slow + IST%ocean_filter_dt ) )
+  endif
 
   ndyn_steps = 1
   if ((IST%dt_ice_dyn > 0.0) .and. (IST%dt_ice_dyn < dt_slow)) &
@@ -1604,7 +1616,26 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     WindStr_x_A_in(i,j) = WindStr_x_A(i,j) ; WindStr_y_A_in(i,j) = WindStr_y_A(i,j)
   enddo ; enddo
 
-  
+  if (IST%ocean_filter_dt>0.) then
+    if (IST%Cgrid_dyn) then
+      IST%u_ocn_filt(:,:) = alpha_filt * IST%u_ocn_C(:,:) + beta_filt * IST%u_ocn_filt(:,:)
+      IST%v_ocn_filt(:,:) = alpha_filt * IST%v_ocn_C(:,:) + beta_filt * IST%v_ocn_filt(:,:)
+    else
+      IST%u_ocn_filt(:,:) = alpha_filt * IST%u_ocn(:,:) + beta_filt * IST%u_ocn_filt(:,:)
+      IST%v_ocn_filt(:,:) = alpha_filt * IST%v_ocn(:,:) + beta_filt * IST%v_ocn_filt(:,:)
+    endif
+    IST%sea_lev_filt(:,:) = alpha_filt * IST%sea_lev(:,:) + beta_filt * IST%sea_lev_filt(:,:)
+  else
+    if (IST%Cgrid_dyn) then
+      IST%u_ocn_filt => IST%u_ocn_C
+      IST%v_ocn_filt => IST%v_ocn_C
+    else
+      IST%u_ocn_filt => IST%u_ocn
+      IST%v_ocn_filt => IST%v_ocn
+    endif
+    IST%sea_lev_filt => IST%sea_lev
+  endif
+
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
@@ -1613,20 +1644,20 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
     if (IST%Cgrid_dyn) then
       call icebergs_run( Ice%icebergs, IST%Time, &
-              Ice%calving(:,:), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-              IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+              Ice%calving(:,:), IST%u_ocn_filt(isc-2:iec+1,jsc-1:jec+1), &
+              IST%v_ocn_filt(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
-              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              IST%sea_lev_filt(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=CGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     else
       call icebergs_run( Ice%icebergs, IST%Time, &
-              Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+              Ice%calving(:,:), IST%u_ocn_filt(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ocn_filt(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
-              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              IST%sea_lev_filt(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               Ice%calving_hflx(:,:), ice_cover, hi_avg, stagger=BGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     endif
@@ -1832,8 +1863,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
       call ice_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                        IST%u_ocn_C, IST%v_ocn_C, &
-                        WindStr_x_Cu, WindStr_y_Cv, IST%sea_lev, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
+                        IST%u_ocn_filt, IST%v_ocn_filt, &
+                        WindStr_x_Cu, WindStr_y_Cv, IST%sea_lev_filt, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
                         dt_slow_dyn, G, IST%ice_C_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
@@ -1935,7 +1966,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
       call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
-                        IST%u_ocn, IST%v_ocn, WindStr_x_B, WindStr_y_B, IST%sea_lev, &
+                        IST%u_ocn_filt, IST%v_ocn_filt, WindStr_x_B, WindStr_y_B, IST%sea_lev_filt, &
                         str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
                         rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, IST%ice_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
@@ -3376,6 +3407,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
+  call get_param(param_file, mod, "OCEAN_FILTER_DT", IST%ocean_filter_dt, &
+                 "If >0, is the time-scale for a running mean of the\n"//&
+                 "ocean surface seen by sea-ice dynamics and icebergs.", &
+                 default=0.)
 
   call get_param(param_file, mod, "DT_ICE_DYNAMICS", IST%dt_ice_dyn, &
                  "The time step used for the slow ice dynamics, including \n"//&

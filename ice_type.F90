@@ -117,6 +117,10 @@ type ice_state_type
                            ! applying pressure to the ocean that is then
                            ! (partially) converted back to its equivalent by the
                            ! ocean.
+  real, pointer, dimension(:,:) :: & ! Time-filtered ocean surface state
+    u_ocn_filt   =>NULL(), & ! used only by the ice dynamics and
+    v_ocn_filt   =>NULL(), & ! icebergs as a stop-gap measure to
+    sea_lev_filt =>NULL()    ! avoid the ice-ocean coupled instabilities.
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
   real,    pointer, dimension(:,:,:) :: &
@@ -226,6 +230,8 @@ type ice_state_type
                          ! stepping the continuity equation and interactions
                          ! between the ice mass field and velocities, in s. If
                          ! 0 or negative, the coupling time step will be used.
+  real :: ocean_filter_dt ! The time-scale to use if filtering the ocean surface state
+                          ! to be seen by dynamics and icebergs. =0 turns off filtering.
 
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
@@ -284,6 +290,7 @@ type ice_state_type
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
   integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
   integer :: id_sw_pen=-1, id_sw_abs_ocn=-1
+  integer :: id_uo_filt=-1, id_vo_filt=-1
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -617,11 +624,21 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
     allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
     allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
     allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
+    if (IST%ocean_filter_dt>0.) then
+      allocate(IST%u_ocn_filt(SZIB_(G), SZJ_(G))) ; IST%u_ocn_filt(:,:) = 0.0
+      allocate(IST%v_ocn_filt(SZI_(G), SZJB_(G))) ; IST%v_ocn_filt(:,:) = 0.0
+      allocate(IST%sea_lev_filt(SZI_(G), SZJ_(G))) ; IST%sea_lev_filt(:,:) = 0.0
+    endif
   else
     allocate(IST%u_ice_B(SZIB_(G), SZJB_(G))) ; IST%u_ice_B(:,:) = 0.0
     allocate(IST%v_ice_B(SZIB_(G), SZJB_(G))) ; IST%v_ice_B(:,:) = 0.0
     allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
     allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+    if (IST%ocean_filter_dt>0.) then
+      allocate(IST%u_ocn_filt(SZIB_(G), SZJB_(G))) ; IST%u_ocn_filt(:,:) = 0.0
+      allocate(IST%v_ocn_filt(SZIB_(G), SZJB_(G))) ; IST%v_ocn_filt(:,:) = 0.0
+      allocate(IST%sea_lev_filt(SZI_(G), SZJ_(G))) ; IST%sea_lev_filt(:,:) = 0.0
+    endif
   endif
 
   ! Now register some of these arrays to be read from the restart files.
@@ -657,6 +674,21 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   endif
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen, &
                                domain=domain, mandatory=.false.)
+  if (IST%ocean_filter_dt>0.) then
+    if (IST%Cgrid_dyn) then
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ocn_filt', IST%u_ocn_filt, &
+                                   domain=domain, position=EAST, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ocn_filt', IST%v_ocn_filt, &
+                                   domain=domain, position=NORTH, mandatory=.false.)
+    else
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ocn_filt', IST%u_ocn_filt, &
+                                   domain=domain, position=CORNER, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ocn_filt', IST%v_ocn_filt, &
+                                   domain=domain, position=CORNER, mandatory=.false.)
+    endif
+    idr = register_restart_field(Ice_restart, restart_file, 'sea_lev_filt', IST%sea_lev_filt, &
+                                 domain=domain, mandatory=.false.)
+  endif
 
 end subroutine ice_state_register_restarts
 
@@ -687,6 +719,9 @@ subroutine dealloc_IST_arrays(IST)
     deallocate(IST%u_ice_C, IST%v_ice_C, IST%u_ocn_C, IST%v_ocn_C)
   else
     deallocate(IST%u_ocn, IST%v_ocn, IST%u_ice_B, IST%v_ice_B)
+  endif
+  if (IST%ocean_filter_dt>0.) then
+    deallocate(IST%u_ocn_filt, IST%v_ocn_filt, IST%sea_lev_filt)
   endif
 
   deallocate(IST%flux_u_top, IST%flux_v_top )
@@ -1128,6 +1163,19 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
   IST%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
+  if (IST%ocean_filter_dt>0.) then
+    if (IST%Cgrid_dyn) then
+      IST%id_uo_filt = register_SIS_diag_field('ice_model', 'UO_FILT', diag%axesCu1, Time, &
+                   'filtered surface current - x component', 'm/s', missing_value=missing)
+      IST%id_vo_filt = register_SIS_diag_field('ice_model', 'VO_FILT', diag%axesCv1, Time, &
+                   'filtered surface current - y component', 'm/s', missing_value=missing)
+    else
+      IST%id_uo_filt = register_SIS_diag_field('ice_model', 'UO_FILT', diag%axesB1, Time, &
+                   'filtered surface current - x component', 'm/s', missing_value=missing)
+      IST%id_vo_filt = register_SIS_diag_field('ice_model', 'VO_FILT', diag%axesB1, Time, &
+                   'filtered surface current - y component', 'm/s', missing_value=missing)
+    endif
+  endif
 
   !
   ! diagnostics for quantities produced outside the ice model
