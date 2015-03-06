@@ -3748,12 +3748,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     if (IST%Cgrid_dyn) then
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
-      call pass_vector(IST%u_ocn_filt, IST%v_ocn_filt, G%Domain, stagger=CGRID_NE)
     else
       call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
-      call pass_vector(IST%u_ocn_filt, IST%v_ocn_filt, G%Domain, stagger=BGRID_NE)
     endif
-    call pass_var(IST%sea_lev_filt(:,:), G%Domain, complete=.true.)
+
+    if (IST%ocean_filter_dt>0.) then
+       if (IST%Cgrid_dyn) then
+         call pass_vector(IST%u_ocn_filt, IST%v_ocn_filt, G%Domain, stagger=CGRID_NE)
+       else
+         call pass_vector(IST%u_ocn_filt, IST%v_ocn_filt, G%Domain, stagger=BGRID_NE)
+       endif
+       call pass_var(IST%sea_lev_filt(:,:), G%Domain, complete=.true.)
+    endif
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
