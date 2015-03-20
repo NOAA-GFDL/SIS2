@@ -440,9 +440,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
-    del_sh_min, &   ! The minimum value of del_sh that is used in the calculation
-                    ! of zeta, in s-1.  This is set based on considerations of
-                    ! numerical stability, and varies with the grid spacing.
+    del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
+                ! value of del_sh that is used in the calculation of zeta,
+                ! in s-1.  This is set based on considerations of numerical
+                ! stability, and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points, in m2.
     dx_dyT, dy_dxT  ! dx/dy or dy_dx at T points, nondim.
 
@@ -637,8 +638,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Setting a minimum value of the shear magnitudes is equivalent to setting
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
-    del_sh_min(i,j) = (2.0 * CS%del_sh_min_scale * pres_mice(i,j) * dt**2) / &
-                      (Tdamp * dxharm**2)
+    del_sh_min_pr(i,j) = (2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
@@ -812,7 +812,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                    (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
-      zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / max(del_sh(i,j), del_sh_min(i,j))
+      zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / &
+         max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j))
     enddo ; enddo
 
     ! Step the stress component equations semi-implicitly.
@@ -1189,7 +1190,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (CS%id_sh_s>0) call post_SIS_data(CS%id_sh_s, sh_Ds, CS%diag)
 
     if (CS%id_del_sh>0) call post_SIS_data(CS%id_del_sh, del_sh, CS%diag)
-    if (CS%id_del_sh_min>0) call post_SIS_data(CS%id_del_sh_min, del_sh_min, CS%diag)
+    if (CS%id_del_sh_min>0) call post_SIS_data(CS%id_del_sh_min, &
+                                    (del_sh_min_pr(:,:)*pres_mice(:,:)), CS%diag)
 
   endif
 
