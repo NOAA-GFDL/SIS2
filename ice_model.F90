@@ -1705,6 +1705,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   do nds=1,ndyn_steps
 
+    call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
+
     if (.not.IST%interspersed_thermo .or. nds>1) then
       ! Correct the wind stresses for changes in the fractional ice-coverage.
       ice_cover(:,:) = 0.0
@@ -2033,8 +2035,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
                                   message="        Post_thermo", check_column=.true.)
     endif  ! Interspersed thermo
 
-
-    call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
+    call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
 
     !
     ! Do ice transport ... all ocean fluxes have been calculated by now.
@@ -2091,6 +2092,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 !  enddo ; enddo ; enddo ; endif
 
   call mpp_clock_begin(iceClock8)
+
+  call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
   call finish_ocean_top_stresses(Ice, IST, G)
 
