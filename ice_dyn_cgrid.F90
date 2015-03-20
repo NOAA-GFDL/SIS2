@@ -89,6 +89,13 @@ type, public :: ice_C_dyn_CS ; private
                               ! in the drag calculation to avoid an instability
                               ! that can occur when an finite stress is applied
                               ! to thin ice moving with the velocity of the ocean.
+  logical :: project_ci       ! If true, project the ice concentration and
+                              ! related ice strength changes due to the convergent
+                              ! or divergent ice flow.
+  real    :: project_ci_str_limit  ! A factor that determines how strictly the
+                              ! ice stresses are limited when the ice strength
+                              ! is allowed to vary within the dynamics, or a
+                              ! negative number for no limiting.
   logical :: weak_coast_stress = .false.
   logical :: weak_low_shear = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
@@ -112,14 +119,15 @@ type, public :: ice_C_dyn_CS ; private
   logical :: FirstCall = .true.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
-  integer :: id_stren = -1, id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
+  integer :: id_stren = -1, id_stren0 = -1
+  integer :: id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
   integer :: id_PFu = -1, id_PFv = -1, id_fpx = -1, id_fpy = -1
   integer :: id_fix_d = -1, id_fix_t = -1, id_fix_s = -1
   integer :: id_fiy_d = -1, id_fiy_t = -1, id_fiy_s = -1
   integer :: id_str_d = -1, id_str_t = -1, id_str_s = -1
   integer :: id_sh_d = -1, id_sh_t = -1, id_sh_s = -1
   integer :: id_del_sh = -1, id_del_sh_min = -1
-  integer :: id_mis = -1, id_ci = -1, id_miu = -1, id_miv = -1
+  integer :: id_mis = -1, id_ci = -1, id_ci0 = -1, id_miu = -1, id_miv = -1
   integer :: id_ui_hifreq = -1, id_vi_hifreq = -1
   integer :: id_str_d_hifreq = -1, id_str_t_hifreq = -1, id_str_s_hifreq = -1
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
@@ -224,7 +232,14 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "A scaling factor for the lower bound on the shear rates \n"//&
                  "used in the denominator of the stress calculation. This \n"//&
                  "probably needs to be greater than 1.", units="nondim", default=2.0)
-
+  call get_param(param_file, mod, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
+                 "If true, project the evolution of the ice concentration \n"//&
+                 "due to the convergence or divergence of the ice flow.", default=.false.)
+  call get_param(param_file, mod, "PROJECT_ICE_CONC_STR_LIM", CS%project_ci_str_limit, &
+                 "A factor that determines how strictly the ice stresses \n"//&
+                 "are limited when the ice strength is allowed to vary \n"//&
+                 "within the dynamics, or negative number for no limiting.", &
+                 units="nondim", default=-1.0)
   call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
@@ -278,6 +293,8 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'second stress invariant', 'none', missing_value=missing)
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time,     &
             'ice strength', 'Pa*m', missing_value=missing)
+  CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time,     &
+            'ice strength at start of rheology', 'Pa*m', missing_value=missing)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,        &
             'ice internal stress - x component', 'Pa', missing_value=missing)
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,        &
@@ -308,8 +325,10 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'ice velocity - y component', 'm/s', missing_value=missing)
   CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,          &
             'Mass of ice and snow at t-points', 'kg m-2', missing_value=missing)
-  CS%id_ci  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,          &
-            'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
+  CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,          &
+            'Initial ummed concentration of ice at t-points', 'nondim', missing_value=missing)
+  CS%id_ci  = register_diag_field('ice_model', 'CI_proj', diag%axesT1, Time,          &
+            'Projected summed concentration of ice at t-points', 'nondim', missing_value=missing)
   CS%id_miu   = register_diag_field('ice_model', 'MI_U', diag%axesCu1, Time,          &
             'Mass of ice and snow at u-points', 'kg m-2', missing_value=missing)
   CS%id_miv   = register_diag_field('ice_model', 'MI_V', diag%axesCv1, Time,          &
@@ -384,7 +403,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
   isc = G%isc-halo ; iec = G%iec+halo ; jsc = G%jsc-halo ; jec = G%jec+halo
 
   do j=jsc,jec ; do i=isc,iec
-    ice_strength(i,j) = CS%p0_rho*mi(i,j)*exp(-CS%c0*(1-ci(i,j)))
+    ice_strength(i,j) = CS%p0_rho*mi(i,j)*exp(-CS%c0*max(1.0-ci(i,j),0.0))
   enddo ; enddo
 
 end subroutine find_ice_strength
@@ -437,6 +456,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real, dimension(SZI_(G),SZJ_(G)) :: &
     mis, &      ! Total snow and ice mass per unit area, in kg m-2.
     pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
+    ci_proj, &  ! The projected ice concentration, nondim.
     zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
@@ -521,6 +541,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                   ! in s.
   real :: dt      ! The short timestep associated with the EVP dynamics, in s.
   real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale.
+  real :: dt_cumulative ! The elapsed time within this call to EVP dynamics, in s.
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps  ! The number inverse of the number of EVP time steps per
                   ! slow time step.
@@ -628,9 +649,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     ! Store the total snow and ice mass.
     mis(i,j) = mice(i,j) + msnow(i,j)
+    ci_proj(i,j) = ci(i,j)
 
     ! Precompute pres_mice and the minimum value of del_sh for stability.
-    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
+    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*(1.0-ci(i,j)))
+    !### OK? pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
@@ -767,9 +790,12 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     call check_redundant_C("ui/vi pre-steps ice_C_dynamics",ui, vi, G)
   endif
 
+  dt_cumulative = 0.0
+
   ! Do the iterative time steps.
   do n=1,EVP_steps
 
+    dt_cumulative = dt_cumulative + dt
     ! If there is a 2-point wide halo and symmetric memory, this is the only
     ! halo update that is needed per iteration.  With a 1-point wide halo and
     ! symmetric memory, an update is also needed for sh_Ds.
@@ -802,6 +828,23 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                     G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
                                    G%dxCv(i,J-1)*vi(i,J-1)))
     enddo ; enddo
+
+   if (CS%project_ci) then
+     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+       ! Estimate future ice concentrations from the approximate expression
+       !   d ci / dt = - ci * sh_Dt
+       ! The choice to base this on the final velocity, the initial concentration
+       ! and the elapsed time is because it is that final velocity that will drive
+       ! ice convergence.
+       ci_proj(i,j) = ci(i,j) * exp(-dt_cumulative*sh_Dd(i,j))
+       ! Recompute pres_mice.
+       pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci_proj(i,j),0.0))
+     enddo ; enddo
+     if (CS%project_ci_str_limit > 0.0) &
+       call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, CS, &
+                           CS%project_ci_str_limit)
+   endif
+
 
    ! calculate viscosities - how often should we do this ?
 
@@ -1170,8 +1213,16 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       call post_SIS_data(CS%id_sigii, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
     if (CS%id_stren>0) then
-      call find_ice_strength(mice, ci, diag_val, G, CS)
+      if (CS%project_ci) then
+        call find_ice_strength(mice, ci_proj, diag_val, G, CS)
+      else
+        call find_ice_strength(mice, ci, diag_val, G, CS)
+      endif
       call post_SIS_data(CS%id_stren, diag_val, CS%diag, mask=G%Lmask2dT)
+    endif
+    if (CS%id_stren0>0) then
+      call find_ice_strength(mice, ci, diag_val, G, CS)
+      call post_SIS_data(CS%id_stren0, diag_val, CS%diag, mask=G%Lmask2dT)
     endif
 
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
@@ -1179,7 +1230,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (CS%id_miu>0) call post_SIS_data(CS%id_miu, mi_u, CS%diag)
     if (CS%id_miv>0) call post_SIS_data(CS%id_miv, mi_v, CS%diag)
     if (CS%id_mis>0) call post_SIS_data(CS%id_mis, mice, CS%diag)
-    if (CS%id_ci>0)  call post_SIS_data(CS%id_ci, ci, CS%diag)
+    if (CS%id_ci0>0) call post_SIS_data(CS%id_ci0, ci, CS%diag)
+    if (CS%id_ci>0)  call post_SIS_data(CS%id_ci, ci_proj, CS%diag)
 
     if (CS%id_str_d>0) call post_SIS_data(CS%id_str_d, CS%str_d, CS%diag)
     if (CS%id_str_t>0) call post_SIS_data(CS%id_str_t, CS%str_t, CS%diag)
@@ -1197,12 +1249,13 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
 end subroutine ice_C_dynamics
 
-subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
+subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   type(sea_ice_grid_type),            intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice, mice
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s
   type(ice_C_dyn_CS),                 pointer       :: CS
+  real, optional,                     intent(in)    :: limit
 ! Arguments: pres_mice - The ice internal pressure per unit column mass, in N m / kg.
 !  (in)      mice - The mass per unit total area (ice covered and ice free)
 !                   of the ice, in kg m-2.
@@ -1211,7 +1264,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
 !  (in/out)  str_s - The shearing stress tensor component (cross term), in Pa m.
 !  (in)      G - The ocean's grid structure.
 !  (in)      CS - A pointer to the control structure for this module.
-!                 
+!  (in,opt)  limit - a factor by which the strength limits are changed.
 
 !   This subroutine ensures that the input stresses are not larger than could
 ! be justified by the ice pressure now, as the ice might have melted or been
@@ -1222,6 +1275,8 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
   real :: pres_avg  ! The average of the internal ice pressures around a point, in Pa.
   real :: sum_area  ! The sum of ocean areas around a vorticity point, in m2.
   real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
+  real :: lim       ! A local copy of the factor by which the limits are changed.
+  real :: lim_2     ! The limit divided by 2.
 !  real :: EC2       ! EC^2, where EC is the yield curve axis ratio.
 !  real :: rescale_str ! A factor by which to rescale the internal stresses, ND.
 !  real :: stress_mag  ! The magnitude of the stress at a point.
@@ -1231,14 +1286,16 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  I_2EC = 0.0 ; if (CS%EC > 0.0) I_2EC = 0.5 / CS%EC
+  lim = 1.0 ; if (present(limit)) lim = limit
+  I_2EC = 0.0 ; if (CS%EC > 0.0) I_2EC = (0.5*lim) / CS%EC
+  lim_2 = 0.5 * lim
 
   ! The rescaling here is done separately for each component.
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     pressure = pres_mice(i,j)*mice(i,j)
     if (str_d(i,j) < -pressure) str_d(i,j) = -pressure
-    if (CS%EC*str_t(i,j) > 0.5*pressure) str_t(i,j) = I_2EC*pressure
-    if (CS%EC*str_t(i,j) < -0.5*pressure) str_t(i,j) = -I_2EC*pressure
+    if (CS%EC*str_t(i,j) > lim_2*pressure) str_t(i,j) = I_2EC*pressure
+    if (CS%EC*str_t(i,j) < -lim_2*pressure) str_t(i,j) = -I_2EC*pressure
   enddo ; enddo
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
@@ -1253,8 +1310,8 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
                    G%areaT(i+1,j+1)*(pres_mice(i+1,j+1)*mice(i+1,j+1))) + &
                   (G%areaT(i+1,j) * (pres_mice(i+1,j)*mice(i+1,j)) + &
                    G%areaT(i,j+1) * (pres_mice(i,j+1)*mice(i,j+1)))) / sum_area
-    if (CS%EC*str_s(I,J) > 0.5*pres_avg) str_s(I,J) = I_2EC*pres_avg
-    if (CS%EC*str_s(I,J) < -0.5*pres_avg) str_s(I,J) = -I_2EC*pres_avg
+    if (CS%EC*str_s(I,J) > lim_2*pres_avg) str_s(I,J) = I_2EC*pres_avg
+    if (CS%EC*str_s(I,J) < -lim_2*pres_avg) str_s(I,J) = -I_2EC*pres_avg
   enddo ; enddo
 
 !    This commented out version seems to work, but is not obviously better than
@@ -1357,7 +1414,7 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    strength(i,j) = mi(i,j) * CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
+    strength(i,j) = mi(i,j) * CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
