@@ -436,7 +436,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     mis, &      ! Total snow and ice mass per unit area, in kg m-2.
-    pres_ice, & ! The vertically integrated ice internal pressure, in N/m.
+    pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
     zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
@@ -498,13 +498,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                       ! area surrounding a vorticity point, in kg2 m-4.
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
                       ! to a vorticity point on the coast, in kg m-2.
-  real :: stress_mag  ! The magnitude of the stress at a point.
-  real :: str_d_q     ! CS%str_d interpolated to a vorticity point, in Pa m.
-  real :: str_t_q     ! CS%str_t interpolated to a vorticity point, in Pa m.
-  real :: rescale_str ! A factor by which to rescale the internal stresses, ND.
-  real :: pr_vol      ! The internal ice pressure per unit volume, in Pa.
   real :: pres_sum    ! The sum of the internal ice pressures aroung a point, in Pa.
-  real :: pres_avg    ! The average of the internal ice pressures around a point, in Pa.
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale, ND.
   real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp)
   real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp)
@@ -634,9 +628,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Store the total snow and ice mass.
     mis(i,j) = mice(i,j) + msnow(i,j)
 
-    ! Precompute pres_ice and the minimum value of del_sh for stability.
-    pr_vol = CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
-    pres_ice(i,j) = pr_vol * mice(i,j)
+    ! Precompute pres_mice and the minimum value of del_sh for stability.
+    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*(1-ci(i,j)))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
@@ -644,86 +637,14 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Setting a minimum value of the shear magnitudes is equivalent to setting
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
-    del_sh_min(i,j) = (2.0 * CS%del_sh_min_scale * pr_vol * dt**2) / &
+    del_sh_min(i,j) = (2.0 * CS%del_sh_min_scale * pres_mice(i,j) * dt**2) / &
                       (Tdamp * dxharm**2)
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
   ! the ice pressure now, as the ice might have melted or been advected away
   ! during the thermodynamic and transport phases.
-
-!    This commented out version seems to work, but is not obviously better than
-! treating each component separately, and the later is simpler.
-!  do J=jsc-1,jec ; do I=isc-1,iec
-!    ! Rescale str_s based on interpolated values of str_d and str_t, which works
-!    ! because the ice strengths are also interpolated.
-!    if (CS%weak_coast_stress) then
-!      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
-!    else
-!      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
-!                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
-!    endif
-!    if (sum_area > 0.0) then
-!      pres_avg = ((G%areaT(i,j)*pres_ice(i,j) + G%areaT(i+1,j+1)*pres_ice(i+1,j+1)) + &
-!                  (G%areaT(i+1,j)*pres_ice(i+1,j) + G%areaT(i,j+1)*pres_ice(i,j+1))) / &
-!                  sum_area
-!      if (pres_avg <= 0.0) then
-!        CS%str_s(I,J) = 0.0
-!      else
-!        str_d_q = 0.25 * ((CS%str_d(i,j) + CS%str_d(i+1,j+1)) + &
-!                          (CS%str_d(i+1,j) + CS%str_d(i,j+1)))
-!        str_t_q = 0.25 * ((CS%str_t(i,j) + CS%str_t(i+1,j+1)) + &
-!                          (CS%str_t(i+1,j) + CS%str_t(i,j+1)))
-!        ! The factor of 2 here arises because of the definitions of the str_#.
-!        stress_mag = 2.0 * sqrt(min(0.0, str_d_q + 0.5*pres_avg)**2 + &
-!                                EC2 * (CS%str_s(I,J)**2 + str_t_q**2))
-!        if ((stress_mag > pres_avg) .and. G%Lmask2dBu(I,j)) &
-!          CS%str_s(I,J) = CS%str_s(I,J) * (pres_avg / stress_mag)
-!      endif
-!    endif
-!  enddo ; enddo
-
-!  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-!    ! Rescale str_d and str_t without regard to the values of str_s.
-!    if (pres_ice(i,j) <= 0.0) then
-!      CS%str_d(i,j) = 0.0 ; CS%str_t(i,j) = 0.0
-!    elseif (CS%str_d(i,j) < -0.5*pres_ice(i,j)) then
-!    ! The factor of 2 here arises because of the definitions of str_d and str_t.
-!      stress_mag = 2.0 * sqrt((CS%str_d(i,j) + 0.5*pres_ice(i,j))**2 + &
-!                              EC2 * CS%str_t(i,j)**2)
-!      if (stress_mag > pres_ice(i,j)) then
-!        rescale_str = pres_ice(i,j) / stress_mag
-!        CS%str_d(i,j) = rescale_str * (CS%str_d(i,j) + 0.5*pres_ice(i,j)) - &
-!                        0.5*pres_ice(i,j)
-!        CS%str_t(i,j) = CS%str_t(i,j) * rescale_str
-!      endif
-!    elseif (CS%EC*abs(CS%str_t(i,j)) > 0.5*pres_ice(i,j)) then
-!      ! Only reduce excessively large values of str_t, but do not increase the
-!      ! magnitude of str_d.
-!      CS%str_t(i,j) = sign(I_2EC*pres_ice(i,j), CS%str_t(i,j))
-!    endif
-!  enddo ; enddo
-  ! The rescaling here is done separately for each component.
-  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    if (CS%str_d(i,j) < -pres_ice(i,j)) CS%str_d(i,j) = -pres_ice(i,j)
-    if (CS%EC*CS%str_t(i,j) > 0.5*pres_ice(i,j)) CS%str_t(i,j) = I_2EC*pres_ice(i,j)
-    if (CS%EC*CS%str_t(i,j) < -0.5*pres_ice(i,j)) CS%str_t(i,j) = -I_2EC*pres_ice(i,j)
-  enddo ; enddo
-  do J=jsc-1,jec ; do I=isc-1,iec
-    if (CS%weak_coast_stress) then
-      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
-    else
-      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
-                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
-    endif
-    pres_avg = 0.0
-    if (sum_area > 0.0) &
-      pres_avg = ((G%areaT(i,j)*pres_ice(i,j) + G%areaT(i+1,j+1)*pres_ice(i+1,j+1)) + &
-                  (G%areaT(i+1,j)*pres_ice(i+1,j) + G%areaT(i,j+1)*pres_ice(i,j+1))) / &
-                  sum_area
-    if (CS%EC*CS%str_s(I,J) > 0.5*pres_avg) CS%str_s(I,J) = I_2EC*pres_avg
-    if (CS%EC*CS%str_s(I,J) < -0.5*pres_avg) CS%str_s(I,J) = -I_2EC*pres_avg
-  enddo ; enddo
+  call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, CS)
 
   ! Zero out ice velocities with no mass.
   do j=jsc,jec ; do I=isc-1,iec
@@ -891,7 +812,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                    (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
-      zeta(i,j) = 0.5*pres_ice(i,j) / max(del_sh(i,j), del_sh_min(i,j))
+      zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / max(del_sh(i,j), del_sh_min(i,j))
     enddo ; enddo
 
     ! Step the stress component equations semi-implicitly.
@@ -909,7 +830,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       do j=jsc-1,jec+1 ; do i=isc-1,iec+1
         ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
         CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
-                    ( zeta(i,j) * sh_Dd(i,j) - 0.5*pres_ice(i,j) ) )
+                    ( zeta(i,j) * sh_Dd(i,j) - 0.5*pres_mice(i,j)*mice(i,j) ) )
         CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
       enddo ; enddo
@@ -1273,6 +1194,123 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   endif
 
 end subroutine ice_C_dynamics
+
+subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS)
+  type(sea_ice_grid_type),            intent(in)    :: G
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice, mice
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d, str_t
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s
+  type(ice_C_dyn_CS),                 pointer       :: CS
+! Arguments: pres_mice - The ice internal pressure per unit column mass, in N m / kg.
+!  (in)      mice - The mass per unit total area (ice covered and ice free)
+!                   of the ice, in kg m-2.
+!  (in/out)  str_t - The tension stress tensor component, in Pa m.
+!  (in/out)  str_d - The divergence stress tensor component, in Pa m.
+!  (in/out)  str_s - The shearing stress tensor component (cross term), in Pa m.
+!  (in)      G - The ocean's grid structure.
+!  (in)      CS - A pointer to the control structure for this module.
+!                 
+
+!   This subroutine ensures that the input stresses are not larger than could
+! be justified by the ice pressure now, as the ice might have melted or been
+! advected away during the thermodynamic and transport phases, or the
+! ice flow convergence or divergence may have altered the ice concentration.
+
+  real :: pressure  ! The internal ice pressure at a point, in Pa.
+  real :: pres_avg  ! The average of the internal ice pressures around a point, in Pa.
+  real :: sum_area  ! The sum of ocean areas around a vorticity point, in m2.
+  real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
+!  real :: EC2       ! EC^2, where EC is the yield curve axis ratio.
+!  real :: rescale_str ! A factor by which to rescale the internal stresses, ND.
+!  real :: stress_mag  ! The magnitude of the stress at a point.
+!  real :: str_d_q     ! CS%str_d interpolated to a vorticity point, in Pa m.
+!  real :: str_t_q     ! CS%str_t interpolated to a vorticity point, in Pa m.
+
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  I_2EC = 0.0 ; if (CS%EC > 0.0) I_2EC = 0.5 / CS%EC
+
+  ! The rescaling here is done separately for each component.
+  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+    pressure = pres_mice(i,j)*mice(i,j)
+    if (str_d(i,j) < -pressure) str_d(i,j) = -pressure
+    if (CS%EC*str_t(i,j) > 0.5*pressure) str_t(i,j) = I_2EC*pressure
+    if (CS%EC*str_t(i,j) < -0.5*pressure) str_t(i,j) = -I_2EC*pressure
+  enddo ; enddo
+  do J=jsc-1,jec ; do I=isc-1,iec
+    if (CS%weak_coast_stress) then
+      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+    else
+      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+    endif
+    pres_avg = 0.0
+    if (sum_area > 0.0) &
+      pres_avg = ((G%areaT(i,j)   * (pres_mice(i,j)*mice(i,j)) + &
+                   G%areaT(i+1,j+1)*(pres_mice(i+1,j+1)*mice(i+1,j+1))) + &
+                  (G%areaT(i+1,j) * (pres_mice(i+1,j)*mice(i+1,j)) + &
+                   G%areaT(i,j+1) * (pres_mice(i,j+1)*mice(i,j+1)))) / sum_area
+    if (CS%EC*str_s(I,J) > 0.5*pres_avg) str_s(I,J) = I_2EC*pres_avg
+    if (CS%EC*str_s(I,J) < -0.5*pres_avg) str_s(I,J) = -I_2EC*pres_avg
+  enddo ; enddo
+
+!    This commented out version seems to work, but is not obviously better than
+! treating each component separately, and the later is simpler.
+!  EC2 = CS%EC**2
+!  do J=jsc-1,jec ; do I=isc-1,iec
+!    ! Rescale str_s based on interpolated values of str_d and str_t, which works
+!    ! because the ice strengths are also interpolated.
+!    if (CS%weak_coast_stress) then
+!      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+!    else
+!      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+!                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+!    endif
+!    if (sum_area > 0.0) then
+!      pres_avg = ((G%areaT(i,j)   * (pres_mice(i,j)*mice(i,j)) + &
+!                   G%areaT(i+1,j+1)*(pres_mice(i+1,j+1)*mice(i+1,j+1))) + &
+!                  (G%areaT(i+1,j) * (pres_mice(i+1,j)*mice(i+1,j)) + &
+!                   G%areaT(i,j+1) * (pres_mice(i,j+1)*mice(i,j+1)))) / sum_area
+!      if (pres_avg <= 0.0) then
+!        str_s(I,J) = 0.0
+!      else
+!        str_d_q = 0.25 * ((str_d(i,j) + str_d(i+1,j+1)) + &
+!                          (str_d(i+1,j) + str_d(i,j+1)))
+!        str_t_q = 0.25 * ((str_t(i,j) + str_t(i+1,j+1)) + &
+!                          (str_t(i+1,j) + str_t(i,j+1)))
+!        ! The factor of 2 here arises because of the definitions of the str_#.
+!        stress_mag = 2.0 * sqrt(min(0.0, str_d_q + 0.5*pres_avg)**2 + &
+!                                EC2 * (str_s(I,J)**2 + str_t_q**2))
+!        if ((stress_mag > pres_avg) .and. G%Lmask2dBu(I,j)) &
+!          str_s(I,J) = str_s(I,J) * (pres_avg / stress_mag)
+!      endif
+!    endif
+!  enddo ; enddo
+
+!  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+!    ! Rescale str_d and str_t without regard to the values of str_s.
+!    pressure = pres_mice(i,j)*mice(i,j)
+!    if (pressure <= 0.0) then
+!      str_d(i,j) = 0.0 ; str_t(i,j) = 0.0
+!    elseif (str_d(i,j) < -0.5*pressure) then
+!    ! The factor of 2 here arises because of the definitions of str_d and str_t.
+!      stress_mag = 2.0 * sqrt((str_d(i,j) + 0.5*pressure)**2 + &
+!                              EC2 * str_t(i,j)**2)
+!      if (stress_mag > pressure) then
+!        rescale_str = pressure / stress_mag
+!        str_d(i,j) = rescale_str * (str_d(i,j) + 0.5*pressure) - &
+!                        0.5*pressure
+!        str_t(i,j) = str_t(i,j) * rescale_str
+!      endif
+!    elseif (CS%EC*abs(str_t(i,j)) > 0.5*pressure) then
+!      ! Only reduce excessively large values of str_t, but do not increase the
+!      ! magnitude of str_d.
+!      str_t(i,j) = sign(I_2EC*pressure, str_t(i,j))
+!    endif
+!  enddo ; enddo
+
+end subroutine limit_stresses
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigI - first stress invariant                                                !
