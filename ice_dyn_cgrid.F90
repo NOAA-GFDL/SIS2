@@ -119,6 +119,7 @@ type, public :: ice_C_dyn_CS ; private
   integer :: id_str_d = -1, id_str_t = -1, id_str_s = -1
   integer :: id_sh_d = -1, id_sh_t = -1, id_sh_s = -1
   integer :: id_del_sh = -1, id_del_sh_min = -1
+  integer :: id_mis = -1, id_ci = -1, id_miu = -1, id_miv = -1
   integer :: id_ui_hifreq = -1, id_vi_hifreq = -1
   integer :: id_str_d_hifreq = -1, id_str_t_hifreq = -1, id_str_s_hifreq = -1
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
@@ -305,6 +306,14 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'ice velocity - x component', 'm/s', missing_value=missing)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,          &
             'ice velocity - y component', 'm/s', missing_value=missing)
+  CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,          &
+            'Mass of ice and snow at t-points', 'kg m-2', missing_value=missing)
+  CS%id_ci  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,          &
+            'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
+  CS%id_miu   = register_diag_field('ice_model', 'MI_U', diag%axesCu1, Time,          &
+            'Mass of ice and snow at u-points', 'kg m-2', missing_value=missing)
+  CS%id_miv   = register_diag_field('ice_model', 'MI_V', diag%axesCv1, Time,          &
+            'Mass of ice and snow at v-points', 'kg m-2', missing_value=missing)
 
   CS%id_fix_d   = register_diag_field('ice_model', 'FI_d_X', diag%axesCu1, Time,        &
             'ice divergence internal stress - x component', 'Pa', missing_value=missing)
@@ -1245,6 +1254,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
+    if (CS%id_miu>0) call post_SIS_data(CS%id_miu, mi_u, CS%diag)
+    if (CS%id_miv>0) call post_SIS_data(CS%id_miv, mi_v, CS%diag)
+    if (CS%id_mis>0) call post_SIS_data(CS%id_mis, mice, CS%diag)
+    if (CS%id_ci>0)  call post_SIS_data(CS%id_ci, ci, CS%diag)
 
     if (CS%id_str_d>0) call post_SIS_data(CS%id_str_d, CS%str_d, CS%diag)
     if (CS%id_str_t>0) call post_SIS_data(CS%id_str_t, CS%str_t, CS%diag)
