@@ -92,10 +92,6 @@ type, public :: ice_C_dyn_CS ; private
   logical :: project_ci       ! If true, project the ice concentration and
                               ! related ice strength changes due to the convergent
                               ! or divergent ice flow.
-  real    :: project_ci_str_limit  ! A factor that determines how strictly the
-                              ! ice stresses are limited when the ice strength
-                              ! is allowed to vary within the dynamics, or a
-                              ! negative number for no limiting.
   logical :: weak_coast_stress = .false.
   logical :: weak_low_shear = .false.
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
@@ -132,6 +128,7 @@ type, public :: ice_C_dyn_CS ; private
   integer :: id_str_d_hifreq = -1, id_str_t_hifreq = -1, id_str_s_hifreq = -1
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
   integer :: id_sigi_hifreq = -1, id_sigii_hifreq = -1
+  integer :: id_stren_hifreq = -1, id_ci_hifreq = -1
 end type ice_C_dyn_CS
 
 contains
@@ -200,7 +197,9 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   endif
   call get_param(param_file, mod, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
                  "The damping timescale associated with the elastic terms \n"//&
-                 "in the sea-ice dynamics equations.", units = "s", default=0.0)
+                 "in the sea-ice dynamics equations (if positive) or the \n"//&
+                 "fraction of DT_ICE_DYNAMICS (if negative).", &
+                 units = "s or nondim", default=0.0)
   call get_param(param_file, mod, "WEAK_LOW_SHEAR_ICE", CS%weak_low_shear, &
                  "If true, the divergent stresses go toward 0 in the C-grid \n"//&
                  "dynamics when the shear magnitudes are very weak. \n"//&
@@ -235,11 +234,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   call get_param(param_file, mod, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
                  "If true, project the evolution of the ice concentration \n"//&
                  "due to the convergence or divergence of the ice flow.", default=.false.)
-  call get_param(param_file, mod, "PROJECT_ICE_CONC_STR_LIM", CS%project_ci_str_limit, &
-                 "A factor that determines how strictly the ice stresses \n"//&
-                 "are limited when the ice strength is allowed to vary \n"//&
-                 "within the dynamics, or negative number for no limiting.", &
-                 units="nondim", default=-1.0)
+  
   call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
@@ -326,7 +321,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,          &
             'Mass of ice and snow at t-points', 'kg m-2', missing_value=missing)
   CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,          &
-            'Initial ummed concentration of ice at t-points', 'nondim', missing_value=missing)
+            'Initial summed concentration of ice at t-points', 'nondim', missing_value=missing)
   CS%id_ci  = register_diag_field('ice_model', 'CI_proj', diag%axesT1, Time,          &
             'Projected summed concentration of ice at t-points', 'nondim', missing_value=missing)
   CS%id_miu   = register_diag_field('ice_model', 'MI_U', diag%axesCu1, Time,          &
@@ -380,10 +375,14 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'ice tension rate', 's-1', missing_value=missing)
   CS%id_sh_s_hifreq = register_diag_field('ice_model', 'sh_s_hf', diag%axesB1, Time, &
             'ice shearing rate', 's-1', missing_value=missing)
-  CS%id_sigi_hifreq  = register_diag_field('ice_model','sigI_hf' ,diag%axesT1, Time,         &
+  CS%id_sigi_hifreq  = register_diag_field('ice_model','sigI_hf' ,diag%axesT1, Time, &
             'first stress invariant', 'none', missing_value=missing)
-  CS%id_sigii_hifreq = register_diag_field('ice_model','sigII_hf' ,diag%axesT1, Time,        &
+  CS%id_sigii_hifreq = register_diag_field('ice_model','sigII_hf' ,diag%axesT1, Time, &
             'second stress invariant', 'none', missing_value=missing)
+  CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
+            'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
+  CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time,     &
+            'ice strength', 'Pa*m', missing_value=missing)
 
 end subroutine ice_C_dyn_init
 
@@ -617,17 +616,20 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   if ((CS%id_ui_hifreq > 0) .or. (CS%id_vi_hifreq > 0) .or. &
       (CS%id_str_d_hifreq > 0) .or. (CS%id_str_t_hifreq > 0) .or. &
       (CS%id_str_s_hifreq > 0) .or. (CS%id_sh_d_hifreq > 0) .or. &
-      (CS%id_sh_t_hifreq > 0) .or. (CS%id_sh_s_hifreq > 0)) then
+      (CS%id_sh_t_hifreq > 0) .or. (CS%id_sh_s_hifreq > 0) .or. &
+      (CS%id_ci_hifreq > 0) .or. (CS%id_stren_hifreq > 0)) then
     do_hifreq_output = query_SIS_averaging_enabled(CS%diag, time_int_in, time_end_in)
     if (do_hifreq_output) &
       time_it_start = time_end_in - set_time(int(floor(dt_slow+0.5)))
   endif
 
   Tdamp = CS%Tdamp
-  if (CS%Tdamp <= 0.0) then
+  if (CS%Tdamp == 0.0) then
     ! Hunke (2001) chooses a specified multiple of dt_slow for Tdamp, and shows
     ! that stability requires Tdamp > 2*dt.
     Tdamp = max(0.36*dt_slow, 3.0*dt)
+  elseif (CS%Tdamp < 0.0) then
+    Tdamp = max(-CS%Tdamp*dt_slow, 3.0*dt)
   endif
   dt_2Tdamp = dt / (2.0 * Tdamp)
 
@@ -653,7 +655,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
     ! Precompute pres_mice and the minimum value of del_sh for stability.
     pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*(1.0-ci(i,j)))
-    !### OK? pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
+    !### OK to change? pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
@@ -840,11 +842,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
        ! Recompute pres_mice.
        pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci_proj(i,j),0.0))
      enddo ; enddo
-     if (CS%project_ci_str_limit > 0.0) &
-       call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, CS, &
-                           CS%project_ci_str_limit)
    endif
-
 
    ! calculate viscosities - how often should we do this ?
 
@@ -1059,12 +1057,19 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       if (CS%id_sh_t_hifreq > 0) call post_SIS_data(CS%id_sh_t_hifreq, sh_Dt, CS%diag)
       if (CS%id_sh_s_hifreq > 0) call post_SIS_data(CS%id_sh_s_hifreq, sh_Ds, CS%diag)
       if (CS%id_sigi_hifreq>0) then
-        call find_sigI(mice, ci, CS%str_d, diag_val, G, CS)
+        call find_sigI(mice, ci_proj, CS%str_d, diag_val, G, CS)
         call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
       endif
       if (CS%id_sigii_hifreq>0) then
-        call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, CS)
+        call find_sigII(mice, ci_proj, CS%str_t, CS%str_s, diag_val, G, CS)
         call post_SIS_data(CS%id_sigii_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
+      endif
+      if (CS%id_ci_hifreq>0) call post_SIS_data(CS%id_ci_hifreq, ci_proj, CS%diag)
+      if (CS%id_stren_hifreq>0) then
+        do j=jsc,jec ; do i=isc,iec
+          diag_val(i,j) = pres_mice(i,j)*mice(i,j)
+        enddo ; enddo
+        call post_SIS_data(CS%id_stren_hifreq, diag_val, CS%diag)
       endif
     endif
 
@@ -1310,6 +1315,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
                    G%areaT(i+1,j+1)*(pres_mice(i+1,j+1)*mice(i+1,j+1))) + &
                   (G%areaT(i+1,j) * (pres_mice(i+1,j)*mice(i+1,j)) + &
                    G%areaT(i,j+1) * (pres_mice(i,j+1)*mice(i,j+1)))) / sum_area
+
     if (CS%EC*str_s(I,J) > lim_2*pres_avg) str_s(I,J) = I_2EC*pres_avg
     if (CS%EC*str_s(I,J) < -lim_2*pres_avg) str_s(I,J) = -I_2EC*pres_avg
   enddo ; enddo
