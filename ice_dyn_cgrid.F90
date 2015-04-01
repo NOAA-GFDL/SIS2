@@ -199,7 +199,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "The damping timescale associated with the elastic terms \n"//&
                  "in the sea-ice dynamics equations (if positive) or the \n"//&
                  "fraction of DT_ICE_DYNAMICS (if negative).", &
-                 units = "s or nondim", default=0.0)
+                 units = "s or nondim", default=-0.2)
   call get_param(param_file, mod, "WEAK_LOW_SHEAR_ICE", CS%weak_low_shear, &
                  "If true, the divergent stresses go toward 0 in the C-grid \n"//&
                  "dynamics when the shear magnitudes are very weak. \n"//&
@@ -210,7 +210,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "If true, project forward the ice velocity used in the \n"//&
                  "drag calculation to avoid an instability that can occur \n"//&
                  "when an finite stress is applied to thin ice moving with \n"//&
-                 "the velocity of the ocean.", default=.false.)
+                 "the velocity of the ocean.", default=.true.)
   call get_param(param_file, mod, "ICE_YIELD_ELLIPTICITY", CS%EC, &
                  "The ellipticity coefficient for the plastic yield curve \n"//&
                  "in the sea-ice rheology.  For an infinite ellipticity \n"//&
@@ -233,7 +233,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "probably needs to be greater than 1.", units="nondim", default=2.0)
   call get_param(param_file, mod, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
                  "If true, project the evolution of the ice concentration \n"//&
-                 "due to the convergence or divergence of the ice flow.", default=.false.)
+                 "due to the convergence or divergence of the ice flow.", default=.true.)
   
   call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
@@ -625,9 +625,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   Tdamp = CS%Tdamp
   if (CS%Tdamp == 0.0) then
-    ! Hunke (2001) chooses a specified multiple of dt_slow for Tdamp, and shows
-    ! that stability requires Tdamp > 2*dt.
-    Tdamp = max(0.36*dt_slow, 3.0*dt)
+    ! Hunke (2001) chooses a specified multiple (0.36) of dt_slow for Tdamp,
+    ! and shows that stability requires Tdamp > 2*dt.  Here 0.2 is used instead
+    ! for greater stability.
+    Tdamp = max(0.2*dt_slow, 3.0*dt)
   elseif (CS%Tdamp < 0.0) then
     Tdamp = max(-CS%Tdamp*dt_slow, 3.0*dt)
   endif
