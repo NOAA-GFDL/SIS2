@@ -223,6 +223,8 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
 
   do k=1,ncat
     domore_k(k)=1
+    do j=js,je; domore_u(j,k) = .false.; enddo
+    do j=js-1,je; domore_v(j,k) = .false.; enddo
 !  Put the remaining (total) thickness fluxes into uhr and vhr.
     do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
     do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
