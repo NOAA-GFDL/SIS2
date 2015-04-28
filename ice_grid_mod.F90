@@ -295,6 +295,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                default=1.0)
   G%kg_m2_to_H = 1.0 / G%H_to_kg_m2
   G%H_subroundoff = 1e-30*G%kg_m2_to_H
+  call get_param(param_file, mod_nm, "FIRST_DIRECTION", G%first_direction, &
+                 "An integer that indicates which direction goes first \n"//&
+                 "in parts of the code that use directionally split \n"//&
+                 "updates, with even numbers (or 0) used for x- first \n"//&
+                 "and odd numbers used for y-first.", default=0)
+
 
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
