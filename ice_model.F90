@@ -42,7 +42,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_model_mod
 
-use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init
+use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
@@ -3864,6 +3864,8 @@ subroutine ice_model_end (Ice)
   ! End icebergs
   if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
+
+  call SIS_diag_mediator_end(IST%Time)
 
   deallocate(Ice%Ice_state)
 
