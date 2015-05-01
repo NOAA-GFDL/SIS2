@@ -1379,15 +1379,15 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag, mask=Ice%mask)
 
   if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+                                   IST%part_size(:,:,1:), IST%diag, G=G, mask=G%Lmask2dT)
   if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+                                   IST%part_size(:,:,1:), IST%diag, G=G, mask=G%Lmask2dT)
   do m=1,G%NkIce
     if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
-                                     IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+                                     IST%part_size(:,:,1:), IST%diag, G=G, mask=G%Lmask2dT)
   enddo
   if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
-                                   IST%part_size, IST%diag, G=G, mask=G%Lmask2dT)
+                                   IST%part_size(:,:,1:), IST%diag, G=G, mask=G%Lmask2dT)
 
   if (IST%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
