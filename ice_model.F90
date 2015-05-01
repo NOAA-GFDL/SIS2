@@ -1085,7 +1085,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp) in W m-2 K-1.
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    diurnal_factor, cosz_alb, tmp_diag
+    diurnal_factor, cosz_alb
+  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
   real, dimension(0:G%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(G%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:G%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
