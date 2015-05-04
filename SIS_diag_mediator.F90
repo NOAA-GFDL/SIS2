@@ -108,7 +108,7 @@ type, public :: SIS_diag_ctrl
   real, dimension(:,:,:), pointer :: mask3dCuC => null()
   real, dimension(:,:,:), pointer :: mask3dCvC => null()
 
-#define MAX_NUM_DIAGNOSTICS 400
+#define MAX_NUM_DIAGNOSTICS 1000
   type(maskContainer), dimension(MAX_NUM_DIAGNOSTICS) :: maskList
 
   !default missing value to be sent to ALL diagnostics registerations 
