@@ -61,11 +61,13 @@ type, public :: axesType
   type(SIS_diag_ctrl), pointer :: diag_cs => null()
 end type axesType
 
-! Type for vector of pointers to masks for either 2D or 3D data
-type, private :: maskContainer
-  real,pointer, dimension(:,:)   :: mask2d => null()
-  real,pointer, dimension(:,:,:) :: mask3d => null()
-end type maskContainer
+! This type is used to represent a diagnostic at the diag_mediator level.
+type, private :: diag_type
+  logical :: in_use
+  integer :: fms_diag_id         ! underlying FMS diag id
+  real, pointer, dimension(:,:)   :: mask2d => null()
+  real, pointer, dimension(:,:,:) :: mask3d => null()
+end type diag_type
 
 !   The following data type contains pointers to diagnostic fields that might
 ! be shared between modules, and also to the variables that control the handling
@@ -108,8 +110,9 @@ type, public :: SIS_diag_ctrl
   real, dimension(:,:,:), pointer :: mask3dCuC => null()
   real, dimension(:,:,:), pointer :: mask3dCvC => null()
 
-#define MAX_NUM_DIAGNOSTICS 1000
-  type(maskContainer), dimension(MAX_NUM_DIAGNOSTICS) :: maskList
+#define DIAG_ALLOC_CHUNK_SIZE 15
+  type(diag_type), dimension(:), allocatable :: diags
+  integer :: next_free_diag_id
 
   !default missing value to be sent to ALL diagnostics registerations 
   real :: missing_value = -1.0e34
@@ -273,7 +276,7 @@ end subroutine set_SIS_diag_mediator_grid
 subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id
   real,              intent(in) :: field(:,:)
-  type(SIS_diag_ctrl), intent(in) :: diag_cs
+  type(SIS_diag_ctrl), target, intent(in) :: diag_cs
   logical, optional, intent(in) :: is_static
   logical, optional, intent(in) :: mask(:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
@@ -284,8 +287,16 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 !  (in,opt)  mask - If present, use this real array as the data mask.
   logical :: used, is_stat
   integer :: isv, iev, jsv, jev
+  integer :: fms_diag_id
+  type(diag_type), pointer :: diag
 
   is_stat = .false. ; if (present(is_static)) is_stat = is_static 
+
+  ! Get a pointer to the SIS diag type for this id, and the FMS-level diag id.
+  call assert(diag_field_id < diag_cs%next_free_diag_id, &
+              'post_data_2d: Unregistered diagnostic id')
+  diag => diag_cs%diags(diag_field_id)
+  fms_diag_id = diag%fms_diag_id
 
   ! Determine the proper array indices, noting that because of the (:,:)
   ! declaration of field, symmetric arrays are using a SW-grid indexing,
@@ -327,26 +338,26 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, &
+      used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag_cs%maskList(diag_field_id)%mask2d)) then       
-      used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag_cs%maskList(diag_field_id)%mask2d)
+    elseif(associated(diag%mask2d)) then       
+      used = send_data(fms_diag_id, field, &
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d)
     else
-      used = send_data(diag_field_id, field, &
+      used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
-    elseif(associated(diag_cs%maskList(diag_field_id)%mask2d)) then       
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+    elseif(associated(diag%mask2d)) then       
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, rmask=diag_cs%maskList(diag_field_id)%mask2d)
+                       weight=diag_cs%time_int, rmask=diag%mask2d)
     else
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int)
     endif
@@ -357,7 +368,7 @@ end subroutine post_data_2d
 subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id
   real,              intent(in) :: field(:,:,:)
-  type(SIS_diag_ctrl),   intent(in) :: diag_cs
+  type(SIS_diag_ctrl), target,  intent(in) :: diag_cs
   logical, optional, intent(in) :: is_static
   logical, optional, intent(in) :: mask(:,:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
@@ -369,7 +380,16 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   logical :: used  ! The return value of send_data is not used for anything.
   logical :: is_stat
   integer :: isv, iev, jsv, jev
+  integer :: fms_diag_id
+  type(diag_type), pointer :: diag
+
   is_stat = .false. ; if (present(is_static)) is_stat = is_static 
+
+  ! Get a pointer to the SIS diag type for this id, and the FMS-level diag id.
+  call assert(diag_field_id < diag_cs%next_free_diag_id, &
+              'post_data_3d: Unregistered diagnostic id')
+  diag => diag_cs%diags(diag_field_id)
+  fms_diag_id = diag%fms_diag_id
   
   ! Determine the proper array indices, noting that because of the (:,:)
   ! declaration of field, symmetric arrays are using a SW-grid indexing,
@@ -412,26 +432,26 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, &
+      used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag_cs%maskList(diag_field_id)%mask3d)) then       
-      used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag_cs%maskList(diag_field_id)%mask3d)
+    elseif(associated(diag%mask3d)) then       
+      used = send_data(fms_diag_id, field, &
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask3d)
     else
-      used = send_data(diag_field_id, field, &
+      used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
-    elseif(associated(diag_cs%maskList(diag_field_id)%mask3d)) then       
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+    elseif(associated(diag%mask3d)) then       
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, rmask=diag_cs%maskList(diag_field_id)%mask3d)
+                       weight=diag_cs%time_int, rmask=diag%mask3d)
     else
-      used = send_data(diag_field_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int)
     endif
@@ -526,19 +546,29 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
 !  (in,opt)  tile_count - No clue. (Not used in MOM.)
   character(len=240) :: mesg
   real :: MOM_missing_value
+  integer :: primary_id, fms_id
   type(SIS_diag_ctrl), pointer :: diag_cs
+  type(diag_type), pointer :: diag
 
   MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
 
-  register_diag_field = register_diag_field_fms(module_name, field_name, axes%handles, &
+  diag_cs => axes%diag_cs
+  primary_id = -1
+
+  fms_id = register_diag_field_fms(module_name, field_name, axes%handles, &
          init_time, long_name=long_name, units=units, missing_value=MOM_missing_value, &
          range=range, mask_variant=mask_variant, standard_name=standard_name, &
          verbose=verbose, do_not_log=do_not_log, err_msg=err_msg, &
          interp_method=interp_method, tile_count=tile_count)
+  if (fms_id > 0) then
+    primary_id = get_new_diag_id(diag_cs)
+    diag => diag_cs%diags(primary_id)
+    diag%fms_diag_id = fms_id
+  endif
 
   if (is_root_pe() .and. doc_unit > 0) then
-     if (register_diag_field > 0) then
+     if (primary_id > 0) then
         mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Used]'
      else
         mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Unused]'
@@ -550,60 +580,51 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
   endif
 
   !Decide what mask to use based on the axes info
-  if (register_diag_field>-1) then
+  if (primary_id > 0) then
   !3d masks
     if(axes%rank .eq. 3) then
-      diag_cs => axes%diag_cs
-      diag_cs%maskList(register_diag_field)%mask2d => null()
-      diag_cs%maskList(register_diag_field)%mask3d => null()
-      if (register_diag_field>MAX_NUM_DIAGNOSTICS) call SIS_error(FATAL, &
-           "SIS_diag_mediator, register_diag_field: " // &
-           "Too many diagnostics. Make MAX_NUM_DIAGNOSTICS bigger! "//trim(field_name))     
-      if    (axes%id .eq. diag_cs%axesTL%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTL
-      elseif(axes%id .eq. diag_cs%axesBL%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBuL
-      elseif(axes%id .eq. diag_cs%axesCuL%id ) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCuL
-      elseif(axes%id .eq. diag_cs%axesCvL%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvL
-      elseif(axes%id .eq. diag_cs%axesTi%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTi
-      elseif(axes%id .eq. diag_cs%axesBi%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBui
-      elseif(axes%id .eq. diag_cs%axesCui%id ) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCui
-      elseif(axes%id .eq. diag_cs%axesCvi%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvi
-
-      elseif(axes%id .eq. diag_cs%axesTc%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTC
-      elseif(axes%id .eq. diag_cs%axesBc%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBuC
-      elseif(axes%id .eq. diag_cs%axesCuc%id ) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCuC
-      elseif(axes%id .eq. diag_cs%axesCvc%id) then
-          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvC
+      diag%mask2d => null()
+      diag%mask3d => null()
+      if (axes%id .eq. diag_cs%axesTL%id) then
+          diag%mask3d =>  diag_cs%mask3dTL
+      elseif (axes%id .eq. diag_cs%axesBL%id) then
+          diag%mask3d =>  diag_cs%mask3dBuL
+      elseif (axes%id .eq. diag_cs%axesCuL%id ) then
+          diag%mask3d =>  diag_cs%mask3dCuL
+      elseif (axes%id .eq. diag_cs%axesCvL%id) then
+          diag%mask3d =>  diag_cs%mask3dCvL
+      elseif (axes%id .eq. diag_cs%axesTi%id) then
+          diag%mask3d =>  diag_cs%mask3dTi
+      elseif (axes%id .eq. diag_cs%axesBi%id) then
+          diag%mask3d =>  diag_cs%mask3dBui
+      elseif (axes%id .eq. diag_cs%axesCui%id ) then
+          diag%mask3d =>  diag_cs%mask3dCui
+      elseif (axes%id .eq. diag_cs%axesCvi%id) then
+          diag%mask3d =>  diag_cs%mask3dCvi
+      elseif (axes%id .eq. diag_cs%axesTc%id) then
+          diag%mask3d =>  diag_cs%mask3dTC
+      elseif (axes%id .eq. diag_cs%axesBc%id) then
+          diag%mask3d =>  diag_cs%mask3dBuC
+      elseif (axes%id .eq. diag_cs%axesCuc%id ) then
+          diag%mask3d =>  diag_cs%mask3dCuC
+      elseif (axes%id .eq. diag_cs%axesCvc%id) then
+          diag%mask3d =>  diag_cs%mask3dCvC
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))     
       endif
     !2d masks
     elseif(axes%rank .eq. 2) then
-      diag_cs => axes%diag_cs
-      diag_cs%maskList(register_diag_field)%mask2d => null()
-      diag_cs%maskList(register_diag_field)%mask3d => null()
-      if (register_diag_field>MAX_NUM_DIAGNOSTICS) call SIS_error(FATAL, &
-           "SIS_diag_mediator, register_diag_field: " // &
-           "Too many diagnostics. Make MAX_NUM_DIAGNOSTICS bigger! "//trim(field_name))     
-      if    (axes%id .eq. diag_cs%axesT1%id) then
-          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dT
-      elseif(axes%id .eq. diag_cs%axesB1%id) then
-          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dBu
-      elseif(axes%id .eq. diag_cs%axesCu1%id) then
-          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dCu
-      elseif(axes%id .eq. diag_cs%axesCv1%id) then
-          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dCv
+      diag%mask2d => null()
+      diag%mask3d => null()
+      if (axes%id .eq. diag_cs%axesT1%id) then
+          diag%mask2d =>  diag_cs%mask2dT
+      elseif (axes%id .eq. diag_cs%axesB1%id) then
+          diag%mask2d =>  diag_cs%mask2dBu
+      elseif (axes%id .eq. diag_cs%axesCu1%id) then
+          diag%mask2d =>  diag_cs%mask2dCu
+      elseif (axes%id .eq. diag_cs%axesCv1%id) then
+          diag%mask2d =>  diag_cs%mask2dCv
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))     
@@ -612,7 +633,9 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
           call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
                "unknown axes for diagnostic variable "//trim(field_name))          
     endif
-  endif ! if (register_diag_field>-1)
+  endif ! if (primary_id>-1)
+
+  register_diag_field = primary_id
 
 end function register_SIS_diag_field
 
@@ -642,15 +665,26 @@ function register_static_field(module_name, field_name, axes, &
   !  (in,opt)  tile_count - No clue. (Not used in MOM.)
   character(len=240) :: mesg
   real :: MOM_missing_value
+  integer :: primary_id, fms_id
+  type(SIS_diag_ctrl), pointer :: diag_cs
 
   MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
 
-  register_static_field = register_static_field_fms(module_name, field_name, axes%handles, &
+  diag_cs => axes%diag_cs
+  primary_id = -1
+
+  fms_id = register_static_field_fms(module_name, field_name, axes%handles, &
        long_name=long_name, units=units, missing_value=MOM_missing_value, &
        range=range, mask_variant=mask_variant, standard_name=standard_name, &
        do_not_log=do_not_log, &
        interp_method=interp_method, tile_count=tile_count)
+  if (fms_id > 0) then
+    primary_id = get_new_diag_id(diag_cs)
+    diag_cs%diags(primary_id)%fms_diag_id = fms_id
+  endif
+
+  register_static_field = primary_id
 
 end function register_static_field
 
@@ -704,10 +738,15 @@ subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
 
   call diag_manager_init(err_msg=err_msg)
 
+  ! Allocate list of all diagnostics
+  allocate(diag_cs%diags(DIAG_ALLOC_CHUNK_SIZE))
+  diag_cs%next_free_diag_id = 1
+  diag_cs%diags(:)%in_use = .false.
+
   diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
   diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
   diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
-
+  
   if (is_root_pe()) then
     if (present(component)) then
       doc_file_dflt = trim(component)//".available_diags"
@@ -814,5 +853,50 @@ subroutine SIS_diag_mediator_end(time)
   endif
 
 end subroutine SIS_diag_mediator_end
+
+! Allocate a new diagnostic id, it may be necessary to expand the diagnostics
+! array.
+function get_new_diag_id(diag_cs)
+
+  integer :: get_new_diag_id
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs
+  ! Arguments:
+  !  (inout)   diag_cs  - diagnostics control structure
+
+  type(diag_type), dimension(:), allocatable :: tmp
+  integer :: i
+
+  if (diag_cs%next_free_diag_id > size(diag_cs%diags)) then
+    call assert(diag_cs%next_free_diag_id - size(diag_cs%diags) == 1, &
+                'get_new_diag_id: inconsistent diag id')
+
+    ! Increase the size of diag_cs%diags and copy data over.
+    allocate(tmp(size(diag_cs%diags) + DIAG_ALLOC_CHUNK_SIZE))
+    tmp(1:size(diag_cs%diags)) = diag_cs%diags
+    call move_alloc(tmp, diag_cs%diags)
+    call assert(size(diag_cs%diags) == size(tmp), &
+                'get_new_diag_id: move_alloc() returned bad array size')
+
+    ! Initialise new part of the diag array.
+    do i=diag_cs%next_free_diag_id, size(diag_cs%diags)
+      diag_cs%diags(i)%in_use = .false.
+    enddo
+  endif
+
+  get_new_diag_id = diag_cs%next_free_diag_id
+  diag_cs%next_free_diag_id = diag_cs%next_free_diag_id + 1
+
+end function get_new_diag_id
+
+subroutine assert(logical_arg, msg)
+
+  logical, intent(in) :: logical_arg
+  character(len=*), intent(in) :: msg
+
+  if (.not. logical_arg) then
+    call SIS_error(FATAL, 'Assert failed: '//msg)
+  endif
+
+end subroutine assert
 
 end module SIS_diag_mediator
