@@ -58,7 +58,7 @@ type, public :: axesType
   character(len=15) :: id ! This is the id string for this particular combination of handles
   integer :: rank ! The number of dimensions in the list of axes
   integer, dimension(:), allocatable :: handles ! Handles to 1D axes
-  type(SIS_diag_ctrl), pointer :: diag => null()
+  type(SIS_diag_ctrl), pointer :: diag_cs => null()
 end type axesType
 
 ! Type for vector of pointers to masks for either 2D or 3D data
@@ -120,17 +120,17 @@ integer :: doc_unit = -1
 
 contains
 
-subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
+subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
   type(sea_ice_grid_type), intent(inout) :: G
   type(param_file_type),   intent(in)    :: param_file
-  type(SIS_diag_ctrl),     intent(inout) :: diag
+  type(SIS_diag_ctrl),     intent(inout) :: diag_cs
   logical, optional,       intent(in)    :: set_vertical
 !   This subroutine sets up the grid and axis information for use by SIS.
 !
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (inout)   diag - A structure that is used to regulate diagnostic output.
+!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
   integer :: k
@@ -215,38 +215,38 @@ subroutine set_SIS_axes_info(G, param_file, diag, set_vertical)
   ! should be reconsidered.  (R. Hallberg, 8/27/2013)
 
   ! Vertical axes for the interfaces and layers.
-  call defineAxes(diag, (/ id_zi /), diag%axesZi)
-  call defineAxes(diag, (/ id_zL /), diag%axesZL)
+  call defineAxes(diag_cs, (/ id_zi /), diag_cs%axesZi)
+  call defineAxes(diag_cs, (/ id_zL /), diag_cs%axesZL)
 
   ! Axis groupings for the model layers.
-  call defineAxes(diag, (/ id_xh, id_yh, id_zL /), diag%axesTL)
-  call defineAxes(diag, (/ id_xq, id_yq, id_zL /), diag%axesBL)
-  call defineAxes(diag, (/ id_xq, id_yh, id_zL /), diag%axesCuL)
-  call defineAxes(diag, (/ id_xh, id_yq, id_zL /), diag%axesCvL)
+  call defineAxes(diag_cs, (/ id_xh, id_yh, id_zL /), diag_cs%axesTL)
+  call defineAxes(diag_cs, (/ id_xq, id_yq, id_zL /), diag_cs%axesBL)
+  call defineAxes(diag_cs, (/ id_xq, id_yh, id_zL /), diag_cs%axesCuL)
+  call defineAxes(diag_cs, (/ id_xh, id_yq, id_zL /), diag_cs%axesCvL)
 
   ! Axis groupings for the model interfaces.
-  call defineAxes(diag, (/ id_xh, id_yh, id_zi /), diag%axesTi)
-  call defineAxes(diag, (/ id_xq, id_yh, id_zi /), diag%axesCui)
-  call defineAxes(diag, (/ id_xh, id_yq, id_zi /), diag%axesCvi)
-  call defineAxes(diag, (/ id_xq, id_yq, id_zi /), diag%axesBi)
+  call defineAxes(diag_cs, (/ id_xh, id_yh, id_zi /), diag_cs%axesTi)
+  call defineAxes(diag_cs, (/ id_xq, id_yh, id_zi /), diag_cs%axesCui)
+  call defineAxes(diag_cs, (/ id_xh, id_yq, id_zi /), diag_cs%axesCvi)
+  call defineAxes(diag_cs, (/ id_xq, id_yq, id_zi /), diag_cs%axesBi)
 
   ! Axis groupings for the ice thickness categories.
-  call defineAxes(diag, (/ id_xh, id_yh, id_ct /), diag%axesTc)
-  call defineAxes(diag, (/ id_xq, id_yh, id_ct /), diag%axesCuc)
-  call defineAxes(diag, (/ id_xh, id_yq, id_ct /), diag%axesCvc)
-  call defineAxes(diag, (/ id_xq, id_yq, id_ct /), diag%axesBc)
+  call defineAxes(diag_cs, (/ id_xh, id_yh, id_ct /), diag_cs%axesTc)
+  call defineAxes(diag_cs, (/ id_xq, id_yh, id_ct /), diag_cs%axesCuc)
+  call defineAxes(diag_cs, (/ id_xh, id_yq, id_ct /), diag_cs%axesCvc)
+  call defineAxes(diag_cs, (/ id_xq, id_yq, id_ct /), diag_cs%axesBc)
 
   ! Axis groupings for 2-D arrays.
-  call defineAxes(diag, (/ id_xh, id_yh /), diag%axesT1)
-  call defineAxes(diag, (/ id_xq, id_yq /), diag%axesB1)
-  call defineAxes(diag, (/ id_xq, id_yh /), diag%axesCu1)
-  call defineAxes(diag, (/ id_xh, id_yq /), diag%axesCv1)
+  call defineAxes(diag_cs, (/ id_xh, id_yh /), diag_cs%axesT1)
+  call defineAxes(diag_cs, (/ id_xq, id_yq /), diag_cs%axesB1)
+  call defineAxes(diag_cs, (/ id_xq, id_yh /), diag_cs%axesCu1)
+  call defineAxes(diag_cs, (/ id_xh, id_yq /), diag_cs%axesCv1)
  
 end subroutine set_SIS_axes_info
 
-subroutine defineAxes(diag, handles, axes)
+subroutine defineAxes(diag_cs, handles, axes)
   ! Defines "axes" from list of handle and associates mask
-  type(SIS_diag_ctrl), target, intent(in)  :: diag
+  type(SIS_diag_ctrl), target, intent(in)  :: diag_cs
   integer, dimension(:),       intent(in)  :: handles
   type(axesType),              intent(out) :: axes
   ! Local variables
@@ -257,29 +257,29 @@ subroutine defineAxes(diag, handles, axes)
   axes%id = i2s(handles, n) ! Identifying string
   axes%rank = n
   axes%handles(:) = handles(:)
-  axes%diag => diag ! A [circular] link back to the SIS_diag_ctrl structure
+  axes%diag_cs => diag_cs ! A [circular] link back to the SIS_diag_ctrl structure
 end subroutine defineAxes
 
-subroutine set_SIS_diag_mediator_grid(G, diag)
+subroutine set_SIS_diag_mediator_grid(G, diag_cs)
   type(sea_ice_grid_type), intent(inout) :: G
-  type(SIS_diag_ctrl),       intent(inout) :: diag
+  type(SIS_diag_ctrl),       intent(inout) :: diag_cs
 ! Arguments: G - The ocean's grid structure.
-!  (inout)   diag - A structure that is used to regulate diagnostic output.
-  diag%is = G%isc - (G%isd-1) ; diag%ie = G%iec - (G%isd-1)
-  diag%js = G%jsc - (G%jsd-1) ; diag%je = G%jec - (G%jsd-1)
-  diag%isd = G%isd ; diag%ied = G%ied ; diag%jsd = G%jsd ; diag%jed = G%jed
+!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
+  diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
+  diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
+  diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
 end subroutine set_SIS_diag_mediator_grid
 
-subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
+subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id
   real,              intent(in) :: field(:,:)
-  type(SIS_diag_ctrl), intent(in) :: diag
+  type(SIS_diag_ctrl), intent(in) :: diag_cs
   logical, optional, intent(in) :: is_static
   logical, optional, intent(in) :: mask(:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
 !                            previous call to register_diag_field.
 !  (in)      field - The 2-d array being offered for output or averaging.
-!  (inout)   diag - A structure that is used to regulate diagnostic output.
+!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 !  (in,opt)  is_static - If true, this is a static field that is always offered.
 !  (in,opt)  mask - If present, use this real array as the data mask.
   logical :: used, is_stat
@@ -292,27 +292,27 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
   ! but non-symmetric arrays are using a NE-grid indexing.  Send_data
   ! actually only uses the difference between ie and is to determine
   ! the output data size and assumes that halos are symmetric.
-  isv = diag%is ; iev = diag%ie ; jsv = diag%js ; jev = diag%je
+  isv = diag_cs%is ; iev = diag_cs%ie ; jsv = diag_cs%js ; jev = diag_cs%je
 
-  if ( size(field,1) == diag%ied-diag%isd +1 ) then
-    isv = diag%is ; iev = diag%ie        ! Data domain
-  elseif ( size(field,1) == diag%ied-diag%isd +2 ) then
-    isv = diag%is ; iev = diag%ie+1      ! Symmetric data domain
-  elseif ( size(field,1) == diag%ie-diag%is +1 ) then
-    isv = 1 ; iev = diag%ie + 1-diag%is  ! Computational domain
-  elseif ( size(field,1) == diag%ie-diag%is +2 ) then
-    isv = 1 ; iev = diag%ie + 2-diag%is  ! Symmetric computational domain
+  if ( size(field,1) == diag_cs%ied-diag_cs%isd +1 ) then
+    isv = diag_cs%is ; iev = diag_cs%ie        ! Data domain
+  elseif ( size(field,1) == diag_cs%ied-diag_cs%isd +2 ) then
+    isv = diag_cs%is ; iev = diag_cs%ie+1      ! Symmetric data domain
+  elseif ( size(field,1) == diag_cs%ie-diag_cs%is +1 ) then
+    isv = 1 ; iev = diag_cs%ie + 1-diag_cs%is  ! Computational domain
+  elseif ( size(field,1) == diag_cs%ie-diag_cs%is +2 ) then
+    isv = 1 ; iev = diag_cs%ie + 2-diag_cs%is  ! Symmetric computational domain
   else
     call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in i-direction")
   endif
-  if ( size(field,2) == diag%jed-diag%jsd +1 ) then
-    jsv = diag%js ; jev = diag%je        ! Data domain
-  elseif ( size(field,2) == diag%jed-diag%jsd +2 ) then
-    jsv = diag%js ; jev = diag%je+1      ! Symmetric data domain
-  elseif ( size(field,2) == diag%je-diag%js +1 ) then
-    jsv = 1 ; jev = diag%je + 1-diag%js  ! Computational domain
-  elseif ( size(field,1) == diag%je-diag%js +2 ) then
-    jsv = 1 ; jev = diag%je + 2-diag%js  ! Symmetric computational domain
+  if ( size(field,2) == diag_cs%jed-diag_cs%jsd +1 ) then
+    jsv = diag_cs%js ; jev = diag_cs%je        ! Data domain
+  elseif ( size(field,2) == diag_cs%jed-diag_cs%jsd +2 ) then
+    jsv = diag_cs%js ; jev = diag_cs%je+1      ! Symmetric data domain
+  elseif ( size(field,2) == diag_cs%je-diag_cs%js +1 ) then
+    jsv = 1 ; jev = diag_cs%je + 1-diag_cs%js  ! Computational domain
+  elseif ( size(field,1) == diag_cs%je-diag_cs%js +2 ) then
+    jsv = 1 ; jev = diag_cs%je + 2-diag_cs%js  ! Symmetric computational domain
   else
     call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in j-direction")
   endif
@@ -329,41 +329,41 @@ subroutine post_data_2d(diag_field_id, field, diag, is_static, mask)
     if (present(mask)) then
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag%maskList(diag_field_id)%mask2d)) then       
+    elseif(associated(diag_cs%maskList(diag_field_id)%mask2d)) then       
       used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%maskList(diag_field_id)%mask2d)
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag_cs%maskList(diag_field_id)%mask2d)
     else
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
-  elseif (diag%ave_enabled) then
+  elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, diag%time_end, &
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, mask=mask)
-    elseif(associated(diag%maskList(diag_field_id)%mask2d)) then       
-      used = send_data(diag_field_id, field, diag%time_end, &
+                       weight=diag_cs%time_int, mask=mask)
+    elseif(associated(diag_cs%maskList(diag_field_id)%mask2d)) then       
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, rmask=diag%maskList(diag_field_id)%mask2d)
+                       weight=diag_cs%time_int, rmask=diag_cs%maskList(diag_field_id)%mask2d)
     else
-      used = send_data(diag_field_id, field, diag%time_end, &
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int)
+                       weight=diag_cs%time_int)
     endif
   endif
 
 end subroutine post_data_2d
 
-subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
+subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id
   real,              intent(in) :: field(:,:,:)
-  type(SIS_diag_ctrl),   intent(in) :: diag
+  type(SIS_diag_ctrl),   intent(in) :: diag_cs
   logical, optional, intent(in) :: is_static
   logical, optional, intent(in) :: mask(:,:,:)
 ! Arguments: diag_field_id - the id for an output variable returned by a
 !                            previous call to register_diag_field.
 !  (in)      field - The 3-d array being offered for output or averaging.
-!  (inout)   diag - A structure that is used to regulate diagnostic output.
+!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 !  (in)      static - If true, this is a static field that is always offered.
 !  (in,opt)  mask - If present, use this real array as the data mask.
   logical :: used  ! The return value of send_data is not used for anything.
@@ -376,27 +376,27 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
   ! but non-symmetric arrays are using a NE-grid indexing.  Send_data
   ! actually only uses the difference between ie and is to determine
   ! the output data size and assumes that halos are symmetric.
-  isv = diag%is ; iev = diag%ie ; jsv = diag%js ; jev = diag%je
+  isv = diag_cs%is ; iev = diag_cs%ie ; jsv = diag_cs%js ; jev = diag_cs%je
 
-  if ( size(field,1) == diag%ied-diag%isd +1 ) then
-    isv = diag%is ; iev = diag%ie        ! Data domain
-  elseif ( size(field,1) == diag%ied-diag%isd +2 ) then
-    isv = diag%is ; iev = diag%ie+1      ! Symmetric data domain
-  elseif ( size(field,1) == diag%ie-diag%is +1 ) then
-    isv = 1 ; iev = diag%ie + 1-diag%is  ! Computational domain
-  elseif ( size(field,1) == diag%ie-diag%is +2 ) then
-    isv = 1 ; iev = diag%ie + 2-diag%is  ! Symmetric computational domain
+  if ( size(field,1) == diag_cs%ied-diag_cs%isd +1 ) then
+    isv = diag_cs%is ; iev = diag_cs%ie        ! Data domain
+  elseif ( size(field,1) == diag_cs%ied-diag_cs%isd +2 ) then
+    isv = diag_cs%is ; iev = diag_cs%ie+1      ! Symmetric data domain
+  elseif ( size(field,1) == diag_cs%ie-diag_cs%is +1 ) then
+    isv = 1 ; iev = diag_cs%ie + 1-diag_cs%is  ! Computational domain
+  elseif ( size(field,1) == diag_cs%ie-diag_cs%is +2 ) then
+    isv = 1 ; iev = diag_cs%ie + 2-diag_cs%is  ! Symmetric computational domain
   else
     call SIS_error(FATAL,"post_SIS_data_3d: peculiar size in i-direction")
   endif
-  if ( size(field,2) == diag%jed-diag%jsd +1 ) then
-    jsv = diag%js ; jev = diag%je        ! Data domain
-  elseif ( size(field,2) == diag%jed-diag%jsd +2 ) then
-    jsv = diag%js ; jev = diag%je+1      ! Symmetric data domain
-  elseif ( size(field,2) == diag%je-diag%js +1 ) then
-    jsv = 1 ; jev = diag%je + 1-diag%js  ! Computational domain
-  elseif ( size(field,1) == diag%je-diag%js +2 ) then
-    jsv = 1 ; jev = diag%je + 2-diag%js  ! Symmetric computational domain
+  if ( size(field,2) == diag_cs%jed-diag_cs%jsd +1 ) then
+    jsv = diag_cs%js ; jev = diag_cs%je        ! Data domain
+  elseif ( size(field,2) == diag_cs%jed-diag_cs%jsd +2 ) then
+    jsv = diag_cs%js ; jev = diag_cs%je+1      ! Symmetric data domain
+  elseif ( size(field,2) == diag_cs%je-diag_cs%js +1 ) then
+    jsv = 1 ; jev = diag_cs%je + 1-diag_cs%js  ! Computational domain
+  elseif ( size(field,1) == diag_cs%je-diag_cs%js +2 ) then
+    jsv = 1 ; jev = diag_cs%je + 2-diag_cs%js  ! Symmetric computational domain
   else
     call SIS_error(FATAL,"post_SIS_data_3d: peculiar size in j-direction")
   endif
@@ -414,85 +414,85 @@ subroutine post_data_3d(diag_field_id, field, diag, is_static, mask)
     if (present(mask)) then
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag%maskList(diag_field_id)%mask3d)) then       
+    elseif(associated(diag_cs%maskList(diag_field_id)%mask3d)) then       
       used = send_data(diag_field_id, field, &
-                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%maskList(diag_field_id)%mask3d)
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag_cs%maskList(diag_field_id)%mask3d)
     else
       used = send_data(diag_field_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
-  elseif (diag%ave_enabled) then
+  elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(diag_field_id, field, diag%time_end, &
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, mask=mask)
-    elseif(associated(diag%maskList(diag_field_id)%mask3d)) then       
-      used = send_data(diag_field_id, field, diag%time_end, &
+                       weight=diag_cs%time_int, mask=mask)
+    elseif(associated(diag_cs%maskList(diag_field_id)%mask3d)) then       
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int, rmask=diag%maskList(diag_field_id)%mask3d)
+                       weight=diag_cs%time_int, rmask=diag_cs%maskList(diag_field_id)%mask3d)
     else
-      used = send_data(diag_field_id, field, diag%time_end, &
+      used = send_data(diag_field_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag%time_int)
+                       weight=diag_cs%time_int)
     endif
   endif
 
 end subroutine post_data_3d
 
 
-subroutine enable_SIS_averaging(time_int_in, time_end_in, diag)
+subroutine enable_SIS_averaging(time_int_in, time_end_in, diag_cs)
   real, intent(in) :: time_int_in
   type(time_type), intent(in) :: time_end_in
-  type(SIS_diag_ctrl), intent(inout) :: diag
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs
 ! This subroutine enables the accumulation of time averages over the
 ! specified time interval.
 
 ! Arguments: time_int_in - the time interval in s over which any
 !                          values that are offered are valid.
 !  (in)      time_end_in - the end time in s of the valid interval.
-!  (inout)   diag - A structure that is used to regulate diagnostic output.
+!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 
 !  if (num_file==0) return
-  diag%time_int = time_int_in
-  diag%time_end = time_end_in
-  diag%ave_enabled = .true.
+  diag_cs%time_int = time_int_in
+  diag_cs%time_end = time_end_in
+  diag_cs%ave_enabled = .true.
 end subroutine enable_SIS_averaging
 
 ! Call this subroutine to avoid averaging any offered fields.
-subroutine disable_SIS_averaging(diag)
-  type(SIS_diag_ctrl), intent(inout) :: diag
-! Argument: diag - A structure that is used to regulate diagnostic output.
+subroutine disable_SIS_averaging(diag_cs)
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs
+! Argument: diag_cs - A structure that is used to regulate diagnostic output.
 
-  diag%time_int = 0.0
-  diag%ave_enabled = .false.
+  diag_cs%time_int = 0.0
+  diag_cs%ave_enabled = .false.
 
 end subroutine disable_SIS_averaging
 
 ! Call this subroutine to determine whether the averaging is
 ! currently enabled.  .true. is returned if it is.
-function query_SIS_averaging_enabled(diag, time_int, time_end)
-  type(SIS_diag_ctrl),           intent(in)  :: diag
+function query_SIS_averaging_enabled(diag_cs, time_int, time_end)
+  type(SIS_diag_ctrl),           intent(in)  :: diag_cs
   real,            optional, intent(out) :: time_int
   type(time_type), optional, intent(out) :: time_end
   logical :: query_SIS_averaging_enabled
 ! Arguments: diag - A structure that is used to regulate diagnostic output.
-!  (out,opt) time_int - The current setting of diag%time_int, in s.
-!  (out,opt) time_end - The current setting of diag%time_end.
+!  (out,opt) time_int - The current setting of diag_cs%time_int, in s.
+!  (out,opt) time_end - The current setting of diag_cs%time_end.
 
-  if (present(time_int)) time_int = diag%time_int
-  if (present(time_end)) time_end = diag%time_end
-  query_SIS_averaging_enabled = diag%ave_enabled
+  if (present(time_int)) time_int = diag_cs%time_int
+  if (present(time_end)) time_end = diag_cs%time_end
+  query_SIS_averaging_enabled = diag_cs%ave_enabled
 end function query_SIS_averaging_enabled
 
-function get_SIS_diag_time_end(diag)
-  type(SIS_diag_ctrl),           intent(in)  :: diag
+function get_SIS_diag_time_end(diag_cs)
+  type(SIS_diag_ctrl),           intent(in)  :: diag_cs
   type(time_type) :: get_SIS_diag_time_end
-! Argument: diag - A structure that is used to regulate diagnostic output.
+! Argument: diag_cs - A structure that is used to regulate diagnostic output.
 
 !   This function returns the valid end time for diagnostics that are handled
 ! outside of the MOM6 infrastructure, such as via the generic tracer code.
 
-  get_SIS_diag_time_end = diag%time_end
+  get_SIS_diag_time_end = diag_cs%time_end
 end function get_SIS_diag_time_end
 
 function register_SIS_diag_field(module_name, field_name, axes, init_time, &
@@ -526,9 +526,9 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
 !  (in,opt)  tile_count - No clue. (Not used in MOM.)
   character(len=240) :: mesg
   real :: MOM_missing_value
-  type(SIS_diag_ctrl), pointer :: diag
+  type(SIS_diag_ctrl), pointer :: diag_cs
 
-  MOM_missing_value = axes%diag%missing_value
+  MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
 
   register_diag_field = register_diag_field_fms(module_name, field_name, axes%handles, &
@@ -553,57 +553,57 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
   if (register_diag_field>-1) then
   !3d masks
     if(axes%rank .eq. 3) then
-      diag => axes%diag
-      diag%maskList(register_diag_field)%mask2d => null()
-      diag%maskList(register_diag_field)%mask3d => null()
+      diag_cs => axes%diag_cs
+      diag_cs%maskList(register_diag_field)%mask2d => null()
+      diag_cs%maskList(register_diag_field)%mask3d => null()
       if (register_diag_field>MAX_NUM_DIAGNOSTICS) call SIS_error(FATAL, &
            "SIS_diag_mediator, register_diag_field: " // &
            "Too many diagnostics. Make MAX_NUM_DIAGNOSTICS bigger! "//trim(field_name))     
-      if    (axes%id .eq. diag%axesTL%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dTL
-      elseif(axes%id .eq. diag%axesBL%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dBuL
-      elseif(axes%id .eq. diag%axesCuL%id ) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCuL
-      elseif(axes%id .eq. diag%axesCvL%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCvL
-      elseif(axes%id .eq. diag%axesTi%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dTi
-      elseif(axes%id .eq. diag%axesBi%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dBui
-      elseif(axes%id .eq. diag%axesCui%id ) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCui
-      elseif(axes%id .eq. diag%axesCvi%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCvi
+      if    (axes%id .eq. diag_cs%axesTL%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTL
+      elseif(axes%id .eq. diag_cs%axesBL%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBuL
+      elseif(axes%id .eq. diag_cs%axesCuL%id ) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCuL
+      elseif(axes%id .eq. diag_cs%axesCvL%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvL
+      elseif(axes%id .eq. diag_cs%axesTi%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTi
+      elseif(axes%id .eq. diag_cs%axesBi%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBui
+      elseif(axes%id .eq. diag_cs%axesCui%id ) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCui
+      elseif(axes%id .eq. diag_cs%axesCvi%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvi
 
-      elseif(axes%id .eq. diag%axesTc%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dTC
-      elseif(axes%id .eq. diag%axesBc%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dBuC
-      elseif(axes%id .eq. diag%axesCuc%id ) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCuC
-      elseif(axes%id .eq. diag%axesCvc%id) then
-          diag%maskList(register_diag_field)%mask3d =>  diag%mask3dCvC
+      elseif(axes%id .eq. diag_cs%axesTc%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dTC
+      elseif(axes%id .eq. diag_cs%axesBc%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dBuC
+      elseif(axes%id .eq. diag_cs%axesCuc%id ) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCuC
+      elseif(axes%id .eq. diag_cs%axesCvc%id) then
+          diag_cs%maskList(register_diag_field)%mask3d =>  diag_cs%mask3dCvC
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))     
       endif
     !2d masks
     elseif(axes%rank .eq. 2) then
-      diag => axes%diag
-      diag%maskList(register_diag_field)%mask2d => null()
-      diag%maskList(register_diag_field)%mask3d => null()
+      diag_cs => axes%diag_cs
+      diag_cs%maskList(register_diag_field)%mask2d => null()
+      diag_cs%maskList(register_diag_field)%mask3d => null()
       if (register_diag_field>MAX_NUM_DIAGNOSTICS) call SIS_error(FATAL, &
            "SIS_diag_mediator, register_diag_field: " // &
            "Too many diagnostics. Make MAX_NUM_DIAGNOSTICS bigger! "//trim(field_name))     
-      if    (axes%id .eq. diag%axesT1%id) then
-          diag%maskList(register_diag_field)%mask2d =>  diag%mask2dT
-      elseif(axes%id .eq. diag%axesB1%id) then
-          diag%maskList(register_diag_field)%mask2d =>  diag%mask2dBu
-      elseif(axes%id .eq. diag%axesCu1%id) then
-          diag%maskList(register_diag_field)%mask2d =>  diag%mask2dCu
-      elseif(axes%id .eq. diag%axesCv1%id) then
-          diag%maskList(register_diag_field)%mask2d =>  diag%mask2dCv
+      if    (axes%id .eq. diag_cs%axesT1%id) then
+          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dT
+      elseif(axes%id .eq. diag_cs%axesB1%id) then
+          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dBu
+      elseif(axes%id .eq. diag_cs%axesCu1%id) then
+          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dCu
+      elseif(axes%id .eq. diag_cs%axesCv1%id) then
+          diag_cs%maskList(register_diag_field)%mask2d =>  diag_cs%mask2dCv
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))     
@@ -643,7 +643,7 @@ function register_static_field(module_name, field_name, axes, &
   character(len=240) :: mesg
   real :: MOM_missing_value
 
-  MOM_missing_value = axes%diag%missing_value
+  MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
 
   register_static_field = register_static_field_fms(module_name, field_name, axes%handles, &
@@ -686,10 +686,10 @@ function i2s(a,n_in)
     i2s = adjustl(i2s)
 end function i2s
 
-subroutine SIS_diag_mediator_init(G, param_file, diag, component, err_msg)
+subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
   type(sea_ice_grid_type),    intent(inout) :: G
   type(param_file_type),      intent(in)    :: param_file
-  type(SIS_diag_ctrl),        intent(inout) :: diag
+  type(SIS_diag_ctrl),        intent(inout) :: diag_cs
   character(len=*), optional, intent(in)    :: component
   character(len=*), optional, intent(out)   :: err_msg
 
@@ -704,9 +704,9 @@ subroutine SIS_diag_mediator_init(G, param_file, diag, component, err_msg)
 
   call diag_manager_init(err_msg=err_msg)
 
-  diag%is = G%isc - (G%isd-1) ; diag%ie = G%iec - (G%isd-1)
-  diag%js = G%jsc - (G%jsd-1) ; diag%je = G%jec - (G%jsd-1)
-  diag%isd = G%isd ; diag%ied = G%ied ; diag%jsd = G%jsd ; diag%jed = G%jed
+  diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
+  diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
+  diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
 
   if (is_root_pe()) then
     if (present(component)) then
@@ -744,57 +744,57 @@ subroutine SIS_diag_mediator_init(G, param_file, diag, component, err_msg)
     endif
   endif
 
-  call diag_masks_set(G, -1.0e34, diag)
+  call diag_masks_set(G, -1.0e34, diag_cs)
 
 end subroutine SIS_diag_mediator_init
 
-subroutine diag_masks_set(G, missing_value, diag)
+subroutine diag_masks_set(G, missing_value, diag_cs)
 ! Setup the 2d masks for diagnostics
   type(sea_ice_grid_type), target, intent(in)    :: G
   real,                            intent(in)    :: missing_value
-  type(SIS_diag_ctrl),             intent(inout) :: diag
+  type(SIS_diag_ctrl),             intent(inout) :: diag_cs
   ! Local variables
   integer :: k
 
-  diag%mask2dT  => G%mask2dT
-  diag%mask2dBu => G%mask2dBu
-  diag%mask2dCu => G%mask2dCu
-  diag%mask2dCv => G%mask2dCv
+  diag_cs%mask2dT  => G%mask2dT
+  diag_cs%mask2dBu => G%mask2dBu
+  diag_cs%mask2dCu => G%mask2dCu
+  diag_cs%mask2dCv => G%mask2dCv
 
-  allocate(diag%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce)) 
-  allocate(diag%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce)) 
-  allocate(diag%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce)) 
-  allocate(diag%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce)) 
+  allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce)) 
+  allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce)) 
+  allocate(diag_cs%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce)) 
+  allocate(diag_cs%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce)) 
   do k=1,G%NkIce
-    diag%mask3dTL(:,:,k)  = diag%mask2dT(:,:)
-    diag%mask3dBuL(:,:,k) = diag%mask2dBu(:,:)
-    diag%mask3dCuL(:,:,k) = diag%mask2dCu(:,:)
-    diag%mask3dCvL(:,:,k) = diag%mask2dCv(:,:)
+    diag_cs%mask3dTL(:,:,k)  = diag_cs%mask2dT(:,:)
+    diag_cs%mask3dBuL(:,:,k) = diag_cs%mask2dBu(:,:)
+    diag_cs%mask3dCuL(:,:,k) = diag_cs%mask2dCu(:,:)
+    diag_cs%mask3dCvL(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1)) 
-  allocate(diag%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1)) 
-  allocate(diag%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1)) 
-  allocate(diag%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1)) 
+  allocate(diag_cs%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1)) 
+  allocate(diag_cs%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1)) 
+  allocate(diag_cs%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1)) 
+  allocate(diag_cs%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1)) 
   do k=1,G%NkIce+1
-    diag%mask3dTi(:,:,k)  = diag%mask2dT(:,:)
-    diag%mask3dBui(:,:,k) = diag%mask2dBu(:,:)
-    diag%mask3dCui(:,:,k) = diag%mask2dCu(:,:)
-    diag%mask3dCvi(:,:,k) = diag%mask2dCv(:,:)
+    diag_cs%mask3dTi(:,:,k)  = diag_cs%mask2dT(:,:)
+    diag_cs%mask3dBui(:,:,k) = diag_cs%mask2dBu(:,:)
+    diag_cs%mask3dCui(:,:,k) = diag_cs%mask2dCu(:,:)
+    diag_cs%mask3dCvi(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag%mask3dTC(G%isd:G%ied,G%jsd:G%jed,G%CatIce)) 
-  allocate(diag%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,G%CatIce)) 
-  allocate(diag%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce)) 
-  allocate(diag%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce)) 
+  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,G%CatIce)) 
+  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,G%CatIce)) 
+  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce)) 
+  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce)) 
   do k=1,G%CatIce
-    diag%mask3dTC(:,:,k)  = diag%mask2dT(:,:)
-    diag%mask3dBuC(:,:,k) = diag%mask2dBu(:,:)
-    diag%mask3dCuC(:,:,k) = diag%mask2dCu(:,:)
-    diag%mask3dCvC(:,:,k) = diag%mask2dCv(:,:)
+    diag_cs%mask3dTC(:,:,k)  = diag_cs%mask2dT(:,:)
+    diag_cs%mask3dBuC(:,:,k) = diag_cs%mask2dBu(:,:)
+    diag_cs%mask3dCuC(:,:,k) = diag_cs%mask2dCu(:,:)
+    diag_cs%mask3dCvC(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  diag%missing_value = missing_value
+  diag_cs%missing_value = missing_value
  
 end subroutine diag_masks_set
 
