@@ -193,6 +193,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
     ustar(:,:) = 0. ; vstar(:,:) = 0.
     ustaro(:,:) = 0. ; vstaro(:,:) = 0.
     ustarv(:,:) = 0. ; vstarv(:,:) = 0.
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,uc,sea_lev,ice_cover,dt_adv, &
+!$OMP                                  ustar,ustaro,ustarv)                              &
+!$OMP                          private(grad_eta,u_visc,u_ocn,cnn)
     do j=jsc,jec ; do I=isc-1,iec
       if ((uc(I,j)==0.) .and. & ! this is a redundant test due to following line
           (G%mask2dBu(I,J)+G%mask2dBu(I,J-1)==0.) .and. &  ! =0 => no vels
@@ -215,6 +218,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
         if (CS%id_uchan>0) ustarv(I,j)=u_visc
       endif
     enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,vc,sea_lev,ice_cover,dt_adv, &
+!$OMP                                  vstar,vstaro,vstarv)                              &
+!$OMP                          private(grad_eta,u_visc,u_ocn,cnn)
     do J=jsc-1,jec ; do i=isc,iec
       if ((vc(i,J)==0.) .and. & ! this is a redundant test due to following line
           (G%mask2dBu(I,J)+G%mask2dBu(I-1,J)==0.) .and. &  ! =0 => no vels
@@ -248,37 +254,42 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   endif
 
   !   Determine the whole-cell averaged mass of snow and ice.
-  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0 ; ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (mH_ice(i,j,k)>0.0) then
-      mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
-      mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
-      ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
-      mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
-    else
-      if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
-        call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
-      endif
-      part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
-      mca_snow(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
-    mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
-  endif ; enddo ; enddo
-
-  !   Handle massless categories.
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
-    if (mca_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
-      if (mHi_avg(i,j) <= G%mH_cat_bound(k)) then
-        mH_ice(i,j,k) = G%mH_cat_bound(k)
-      elseif (mHi_avg(i,j) >= G%mH_cat_bound(k+1)) then
-        mH_ice(i,j,k) = G%mH_cat_bound(k+1)
+  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0; ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,mH_ice,mca_ice,part_sz, &
+!$OMP                                  mca_snow,mH_snow,ice_cover,mHi_avg)
+  do j=jsc,jec
+    do k=1,G%CatIce ; do i=isc,iec
+      if (mH_ice(i,j,k)>0.0) then
+        mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
+        mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
+        ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
+        mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
       else
-        mH_ice(i,j,k) = mHi_avg(i,j)
+        if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
+          call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
+        endif
+        part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
+        mca_snow(i,j,k) = 0.0
       endif
-    endif
-  enddo ; enddo ; enddo
+    enddo ; enddo 
+    do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
+      mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
+    endif ; enddo 
+
+    !   Handle massless categories.
+    do k=1,G%CatIce ; do i=isc,iec
+      if (mca_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
+        if (mHi_avg(i,j) <= G%mH_cat_bound(k)) then
+          mH_ice(i,j,k) = G%mH_cat_bound(k)
+        elseif (mHi_avg(i,j) >= G%mH_cat_bound(k+1)) then
+          mH_ice(i,j,k) = G%mH_cat_bound(k+1)
+        else
+          mH_ice(i,j,k) = mHi_avg(i,j)
+        endif
+      endif
+    enddo ; enddo 
+  enddo
+
   call set_massless_SIS_tracers(mca_snow, TrReg, G, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, compute_domain=.true., do_snow=.false.)
 
@@ -325,7 +336,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 
   ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,mca_ice,mH_ice,part_sz, &
+!$OMP                                  mH_snow,ice_cover,mca_snow)
+  do j=jsc,jec ; do k=1,G%CatIce ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
       if (CS%roll_factor * (mH_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)**3 > &
           (mca_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
@@ -682,82 +695,89 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mH_ice, mH_snow, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do_j(:) = .false.
-  do j=jsc,jec ; do i=isc,iec
-    if (part_sz(i,j,0) < 0.0) then
-      excess_cover(i,j) = -part_sz(i,j,0) ; part_sz(i,j,0) = 0.0
-      do_j(j) = .true.
-    else
-      excess_cover(i,j) = 0.0
-    endif
-  enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,part_sz,excess_cover, &
+!$OMP                                  mca_ice,mca_snow,mH_ice,mH_snow,CS,TrReg) &
+!$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
+!$OMP                                  compression_ratio,Icompress_here, &
+!$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old)
+  do j=jsc,jec 
+    do i=isc,iec
+      if (part_sz(i,j,0) < 0.0) then
+        excess_cover(i,j) = -part_sz(i,j,0) ; part_sz(i,j,0) = 0.0
+        do_j(j) = .true.
+      else
+        excess_cover(i,j) = 0.0
+      endif
+    enddo
 
-  do j=jsc,jec ; if (do_j(j)) then
-    do k=1,G%CatIce ; do i=isc,iec
-      mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
-    enddo ; enddo
-    trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
-    do_any = .false.
+    if (do_j(j)) then
+      do k=1,G%CatIce ; do i=isc,iec
+        mca0_ice(i,k) = mca_ice(i,j,k) ; mca0_snow(i,k) = mca_snow(i,j,k)
+      enddo ; enddo
+      trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0
+      do_any = .false.
 
-    do k=1,G%CatIce-1 ; do i=isc,iec
-      if ((excess_cover(i,j) > 0.0) .and. (mca_ice(i,j,k) > 0.0)) then
-        compression_ratio = mH_ice(i,j,k) / G%mH_cat_bound(k+1)
-        if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
-          ! This category is compacted, but not to the point that it needs to
-          ! be transferred to a thicker layer.
+      do k=1,G%CatIce-1 ; do i=isc,iec
+        if ((excess_cover(i,j) > 0.0) .and. (mca_ice(i,j,k) > 0.0)) then
+          compression_ratio = mH_ice(i,j,k) / G%mH_cat_bound(k+1)
+          if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
+            ! This category is compacted, but not to the point that it needs to
+            ! be transferred to a thicker layer.
+            Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
+            mH_ice(i,j,k) = mH_ice(i,j,k) * Icompress_here
+            mH_snow(i,j,k) = mH_snow(i,j,k) * Icompress_here
+            part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
+            excess_cover(i,j) = 0.0
+          else
+            ! Mass from this category needs to be transfered to the next thicker
+            ! category after being compacted to thickness G%mH_cat_bound(k+1).
+            excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
+            part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
+
+            mca_trans = mca_ice(i,j,k) ; mca_old = mca_ice(i,j,k+1)
+            trans_ice(i,K) = mca_trans ; do_any = .true.
+            mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
+            Imca_new = 1.0 / mca_ice(i,j,k+1)
+    !        This is not quite right, or at least not consistent.
+    !        mH_ice(i,j,k+1) = (mca_trans*G%mH_cat_bound(k+1) + &
+    !                          mca_old*mH_ice(i,j,k+1)) * Imca_new
+            mH_ice(i,j,k+1) = mca_ice(i,j,k+1) / part_sz(i,j,k+1)
+
+            if (mca_snow(i,j,k) > 0.0) then
+              snow_trans = mca_snow(i,j,k) ; snow_old = mca_snow(i,j,k+1)
+              trans_snow(i,K) = snow_trans
+              mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + mca_snow(i,j,k)
+            endif
+            mH_snow(i,j,k+1) = mca_snow(i,j,k+1) / part_sz(i,j,k+1)
+
+            mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
+            mH_ice(i,j,k) = 0.0 ; mH_snow(i,j,k) = 0.0
+          endif
+        endif
+      enddo ; enddo
+
+      if (do_any) then
+        call advect_tracers_thicker(mca0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
+                                    TrReg, .false., j, isc, iec)
+        call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
+                                    TrReg, .true., j, isc, iec)
+      endif
+
+      k=G%CatIce
+      do i=isc,iec
+        if (excess_cover(i,j) > 0.0) then
+          if (part_sz(i,j,k) <= 1.0) &
+            call SIS_error(FATAL, &
+                "Category CatIce part_sz inconsistent with excess cover.")
           Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
           mH_ice(i,j,k) = mH_ice(i,j,k) * Icompress_here
           mH_snow(i,j,k) = mH_snow(i,j,k) * Icompress_here
           part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
           excess_cover(i,j) = 0.0
-        else
-          ! Mass from this category needs to be transfered to the next thicker
-          ! category after being compacted to thickness G%mH_cat_bound(k+1).
-          excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
-          part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
-
-          mca_trans = mca_ice(i,j,k) ; mca_old = mca_ice(i,j,k+1)
-          trans_ice(i,K) = mca_trans ; do_any = .true.
-          mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
-          Imca_new = 1.0 / mca_ice(i,j,k+1)
-  !        This is not quite right, or at least not consistent.
-  !        mH_ice(i,j,k+1) = (mca_trans*G%mH_cat_bound(k+1) + &
-  !                          mca_old*mH_ice(i,j,k+1)) * Imca_new
-          mH_ice(i,j,k+1) = mca_ice(i,j,k+1) / part_sz(i,j,k+1)
-
-          if (mca_snow(i,j,k) > 0.0) then
-            snow_trans = mca_snow(i,j,k) ; snow_old = mca_snow(i,j,k+1)
-            trans_snow(i,K) = snow_trans
-            mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + mca_snow(i,j,k)
-          endif
-          mH_snow(i,j,k+1) = mca_snow(i,j,k+1) / part_sz(i,j,k+1)
-
-          mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; part_sz(i,j,k) = 0.0
-          mH_ice(i,j,k) = 0.0 ; mH_snow(i,j,k) = 0.0
         endif
-      endif
-    enddo ; enddo
-
-    if (do_any) then
-      call advect_tracers_thicker(mca0_ice, trans_ice, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .false., j, isc, iec)
-      call advect_tracers_thicker(mca0_snow, trans_snow, G, CS%SIS_tr_adv_CSp, &
-                                  TrReg, .true., j, isc, iec)
-    endif
-  endif ; enddo ! j-loop.
-
-  k=G%CatIce
-  do j=jsc,jec ; if (do_j(j)) then ; do i=isc,iec
-    if (excess_cover(i,j) > 0.0) then
-      if (part_sz(i,j,k) <= 1.0) &
-        call SIS_error(FATAL, &
-            "Category CatIce part_sz inconsistent with excess cover.")
-      Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
-      mH_ice(i,j,k) = mH_ice(i,j,k) * Icompress_here
-      mH_snow(i,j,k) = mH_snow(i,j,k) * Icompress_here
-      part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
-      excess_cover(i,j) = 0.0
-    endif
-  enddo ; endif ; enddo
+      enddo
+    endif 
+  enddo
 
   if (CS%check_conservation) then
     ! Check for consistency between mca_ice, mH_ice, and part_sz.
