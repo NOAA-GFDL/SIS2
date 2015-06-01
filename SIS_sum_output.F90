@@ -769,7 +769,9 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,CS,enth_units,dt) &
+!$OMP                          private(area_pt,Flux_SW)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     area_pt = IST%part_size(i,j,k)
     Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
               (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
@@ -817,7 +819,9 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
   ! as these are not yet known.
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
-
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,i_off,j_off,CS,dt,Ice,IST,&
+!$OMP                                  enth_units) &
+!$OMP                          private(i2,j2,area_pt)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
@@ -835,21 +839,23 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
 
   ! The terms that are added here include surface fluxes that will be passed
   ! directly on into the ocean.
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    area_pt = part_size(i,j,k)
-    pen_frac = 1.0 ; if (k>0) pen_frac = IST%sw_abs_ocn(i,j,k)
-    Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
-              (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,part_size,IST,CS,dt,enth_units)&
+!$OMP                          private(area_pt,pen_frac,Flux_SW)
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+      area_pt = part_size(i,j,k)
+      pen_frac = 1.0 ; if (k>0) pen_frac = IST%sw_abs_ocn(i,j,k)
+      Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
+                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
 
-    CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
-        ( (IST%lprec_top(i,j,k) + IST%fprec_top(i,j,k)) - IST%flux_q_top(i,j,k) )
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
-         ( pen_frac*Flux_SW )
+      CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
+          ( (IST%lprec_top(i,j,k) + IST%fprec_top(i,j,k)) - IST%flux_q_top(i,j,k) )
+      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+           ( pen_frac*Flux_SW )
 
-    if (k>0) &
-      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
-         ((IST%bmelt(i,j,k) + IST%tmelt(i,j,k)) - dt*IST%bheat(i,j))
-  enddo ; enddo ; enddo
+      if (k>0) &
+        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
+           ((IST%bmelt(i,j,k) + IST%tmelt(i,j,k)) - dt*IST%bheat(i,j))
+    enddo ; enddo ; enddo
 
  ! Runoff and calving do not bring in salt, so salt_in(i,j) = 0.0
 

@@ -220,7 +220,11 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
 ! calculations on them, even though they are never used.
   uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
   hprev(:,:,:) = landvolfill
-
+  h_neglect = G%H_subroundoff
+!$OMP parallel default(none) shared(ncat,is,ie,js,je,domore_k,uhr,vhr,uhtr,vhtr,dt, &
+!$OMP                               hprev,G,h_prev,h_end,isd,ied,jsd,jed,uh_neglect, &
+!$OMP                               h_neglect,vh_neglect,ntr,Tr,domore_u,domore_v)
+!$OMP do
   do k=1,ncat
     domore_k(k)=1
     do j=js,je; domore_u(j,k) = .false.; enddo
@@ -232,23 +236,30 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
     ! category is now dramatically thinner than it was previously, add a tiny
     ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
     ! lead rarely to a very slight non-conservation of tracers, but not mass.
-    do i=is,ie ; do j=js,je
+    do j=js,je; do i=is,ie 
       hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
                        max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
       if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
                             (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
-          1e-10*(h_end(i,j,k) + h_prev(i,j,k))) &
+          1e-10*(h_end(i,j,k) + h_prev(i,j,k))) then
+!$OMP critical
         call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
+!$OMP end critical
+      endif
     enddo ; enddo
   enddo
-  h_neglect = G%H_subroundoff
+!$OMP end do nowait
+!$OMP do 
   do j=jsd,jed ; do I=isd,ied-1
     uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
   enddo ; enddo
+!$OMP end do nowait
+!$OMP do
   do J=jsd,jed-1 ; do i=isd,ied
     vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do m=1,ntr
     if (associated(Tr(m)%ad2d_x)) then
       do j=jsd,jed ; do i=isd,ied ; Tr(m)%ad2d_x(I,j) = 0.0 ; enddo ; enddo
@@ -277,6 +288,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       enddo ; enddo ; enddo ; enddo
     endif
   enddo
+!$OMP end parallel
 
   isv = is ; iev = ie ; jsv = js ; jev = je
 
@@ -297,6 +309,8 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       ! Reevaluate domore_u & domore_v unless the valid range is the same size as
       ! before.  Also, do this if there is Strang splitting.
       if ((nsten_halo > 1) .or. (itt==1)) then
+!$OMP parallel do default(none) shared(ncat,domore_k,isv,iev,jsv,jev,stensil, &
+!$OMP                                  domore_u,uhr,vhr,domore_v)
         do k=1,ncat ; if (domore_k(k) > 0) then
           do j=jsv,jev ; if (.not.domore_u(j,k)) then
             do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
@@ -322,7 +336,9 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
     ! Set the range of valid points after this iteration.
     isv = isv + stensil ; iev = iev - stensil
     jsv = jsv + stensil ; jev = jev - stensil
-
+!$OMP parallel do default(none) shared(ncat,domore_k,x_first,Tr,hprev,uhr,uh_neglect, &
+!$OMP                                  domore_u,ntr,nL_max,Idt,isv,iev,jsv,jev,       &
+!$OMP                                  stensil,G,CS,vhr,vh_neglect,domore_v)
     do k=1,ncat ; if (domore_k(k) > 0) then
 !    To ensure positive definiteness of the thickness at each iteration, the
 !  mass fluxes out of each layer are checked each step, and limited to keep
@@ -426,6 +442,9 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
        "SIS_tracer_advect_init must be called before advect_scalar.")
 
   if (CS%use_upwind2d) then
+!$OMP parallel do default(none) shared(is,ie,js,je,ncat,uhtr,vhtr,dt,G,h_end, &
+!$OMP                                  h_prev,scalar) &
+!$OMP                          private(tr_up,flux_U2d_x,flux_U2d_y,vol_end,Ivol_end)
     do k=1,ncat
       do j=js,je ; do I=is-1,ie
         if (uhtr(I,j,k) >= 0.0) then ; tr_up = scalar(i,j,k)
@@ -459,7 +478,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   ! calculations on them, even though they are never used.
     uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
     hprev(:,:,:) = landvolfill
-
+    h_neglect = G%H_subroundoff
+!$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
+!$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
+!$OMP                               h_neglect,vh_neglect)
+!$OMP do
     do k=1,ncat
       domore_k(k)=1
   !  Put the remaining (total) thickness fluxes into uhr and vhr.
@@ -474,17 +497,24 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
                          max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
         if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
                               (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
-            1e-10*(h_end(i,j,k) + h_prev(i,j,k))) &
+            1e-10*(h_end(i,j,k) + h_prev(i,j,k))) then
+!$OMP critical
           call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
+!$OMP end critical
+        endif
       enddo ; enddo
     enddo
-    h_neglect = G%H_subroundoff
+!$OMP end do nowait
+!$OMP do
     do j=jsd,jed ; do I=isd,ied-1
       uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
     enddo ; enddo
+!$OMP end do nowait
+!$OMP do
     do J=jsd,jed-1 ; do i=isd,ied
       vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
     enddo ; enddo
+!$OMP end parallel
 
     isv = is ; iev = ie ; jsv = js ; jev = je
 
@@ -503,6 +533,8 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
         ! Reevaluate domore_u & domore_v unless the valid range is the same size as
         ! before.  Also, do this if there is Strang splitting.
         if ((nsten_halo > 1) .or. (itt==1)) then
+!$OMP parallel do default(none) shared(isv,iev,jsv,jev,ncat,domore_k,domore_u,domore_v, &
+!$OMP                                  stensil,uhr,vhr)
           do k=1,ncat ; if (domore_k(k) > 0) then
             do j=jsv,jev ; if (.not.domore_u(j,k)) then
               do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
@@ -528,7 +560,9 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
       ! Set the range of valid points after this iteration.
       isv = isv + stensil ; iev = iev - stensil
       jsv = jsv + stensil ; jev = jev - stensil
-
+!$OMP parallel do default(none) shared(ncat,isv,iev,jsv,jev,x_first,domore_k,scalar, &
+!$OMP                                  hprev,uhr,uh_neglect,domore_u,Idt,stensil,G,  &
+!$OMP                                  CS,vhr,vh_neglect,domore_v)
       do k=1,ncat ; if (domore_k(k) > 0) then
   !    To ensure positive definiteness of the thickness at each iteration, the
   !  mass fluxes out of each layer are checked each step, and limited to keep

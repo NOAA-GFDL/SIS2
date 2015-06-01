@@ -636,19 +636,39 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   ui_min_trunc(:,:) = 0.0 ; ui_max_trunc(:,:) = 0.0
   vi_min_trunc(:,:) = 0.0 ; vi_max_trunc(:,:) = 0.0
-  if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
-    do j=jsc,jec ; do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
-      ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
-      ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
-    endif ; enddo ; enddo
-    do J=jsc-1,jec ; do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
-      vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
-      vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
-    endif ; enddo ; enddo
-    do j=jsc,jec ; do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo ; enddo
-    do J=jsc-1,jec ; do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo ; enddo
-  endif
 
+  m_neglect = H_subroundoff*CS%Rho_ice
+  m_neglect2 = m_neglect**2 ; m_neglect4 = m_neglect**4
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,CS,dt_slow,ui_min_trunc,u_IC,ui,   &
+!$OMP                               ui_max_trunc,vi_min_trunc,vi_max_trunc,v_IC,vi,mice, &
+!$OMP                               msnow,ci,dt,Tdamp,I_2EC,mis,ci_proj,pres_mice,       &
+!$OMP                               dx2B,dy2B,dx_dyB,dy_dxB,dx2T,dy2T,dx_dyT,dy_dxT,     &
+!$OMP                               mi_ratio_A_q,m_neglect4,m_neglect2,mi_u,mi_v,q,      &
+!$OMP                               m_neglect,azon,bzon,czon,dzon,f2dt_u,I1_f2dt2_u,PFu, &
+!$OMP                               sea_lev,amer,bmer,cmer,dmer,f2dt_v,I1_f2dt2_v,PFv,   &
+!$OMP                               del_sh_min_pr                         )              &
+!$OMP                       private(dxharm,sum_area,muq2,mvq2,muq,mvq,tot_area)
+  if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
+!$OMP do
+    do j=jsc,jec 
+      do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
+        ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
+        ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
+      endif ; enddo 
+      do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo
+    enddo
+!$OMP end do nowait
+!$OMP do
+    do J=jsc-1,jec 
+      do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
+        vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
+        vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
+      endif ; enddo 
+      do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo
+    enddo
+!$OMP end do nowait
+  endif
+!$OMP do
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     ! Store the total snow and ice mass.
     mis(i,j) = mice(i,j) + msnow(i,j)
@@ -673,26 +693,33 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, CS)
 
   ! Zero out ice velocities with no mass.
+!$OMP do
   do j=jsc,jec ; do I=isc-1,iec
     if (G%mask2dCu(I,j) * (mis(i,j)+mis(i+1,j)) == 0.0) ui(I,j) = 0.0
   enddo ; enddo
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do i=isc,iec
     if (G%mask2dCv(i,J) * (mis(i,j)+mis(i,j+1)) == 0.0) vi(I,j) = 0.0
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     dx2B(I,J) = G%dxBu(I,J)*G%dxBu(I,J) ; dy2B(I,J) = G%dyBu(I,J)*G%dyBu(I,J)
   enddo ; enddo
+!$OMP end do nowait
+!$OMP do
   do J=jsc-2,jec+1 ; do I=isc-2,iec+1
     dx_dyB(I,J) = G%dxBu(I,J)*G%IdyBu(I,J) ; dy_dxB(I,J) = G%dyBu(I,J)*G%IdxBu(I,J)
   enddo ; enddo
+!$OMP end do nowait
+!$OMP do
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     dx2T(i,j) = G%dxT(i,j)*G%dxT(i,j) ; dy2T(i,j) = G%dyT(i,j)*G%dyT(i,j)
     dx_dyT(i,j) = G%dxT(i,j)*G%IdyT(i,j) ; dy_dxT(i,j) = G%dyT(i,j)*G%IdxT(i,j)
   enddo ; enddo
-
-  m_neglect = H_subroundoff*CS%Rho_ice
-  m_neglect2 = m_neglect**2 ; m_neglect4 = m_neglect**4
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
       sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
@@ -733,22 +760,25 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       mi_ratio_A_q(I,J) = 1.0 / sum_area
     endif
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do j=jsc-1,jec+1 ; do I=isc-1,iec
     mi_u(I,j) = 0.5*(mis(i+1,j) + mis(i,j))
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do i=isc-1,iec+1
     mi_v(i,J) = 0.5*(mis(i,j+1) + mis(i,j))
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
     q(I,J) = G%CoriolisBu(I,J) * tot_area / &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
   enddo ; enddo
-
+!$OMP do 
   do j=jsc,jec ; do I=isc-1,iec
     ! Calculate terms related to the Coriolis force on the zonal velocity.
     azon(I,j) = 0.25 * mi_v(i+1,J) * q(I,J)
@@ -763,7 +793,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Calculate the zonal acceleration due to the sea level slope.
     PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j)
   enddo ; enddo
-
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do i=isc,iec
     ! Calculate terms related to the Coriolis force on the meridional velocity.
     amer(I-1,j) = 0.25 * mi_u(I-1,j) * q(I-1,J)
@@ -778,6 +809,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Calculate the meridional acceleration due to the sea level slope.
     PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J)
   enddo ; enddo
+!$OMP end parallel
 
   if (CS%debug) then
     call uchksum(PFu, "PFu in ice_C_dynamics", G)
@@ -813,6 +845,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     !   The calculation of sh_Ds has the widest halo. The logic below avoids
     ! a halo update when possible.
     !   With a halo of >= 2 this is:  do J=jsc-2,jec+1 ; do I=isc-2,iec+1
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,halo_sh_Ds,sh_Ds,G, &
+!$OMP                                  dx_dyB,dy_dxB,ui,vi)
     do J=jsc-halo_sh_Ds,jec+halo_sh_Ds-1 ; do I=isc-halo_sh_Ds,iec+halo_sh_Ds-1
       ! This uses a no-slip boundary condition.
       sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * &
@@ -820,7 +854,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
            dy_dxB(I,J)*(vi(i+1,J)*G%IdyCv(i+1,J) - vi(i,J)*G%IdyCv(i,J)))
     enddo ; enddo
     if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=CORNER)
-
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,sh_Dt,sh_Dd,dy_dxT,dx_dyT,G,ui,vi)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
       sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
                                  G%IdyCu(I-1,j)*ui(I-1,j)) - &
@@ -833,6 +867,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
    if (CS%project_ci) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ci_proj,ci,dt_cumulative, &
+!$OMP                                  sh_Dd,pres_mice,CS)
      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
        ! Estimate future ice concentrations from the approximate expression
        !   d ci / dt = - ci * sh_Dt
@@ -846,7 +882,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
    endif
 
    ! calculate viscosities - how often should we do this ?
-
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,del_sh,zeta,sh_Dd,sh_Dt, &
+!$OMP                                  I_EC2,sh_Ds,pres_mice,mice,del_sh_min_pr)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
       ! Averaging the squared shearing strain is larger than squaring
       ! the averaged strain.  I don't know what is better. -RWH
@@ -862,6 +899,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     I_1pdt_T = 1.0 / (1.0 + dt_2Tdamp)
     I_1pE2dt_T = 1.0 / (1.0 + EC2*dt_2Tdamp)
     if (CS%weak_low_shear) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,dt_2Tdamp,zeta, &
+!$OMP                                  sh_Dd,del_sh,I_EC2,sh_Dt)
       do j=jsc-1,jec+1 ; do i=isc-1,iec+1
         ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
         CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
@@ -870,6 +909,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
       enddo ; enddo
     else
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,dt_2Tdamp,zeta, &
+!$OMP                                  sh_Dd,I_EC2,sh_Dt,pres_mice,mice)
       do j=jsc-1,jec+1 ; do i=isc-1,iec+1
         ! This expression uses that Pres=2*del_sh*zeta with an elliptic yield curve.
         CS%str_d(i,j) = I_1pdt_T * ( CS%str_d(i,j) + dt_2Tdamp * &
@@ -878,7 +919,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
       enddo ; enddo
     endif
-
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,I_EC2,dt_2Tdamp, &
+!$OMP                                  G,zeta,mi_ratio_A_q,sh_Ds)
     do J=jsc-1,jec ; do I=isc-1,iec
       ! zeta is already set to 0 over land.
       CS%str_s(I,J) = I_1pdt_T * ( CS%str_s(I,J) + (I_EC2 * dt_2Tdamp) * &
@@ -893,6 +935,13 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     do I=isc-1,iec
       u_tmp(I,jsc-1) = ui(I,jsc-1) ; u_tmp(I,jec+1) = ui(I,jec+1) ;
     enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,u_tmp,ui,vi,azon,bzon,czon,dzon, &
+!$OMP                                  G,CS,dy2T,dx2B,vo,uo,Cor_u,f2dt_u,I1_f2dt2_u,    &
+!$OMP                                  mi_u,dt,PFu,fxat,I_cdRhoDt,cdRho,m_neglect,fxoc, &
+!$OMP                                  fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,          &
+!$OMP                                  ui_min_trunc,ui_max_trunc) &
+!$OMP                          private(Cor,fxic_now,v2_at_u,uio_init,drag_u,b_vel0, &
+!$OMP                                  m_uio_explicit,uio_pred,uio_C)
     do j=jsc,jec ; do I=isc-1,iec
       ! Save the current values of u for later use in updating v.
       u_tmp(I,j) = ui(I,j)
@@ -970,6 +1019,13 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
         endif
       endif
     enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,amer,bmer,cmer,dmer,u_tmp,G,CS, &
+!$OMP                                  dx2T,dy2B,uo,vo,vi,Cor_v,f2dt_v,I1_f2dt2_v,mi_v, &
+!$OMP                                  dt,PFv,fyat,I_cdRhoDt,cdRho,m_neglect,fyoc,fyic, &
+!$OMP                                  fyic_d,fyic_t,fyic_s,do_trunc_its,vi_min_trunc,  &
+!$OMP                                  vi_max_trunc) &
+!$OMP                          private(Cor,fyic_now,u2_at_v,vio_init,drag_v,    &
+!$OMP                                  m_vio_explicit,b_vel0,vio_pred,vio_C)
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
                   (bmer(I,j) * u_tmp(I,j) + dmer(I-1,j+1) * u_tmp(I-1,j+1)))
@@ -1109,6 +1165,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   ! make averages
   I_sub_steps = 1.0/EVP_steps
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,fxoc,fxic,Cor_u,fxic_d,fxic_t, &
+!$OMP                               fxic_s,I_sub_steps,fyoc,fyic,Cor_v,fyic_d,       &
+!$OMP                               fyic_t,fyic_s) 
+!$OMP do
   do j=jsc,jec ; do I=isc-1,iec
     fxoc(I,j) = fxoc(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
     fxic(I,j) = fxic(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
@@ -1118,6 +1178,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     fxic_t(I,j) = fxic_t(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
     fxic_s(I,j) = fxic_s(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
   enddo ; enddo
+!$OMP end do nowait
+!$OMP do
   do J=jsc-1,jec ; do i=isc,iec
     fyoc(i,J) = fyoc(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
     fyic(i,J) = fyic(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
@@ -1127,7 +1189,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     fyic_t(i,J) = fyic_t(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
     fyic_s(i,J) = fyic_s(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
   enddo ; enddo
-
+!$OMP end parallel
   !   Truncate any overly large velocity components.  These final velocities
   ! are the ones that are used for continuity and transport, and hence have
   ! CFL limitations that must be satisfied for numerical stability.

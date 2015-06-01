@@ -132,19 +132,22 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
-    do k=1,G%CatIce ; do j=js,je ; do I=is-1,ie
+!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt) &
+!$OMP                       private(h_up)
+!$OMP do
+    do j=js,je ; do k=1,G%CatIce ; do I=is-1,ie
       if (u(I,j) >= 0.0) then ; h_up = hin(i,j,k)
       else ; h_up = hin(i+1,j,k) ; endif
       uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
     enddo ; enddo ; enddo
-
-    do k=1,G%CatIce ; do J=js-1,je ; do i=is,ie
+!$OMP do
+    do J=js-1,je ; do k=1,G%CatIce ; do i=is,ie
       if (v(i,J) >= 0.0) then ; h_up = hin(i,j,k)
       else ; h_up = hin(i,j+1,k) ; endif
       vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
     enddo ; enddo ; enddo
-
-    do k=1,G%CatIce ; do j=js,je ; do i=is,ie
+!$OMP do
+    do j=js,je ; do k=1,G%CatIce ; do i=is,ie
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * &
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
@@ -152,7 +155,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
         call SIS_error(FATAL, 'Negative thickness encountered in ice_continuity().')
       endif
     enddo ; enddo ; enddo
-
+!$OMP end parallel
   elseif (x_first) then
   !    First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec
@@ -161,7 +164,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
     call cpu_clock_begin(id_clock_update)
 !$OMP parallel do default(none) shared(LB,ncat,G,uh,hin,dt,h)
-    do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+    do j=LB%jsh,LB%jeh ; do k=1,ncat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
         call SIS_error(FATAL, &
@@ -178,7 +181,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
     call cpu_clock_begin(id_clock_update)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,vh)
-    do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+    do j=LB%jsh,LB%jeh ; do k=1,ncat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
         call SIS_error(FATAL, &
@@ -196,7 +199,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
     call cpu_clock_begin(id_clock_update)
 !$OMP parallel do default(none) shared(ncat,LB,h,hin,dt,G,vh)
-    do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+    do j=LB%jsh,LB%jeh ; do k=1,ncat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
         call SIS_error(FATAL, &
@@ -212,7 +215,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, CS)
 
     call cpu_clock_begin(id_clock_update)
 !$OMP parallel do default(none) shared(ncat,LB,h,dt,G,uh)
-    do k=1,ncat ; do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+    do j=LB%jsh,LB%jeh ; do k=1,ncat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
         call SIS_error(FATAL, &
@@ -263,12 +266,15 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
   call cpu_clock_begin(id_clock_update)
 
   htot(:,:) = 0.0
-  do k=1,nz ; do j=jsh,jeh ; do i=G%isd,G%ied
-    htot(i,j) = htot(i,j) + h_in(i,j,k)
-  enddo ; enddo ; enddo
-  do j=jsh,jeh ; do i=G%isd,G%ied
-    I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
-  enddo ; enddo
+!$OMP parallel do default(none) shared(jsh,jeh,nz,G,htot,h_in,I_htot)
+  do j=jsh,jeh 
+    do k=1,nz ; do i=G%isd,G%ied
+      htot(i,j) = htot(i,j) + h_in(i,j,k)
+    enddo ; enddo
+    do i=G%isd,G%ied
+      I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
+    enddo 
+  enddo
 
   ! This sets hl and hr.
   if (CS%upwind_1st) then
@@ -283,6 +289,9 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
+!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,u,htot,hL,hR,duhdu, &
+!$OMP                                  visc_rem,dt,G,CS,nz,uh,h_in,I_htot) &
+!$OMP                          private(do_i,uhtot)
 
   do j=jsh,jeh
     do I=ish-1,ieh ; do_i(I) = .true. ; enddo
@@ -390,7 +399,7 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
     htot, &    ! The total thickness summed across categories, in H.
     I_htot, &  ! The inverse of htot or 0, in H-1.
     hl, hr     ! Left and right face thicknesses, in m.
-  real, dimension(SZI_(G),SZJB_(G)) :: &
+  real, dimension(SZI_(G)) :: &
     vhtot      ! The total transports in H m2 s-1.
   logical, dimension(SZI_(G)) :: do_i
   real, dimension(SZI_(G)) :: &
@@ -403,12 +412,16 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
   call cpu_clock_begin(id_clock_update)
 
   htot(:,:) = 0.0
-  do k=1,nz ; do j=G%jsd,G%jed ; do i=ish,ieh
-    htot(i,j) = htot(i,j) + h_in(i,j,k)
-  enddo ; enddo ; enddo
-  do j=G%jsd,G%jed ;  do i=ish,ieh
-    I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
-  enddo ; enddo
+
+!$OMP parallel do default(none) shared(ish,ieh,G,nz,htot,h_in,I_htot)
+  do j=G%jsd,G%jed
+    do k=1,nz ; do i=ish,ieh
+      htot(i,j) = htot(i,j) + h_in(i,j,k)
+    enddo ; enddo
+    do i=ish,ieh
+      I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
+    enddo 
+  enddo
 
   ! This sets hl and hr.
   if (CS%upwind_1st) then
@@ -423,18 +436,21 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
+!$OMP parallel do default(none) shared(ish,ieh,jsh,jeh,v,htot,hL,hR,dvhdv, &
+!$OMP                                  visc_rem,dt,G,CS,nz,vh,h_in,I_htot) &
+!$OMP                          private(do_i,vhtot)
   do J=jsh-1,jeh
     do i=ish,ieh ; do_i(i) = .true. ; enddo
     ! This sets vh and dvhdv.
-    call merid_flux_layer(v(:,J), htot, hL, hR, vhtot(:,J), dvhdv, visc_rem, &
+    call merid_flux_layer(v(:,J), htot, hL, hR, vhtot, dvhdv, visc_rem, &
                           dt, G, J, ish, ieh, do_i, CS%vol_CFL)
 
     ! Partition the transports by category in proportion to their relative masses.
     do k=1,nz ; do i=ish,ieh
       if (v(i,J) >= 0.0) then
-        vh(i,J,k) = vhtot(i,J) * (h_in(i,j,k) * I_htot(i,j))
+        vh(i,J,k) = vhtot(i) * (h_in(i,j,k) * I_htot(i,j))
       else
-        vh(i,J,k) = vhtot(i,J) * (h_in(i,j+1,k) * I_htot(i,j+1))
+        vh(i,J,k) = vhtot(i) * (h_in(i,j+1,k) * I_htot(i,j+1))
       endif
     enddo ; enddo
 
@@ -554,6 +570,8 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   endif
 
   if (use_2nd) then
+!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r) &
+!$OMP                          private(h_im1,h_ip1)
     do j=jsl,jel ; do i=isl,iel
       h_im1 = G%mask2dT(i-1,j) * h_in(i-1,j) + (1.0-G%mask2dT(i-1,j)) * h_in(i,j)
       h_ip1 = G%mask2dT(i+1,j) * h_in(i+1,j) + (1.0-G%mask2dT(i+1,j)) * h_in(i,j)
@@ -561,31 +579,35 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
       h_r(i,j) = 0.5*( h_ip1 + h_in(i,j) )
     enddo ; enddo
   else
-    do j=jsl,jel ; do i=isl-1,iel+1
-      if ((G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j)) == 0.0) then
-        slp(i,j) = 0.0
-      else
-        ! This uses a simple 2nd order slope.
-        slp(i,j) = 0.5 * (h_in(i+1,j) - h_in(i-1,j))
-        ! Monotonic constraint, see Eq. B2 in Lin 1994, MWR (132)
-        dMx = max(h_in(i+1,j), h_in(i-1,j), h_in(i,j)) - h_in(i,j)
-        dMn = h_in(i,j) - min(h_in(i+1,j), h_in(i-1,j), h_in(i,j))
-        slp(i,j) = sign(1.,slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
-                ! * (G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j))
-      endif
-    enddo; enddo
+!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r,slp) &
+!$OMP                          private(dMx,dMn,h_im1,h_ip1)
+    do j=jsl,jel 
+      do i=isl-1,iel+1
+        if ((G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j)) == 0.0) then
+          slp(i,j) = 0.0
+        else
+          ! This uses a simple 2nd order slope.
+          slp(i,j) = 0.5 * (h_in(i+1,j) - h_in(i-1,j))
+          ! Monotonic constraint, see Eq. B2 in Lin 1994, MWR (132)
+          dMx = max(h_in(i+1,j), h_in(i-1,j), h_in(i,j)) - h_in(i,j)
+          dMn = h_in(i,j) - min(h_in(i+1,j), h_in(i-1,j), h_in(i,j))
+          slp(i,j) = sign(1.,slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
+                  ! * (G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j))
+        endif
+      enddo
 
-    do j=jsl,jel ; do i=isl,iel
-      ! Neighboring values should take into account any boundaries.  The 3
-      ! following sets of expressions are equivalent.
-    ! h_im1 = h_in(i-1,j,k) ; if (G%mask2dT(i-1,j) < 0.5) h_im1 = h_in(i,j)
-    ! h_ip1 = h_in(i+1,j,k) ; if (G%mask2dT(i+1,j) < 0.5) h_ip1 = h_in(i,j)
-      h_im1 = G%mask2dT(i-1,j) * h_in(i-1,j) + (1.0-G%mask2dT(i-1,j)) * h_in(i,j)
-      h_ip1 = G%mask2dT(i+1,j) * h_in(i+1,j) + (1.0-G%mask2dT(i+1,j)) * h_in(i,j)
-      ! Left/right values following Eq. B2 in Lin 1994, MWR (132)
-      h_l(i,j) = 0.5*( h_im1 + h_in(i,j) ) + oneSixth*( slp(i-1,j) - slp(i,j) )
-      h_r(i,j) = 0.5*( h_ip1 + h_in(i,j) ) + oneSixth*( slp(i,j) - slp(i+1,j) )
-    enddo; enddo
+      do i=isl,iel
+        ! Neighboring values should take into account any boundaries.  The 3
+        ! following sets of expressions are equivalent.
+      ! h_im1 = h_in(i-1,j,k) ; if (G%mask2dT(i-1,j) < 0.5) h_im1 = h_in(i,j)
+      ! h_ip1 = h_in(i+1,j,k) ; if (G%mask2dT(i+1,j) < 0.5) h_ip1 = h_in(i,j)
+        h_im1 = G%mask2dT(i-1,j) * h_in(i-1,j) + (1.0-G%mask2dT(i-1,j)) * h_in(i,j)
+        h_ip1 = G%mask2dT(i+1,j) * h_in(i+1,j) + (1.0-G%mask2dT(i+1,j)) * h_in(i,j)
+        ! Left/right values following Eq. B2 in Lin 1994, MWR (132)
+        h_l(i,j) = 0.5*( h_im1 + h_in(i,j) ) + oneSixth*( slp(i-1,j) - slp(i,j) )
+        h_r(i,j) = 0.5*( h_ip1 + h_in(i,j) ) + oneSixth*( slp(i,j) - slp(i+1,j) )
+      enddo
+    enddo
   endif
 
   if (use_CW84) then
@@ -647,6 +669,8 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   endif
 
   if (use_2nd) then
+!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r) &
+!$OMP                          private(h_jm1,h_jp1)
     do j=jsl,jel ; do i=isl,iel
       h_jm1 = G%mask2dT(i,j-1) * h_in(i,j-1) + (1.0-G%mask2dT(i,j-1)) * h_in(i,j)
       h_jp1 = G%mask2dT(i,j+1) * h_in(i,j+1) + (1.0-G%mask2dT(i,j+1)) * h_in(i,j)
@@ -654,6 +678,8 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
       h_r(i,j) = 0.5*( h_jp1 + h_in(i,j) )
     enddo ; enddo
   else
+!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,slp) &
+!$OMP                          private(dMx,dMn)
     do j=jsl-1,jel+1 ; do i=isl,iel
       if ((G%mask2dT(i,j-1) * G%mask2dT(i,j) * G%mask2dT(i,j+1)) == 0.0) then
         slp(i,j) = 0.0
@@ -667,7 +693,8 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
                 ! * (G%mask2dT(i,j-1) * G%mask2dT(i,j) * G%mask2dT(i,j+1))
       endif
     enddo ; enddo
-
+!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r,slp) &
+!$OMP                          private(h_jm1,h_jp1)
     do j=jsl,jel ; do i=isl,iel
       ! Neighboring values should take into account any boundaries.
       h_jm1 = G%mask2dT(i,j-1) * h_in(i,j-1) + (1.0-G%mask2dT(i,j-1)) * h_in(i,j)
