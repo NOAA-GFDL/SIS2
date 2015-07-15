@@ -633,8 +633,8 @@ subroutine set_grid_derived_metrics(G, param_file)
     G%IareaBu(I,J) = Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 
-68 FORMAT ("WARNING: PE ",I4," ",a3,"(",I4,",",I4,") = ",ES10.4, &
-           " is being changed to ",ES10.4,".")
+68 FORMAT ("WARNING: PE ",I4," ",a3,"(",I4,",",I4,") = ",ES12.4, &
+           " is being changed to ",ES12.4,".")
 
 end subroutine set_grid_derived_metrics
 
