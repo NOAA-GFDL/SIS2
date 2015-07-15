@@ -684,7 +684,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ! Setting a minimum value of the shear magnitudes is equivalent to setting
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
-    del_sh_min_pr(i,j) = (2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
+    if (dxharm > 0.) then
+      del_sh_min_pr(i,j) = (2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
+    else
+      del_sh_min_pr(i,j) = 0.
+    endif
   enddo ; enddo
 
   ! Ensure that the input stresses are not larger than could be justified by
@@ -891,8 +895,12 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                    (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
-      zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / &
-         max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j))
+      if (max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j)) /=0.) then
+        zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / &
+           max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j))
+      else
+        zeta(i,j) = 0.
+      endif
     enddo ; enddo
 
     ! Step the stress component equations semi-implicitly.
