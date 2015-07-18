@@ -38,6 +38,7 @@ use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
 use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operator(-)
+use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use ice_type_mod, only : ice_data_type, ice_state_type
@@ -293,6 +294,7 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
                             ! the NetCDF file.
   integer :: i, j, k, is, ie, js, je, L, m, nlay, ncat, hem
   integer :: start_of_day, num_days
+  integer :: iyear, imonth, iday, ihour, iminute, isecond, itick ! For call to get_date()
   real    :: reday, var
   character(len=120) :: statspath_nc
   character(len=300) :: mesg
@@ -558,10 +560,16 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   endif
 
   if (is_root_pe() .and. CS%write_stdout) then
-!     write(*,'(A,A," ",A,": En ",ES12.6, ", MaxCFL ", F8.5, ", Area ", &
-    write(*,'(A,A," ",A,": Area", 2(ES19.12), ", Mass ", 2(ES18.11))') &
-      trim(mesg_intro), trim(day_str(1:3))//trim(day_str(4:)), trim(n_str), &
-      Area_NS(1:2), mass_NS(1:2)
+    if (get_calendar_type() == NO_CALENDAR) then
+      write(*,'(A,A," ",A,": Area", 2(ES19.12), ", Mass ", 2(ES18.11))') &
+        trim(mesg_intro), trim(day_str(1:3))//trim(day_str(4:)), trim(n_str), &
+        Area_NS(1:2), mass_NS(1:2)
+    else
+      call get_date(day, iyear, imonth, iday, ihour, iminute, isecond, itick)
+      write(*,'("SIS Date",i7,2("/",i2.2)," ",i2.2,2(":",i2.2)," ",A, &
+        &": Area", 2(ES19.12), ", Mass ", 2(ES18.11))') &
+        iyear, imonth, iday, ihour, iminute, isecond, trim(n_str), Area_NS(1:2), mass_NS(1:2)
+    endif
 
     if (CS%ntrunc > 0) then
       write(*,'(A," Sea Ice Truncations ",I0)') &
