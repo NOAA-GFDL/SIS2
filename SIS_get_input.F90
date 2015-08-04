@@ -31,7 +31,7 @@ module SIS_get_input
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : open_param_file, param_file_type, read_param
-use MOM_io, only : file_exists, close_file, slasher
+use MOM_io, only : file_exists, close_file, slasher, ensembler
 use MOM_io, only : open_namelist_file, check_nml_error
 
 implicit none ; private
@@ -41,7 +41,7 @@ public Get_SIS_Input, archaic_nml_check
 ! This structure is to simplify communication with the calling code.
 
 type, public :: directories
-  character(len=120) :: &
+  character(len=240) :: &
     restart_input_dir = ' ',& ! The directory to read restart and input files.
     restart_output_dir = ' ',&! The directory into which to write restart files.
     output_directory = ' ', & ! The directory to use to write the model output.
@@ -65,13 +65,14 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
 !  subroutine also calls the subroutine that allows run-time changes !
 !  in parameters.                                                    !
   integer, parameter :: npf = 5 ! Maximum number of parameter files
-  character(len=120) :: &
+  character(len=240) :: &
     parameter_filename(npf) = ' ', & ! List of files containing parameters.
     output_directory = ' ', &   ! Directory to use to write the model output.
     restart_input_dir = ' ', &  ! Directory for reading restart and input files.
     restart_output_dir = ' ', & ! Directory into which to write restart files.
     input_filename  = ' '       ! A string that indicates the input files or how
                                 ! the run segment should be started.
+  character(len=240) :: output_dir
   integer :: unit, io, ierr, valid_param_files
 
   namelist /SIS_input_nml/ output_directory, input_filename, parameter_filename, &
@@ -89,18 +90,20 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
   enddo
 10 call close_file(unit)
   if (present(dirs)) then
-    dirs%output_directory = slasher(output_directory)
-    dirs%restart_output_dir = slasher(restart_output_dir)
-    dirs%restart_input_dir = slasher(restart_input_dir)
-    dirs%input_filename = input_filename
+    dirs%output_directory = trim(slasher(ensembler(output_directory)))
+    dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir)))
+    dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir)))
+    dirs%input_filename = trim(ensembler(input_filename))
   endif
 
   if (present(param_file)) then
+    output_dir = trim(slasher(ensembler(output_directory)))
     valid_param_files = 0
     do io = 1, npf
       if (len_trim(trim(parameter_filename(io))) > 0) then
         call open_param_file(trim(parameter_filename(io)), param_file, &
-                             check_params, component="SIS")
+                             check_params, component="SIS", &
+                             doc_file_dir=output_dir)
         valid_param_files = valid_param_files + 1
       endif
     enddo
