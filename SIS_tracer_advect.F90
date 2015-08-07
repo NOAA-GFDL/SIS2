@@ -485,9 +485,21 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
 !$OMP do
     do k=1,ncat
       domore_k(k)=1
-  !  Put the remaining (total) thickness fluxes into uhr and vhr.
-      do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
-      do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
+
+      ! Put the remaining (total) thickness fluxes into uhr and vhr.
+      ! Initialise domore_u, domore_v
+      do j=js,je
+        domore_u(j, k) = .false.
+        do I=is-1,ie
+          uhr(I,j,k) = dt*uhtr(I,j,k)
+        enddo
+      enddo
+      do J=js-1,je
+        domore_v(j, k) = .false.
+        do i=is,ie
+          vhr(i,J,k) = dt*vhtr(i,J,k)
+        enddo
+      enddo
       ! Find the previous total mass (or volume) of ice, but in the case that this
       ! category is now dramatically thinner than it was previously, add a tiny
       ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
