@@ -3161,12 +3161,15 @@ contains
         localberg%uvel=1.
         localberg%vvel=0.
         call add_new_berg_to_list(bergs%first, localberg)
+        localberg%start_lon=localberg%lon-0.001
         localberg%uvel=-1.
         localberg%vvel=0.
         call add_new_berg_to_list(bergs%first, localberg)
+        localberg%start_lat=localberg%lat+0.001
         localberg%uvel=0.
         localberg%vvel=1.
         call add_new_berg_to_list(bergs%first, localberg)
+        localberg%start_lat=localberg%lat-0.001
         localberg%uvel=0.
         localberg%vvel=-1.
         call add_new_berg_to_list(bergs%first, localberg)
