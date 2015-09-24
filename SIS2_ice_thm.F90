@@ -101,6 +101,10 @@ type, public :: SIS2_ice_thm_CS ; private
   ! temperature to be such that the brine content is less than "liq_lim" of
   ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
   real :: liq_lim = .99
+  logical :: old_heat_cap    ! If true, use an older linearization of the
+                          ! sea ice heat capacity for temperatures above the
+                          ! freezing pointin the calculation of the initial ice
+                          ! temperature estimate.  The default is false.
 
   logical :: do_deltaEdd = .true.  ! If true, use a delta-Eddington radiative
                           ! transfer calculation for the shortwave radiation
@@ -205,6 +209,11 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
                  "Setting this to 0 causes the explicit diffusive form. \n"//&
                  "to always be used.", units="degC", default=40.0)
   CS%temp_range_est = abs(CS%temp_range_est)
+
+  call get_param(param_file, mod, "OLD_ICE_HEAT_CAPACITY", CS%old_heat_cap, &
+                 "If true, use an older linearization of the sea ice heat \n"//&
+                 "capacity for temperatures above the freezing point in the \n"//&
+                 "calculation of the initial ice temperature estimate.", default=.false.)
 
   if (CS%do_deltaEdd) then
     call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
@@ -543,18 +552,21 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   ! treatment of layer coupling.
 
   ! Determine the effective layer heat capacities.
-  !   bb = dheat/dTemp, as derived from a linearization of the enthalpy equation.
+  !   bb = dheat/dTemp, as derived from a linearization of the enthalpy equation
+  !     but using the value for ice near the melt point if temp_IC is above T_fr.
   bb(0) = mL_snow*ITV%Cp_ice
-  do k=1,NkIce   ! load bb with heat capacity term.
-    if ((tfi(k) < 0.0) ) then ! .and. (temp_IC(k) <= tfi(k))) then
-      bb(k) = mL_ice*(ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * &
-                       (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
+  do k=1,NkIce   ! Store the heat capacity term in bb.
+    if (tfi(k) >= 0.0) then ! This is pure ice.
+      bb(k) = mL_ice * ITV%Cp_ice
+    elseif ((temp_IC(k) < tfi(k)) .or. (CS%old_heat_cap))  then
+      bb(k) = mL_ice * (ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * &
+                        (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
       ! Or mroe generally:
       !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
-      ! bb(k) = mL_ice*(ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
-      !                ((ITV%Cp_brine-ITV%Cp_ice))
-    else
-      bb(k) = mL_ice*ITV%Cp_ice
+      ! bb(k) = mL_ice * (ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
+      !                   ((ITV%Cp_brine-ITV%Cp_ice))
+    else ! Use the value when temp_IC = tfi.
+      bb(k) = mL_ice * (ITV%Cp_brine - ITV%LI / tfi(k))
     endif
   enddo
 
@@ -1423,7 +1435,7 @@ function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
         !  dEn_dT = ( -LI * (T_fr / Temp**2)) + &
         !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/Temp)
         dT_dE = (-Temp) / (ITV%enth_unit * (ITV%LI * (T_fr / Temp) + &
-                  (ITV%Cp_Ice*(-Temp) + (ITV%Cp_Brine - ITV%Cp_Ice) * (-Temp))))
+                  (ITV%Cp_Ice*(-Temp) + (ITV%Cp_Brine - ITV%Cp_Ice) * (-T_Fr))))
     else  ! This layer is already melted, so just warm it to 0 C.
       dT_dE = I_CpW_Eu
     endif
@@ -1489,6 +1501,7 @@ function Temp_from_En_S(En, S, ITV) result(Temp)
       ! Could En_Tmin be approximated as -LI + (Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) ?
       T_max = T_fr ; En_Tmax = (ITV%Cp_Water*T_fr)
 
+      ! This might be a good enough first guess that bracketing is unnecessary.
       T_guess = Temp
 !      dTemp(:) = 0.0 ; T_itt(:) = 0.0
       do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
@@ -1560,8 +1573,10 @@ function e_to_melt_TS(T, S, ITV) result(e_to_melt)
     e_to_melt = ITV%Cp_Water * (-T + T_Fr)
   elseif (ITV%Cp_Ice == ITV%Cp_brine) then
     e_to_melt = (ITV%LI - ITV%Cp_ice*T) * (1.0 - T_Fr/T)
+            ! =  ITV%LI * (1.0 - T_Fr/T) + ITV%Cp_ice * (T_Fr - T)
   else
-    call SIS_error(FATAL, "Write e_to_melt_TS for Cp_ice /= Cp_brine.")
+    e_to_melt = ITV%LI * (1.0 - T_fr/T) + (ITV%Cp_Ice * (T_Fr - T) + &
+                   (ITV%Cp_Brine - ITV%Cp_Ice) * (T_fr*log(T_fr/T)))
   endif
 
 end function e_to_melt_TS
