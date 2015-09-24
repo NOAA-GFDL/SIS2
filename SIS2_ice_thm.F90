@@ -548,17 +548,17 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   do k=1,NkIce   ! load bb with heat capacity term.
   !### Uncomment this later to account for the difference between CP_ice and CP_brine
   ! if ((tfi(k) < 0.0) .and. (temp_IC(k) <= tfi(k))) then
-  !   bb(k) = mL_ice*((ITV%Cp_ice - tfi(k)*ITV%LI/(temp_IC(k)*temp_IC(k))) + &
-  !                  (ITV%Cp_brine-ITV%Cp_ice) * (tfi(k)/temp_IC(k)))
+  !   bb(k) = mL_ice*(ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * 
+  !                    (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
   !   ! Or mroe generally:
   !   !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
-  !   ! bb(k) = mL_ice*(ITV%Cp_ice + S_Sf * &
-  !   !                ((ITV%Cp_brine-ITV%Cp_ice) + ITV%LI*dSf_dT)
+  !   ! bb(k) = mL_ice*(ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
+  !   !                ((ITV%Cp_brine-ITV%Cp_ice))
   ! else
   !   bb(k) = mL_ice*ITV%Cp_ice
   ! endif
     salt_part = 0.0
-    if (sice(k)>0.0) salt_part = tfi(k)*ITV%LI/(temp_IC(k)*temp_IC(k))
+    if (sice(k)>0.0) salt_part = ITV%LI * (tfi(k) / temp_IC(k)**2)
     bb(k) = mL_ice*(ITV%Cp_ice-salt_part) ! add coupling to this later
   enddo
 
@@ -758,7 +758,8 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   I_liq_lim = 1.0 / CS%liq_lim
   do k=1,NkIce
     enth_liq_lim = enth_from_TS(tfi(k)*I_liq_lim, sice(k), ITV)
-    if (enthalpy(k) > enth_liq_lim) then ! push excess energy to closer of top or bottom melt
+    if (enthalpy(k) > enth_liq_lim) then
+      ! Put excess energy into the closer of top or bottom melt.
       e_extra = (enthalpy(k) - enth_liq_lim) * mL_ice * I_enth_unit
       e_extra_sum = e_extra_sum + e_extra
       enthalpy(k) = enth_liq_lim
