@@ -651,7 +651,8 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   ! tolerance for the iterative estimate of a new temperature, that would go into
   ! the numerator but not the denominator.  The present form is based on the
   ! assumption that floating-point roundoff dominates the errors.
-  heat_flux_err_rat = 0.7071 * dtt * (CS%temp_range_est) / (CS%temp_range_est * ITV%Cp_Ice + ITV%LI)
+  heat_flux_err_rat = 0.7071 * dtt * (CS%temp_range_est) / &
+                      (CS%temp_range_est * ITV%Cp_Ice + ITV%LI)
 
   e_extra = 0.0
   if (tsurf > tsf) then ! The surface is melting: update enthalpy with the surface at melt temp.
@@ -788,10 +789,10 @@ end subroutine ice_temp_SIS2
 !
 ! laytemp_SIS2 - implicit calculation of new layer temperature
 !
-function laytemp_SIS2(m, tfi, f, b, tp, enth, salin, dtt, ITV) result (new_temp)
+function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp)
   real :: new_temp
   real, intent(in) :: m    ! mass of ice - kg/m2
-  real, intent(in) :: tfi  ! ice freezing temp. (determined by salinity)
+  real, intent(in) :: T_fr ! ice freezing temp. (determined by salinity)
   real, intent(in) :: f    ! Inward forcing - W/m2
   real, intent(in) :: b    ! response of outward heat flux to local temperature - W/m2/K
   real, intent(in) :: tp   ! prior step temperature
@@ -800,12 +801,26 @@ function laytemp_SIS2(m, tfi, f, b, tp, enth, salin, dtt, ITV) result (new_temp)
   real, intent(in) :: dtt  ! timestep in s.
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
 
+  real :: T_g    ! The latest best guess at Temp, in deg C.
+  real :: T_deriv  ! The value of Temp at which to evaluate dErr_dT, in deg C.
+  real :: T_max, T_min ! Bracketing temperatures, in deg C.
+  real :: Err    ! The enthalpy at T_guess, in J kg-1.
+  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min, in J m-2.
+  real :: T_prev  ! The previous value of T_g, in deg C.
+  real :: dErr_dT ! The partial derivative of Err with T_g, in J m-2 C-1.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+  real :: TfmxdCp_BI
+
   real :: E0   ! Starting heat relative to salinity dependent freezing.
   real :: AA, BB, CC
   real :: Cp_Ice, LI
+
+  integer :: itt
+!  real :: T_itt(20), dTemp(20), Err_itt(20)
+
   Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
 
-  if ( tfi == 0.0 ) then
+  if ( T_fr == 0.0 ) then
     ! For fresh water, avoid the degeneracy of the enthalpy-temperature
     ! relationship by extending the linear expression for frozen water, then
     ! limit it later to be at or below freezing.
@@ -815,43 +830,111 @@ function laytemp_SIS2(m, tfi, f, b, tp, enth, salin, dtt, ITV) result (new_temp)
     new_temp = (m*Cp_Ice*tp + f*dtt) / (m*Cp_Ice + b*dtt) ! = -BB/AA
 
   else
-    if (tp >= tfi) then
-      E0 = ITV%Cp_Water*(tp - tfi)  ! >= 0
+    if (tp >= T_fr) then
+      E0 = ITV%Cp_Water*(tp - T_fr)  ! >= 0
     else
-      E0 = Cp_Ice*(tp - tfi) - LI*(1 - tfi/tp)  ! < 0
-	  if (ITV%Cp_ice /= ITV%Cp_brine) E0 = E0 + (ITV%Cp_brine - ITV%Cp_ice) * tfi*log(tp/tfi)
+      E0 = Cp_Ice*(tp - T_fr) - LI*(1 - T_fr/tp)  ! < 0
+	    if (ITV%Cp_ice /= ITV%Cp_brine) E0 = E0 + (ITV%Cp_brine - ITV%Cp_ice) * T_fr*log(tp/T_fr)
     endif
     ! Determine whether the new solution will be above or below freezing.
     
-    if (m*E0 + dtt * (f - b*tfi) >= 0) then
+    if (m*E0 + dtt * (f - b*T_fr) >= 0) then
       ! This layer will be completely melted.
-      new_temp = tfi + (m*E0 + dtt* (f - b*tfi)) / (Cp_Ice*m + dtt*b)
-   !###   new_temp = tfi + (m*E0 + dtt* (f - b*tfi)) / (Cp_Water*m + dtt*b)
-   !###   The min in about 24 lines will replace this value with   new_temp = tfi
+      new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (Cp_Ice*m + dtt*b)
+   !###   new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (Cp_Water*m + dtt*b)
+   !###   The min in about 24 lines will replace this value with   new_temp = T_fr
     else
       ! This layer will be partly melted.
       ! Solve a quadratic equation for the new layer temperature, tn:
       !
-      !   m * {Cp_Ice-LI*tfi/(tn*tp)} * (tn-tp) = dtt * (f - b*tn)
+      !   m * {Cp_Ice-LI*T_fr/(tn*tp)} * (tn-tp) = dtt * (f - b*tn)
+      !   m * {{Cp_Ice*(tn - T_fr) - LI*(1 - T_fr/tn)} - E0} = dtt * (f - b*tn)
+      !        En0(tn) = Cp_Ice*(tn - T_fr) - LI*(1 - T_fr/tn)
       !
       AA = m*Cp_Ice + b*dtt
-      BB = -(m*((E0 + LI) + Cp_Ice*tfi) + f*dtt)
-      CC = m*LI*tfi
+      BB = -(m*((E0 + LI) + Cp_Ice*T_fr) + f*dtt)
+      CC = m*LI*T_fr
       ! This form avoids round-off errors.
       if (BB >= 0) then
         new_temp = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
       else
         new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
       endif
+
+      if (ITV%Cp_ice /= ITV%Cp_brine) then
+	    ! At this point, new_temp is just a good starting guess that needs to be iterated to convergence.
+
+      ! Solve the following expression for the new layer temperature, tn:
+      !
+        TfmxdCp_BI = T_fr*m*(ITV%Cp_Brine-ITV%Cp_Ice)
+      !   Err = m * ((Cp_Ice*(tn - T_fr) - LI*(1 - T_fr/tn)) - &
+      !               TfmxdCp_BI*(log(T_fr/tn)) - E0) - dtt * (f - b*tn)
+      !   Err = -(m*((E0 + LI) + Cp_Ice*T_fr) + f*dtt) + &
+      !         m * (Cp_Ice*tn + LI*(T_fr/tn)) - TfmxdCp_BI*(log(T_fr/tn))) + dtt*b*tn
+      
+        ! This might be a good enough first guess that bracketing is unnecessary
+        ! but it is better to play it safe...
+        T_g = new_temp
+        Err = BB + ((m * (Cp_Ice*t_g + LI*(T_fr/t_g)) - &
+                     TfmxdCp_BI*(log(T_fr/t_g))) + dtt*b*t_g)
+        
+        if (Err <= 0.0) then
+          T_min = T_g ; Err_Tmin = Err
+          T_max = T_fr ; Err_Tmax = BB + ((m * (Cp_Ice*T_fr + LI)) + dtt*b*T_fr)
+        else
+          T_max = T_g ; Err_Tmax = Err
+          T_min = -273.15
+          Err_Tmin = BB + ((m * (Cp_Ice*T_min + LI*(T_fr/T_min)) - &
+                           TfmxdCp_BI*(log(T_fr/T_min))) + dtt*b*T_min)
+        endif
+
+!        T_itt(:) = 0.0 ; dTemp(:) = 0.0 ; Err_itt(:) = 0.0
+        do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
+          Err = BB + ((m * (Cp_Ice*t_g + LI*(T_fr/t_g)) - &
+                       TfmxdCp_BI*(log(T_fr/t_g))) + dtt*b*t_g)
+!          T_itt(itt) = T_g ; Err_itt(itt) = Err
+
+          if (abs(Err) <= Enth_tol*(abs(BB) + m*LI + abs(dtt*b*T_fr))) then
+            new_temp = T_g ; exit
+          elseif (Err < 0.0) then
+            T_min = T_g ; Err_Tmin = Err
+          else
+            T_max = T_g ; Err_Tmax = Err
+          endif
+
+        ! Use the more efficient Newton's method of McDougall & Witherspoon (2014),
+        ! Appl. Math. Lett., 29, 20-25.
+          T_deriv = T_g
+          if (itt > 1) then ! Reuse the estimate of dT_dEn from the last iteration.
+            if ((dErr_dT*T_g - 0.5*Err > dErr_dT*T_min) .and. &
+                (dErr_dT*T_g - 0.5*Err < dErr_dT*T_max)) &
+              T_deriv = T_g - 0.5*Err / dErr_dT
+          endif
+
+          dErr_dt = m * (Cp_Ice - LI*T_fr/(t_deriv**2)) + (TfmxdCp_BI / t_deriv + b*dtt) ! >= 0.0
+          T_prev = T_g
+          if ((dErr_dT*T_g - Err > dErr_dT*T_min) .and. &
+              (dErr_dT*T_g - Err < dErr_dT*T_max)) then
+            T_g = T_g - Err / dErr_dT
+          else
+            T_g = (Err_Tmax * T_min - Err_Tmin * T_max) / &
+                  (Err_Tmax - Err_Tmin)
+          endif
+!          dTemp(itt) = T_g - T_prev
+
+        enddo
+        new_temp = T_g ! Use the best guess.
+
+!        write (*,'("T_itt = ",8F14.8)') T_itt(1:8)
+!        write (*,'("Err_itt = ",8(1PE14.6))') Err_itt(1:8)
+!        write (*,'("dTemp = ",8(1Pe12.4))') dTemp(1:8)
+      endif
+
     endif
-    if (ITV%Cp_ice /= ITV%Cp_brine) then
-	  ! At this point, new_temp is just a good starting guess that needs to be iterated to convergence.
-      call SIS_error(FATAL, "Write correction in laytemp_SIS2 for Cp_ice /= Cp_brine.")
-	endif
   endif
 
   ! Only return temperatures that are at or below the freezing point.
-  new_temp = min(new_temp, tfi)
+  new_temp = min(new_temp, T_fr)
 
 end function laytemp_SIS2
 
@@ -863,9 +946,10 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real, intent(in) :: m_lay    ! This layers mass of ice in kg/m2
   real, intent(in) :: sice     ! ice salinity in g/kg
   real, intent(inout) :: enth  ! ice enthalpy in enth_units (proportional to J kg-1).
-  real, intent(inout) :: ftop  ! Downward heat flux atop the layer in W/m2.
-  real, intent(in) :: ht_body  ! Body forcing  to layer in W/m2
-  real, intent(inout) :: fbot  ! Downward heat below the layer in W/m2.
+  real, intent(inout) :: ftop  ! Downward heat flux atop the layer in W/m2 at T = 0 C, or
+                               ! the prescribed heat flux if dftop_dT = 0.
+  real, intent(in) :: ht_body  ! Body forcing to layer in W/m2
+  real, intent(inout) :: fbot  ! Downward heat below the layer in W/m2 at T = 0 C.
   real, intent(in) :: dftop_dT ! The linearization of ftop with layer temperature in W m-2 K-1.
   real, intent(in) :: dfbot_dT ! The linearization of fbot with layer temperature in W m-2 K-1.
   real, intent(in) :: dtt      ! The timestep in s.
@@ -891,14 +975,28 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: dT_dEnth ! The partial derivative of temperature with enthalpy,
                    ! in units of K / Enth_unit.
   real :: En_J     ! The enthalpy in Joules with 0 offset for liquid at 0 C.
-  real :: tfi      ! ice freezing temp. (determined by salinity)
+  real :: T_fr     ! Ice freezing temperature (determined by bulk salinity) in deg C.
   real :: fbot_in, ftop_in ! Input values of fbot and ftop in W m-2.
   real :: dflux_dtot_dT  ! A temporary work array in units of degC.
+
+  real :: T_g    ! The latest best guess at Temp, in deg C.
+  real :: T_deriv  ! The value of Temp at which to evaluate dErr_dT, in deg C.
+  real :: T_max, T_min ! Bracketing temperatures, in deg C.
+  real :: Err    ! The enthalpy at T_guess, in J kg-1.
+  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min, in J m-2.
+  real :: T_prev  ! The previous value of T_g, in deg C.
+  real :: dErr_dT ! The partial derivative of Err with T_g, in J m-2 C-1.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+  real :: TfxdCp_WI, TfxdCp_BI, Err_Tind
+  real :: Cp_Ice, LI
+
+  integer :: itt
+  ! real :: T_itt(20), dTemp(20), Err_itt(20)
 
   ! Solve m_lay*(enth - enth_in) + extra_heat = dt * (ht_body + ftop - fbot)
   !  ftop = ftop_in + temp*dftop_dT
   !  fbot = fbot_in + temp*dfbot_dT
-  !    enth <= enth_fp and extra_heat >= 0
+  ! subject to  enth <= enth_fp and extra_heat >= 0
 
   ftop_in = ftop ; fbot_in = fbot
   htg = (ht_body + ftop_in) - fbot_in
@@ -906,14 +1004,14 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
 
   extra_heat = 0.0 ; extra_enth = 0.0
   if (sice > 0.0) then
-    tfi = T_freeze(sice, ITV)
+    T_fr = T_freeze(sice, ITV)
     enth_fp = enthalpy_liquid_freeze(sice, ITV)
   else
-    tfi = 0.0
+    T_fr = 0.0
     enth_fp = enth_from_TS(0.0, 0.0, ITV)
   endif
-  max_temp = tfi ; max_enth = enth_fp
-  if (present(temp_max)) then ; if (temp_max < tfi) then
+  max_temp = T_fr ; max_enth = enth_fp
+  if (present(temp_max)) then ; if (temp_max < T_fr) then
     max_temp = temp_max ; max_enth = enth_from_TS(temp_max, sice, ITV)
   endif ; endif
   enth_in = enth
@@ -933,44 +1031,119 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     extra_heat = extra_enth / ITV%enth_unit
     new_temp = max_temp
     enth = max_enth
-  elseif ( sice == 0.0 ) then  ! Note that tfi = 0.
+  elseif ( sice == 0.0 ) then  ! Note that T_fr = 0.
     ! dT_dEnth is 0 for enth > enth_fp.
-    !   dT_dEnth = dTemp_dEnth(enth_in, Sice, ITV)
+    !   dT_dEnth = dTemp_dEnth_EnS(enth_in, Sice, ITV)
     dT_dEnth = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
 
     ! Solve for enth:  m_lay  * (enth - enth_in) = 
-    !       dtEU * (htg - fb*tfi - fb*dT_dEnth*(enth - enth_fp))
+    !       dtEU * (htg - fb*T_fr - fb*dT_dEnth*(enth - enth_fp))
     !  enth = enth_in + dtEU * (htg - fb*(0.0 - dT_dEnth*(enth_fp-enth_in))) / &
     !                          (m_lay + dtEU*b*dT_dEnth)
-    ! Or equivalently...  (noting that tfi = 0.0)
+    ! Or equivalently...  (noting that T_fr = 0.0)
     enth = enth_fp + (dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
                      (m_lay  + dtEU*(fb*dT_dEnth))
     ! The following is equivalent to new_temp = Temp_from_En_S(enth, 0.0, ITV)
-    !     or  new_temp = dT_dEnth * (enth - enth_fp) ! + tfi==0.
+    !     or  new_temp = dT_dEnth * (enth - enth_fp) ! + T_fr==0.
     ! but it avoids serious roundoff issues later on when b is large.
     new_temp = dT_dEnth * ((dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
                            (m_lay  + dtEU*(fb*dT_dEnth)))
-  elseif (ITV%Cp_ice == ITV%Cp_brine) then
+  else! if (ITV%Cp_ice == ITV%Cp_brine) then
     En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
     ! Solve a quadratic equation for the new layer temperature, tn:
     !
     !   m * (En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + L + htg*dt/m) = 
-    !        (m*Cp_Ice + b*dt) *tn + m*LI*tfi/tn
+    !        (m*Cp_Ice + b*dt) *tn + m*LI*T_fr/tn
     !
     AA = m_lay *ITV%Cp_Ice + fb*dtt
-    BB = -(m_lay*((En_J - (ITV%Cp_Water-ITV%Cp_Ice)*tfi) + ITV%LI) + htg*dtt)
-    CC = m_lay *ITV%LI*tfi
+    BB = -(m_lay*((En_J - (ITV%Cp_Water-ITV%Cp_Ice)*T_fr) + ITV%LI) + htg*dtt)
+    CC = m_lay *ITV%LI*T_fr
     ! This form avoids round-off errors.
     if (BB >= 0) then
       new_temp = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
     else
       new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
     endif
-!  These should be equivalent.
-!   enth = enth_in + (dtEU/m) * (f - b*new_temp)
-    enth = enth_from_TS(new_temp, sice, ITV)
-  else
-    call SIS_error(FATAL, "Write update_lay_enth for Cp_ice /= Cp_brine.")
+    if (ITV%Cp_ice == ITV%Cp_brine) then
+      enth = enth_from_TS(new_temp, sice, ITV)
+    else ! (ITV%Cp_ice /= ITV%Cp_brine)
+      ! Correct the new temperature estimate.
+      ! Solve for enth & -273.15 < T_g < T_fr < 0
+      ! m_lay*(enth - En_J) = dtt * (htg - fb*T_g)
+      ! enth = (-LI * (1.0 - T_fr/T_g)) + &
+      !         ((Cp_Ice*Tg + TfxdCP_WI) - TfxdCp_BI*log(T_fr/T_g))
+
+      ! Err = m_lay*(enth - En_J) + dtt * (fb*T_g - htg)
+      ! Err = m_lay*((-LI * (1.0 - T_fr/T_g)) + &
+      !       ((Cp_Ice*Tg + TfxdCP_WI) - TfxdCp_BI*log(T_fr/T_g)) - En_J) + dt * (fb*T_g - htg)
+
+      ! En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
+      LI = ITV%LI ; Cp_Ice = ITV%Cp_Ice
+      TfxdCp_WI = T_fr*(ITV%Cp_Water-ITV%Cp_Ice)
+      TfxdCp_BI = T_fr*(ITV%Cp_Brine-ITV%Cp_Ice)
+      Err_Tind = (m_lay*(-LI + TfxdCP_WI - En_J) - dtt*htg)
+
+      T_min = -273.15
+      Err_Tmin = m_lay*(LI * (T_fr/T_min) + (Cp_Ice*T_min - TfxdCp_BI*log(T_fr/T_min))) + &
+            (dtt * fb * T_min + Err_Tind)
+      ! Approximate this as
+      ! Err_Tmin = m_lay*((Cp_Ice*T_min - TfxdCp_BI*log(T_fr/T_min))) + &
+      !      (dtt * fb * T_min + Err_Tind) ?
+      T_max = T_fr
+      Err_Tmax = m_lay*(T_fr*ITV%Cp_Water - En_J) + dtt * (fb * T_fr - htg)
+
+      T_g = new_temp
+      ! Using a false position method first-guess instead adds about 2 iterations.
+      !  T_g = (Err_Tmax * T_min - Err_Tmin * T_max) / (Err_Tmax - Err_Tmin)
+
+  !   T_itt(:) = 0.0 ; dTemp(:) = 0.0 ; Err_itt(:) = 0.0
+      do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
+        Err = m_lay*(LI * (T_fr/T_g) + (Cp_Ice*T_g - TfxdCp_BI*log(T_fr/T_g))) + &
+              (dtt * fb * T_g + Err_Tind)
+  !     T_itt(itt) = T_g ; Err_itt(itt) = Err
+
+        if (abs(Err) <= Enth_tol*(abs(Err_Tind) + m_lay*LI + abs(dtt*fb*T_fr))) then
+          new_temp = T_g ; exit
+        elseif (Err < 0.0) then
+          T_min = T_g ; Err_Tmin = Err
+        else
+          T_max = T_g ; Err_Tmax = Err
+        endif
+
+      ! Use the more efficient Newton's method of McDougall & Witherspoon (2014),
+      ! Appl. Math. Lett., 29, 20-25.
+        T_deriv = T_g
+        if (itt > 1) then ! Reuse the estimate of dT_dEn from the last iteration.
+          if ((dErr_dT*T_g - 0.5*Err > dErr_dT*T_min) .and. &
+              (dErr_dT*T_g - 0.5*Err < dErr_dT*T_max)) &
+            T_deriv = T_g - 0.5*Err / dErr_dT
+        endif
+
+        dErr_dT = m_lay*( -LI * (T_fr / T_deriv**2) + &
+                         (Cp_Ice + TfxdCp_BI / T_deriv)) + dtt*fb ! >= 0.0
+  !     T_prev = T_g
+        if ((dErr_dT*T_g - Err > dErr_dT*T_min) .and. &
+            (dErr_dT*T_g - Err < dErr_dT*T_max)) then
+          T_g = T_g - Err / dErr_dT
+        else
+          T_g = (Err_Tmax * T_min - Err_Tmin * T_max) / &
+                (Err_Tmax - Err_Tmin)
+        endif
+  !     dTemp(itt) = T_g - T_prev
+
+      enddo
+      new_temp = T_g ! Use the best guess.
+
+      enth = enth_from_TS(new_temp, sice, ITV)
+  !   write (*,'("T_itt = ",8F14.8)') T_itt(1:8)
+  !   write (*,'("Err_itt = ",8(1PE14.6))') Err_itt(1:8)
+  !   write (*,'("dTemp = ",8(1Pe12.4))') dTemp(1:8)
+  !    if (m_lay > 1e-5) then
+  !      ! Check the answers...
+  !      write (*,'("  Enth, Enth_in, Enth_err = ",3(1Pe14.4))') enth, En_J, &
+  !        (enth - En_J) - dtt * (htg - fb*new_temp) / m_lay
+  !    endif
+    endif
   endif
 
 
@@ -1111,21 +1284,23 @@ function enth_from_TS(T, S, ITV) result(enthalpy)
   Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
   Enth_liq_0 = ITV%Enth_liq_0 ; enth_unit = ITV%enth_unit
 
-  T_fr = -ITV%mu_TS*S
+  T_fr = -ITV%mu_TS*max(0.0,S)
 
   if ((S == 0.0) .and. (T <= 0.0)) then
     ! Note that at the freezing point, fresh water is assumed to be all ice,
     ! due to the degeneracy in inverting temperature for enthalpy.
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + Cp_Ice*T)
-  elseif (T >= T_fr) then ! This layer is already melted, so just warm or cool it to 0 C.
+  elseif (T >= T_fr) then ! This layer is already melted, so the enthalpy is
+    ! just what is required to warm or cool it to 0 C.
     enthalpy = enth_unit * (ENTH_LIQ_0 + ITV%Cp_Water*T)
   elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
                   (Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr))
-  else
+  else  ! The derivation of this expression can be found in the SIS2 manual;
+    ! it assumes that the freezing temperature varies linearly with salinity.
     enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
                   ((Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
-				   (ITV%Cp_Brine - Cp_Ice) * log(T_fr/T)))
+        				   (ITV%Cp_Brine - Cp_Ice) * T_fr*log(T_fr/T))) ! Note that log(1/a) = -log(a).
   endif
 
 end function enth_from_TS
@@ -1185,7 +1360,7 @@ subroutine Temp_from_Enth_S(En, S, Temp, ITV)
 
 end subroutine Temp_from_Enth_S
 
-function dTemp_dEnth(En, S, ITV) result(dT_dE)
+function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
   real, intent(in)  :: En, S
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
@@ -1219,10 +1394,47 @@ function dTemp_dEnth(En, S, ITV) result(dT_dE)
       dT_dE = I_CpW_Eu
     endif
   else
-    call SIS_error(FATAL, "Write dTemp_dEnth for Cp_ice /= Cp_brine.")
+    call SIS_error(FATAL, "Write dTemp_dEnth_Enth for Cp_ice /= Cp_brine.")
   endif
 
-end function dTemp_dEnth
+end function dTemp_dEnth_EnS
+
+function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
+  real, intent(in)  :: Temp, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
+
+  real :: I_CpI_Eu, I_CpW_Eu
+!  real :: I_enth_unit
+!  real :: Cp_Ice, LI, Mu_TS
+  real :: T_fr  ! The freezing temperature in deg C.  
+!  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
+
+  I_CpI_Eu = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
+  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
+
+  T_fr = -ITV%mu_TS*S
+
+  if (S <= 0.0) then ! There is a step function for fresh water.
+    if (Temp > T_fr) then ; dT_dE = I_CpW_Eu
+    elseif (Temp == T_Fr) then ; dT_dE = 0.0
+    else ; dT_dE = I_CpI_Eu ; endif
+  else
+    ! This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity.
+    if (Temp < T_fr) then
+        ! These are equivalent expressions. 
+        !  dEn_dT = ( -LI * (T_fr / Temp**2)) + &
+        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/Temp)
+        dT_dE = (-Temp) / (ITV%enth_unit * (ITV%LI * (T_fr / Temp) + &
+                  (ITV%Cp_Ice*(-Temp) + (ITV%Cp_Brine - ITV%Cp_Ice) * (-Temp))))
+    else  ! This layer is already melted, so just warm it to 0 C.
+      dT_dE = I_CpW_Eu
+    endif
+  endif
+
+end function dTemp_dEnth_TS
+
 
 function Temp_from_En_S(En, S, ITV) result(Temp)
   real, intent(in)  :: En, S
@@ -1235,6 +1447,17 @@ function Temp_from_En_S(En, S, ITV) result(Temp)
   real :: T_fr  ! The freezing temperature in deg C.  
   real :: Cp_Ice, Cp_Water, LI, Mu_TS
   real :: En_J  ! Enthalpy in Joules with 0 offset.
+  real :: T_guess  ! The latest best guess at Temp, in deg C.
+  real :: T_deriv  ! The value of Temp at which to evaluate dT_dEn, in deg C.
+  real :: T_next   ! The tentative next value for T_guess, in deg C.
+  real :: T_max, T_min ! Bracketing temperatures, in deg C.
+  real :: En_Tg    ! The enthalpy at T_guess, in J kg-1.
+  real :: En_Tmin, En_Tmax ! The enthalpies at T_max and T_min, in J kg-1.
+  real :: dT_dEn   ! The partial derivative of temperature with enthalpy, in degC kg / J.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+  
+!  real :: dTemp(20), T_itt(20)
+  integer :: itt
   Cp_Ice = ITV%Cp_Ice ; Cp_water = ITV%Cp_water ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
   
   I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
@@ -1247,22 +1470,78 @@ function Temp_from_En_S(En, S, ITV) result(Temp)
     if (En_J >= 0.0) then ; Temp = En_J * I_Cp_Water
     elseif (En_J >= -LI) then ; Temp = 0.0
     else ; Temp = I_Cp_Ice * (En_J + LI) ; endif
-  elseif (Cp_Ice == ITV%Cp_brine) then
-    ! This makes the assumption that all water in the ice and snow categories,
-    ! both fluid and in pockets, has the same heat capacity.
+  elseif (En_J >= T_fr*Cp_Water) then  ! This layer is completely melted.
+    Temp = En_J * I_Cp_Water
+  else
+    !   This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity. This may be the
+    ! final solution or it may be a good first guess to start the iterations.
 
     !   LI * (T_fr/T) + Cp_Ice*T = En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + LI 
     !   LI * (T_fr/T) + Cp_Ice*T = 2.0*BB
     !   Cp_Ice*T**2 - 2.0*BB*T + LI * T_fr = 0.0
 
-    if (En_J < T_fr*Cp_Water) then
-      BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
-      Temp = I_Cp_Ice * (BB - sqrt(BB**2 - T_fr*Cp_Ice*LI))
-    else  ! This layer is completely melted.
-      Temp = En_J * I_Cp_Water
+    ! Note that (En_J < T_fr*Cp_Water)
+    BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
+    Temp = I_Cp_Ice * (BB - sqrt(BB**2 - T_fr*Cp_Ice*LI))
+
+    if (Cp_Ice /= ITV%Cp_brine) then
+      T_min = -273.15
+      En_Tmin = ( - LI * (1.0 - T_fr/T_min) ) + &
+              ((Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
+  		         (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_min)))
+      ! Could En_Tmin be approximated as -LI + (Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) ?
+      T_max = T_fr ; En_Tmax = (ITV%Cp_Water*T_fr)
+
+      T_guess = Temp
+!      dTemp(:) = 0.0 ; T_itt(:) = 0.0
+      do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
+!        T_itt(itt) = T_guess
+        ! This expression uses the fact that the freezing point varies linearly
+        ! with salinity.
+        En_Tg = ( - LI * (1.0 - T_fr/T_guess)) + &
+                ((Cp_Ice*T_guess + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
+  		           (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_guess)))
+
+        if (abs(En_Tg - En_J) <= 1.0e-15*(abs(En_J) + abs(En_Tg))) then
+          Temp = T_guess ; exit ! (The exit could be a return?)
+        elseif (En_Tg < En_J) then
+          T_min = T_guess ; En_Tmin = En_Tg
+        else
+          T_max = T_guess ; En_Tmax = En_Tg
+        endif
+
+        ! Use the more efficient Newton's method of McDougall & Witherspoon (2014),
+        ! Appl. Math. Lett., 29, 20-25.
+        T_deriv = T_guess
+        if (itt > 1) then ! Reuse the estimate of dT_dEn from the last iteration.
+          T_deriv = T_guess + 0.5*dT_dEn * (En_J - En_Tg)
+          if ((T_deriv < T_min) .or. (T_deriv > T_max)) T_deriv = T_guess
+        endif
+
+        ! These are equivalent expressions. 
+        !  dEn_dT = ( -LI * (T_fr / T_deriv**2)) + &
+        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/T_deriv)
+        dT_dEn = (-T_deriv) / (LI * (T_fr / T_deriv) + &
+                  (Cp_Ice*(-T_deriv) + (ITV%Cp_Brine - Cp_Ice) * (-T_fr)))
+        T_next = T_guess + dT_dEn * (En_J - En_Tg)
+
+!        dTemp(itt) = T_next - T_guess
+        if ((T_next > T_max) .or. (T_next < T_min)) then ! Use the false position method.
+          T_guess = ((En_Tmax - En_J) * T_min + (En_J - En_Tmin) * T_max) / &
+                     (En_Tmax - En_Tmin)
+        else
+          T_guess = T_next
+        endif
+      enddo
+      Temp = T_guess
+  
+!   These were used to debug this routine.
+!      if (itt > 5) then    
+!        write (*,'("dTemp = ",8E12.4)') dTemp(1:8)
+!        write (*,'("T_itt = ",8E14.6)') T_itt(1:8)
+!      endif
     endif
-  else
-    call SIS_error(FATAL, "Write Temp_from_En_S for Cp_ice /= Cp_brine.")
   endif
 
 end function Temp_from_En_S
