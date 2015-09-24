@@ -546,20 +546,16 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   !   bb = dheat/dTemp, as derived from a linearization of the enthalpy equation.
   bb(0) = mL_snow*ITV%Cp_ice
   do k=1,NkIce   ! load bb with heat capacity term.
-  !### Uncomment this later to account for the difference between CP_ice and CP_brine
-  ! if ((tfi(k) < 0.0) .and. (temp_IC(k) <= tfi(k))) then
-  !   bb(k) = mL_ice*(ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * 
-  !                    (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
-  !   ! Or mroe generally:
-  !   !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
-  !   ! bb(k) = mL_ice*(ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
-  !   !                ((ITV%Cp_brine-ITV%Cp_ice))
-  ! else
-  !   bb(k) = mL_ice*ITV%Cp_ice
-  ! endif
-    salt_part = 0.0
-    if (sice(k)>0.0) salt_part = ITV%LI * (tfi(k) / temp_IC(k)**2)
-    bb(k) = mL_ice*(ITV%Cp_ice-salt_part) ! add coupling to this later
+    if ((tfi(k) < 0.0) ) then ! .and. (temp_IC(k) <= tfi(k))) then
+      bb(k) = mL_ice*(ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * &
+                       (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
+      ! Or mroe generally:
+      !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
+      ! bb(k) = mL_ice*(ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
+      !                ((ITV%Cp_brine-ITV%Cp_ice))
+    else
+      bb(k) = mL_ice*ITV%Cp_ice
+    endif
   enddo
 
   ! The following expressions could be modified to permit there to be
