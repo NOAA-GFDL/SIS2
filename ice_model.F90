@@ -3584,8 +3584,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "after the new velocities are determined, but before the \n"//&
                  "transport occurs.  Otherwise, the ice thermodynamic \n"//&
                  "updates occur at the start of the slow ice update and \n"//&
-                 "dynamics and continuity can occur together.\n"//&
-                 "The default should be changed to false.", default=.true.)
+                 "dynamics and continuity can occur together.", default=.false.)
   call get_param(param_file, mod, "AREA_WEIGHTED_STRESSES", IST%area_wtd_stress, &
                  "If true, use wind stresses that are weighted by the ice \n"//&
                  "areas in the neighboring cells.  The default (true) is \n"//&
