@@ -792,23 +792,23 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   endif
 
   if (IST%nudge_sea_ice) then
-     IST%frazil_nudge(isc:iec,jsc:jec)=0.0
-     IST%melt_nudge(isc:iec,jsc:jec)=0.0
-      call data_override('ICE','icec',icec_obs,Ice%Time) 
-      icec = sum(IST%part_size(isc:iec,jsc:jec,2:),dim=3)
-      do j = jsc,jec
-         do i = isc,iec
-            if (icec(i,j) < icec_obs(i,j)) then
-               IST%frazil_nudge(i,j) = hlf*(1.0-exp(-(icec_obs(i,j)-icec(i,j))**2.0))*IST%nudge_sea_ice_coeff ! J/m2
-               if (IST%t_ocn(i,j) > TFI .and. IST%s_surf(i,j) > 1.0 ) then
-                  call calculate_density_derivs_wright(IST%t_ocn(i,j),IST%s_surf(i,j),0.0,drho_dT,drho_dS)
-                  IST%melt_nudge(i,j) = -IST%frazil_nudge(i,j)*drho_dT/drho_dS*cp_inv/IST%s_surf(i,j)
-               endif
-               IST%frazil(i,j) = IST%frazil(i,j) + IST%frazil_nudge(i,j)
-            endif
-         enddo
+    IST%frazil_nudge(isc:iec,jsc:jec)=0.0
+    IST%melt_nudge(isc:iec,jsc:jec)=0.0
+    call data_override('ICE','icec',icec_obs,Ice%Time) 
+    icec = sum(IST%part_size(isc:iec,jsc:jec,2:),dim=3)
+    do j = jsc,jec
+      do i = isc,iec
+        if (icec(i,j) < icec_obs(i,j)) then
+          IST%frazil_nudge(i,j) = hlf*(1.0-exp(-(icec_obs(i,j)-icec(i,j))**2.0))*IST%nudge_sea_ice_coeff ! J/m2
+          if (IST%t_ocn(i,j) > TFI .and. IST%s_surf(i,j) > 1.0 ) then
+            call calculate_density_derivs_wright(IST%t_ocn(i,j),IST%s_surf(i,j),0.0,drho_dT,drho_dS)
+            IST%melt_nudge(i,j) = -IST%frazil_nudge(i,j)*drho_dT/drho_dS*cp_inv/IST%s_surf(i,j)
+          endif
+          IST%frazil(i,j) = IST%frazil(i,j) + IST%frazil_nudge(i,j)
+        endif
       enddo
-   endif
+    enddo
+  endif
 
 
 ! Transfer the ocean state for extra tracer fluxes.
@@ -2663,8 +2663,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
 
       if (IST%nudge_sea_ice) then
-         IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + IST%melt_nudge(i,j)*IST%part_size(i,j,k)/dt_slow
-         IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%melt_nudge(i,j)*Ice%part_size(i,j,k)/dt_slow
+        IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + IST%melt_nudge(i,j)*IST%part_size(i,j,k)/dt_slow
+        IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%melt_nudge(i,j)*Ice%part_size(i,j,k)/dt_slow
       endif
 
       IST%enth_snow(i,j,k,1) = enth_from_TS(T_col(0), 0.0, IST%ITV)
