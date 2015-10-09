@@ -71,8 +71,9 @@ use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
-  use coupler_types_mod,only: coupler_3d_bc_type
-  use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, grav, STEFAN
+use coupler_types_mod,only: coupler_3d_bc_type
+use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, grav, STEFAN
+use data_override_mod, only : data_override
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
 
@@ -92,7 +93,7 @@ use ice_spec_mod, only : get_sea_surface
 use SIS_tracer_registry, only : register_SIS_tracer
 
 use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-  use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
+use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_resize_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: ice_optics_SIS2, get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
@@ -721,6 +722,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h_ice_input
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: icec, icec_obs
   real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
   real, dimension(G%NkIce) :: sw_abs_lay
   real :: u, v
@@ -731,7 +733,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   logical :: sent
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  real, parameter                  :: LI = hlf
+  real :: cp_inv, drho_dT,drho_dS
+  real, parameter :: LI = hlf
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   I_Nk = 1.0 / G%NkIce ; kg_H_Nk = G%H_to_kg_m2 * I_Nk
@@ -782,6 +786,26 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
     call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT u_surf_ice_bot")
     call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT v_surf_ice_bot")
+  endif
+
+  if (IST%nudge_sea_ice) then
+    cp_inv=1.0/CI
+    IST%frazil_nudge(isc:iec,jsc:jec)=0.0
+    IST%melt_nudge(isc:iec,jsc:jec)=0.0
+    call data_override('ICE','icec',icec_obs,Ice%Time) 
+    icec = sum(IST%part_size(isc:iec,jsc:jec,2:),dim=3)
+    do j = jsc,jec
+      do i = isc,iec
+        if (icec(i,j) < icec_obs(i,j)) then
+          IST%frazil_nudge(i,j) = hlf*(1.0-exp(-(icec_obs(i,j)-icec(i,j))**2.0))*IST%nudge_sea_ice_coeff ! J/m2
+          if (IST%t_ocn(i,j) > TFI .and. IST%s_surf(i,j) > 1.0 ) then
+            call calculate_density_derivs_wright(IST%t_ocn(i,j),IST%s_surf(i,j),0.0,drho_dT,drho_dS)
+            IST%melt_nudge(i,j) = -IST%frazil_nudge(i,j)*drho_dT/drho_dS*cp_inv/IST%s_surf(i,j)
+          endif
+          IST%frazil(i,j) = IST%frazil(i,j) + IST%frazil_nudge(i,j)
+        endif
+      enddo
+    enddo
   endif
 
 ! Transfer the ocean state for extra tracer fluxes.
@@ -1644,6 +1668,9 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     call post_data(IST%id_calving_hflx, calving_hflx, IST%diag, mask=Ice%mask )
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag, mask=G%Lmask2dT)
+
+  if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) &
+    call post_data(IST%id_fwnudge, IST%melt_nudge, IST%diag, mask=Ice%mask )
 
   call avg_top_quantities(Ice, IST, G) ! average fluxes from update_ice_model_fast
 
@@ -2630,6 +2657,12 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + h2o_to_ocn*IST%part_size(i,j,k)/dt_slow
       IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + &
                                (h2o_to_ocn*IST%part_size(i,j,k)) / dt_slow
+
+
+      if (IST%nudge_sea_ice) then
+        IST%lprec_top(i,j,:) = IST%lprec_top(i,j,:) + IST%melt_nudge(i,j)*IST%part_size(i,j,k)/dt_slow
+        IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%melt_nudge(i,j)*Ice%part_size(i,j,k)/dt_slow
+      endif
 
       IST%enth_snow(i,j,k,1) = enth_from_TS(T_col(0), 0.0, IST%ITV)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_from_TS(T_col(m), S_col(m), IST%ITV) ; enddo
@@ -3677,6 +3710,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", IST%max_ice_limit, &
                  "The maximum permitted sea ice thickness when \n"//&
                  "APPLY_ICE_LIMIT is true.", units="m", default=4.0)
+
+
+  call get_param(param_file, mod, "NUDGE_SEA_ICE", IST%nudge_sea_ice, &
+                 "If true, constrain the sea ice concentrations using observations.", &
+                 default=.false.)
+
   call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
                  "the ocean.", default=.false.)
@@ -3767,6 +3806,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+
+  if (IST%nudge_sea_ice) then
+     allocate(IST%frazil_nudge(isc:iec,jsc:jec)); IST%frazil_nudge(:,:)=0.0
+     allocate(IST%melt_nudge(isc:iec,jsc:jec)); IST%melt_nudge(:,:)=0.0
+
+
+     call get_param(param_file, mod, "NUDGE_SEA_ICE_COEFF", IST%nudge_sea_ice_coeff, &
+                 "dimensional coefficient controls how strongly sea ice \n"//&
+                 "is constrained to observations.  A suggested value is 1.e2.", &
+                 units = "kg m-2", default=0.0)
+
+  endif
+
 
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
@@ -4134,5 +4186,40 @@ subroutine ice_aging(G, mi, age, mi_old, dt)
   enddo ; enddo ; enddo
 
 end subroutine ice_aging
+
+!> Calculates the derivatives of seawater density with respect to potential
+!! temperature and salinity
+subroutine calculate_density_derivs_wright(T, S, pressure, drho_dT, drho_dS)
+  real,    intent(in) ::  T !< Potential temperature relative to the surface in C
+  real,    intent(in) ::  S !< Salinity in PSU
+  real,    intent(in) ::  pressure !< Pressure in Pa
+  real,    intent(out) :: drho_dT !< Partial derivative of density with potential
+                                  !! tempetature, in kg m-3 K-1
+  real,    intent(out) :: drho_dS !< Partial derivative of density with salinity,
+                                  !! in kg m-3 psu-1
+  ! Local variables
+  real :: al0, p0, lambda, I_denom2
+  integer :: j
+  ! Following are the values for the reduced range formula.
+  real, parameter :: a0 = 7.057924e-4, a1 = 3.480336e-7, a2 = -1.112733e-7
+  real, parameter :: b0 = 5.790749e8,  b1 = 3.516535e6,  b2 = -4.002714e4
+  real, parameter :: b3 = 2.084372e2,  b4 = 5.944068e5,  b5 = -9.643486e3
+  real, parameter :: c0 = 1.704853e5,  c1 = 7.904722e2,  c2 = -7.984422
+  real, parameter :: c3 = 5.140652e-2, c4 = -2.302158e2, c5 = -3.079464
+
+  al0 = a0 + a1*T + a2*S
+  p0 = b0 + b4*S + T * (b1 + T*(b2 + b3*T) + b5*S)
+  lambda = c0 +c4*S + T * (c1 + T*(c2 + c3*T) + c5*S)
+
+  I_denom2 = 1.0 / (lambda + al0*(pressure + p0))
+  I_denom2 = I_denom2 *I_denom2
+  drho_dT = I_denom2 * &
+       (lambda* (b1 + T*(2.0*b2 + 3.0*b3*T) + b5*S) - &
+       (pressure+p0) * ( (pressure+p0)*a1 + &
+       (c1 + T*(c2*2.0 + c3*3.0*T) + c5*S) ))
+  drho_dS = I_denom2 * (lambda* (b4 + b5*T) - &
+       (pressure+p0) * ( (pressure+p0)*a2 + (c4 + c5*T) ))
+
+end subroutine calculate_density_derivs_wright
 
 end module ice_model_mod
