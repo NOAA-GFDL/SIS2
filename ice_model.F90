@@ -733,11 +733,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   logical :: sent
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  real, parameter                  :: LI = hlf
-  real                             :: cp_inv, drho_dT,drho_dS
-
-
-  cp_inv=1.0/CI
+  real :: cp_inv, drho_dT,drho_dS
+  real, parameter :: LI = hlf
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -792,6 +789,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   endif
 
   if (IST%nudge_sea_ice) then
+    cp_inv=1.0/CI
     IST%frazil_nudge(isc:iec,jsc:jec)=0.0
     IST%melt_nudge(isc:iec,jsc:jec)=0.0
     call data_override('ICE','icec',icec_obs,Ice%Time) 
@@ -809,7 +807,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       enddo
     enddo
   endif
-
 
 ! Transfer the ocean state for extra tracer fluxes.
   do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
@@ -4191,44 +4188,38 @@ subroutine ice_aging(G, mi, age, mi_old, dt)
 
 end subroutine ice_aging
 
+!> Calculates the derivatives of seawater density with respect to potential
+!! temperature and salinity
 subroutine calculate_density_derivs_wright(T, S, pressure, drho_dT, drho_dS)
-  real,    intent(in) ::  T, S, pressure
-  real,    intent(out) :: drho_dT, drho_dS
-
-! * Arguments: T - potential temperature relative to the surface in C. *
-! *  (in)      S - salinity in PSU.                                    *
-! *  (in)      pressure - pressure in Pa.                              *
-! *  (out)     drho_dT - the partial derivative of density with        *
-! *                      potential tempetature, in kg m-3 K-1.         *
-! *  (out)     drho_dS - the partial derivative of density with        *
-! *                      salinity, in kg m-3 psu-1.                    *
-! *  (in)      start - the starting point in the arrays.               *
-! *  (in)      npts - the number of values to calculate.               *
+  real,    intent(in) ::  T !< Potential temperature relative to the surface in C
+  real,    intent(in) ::  S !< Salinity in PSU
+  real,    intent(in) ::  pressure !< Pressure in Pa
+  real,    intent(out) :: drho_dT !< Partial derivative of density with potential
+                                  !! tempetature, in kg m-3 K-1
+  real,    intent(out) :: drho_dS !< Partial derivative of density with salinity,
+                                  !! in kg m-3 psu-1
+  ! Local variables
   real :: al0, p0, lambda, I_denom2
   integer :: j
+  ! Following are the values for the reduced range formula.
+  real, parameter :: a0 = 7.057924e-4, a1 = 3.480336e-7, a2 = -1.112733e-7
+  real, parameter :: b0 = 5.790749e8,  b1 = 3.516535e6,  b2 = -4.002714e4
+  real, parameter :: b3 = 2.084372e2,  b4 = 5.944068e5,  b5 = -9.643486e3
+  real, parameter :: c0 = 1.704853e5,  c1 = 7.904722e2,  c2 = -7.984422
+  real, parameter :: c3 = 5.140652e-2, c4 = -2.302158e2, c5 = -3.079464
 
+  al0 = a0 + a1*T + a2*S
+  p0 = b0 + b4*S + T * (b1 + T*(b2 + b3*T) + b5*S)
+  lambda = c0 +c4*S + T * (c1 + T*(c2 + c3*T) + c5*S)
 
-! Following are the values for the reduced range formula.
-real, parameter :: a0 = 7.057924e-4, a1 = 3.480336e-7, a2 = -1.112733e-7
-real, parameter :: b0 = 5.790749e8,  b1 = 3.516535e6,  b2 = -4.002714e4
-real, parameter :: b3 = 2.084372e2,  b4 = 5.944068e5,  b5 = -9.643486e3
-real, parameter :: c0 = 1.704853e5,  c1 = 7.904722e2,  c2 = -7.984422
-real, parameter :: c3 = 5.140652e-2, c4 = -2.302158e2, c5 = -3.079464
-
-
-al0 = a0 + a1*T + a2*S
-p0 = b0 + b4*S + T * (b1 + T*(b2 + b3*T) + b5*S)
-lambda = c0 +c4*S + T * (c1 + T*(c2 + c3*T) + c5*S)
-
-I_denom2 = 1.0 / (lambda + al0*(pressure + p0))
-I_denom2 = I_denom2 *I_denom2
-drho_dT = I_denom2 * &
-     (lambda* (b1 + T*(2.0*b2 + 3.0*b3*T) + b5*S) - &
-     (pressure+p0) * ( (pressure+p0)*a1 + &
-     (c1 + T*(c2*2.0 + c3*3.0*T) + c5*S) ))
-drho_dS = I_denom2 * (lambda* (b4 + b5*T) - &
-     (pressure+p0) * ( (pressure+p0)*a2 + (c4 + c5*T) ))
-
+  I_denom2 = 1.0 / (lambda + al0*(pressure + p0))
+  I_denom2 = I_denom2 *I_denom2
+  drho_dT = I_denom2 * &
+       (lambda* (b1 + T*(2.0*b2 + 3.0*b3*T) + b5*S) - &
+       (pressure+p0) * ( (pressure+p0)*a1 + &
+       (c1 + T*(c2*2.0 + c3*3.0*T) + c5*S) ))
+  drho_dS = I_denom2 * (lambda* (b4 + b5*T) - &
+       (pressure+p0) * ( (pressure+p0)*a2 + (c4 + c5*T) ))
 
 end subroutine calculate_density_derivs_wright
 

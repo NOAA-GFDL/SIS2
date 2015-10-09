@@ -263,9 +263,9 @@ type ice_state_type
                                ! that needs to be done.
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
-  logical :: nudge_sea_ice = .false. ! nudge sea ice concentrations towards observations
-  real    :: nudge_sea_ice_coeff = 0.0 ! dimensional coefficient controls how strongly sea ice
-                              ! is constrained to observatios. Units are kg m-2.  A suggested value
+  logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
+  real    :: nudge_sea_ice_coeff = 0.0 ! Dimensional coefficient controls how strongly sea ice
+                              ! is constrained to observations. Units are kg m-2.  A suggested value
                               ! is 1.e2
 
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
@@ -282,7 +282,7 @@ type ice_state_type
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
-  integer :: id_rdgr=-1,id_rdgf=-1,id_rdgo=-1,id_rdgv=-1,id_age=-1,id_fwnudge=-1
+  integer :: id_rdgr=-1, id_rdgf=-1, id_rdgo=-1, id_rdgv=-1, id_age=-1, id_fwnudge=-1
   integer :: id_frazil=-1, id_alb=-1, id_xprt=-1, id_lsrc=-1, id_lsnk=-1, id_bsnk=-1
   integer :: id_strna=-1, id_fax=-1, id_fay=-1, id_swdn=-1, id_lwdn=-1, id_sn2ic=-1
   integer :: id_slp=-1, id_ext=-1, id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1
