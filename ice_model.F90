@@ -49,7 +49,7 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_get_input, only : Get_SIS_input
+use SIS_get_input, only : Get_SIS_input, directories
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
@@ -3557,6 +3557,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   character(len=128) :: restart_file, restart_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
   character(len=8)   :: nstr
+  type(directories)  :: dirs   ! A structure containing several relevant directory paths.
 
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
@@ -3595,7 +3596,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   allocate(Ice%Ice_restart)
 
   ! Open the parameter file.
-  call Get_SIS_Input(param_file)
+  call Get_SIS_Input(param_file, dirs)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
@@ -4051,7 +4052,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call register_SIS_tracer(IST%age_ice, G, 1, "age_ice", param_file, &
                              IST%TrReg, snow_tracer=.false.)
 
-  call SIS_sum_output_init(G, param_file, "./", Time_Init, IST%sum_output_CSp, IST%ntrunc)
+  call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
+                           IST%sum_output_CSp, IST%ntrunc)
 
   call close_param_file(param_file)
 

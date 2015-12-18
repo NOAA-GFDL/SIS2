@@ -160,6 +160,9 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
 
   CS%statsfile = trim(slasher(directory))//trim(statsfile)
   call log_param(param_file, mod, "output_path/STATISTICS_FILE", CS%statsfile)
+#ifdef STATSLABEL
+  CS%statsfile = trim(CS%statsfile)//"."//trim(adjustl(STATSLABEL))
+#endif
 
   call get_param(param_file, mod, "TIMEUNIT", CS%Timeunit, &
                  "The time unit in seconds a number of input fields", &
