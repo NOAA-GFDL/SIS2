@@ -2583,7 +2583,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,G,IST,h_snow,h_ice, &
-!$OMP                                  dt_slow,snow_to_ice,Idt_slow,bsnk,S_col) &
+!$OMP                                  dt_slow,snow_to_ice,Idt_slow,bsnk,S_col,Ice) &
 !$OMP                          private(T_col,T_Freeze_surf,evap_from_ocn,h2o_to_ocn, &
 !$OMP                                  heat_to_ocn,bablt,sn2ic)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec

@@ -481,7 +481,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
     h_neglect = G%H_subroundoff
 !$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
 !$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
-!$OMP                               h_neglect,vh_neglect)
+!$OMP                               h_neglect,vh_neglect,domore_u,domore_v)
 !$OMP do
     do k=1,ncat
       domore_k(k)=1
