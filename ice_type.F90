@@ -168,9 +168,9 @@ type ice_state_type
     flux_lh_ocn_top =>NULL(), &   ! The upward flux of latent heat at the
                                   ! ocean surface, in W m-2.
     lprec_ocn_top => NULL(), &    ! The downward flux of liquid precipitation at
-                                  ! the ocena surface, in kg m-2 s-1.
+                                  ! the ocean surface, in kg m-2 s-1.
     fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
-                                  ! the ocena surface, in kg m-2 s-1.
+                                  ! the ocean surface, in kg m-2 s-1.
   !  ### ADD BETTER COMMENTS, WITH UNITS.
     lwdn         =>NULL(), &      ! Accumulated diagnostics of downward long-
     swdn         =>NULL()         ! and short-wave radiation <WHERE?> in <UNITS?>.
@@ -184,14 +184,20 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: tmelt        =>NULL()
   real, pointer, dimension(:,:,:) :: bmelt        =>NULL()
 
-  real, pointer, dimension(:,:)   :: frazil       =>NULL()
-  real, pointer, dimension(:,:)   :: frazil_input =>NULL()
-
-  real, pointer, dimension(:,:)   :: frazil_nudge =>NULL()
-  real, pointer, dimension(:,:)   :: melt_nudge   =>NULL()
-
-  real, pointer, dimension(:,:)   :: bheat        =>NULL()
-  real, pointer, dimension(:,:)   :: mi           =>NULL() ! The total ice+snow mass, in kg m-2.
+  real, pointer, dimension(:,:)   :: &
+    frazil => NULL(), &       ! A downward heat flux from the ice into the ocean
+                              ! associated with the formation of frazil ice in
+                              ! the ocean integrated over a timestep, in J m-2.
+    frazil_input => NULL(), & ! The input value of frazil at the start of a
+                              ! timestep, in J m-2. This is used only for
+                              ! diagnostic purposes.
+    frazil_nudge => NULL(), & ! A frazil-like heat flux out of the sea ice that
+                              ! acts to create sea-ice, in J m-2.
+    melt_nudge => NULL(), &   ! A downward fresh water flux into the ocean that
+                              ! acts to nudge the ocean surface salinity to
+                              ! facilitate the retention of sea ice, in kg m-2.
+    bheat => NULL(), &
+    mi => NULL()              !  The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
@@ -267,6 +273,11 @@ type ice_state_type
   real    :: nudge_sea_ice_coeff = 0.0 ! Dimensional coefficient controls how strongly sea ice
                               ! is constrained to observations. Units are kg m-2.  A suggested value
                               ! is 1.e2
+  real    :: nudge_stab_fac   ! A factor that determines whether the buoyancy
+                              ! flux associated with the sea ice nudging of
+                              ! warm water includes a freshwater flux so as to
+                              ! be destabilizing on net (<1), stabilizing (>1),
+                              ! or neutral (=1).  The default is 1.
 
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   integer, allocatable, dimension(:,:) :: tr_flux_index
@@ -342,7 +353,7 @@ type ice_data_type !  ice_public_type
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
     flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  ! The sensible heat flux out of the ocena, in W m-2.
+    flux_lw => NULL(), &  ! The sensible heat flux out of the ocean, in W m-2.
     flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
     flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
     flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all

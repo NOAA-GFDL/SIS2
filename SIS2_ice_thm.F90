@@ -36,6 +36,7 @@ use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pon
 use ice_shortwave_dEdd, only : shortwave_dEdd0, shortwave_dEdd0_set_params
 use ice_shortwave_dEdd, only : dbl_kind, int_kind, nilyr, nslyr
 use ice_thm_mod, only : get_thermo_coefs
+use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 
@@ -69,6 +70,10 @@ type, public :: ice_thermo_type ; private
   real :: enth_liq_0 = 0.0     ! The value of enthalpy for liquid fresh
                                ! water at 0 C, in J kg-1.
   real :: enth_unit = 1.0      ! A conversion factor for enthalpy from Joules kg-1.
+  type(EOS_type), pointer :: EOS=>NULL() ! A pointer to the shared MOM6/SIS2
+                            ! equation-of-state type. This is here to encourage
+                            ! the use of common and consistent thermodynamics
+                            ! between the ice and ocean.
 end type ice_thermo_type
 
 type, public :: SIS2_ice_thm_CS ; private
@@ -116,13 +121,14 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_thm_param - set ice thermodynamic parameters                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS2_ice_thm_init(param_file, CS, ITV )
+subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
 
   use constants_mod, only : hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
-  type(param_file_type),       intent(in)    :: param_file
+  type(param_file_type), intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
+  logical,     optional, intent(in) :: init_EOS
 
   real :: sal_ice_top(1)  ! A specified surface salinity of ice.
 
@@ -250,6 +256,10 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV )
                    "albedos are changed by partial melting.", units="degC", &
                    default=1.0)
   endif
+
+  if (present(init_EOS)) then ; if (init_EOS) then
+    if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
+  endif ; endif
 
 end subroutine SIS2_ice_thm_init
 
@@ -1600,17 +1610,20 @@ end function energy_melt_enthS
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
-                                 specified_thermo_salinity)
+                                 Cp_SeaWater, EOS, specified_thermo_salinity)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, dimension(:), optional, intent(out) :: ice_salinity
-  real, optional, intent(out) :: Cp_Ice, enthalpy_units
-  logical, optional, intent(out) :: specified_thermo_salinity
+  real,           optional, intent(out) :: Cp_Ice, enthalpy_units, Cp_SeaWater
+  type(EOS_type), optional, pointer     :: EOS
+  logical,        optional, intent(out) :: specified_thermo_salinity
 ! Arguments: ITV - The ice_thermo_type that contains all sea-ice thermodynamic
 !                  parameters.
 !            ice_salinity - The specified salinity of each layer when the
 !                           thermodynamic salinities are pre-specified.
 !            enthalpy_units - A unit conversion factor for ethalpy from Joules.
 !            Cp_Ice - The heat capacity of ice in J kg-1 K-1.
+!            Cp_SeaWater - The heat capacity of seawater in J kg-1 K-1.
+!            EOS - A pointer to the MOM6/SIS2 ocean equation-of-state type.
 !            specified_thermo_salinity - If true, all thermodynamic calculations
 !                  are done with a specified salinity profile that may be
 !                  independent of the ice bulk salinity.
@@ -1618,8 +1631,15 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
   call get_thermo_coefs(ice_salinity=ice_salinity)
   
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
+  if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
   if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
+  if (present(EOS)) then
+    if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
+      "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
+      "has not yet been allocated.")
+    EOS = ITV%EOS
+  endif
 
 end subroutine get_SIS2_thermo_coefs
 
@@ -1960,6 +1980,7 @@ subroutine SIS2_ice_thm_end(CS, ITV)
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
 
+  if (associated(ITV%EOS)) call EOS_end(ITV%EOS)
   deallocate(ITV)
   deallocate(CS)
 end subroutine SIS2_ice_thm_end
