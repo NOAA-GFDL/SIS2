@@ -858,9 +858,9 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
     ! Determine whether the new solution will be above or below freezing.
     
     if (m*E0 + dtt * (f - b*T_fr) >= 0) then
-      ! This layer will be completely melted.
-      new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (ITV%Cp_water*m + dtt*b)
-      !### Note that the min in about 24 lines will replace this value with   new_temp = T_fr
+      ! This layer will be completely melted, so return the freezing value.
+      ! new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (ITV%Cp_water*m + dtt*b)
+      new_temp = T_fr
     else
       ! This layer will be partly melted.
       ! Solve a quadratic equation for the new layer temperature, tn:
