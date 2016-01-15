@@ -66,9 +66,6 @@ type ice_state_type
                         ! have been incremented.
   integer :: stress_count ! The number of times that the stresses from the ice
                         ! to the ocean have been incremented.
-!   logical                            :: pe
-
-!   logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
   real, pointer, dimension(:,:,:) :: &
     part_size =>NULL()     ! The fractional coverage of a grid cell by each ice
                            ! thickness category, nondim, 0 to 1.  Category 0 is
@@ -171,18 +168,23 @@ type ice_state_type
                                   ! the ocean surface, in kg m-2 s-1.
     fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
                                   ! the ocean surface, in kg m-2 s-1.
-  !  ### ADD BETTER COMMENTS, WITH UNITS.
-    lwdn         =>NULL(), &      ! Accumulated diagnostics of downward long-
-    swdn         =>NULL()         ! and short-wave radiation <WHERE?> in <UNITS?>.
+    coszen       => NULL(), &     ! Cosine of the solar zenith angle, nondim.
+    lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
+    swdn         => NULL()        ! and short-wave radiation at the top of the
+                                  ! snow, averaged across categories, in W m-2.
 
-  real, pointer, dimension(:,:,:) :: sw_abs_sfc   =>NULL() ! frac abs sw abs @ surf.
-  real, pointer, dimension(:,:,:) :: sw_abs_snow  =>NULL() ! frac abs sw abs in snow
-  real, pointer, dimension(:,:,:,:) :: sw_abs_ice =>NULL() ! frac abs sw abs in ice layers
-  real, pointer, dimension(:,:,:) :: sw_abs_ocn   =>NULL() ! frac abs sw abs in ocean
-  real, pointer, dimension(:,:,:) :: sw_abs_int   =>NULL() ! frac abs sw abs in ice interior
-  real, pointer, dimension(:,:)   :: coszen       =>NULL()
-  real, pointer, dimension(:,:,:) :: tmelt        =>NULL()
-  real, pointer, dimension(:,:,:) :: bmelt        =>NULL()
+  real, pointer, dimension(:,:,:) :: &
+    sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
+    sw_abs_snow => NULL(), &  ! that are absorbed in a surface skin layer (_sfc),
+    sw_abs_ocn  => NULL(), &  ! the snow (_snow), by the ocean (_ocn), or integrated
+    sw_abs_int  => NULL()     ! across all of the ice layers (_int), all nondim
+                              ! and <=1.  sw_abs_int is only used for diagnostics.
+  real, pointer, dimension(:,:,:,:) :: &
+    sw_abs_ice =>NULL()       ! The fraction of the absorbed shortwave that is
+                              ! absorbed in each of the ice layers, nondim, <=1.
+  real, pointer, dimension(:,:,:) :: &
+    tmelt        =>NULL(), &  ! Ice-top melt energy into the ice/snow in J m-2.
+    bmelt        =>NULL()     ! Ice-bottom melting energy into the ice in J m-2.
 
   real, pointer, dimension(:,:)   :: &
     frazil => NULL(), &       ! A downward heat flux from the ice into the ocean
@@ -191,12 +193,13 @@ type ice_state_type
     frazil_input => NULL(), & ! The input value of frazil at the start of a
                               ! timestep, in J m-2. This is used only for
                               ! diagnostic purposes.
-    frazil_nudge => NULL(), & ! A frazil-like heat flux out of the sea ice that
-                              ! acts to create sea-ice, in J m-2.
+    cool_nudge => NULL(), &   ! A heat flux out of the sea ice that
+                              ! acts to create sea-ice, in W m-2.
     melt_nudge => NULL(), &   ! A downward fresh water flux into the ocean that
                               ! acts to nudge the ocean surface salinity to
-                              ! facilitate the retention of sea ice, in kg m-2.
-    bheat => NULL(), &
+                              ! facilitate the retention of sea ice, in kg m-2 s-1.
+    bheat => NULL(), &        ! The upward diffusive heat flux from the ocean
+                              ! to the ice at the base of the ice, in W m-2.
     mi => NULL()              !  The total ice+snow mass, in kg m-2.
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -270,14 +273,17 @@ type ice_state_type
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
   logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
-  real    :: nudge_sea_ice_coeff = 0.0 ! Dimensional coefficient controls how strongly sea ice
-                              ! is constrained to observations. Units are kg m-2.  A suggested value
-                              ! is 1.e2
+  real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
+                              ! should be ice  covered in order to constrained the
+                              ! ice concentration to track observations.  A suggested
+                              ! value is of order 10000 W m-2.
   real    :: nudge_stab_fac   ! A factor that determines whether the buoyancy
                               ! flux associated with the sea ice nudging of
                               ! warm water includes a freshwater flux so as to
                               ! be destabilizing on net (<1), stabilizing (>1),
                               ! or neutral (=1).  The default is 1.
+  real    :: nudge_conc_tol   ! The tolerance for mismatch in the sea ice concentations
+                              ! before nudging begins to be applied.
 
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   integer, allocatable, dimension(:,:) :: tr_flux_index
