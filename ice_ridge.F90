@@ -41,7 +41,7 @@ public :: ice_ridging, ridge_rate, ice_ridging_init
 
 real, parameter :: hlim_unlim = 1.e8   ! arbitrary huge number used in ice_ridging
 real    :: s2o_frac       = 0.5        ! fraction of snow dumped into ocean during ridging
-logical :: rdg_lipscomb = .true.    
+logical :: rdg_lipscomb = .true.
 
 contains
 
@@ -96,7 +96,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
   do k=1,km ; ccn(k) = ccn(k) / ccn(km) ; enddo
 
   !----------------------------------------------------------------------------------------
-  ! i)  participation function for undeformed, thin ice: 
+  ! i)  participation function for undeformed, thin ice:
   !     amount of ice per thin ice category participating in ridging
   ! ii) parameters defining the range of the thick ice categories
   !     to which the newly ridged ice is redistributed
@@ -105,7 +105,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
   !   i)  negative exponential participation function for level ice
   !   ii) negative exponential distribution of newly ridged ice
   !
-  ! B) scheme following Thorndike et al., 1975, JGR 
+  ! B) scheme following Thorndike et al., 1975, JGR
   !   i)  linear participation function with negative slope and root at (part_par,0.0)
   !    and Hibler, 1980, Mon.Wea.Rev.
   !   ii) uniform distribution of newly ridged ice in receiving categories
@@ -114,7 +114,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
     ! ************
     ! *   Ai     *
     ! ************
-    part_par = -0.05    ! this is -a* for practical reasons, 
+    part_par = -0.05    ! this is -a* for practical reasons,
                         ! part_par(lipscomb)=part_par(thorn-hib)/3 for best comparability of schemes
     !do k=1,km
     !part_undef(k) = (exp(ccn(k-1)/part_par)-exp(ccn(k)/part_par)) / (1.-exp(1./part_par))
@@ -127,7 +127,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
     ! *   Aii    *
     ! ************
     dist_par = 4.0
-    ! set in namelist: dist_par = 4.0   ! unit [m**0.5], e-folding scale of ridged ice, 
+    ! set in namelist: dist_par = 4.0   ! unit [m**0.5], e-folding scale of ridged ice,
                     ! for comparable results of Lipscomb and Thorn-Hib schemes choose
                     ! 3 & 25, 4 & 50, 5 & 75 or 6 & 100
     do k=2,km
@@ -144,7 +144,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
     ! ************
     ! *   Bi     *
     ! ************
-    part_par = 0.15 
+    part_par = 0.15
     ! set in namelist: part_par = 0.15   ! CICE standard is 0.15
     do k=1,km
       if (ccn(k) < part_par) then
@@ -154,11 +154,11 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
       else
         part_undef(k) = 0.0
       endif
-    enddo 
+    enddo
        ! ************
        ! *   Bii    *
        ! ************
-  ! set in namelist: dist_par = 50.0   ! 25m suggested by CICE and is appropriate for multi-year ridges [Flato and Hibler, 1995, JGR], 
+  ! set in namelist: dist_par = 50.0   ! 25m suggested by CICE and is appropriate for multi-year ridges [Flato and Hibler, 1995, JGR],
                                ! 50m gives better fit to first-year ridges [Amundrud et al., 2004, JGR]
     do k=2,km
       if (thick(k)>0.0) then
@@ -173,7 +173,7 @@ subroutine ice_ridging_init(km,cn, hi, part_undef, part_undef_sum, &
   endif
   !----------------------------------------------------------------------------------------
 
-  ! ratio of net ice area removed / total area participating 
+  ! ratio of net ice area removed / total area participating
   part_undef_sum = ccn(1)
   do k=2,km
     if (rdg_ratio(k)>0.0) part_undef_sum = part_undef_sum + part_undef(k)*(1.-1./rdg_ratio(k))
@@ -184,7 +184,7 @@ end subroutine ice_ridging_init
 
 !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ridge_rate - deformation rate or                                             !
-!              total energy dissipation rate due to ridging                    ! 
+!              total energy dissipation rate due to ridging                    !
 !              (Flato and Hibler, 1995, JGR) or                                !
 !              net area loss in riding (CICE documentation)                    !
 !              depending on the state of the ice drift                         !
@@ -203,7 +203,7 @@ function ridge_rate(del2, div) result (rnet)
   rnet   = rconv + cs*rshear       ! net energy contains only part of the
                                    !  shear energy as only a fraction is
            !  dissipated in the ridging process
-  return 
+  return
 end function ridge_rate
 
 !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -234,7 +234,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   real, dimension(0:km) :: part_undef  ! fraction of undeformed ice or open water participating in ridging
   real                  :: area_undef  ! fractional area of parent and ...
   real, dimension(1:km) :: area_def    ! ... newly ridged ice, respectively
-  real, dimension(1:km) :: vol_def     ! fractional volume of newly ridged ice  
+  real, dimension(1:km) :: vol_def     ! fractional volume of newly ridged ice
   real, dimension(1:km) :: cn_old, hi_old   ! state of quantities at beginning of iteration loop
   real, dimension(1:km) :: rdg_frac    ! ratio of ridged and total ice volume
   real                  :: alev        ! area of level ice participating in ridging
@@ -268,7 +268,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   cn_tot = sum(cn(0:km))
 
   ! dissipated energy in ridging from state of ice drift
-  !  after Flato and Hibler (1995, JGR) 
+  !  after Flato and Hibler (1995, JGR)
   !  (see subroutine ridge_rate in ice_dyn_mod),
   !  equals net closing rate times ice strength
   ! by passing to new, local variable rdg_rate is saved for diagnostic output
@@ -287,11 +287,11 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   do n_iterate=1, n_itermax
   !-------------------------------------------------------------------
 
-    ! save initial state of ice concentration, total and ridged ice volume 
+    ! save initial state of ice concentration, total and ridged ice volume
     !  at beginning of each iteration loop
     do k=1,km
-      cn_old(k) = cn(k)   
-      hi_old(k) = hi(k)   
+      cn_old(k) = cn(k)
+      hi_old(k) = hi(k)
 
       rdg_frac(k) = 0.0 ; if (hi(k)>0.0) rdg_frac(k) = hi_rdg(k)/hi(k)
     enddo
@@ -326,7 +326,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
           area_frac    = 0.0
           area_rdg(kd) = 0.0
         endif
-        !if (rdg_ratio(kd) > 0.0) then     ! distinguish between level and ridged ice in 
+        !if (rdg_ratio(kd) > 0.0) then     ! distinguish between level and ridged ice in
         !else                              !  each category: let only level ice ridge;
         !endif                             !  sea also change of hi_rdg below
 
@@ -345,7 +345,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
         age(kd) = age(kd) - frac_age(kd)
 
         alev = alev + area_undef   ! diagnosing area of level ice participating in ridging
-        vlev = vlev + frac_hi(kd)  ! diagnosing total ice volume moved due to ridging 
+        vlev = vlev + frac_hi(kd)  ! diagnosing total ice volume moved due to ridging
                                    !  (here donating categories)
 
         !    Here it is assumed that level and ridged ice
@@ -433,12 +433,12 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
           age(kr) = age(kr) + vol_def(kr)  * frac_age(kd)
 
           ardg = ardg + area_def(kr) * area_rdg(kd) ! diagnosing area of newly ridged ice
-          vrdg = vrdg + rdgtmp                      ! diagnosing total ice volume moved due to ridging 
+          vrdg = vrdg + rdgtmp                      ! diagnosing total ice volume moved due to ridging
                                                     !  (here receiving categories, cross check with vlev)
 
           ! add newly ridged ice volume to total ridged ice in each category
           hi_rdg(kr) = hi_rdg(kr) + rdgtmp
-        enddo 
+        enddo
 
       enddo   ! kd loop over donating categories
 

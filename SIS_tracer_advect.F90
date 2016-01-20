@@ -236,7 +236,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
     ! category is now dramatically thinner than it was previously, add a tiny
     ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
     ! lead rarely to a very slight non-conservation of tracers, but not mass.
-    do j=js,je; do i=is,ie 
+    do j=js,je; do i=is,ie
       hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
                        max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
       if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
@@ -249,7 +249,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
     enddo ; enddo
   enddo
 !$OMP end do nowait
-!$OMP do 
+!$OMP do
   do j=jsd,jed ; do I=isd,ied-1
     uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
   enddo ; enddo

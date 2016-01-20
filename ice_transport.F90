@@ -271,10 +271,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
         part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
         mca_snow(i,j,k) = 0.0
       endif
-    enddo ; enddo 
+    enddo ; enddo
     do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
       mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
-    endif ; enddo 
+    endif ; enddo
 
     !   Handle massless categories.
     do k=1,G%CatIce ; do i=isc,iec
@@ -287,7 +287,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
           mH_ice(i,j,k) = mHi_avg(i,j)
         endif
       endif
-    enddo ; enddo 
+    enddo ; enddo
   enddo
 
   call set_massless_SIS_tracers(mca_snow, TrReg, G, compute_domain=.true., do_ice=.false.)
@@ -505,7 +505,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS)
   logical :: do_any, do_j(SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nLay
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
- 
+
   I_mH_lim1 = 1.0 / G%mH_cat_bound(1)
 
   ! Zero out the part_size of any massless categories.
@@ -569,7 +569,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS)
 
         mca_snow(i,k+1) = mca_snow(i,k+1) + snow_trans
         mca_snow(i,k) = mca_snow(i,k) - snow_trans
-        
+
         mH_snow(i,j,k) = 0.0 ; mH_snow(i,j,k+1) = 0.0
         if (part_sz(i,j,k)>0.0) mH_snow(i,j,k) = mca_snow(i,k) / part_sz(i,j,k)
         if (part_sz(i,j,k+1)>0.0) mH_snow(i,j,k+1) = mca_snow(i,k+1) / part_sz(i,j,k+1)
@@ -700,7 +700,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mH_ice, mH_snow, &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
 !$OMP                                  compression_ratio,Icompress_here, &
 !$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old)
-  do j=jsc,jec 
+  do j=jsc,jec
     do i=isc,iec
       if (part_sz(i,j,0) < 0.0) then
         excess_cover(i,j) = -part_sz(i,j,0) ; part_sz(i,j,0) = 0.0
@@ -776,7 +776,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mH_ice, mH_snow, &
           excess_cover(i,j) = 0.0
         endif
       enddo
-    endif 
+    endif
   enddo
 
   if (CS%check_conservation) then

@@ -87,7 +87,7 @@ type ice_state_type
     mH_ice =>NULL(), &  ! The mass per unit area of the ice in each category,
                         ! in units of H (usually kg m-2).
     unused_var =>NULL() ! An unused pointer that has been left here due to an
-                        ! apparent bug with the gnu compiler's optimization.   
+                        ! apparent bug with the gnu compiler's optimization.
   real, pointer, dimension(:,:,:,:) :: &
     sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
                         ! fractional thickness layer, in g/kg.
@@ -444,7 +444,7 @@ type :: atmos_ice_boundary_type
                          ! atmosphere at the surface, in W m-2.
     q_flux  => NULL(), & ! The flux of moisture from the ice or ocean to the
                          ! atmosphere due to evaporation or sublimation, in kg m-2 s-1.
-    lw_flux => NULL(), & ! The flux longwave radiation from the atmosphere into the 
+    lw_flux => NULL(), & ! The flux longwave radiation from the atmosphere into the
                          ! ice or ocean, in W m-2.
     sw_flux_vis_dir => NULL(), &  ! The visible (_vis) or near-infrared (_nir),
     sw_flux_vis_dif => NULL(), &  ! direct (_dir) or diffuse (_dif) shortwave
@@ -459,7 +459,7 @@ type :: atmos_ice_boundary_type
                          ! to the ice or ocean, in kg m-2 s-1.  Currently in SIS2
                          ! all frozen precipitation, including snow, sleet, hail
                          ! or graupel, are all treated as snow.
-    dhdt    => NULL(), & ! The derivative of the upward sensible heat flux with the 
+    dhdt    => NULL(), & ! The derivative of the upward sensible heat flux with the
                          ! surface temperature in W m-2 K-1.
     dedt    => NULL(), & ! The derivative of the sublimation and evaporation rate
                          ! with the surface temperature, in kg m-2 s-1 K-1.

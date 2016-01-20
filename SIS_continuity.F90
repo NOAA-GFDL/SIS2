@@ -267,13 +267,13 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, CS, LB)
 
   htot(:,:) = 0.0
 !$OMP parallel do default(none) shared(jsh,jeh,nz,G,htot,h_in,I_htot)
-  do j=jsh,jeh 
+  do j=jsh,jeh
     do k=1,nz ; do i=G%isd,G%ied
       htot(i,j) = htot(i,j) + h_in(i,j,k)
     enddo ; enddo
     do i=G%isd,G%ied
       I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
-    enddo 
+    enddo
   enddo
 
   ! This sets hl and hr.
@@ -420,7 +420,7 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, CS, LB)
     enddo ; enddo
     do i=ish,ieh
       I_htot(i,j) = 0.0 ; if (htot(i,j) > 0.0) I_htot(i,j) = 1.0 / htot(i,j)
-    enddo 
+    enddo
   enddo
 
   ! This sets hl and hr.
@@ -581,7 +581,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   else
 !$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r,slp) &
 !$OMP                          private(dMx,dMn,h_im1,h_ip1)
-    do j=jsl,jel 
+    do j=jsl,jel
       do i=isl-1,iel+1
         if ((G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j)) == 0.0) then
           slp(i,j) = 0.0

@@ -28,8 +28,8 @@
 
 ! TK mod:  SLAB_ICE treatment modified to follow supersource
 !          (after Bryan 1969).  The conductive heat
-!           flux from ice to atmosphere is computed based on 
-!           an effective ice thickness which ensures a minimum 
+!           flux from ice to atmosphere is computed based on
+!           an effective ice thickness which ensures a minimum
 !           thickness of 1.7cm for the calculation.
 
 module ice_thm_mod
@@ -75,12 +75,12 @@ real, parameter :: DW    = 1030.0    ! density of water for waterline - kg/(m^3)
 
 real            :: H_LO_LIM = 0.0       ! hi/hs lower limit for temp. calc.
 real            :: H_SUBROUNDOFF = 1e-35 ! A miniscule value compared with H_LO_LIM
-real            :: FRAZIL_TEMP_OFFSET = 0.5 ! A temperature offset between the 
+real            :: FRAZIL_TEMP_OFFSET = 0.5 ! A temperature offset between the
 logical         :: SLAB_ICE = .false.   ! should we do old style GFDL slab ice?
 !
 ! slab ice specific parameters
 !
-real, parameter :: CRIT_THICKNESS       = 1.00   
+real, parameter :: CRIT_THICKNESS       = 1.00
 real, parameter :: T_RANGE              = 10.0
 real, parameter :: MIN_ICE_ALB          = 0.55   ! coupled model uses 0.55
 real, parameter :: MAX_ICE_ALB          = 0.80
@@ -194,7 +194,7 @@ real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C
 !  k10 = 1/((hice/(2*NN*KI))+hsno/(2*KS)) ! coupling ice layer 1 to snow
 !  k0a = 1/(hsno/(2*KS)+1/B)            ! coupling snow to "air"
 !  ta  = A/B                            ! "air" temperature
-  
+
   k10 = 2.0*(KS*(NN*KI)) / (hice*KS + hsno*(NN*KI)) ! coupling ice layer 1 to snow
   k0a = (KS*B) / (0.5*B*hsno + KS)       ! coupling snow to "air"
   k0a_x_ta = (KS*A) / (0.5*B*hsno + KS)  ! coupling times "air" temperture
@@ -226,7 +226,7 @@ real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C
 
   ! if melting, change coefficients for fixed surf. temp. @ melting
   aa(0) = -k10
-  bb(0) = hsno*(DS/DT)*CI+k0a 
+  bb(0) = hsno*(DS/DT)*CI+k0a
   bbb(0) = hsno*(DS/DT)*CI+k10+k0a    ! if melting, change this
   cc(0) = 0.0              ! snow is at bottom of matrix, cc=0
   ff(0) = hsno*(DS/DT)*CI*tsn+k0a_x_ta ! if melting, change this
@@ -242,7 +242,7 @@ real, intent(in) :: tfw                   ! seawater freezing temperature (deg-C
     bb_new(k) = bbb(k) - rat*cc(k+1)
     ff_new(k) = ff(k) - rat*ff_new(k+1)
   end do
-  
+
   temp_est(0) = ff_new(0)/bb_new(0)
   tsurf = (A*hsno+2*KS*temp_est(0))/(B*hsno+2*KS) ! diagnose surface skin temp.
 
@@ -283,7 +283,7 @@ real :: tp   ! prior step temperature
   !
   !   (m/DT) * {CI-LI*tfi/(t*tp)} * (t-tp) = f - b*t
   !
-  !Niki: There could be a problem if tp==0 but tfi/=0 in which case the above equation is ill-defined 
+  !Niki: There could be a problem if tp==0 but tfi/=0 in which case the above equation is ill-defined
   !      but this code returns -f/b
   !
   !if( tp == 0.0 .and. tfi /= 0.0 ) print*, 'BAD laytemp INPUT ',tp,tfi
@@ -338,7 +338,7 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
 !  k10 = 1/(hie/(2*NN*KI)+hsno/(2*KS))   ! coupling ice layer 1 to snow
 !  k0a = 1/(hsno/(2*KS)+1/B)            ! coupling snow to "air"
 !  ta  = A/B                            ! "air" temperature
-  
+
   k10 = 2.0*(KS*(NN*KI)) / (hice*KS + hsno*(NN*KI)) ! coupling ice layer 1 to snow
   k0a = (KS*B) / (0.5*B*hsno + KS)      ! coupling snow to "air"
   k0a_x_ta = (KS*A) / (0.5*B*hsno + KS) ! coupling times "air" temperture
@@ -399,7 +399,7 @@ real, intent(inout) :: bmelt    ! accumulated bottom melting energy (J/m^2)
   !
   ! END conservative update
   !
-  
+
   bmelt = bmelt+DT*(fb-2*kk*(tfw-tice(NN))) ! add in bottom melting/freezing
 
   if (tsn > 0.0) then ! put excess snow energy into top melt
@@ -527,7 +527,7 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
     hlay(k) = hice/NN
   enddo
   ! set mass mark; will subtract mass at end for melt flux to ocean
-  h2o_to_ocn = DS*hsno+DI*hice+snow-evap 
+  h2o_to_ocn = DS*hsno+DI*hice+snow-evap
   h2o_from_ocn = 0.0 ! for excess evap-melt
   heat_to_ocn = 0.0  ! for excess melt energy
 
@@ -620,7 +620,7 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
       melt_left = melt_left - hlay(k)*DI*emelt(tice(k), sice(k)) ! melt whole layer
       hlay(k) = 0.0
     enddo
-  
+
   endif
   if (melt_left > 0.0 ) then ! melt snow from below
     if (melt_left < hsno*DS*(LI-CI*tsn)) then
@@ -652,13 +652,13 @@ real, intent(inout), optional :: bablt ! bottom ablation (kg/m^2)
       ! snow_to_ice = (hw-hice)*DI = (((DI-DW)*hice+DS*hsno)/DW)*DI =
       !             = (DI/DW)*(DS*hsno) - (DW/DI-1)*(DI*hice)
       !             <= (DI/DW)*(DS*hsno)  (since DW > DI > 0 & hice >= 0)
-      !             <= (DS*hsno)         (since DW > DI > 0 & hsno >= 0) 
+      !             <= (DS*hsno)         (since DW > DI > 0 & hsno >= 0)
       ! So this else branch can never happen.
 
        !Niki: How to balance this?
 !       print*, 'UNBALANCED hsno conversion ',hsno,snow_to_ice/DS
       hsno = 0.0
-    endif    
+    endif
     call add_ice(hlay, tice, sice, 1, snow_to_ice, &
                  emelt2temp(LI-CI*tsn, sice(1)), sice(1))
   else
@@ -751,9 +751,9 @@ real, intent(inout) :: bmelt ! accumulated bottom melting energy (J/m^2)
 
 ! TK Mods:
 real :: hi_effective
-real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969); 
-!                                 Value used in SS tsc.F (1.7065 cm) 
-!                                  converted to meters...         
+real :: KI_over_eps = 1.7065e-2     ! 5/2.93 from Bryan (1969);
+!                                 Value used in SS tsc.F (1.7065 cm)
+!                                  converted to meters...
 
   DT = dtt ! set timestep from argument - awkward, remove later
 
@@ -859,7 +859,7 @@ function e_to_melt_TS(hs, tsn, hi, T, S)
 
   integer :: k, nk_ice
   real :: I_nk_ice
-  
+
   nk_ice = size(T)
   I_nk_ice = 1.0 / real(nk_ice)
 
@@ -937,7 +937,7 @@ real :: tmlt, bmlt
     else
        heat_to_ocn = 0.0
     endif
-  
+
     h2o_to_ocn = h2o_to_ocn+h2o_from_ocn ! reset mark for leftover evap thru ice
     h2o_to_ocn = h2o_to_ocn-DI*hi-DS*hs  ! hs should be zero
     if (present(bablt)) bablt = bmelt/LI

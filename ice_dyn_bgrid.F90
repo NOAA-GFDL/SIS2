@@ -71,8 +71,8 @@ type, public :: ice_B_dyn_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
-  integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1                  
-  integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1                  
+  integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
+  integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_stren = -1, id_ui = -1, id_vi = -1
 end type ice_B_dyn_CS
 
@@ -209,7 +209,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS) ! ??? may change to do
   !Niki: What are ci3,hi3,Cp, Cf?
   real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: hi3,ci3
   real, dimension(G%CatIce) :: hi3v
-  real :: Cp, Cf 
+  real :: Cp, Cf
 
   integer :: i, j, isc, iec, jsc, jec, k, km
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -249,7 +249,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS) ! ??? may change to do
       !
     enddo ; enddo
 
-  else 
+  else
     ! ice strength derived after Hibler, JGR, 1979 (default!)
     do j=jsc,jec ; do i=isc,iec
       ice_strength(i,j) = CS%p0_rho*mi(i,j)*exp(-CS%c0*(1-ci(i,j)))
@@ -408,7 +408,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
   !TOM> towards a leaner calculation of the ice stress
   if (evp_new) then
-    ! calculate elastic parameter: 
+    ! calculate elastic parameter:
     ! E=zeta/(E_0*dt) => E*dt_Rheo=zeta/(E_0*N_evp), where dt_Rheo=dt/N_evp
     ! here, edt_new is 2*zeta/(E*dt_Rheo) = 2*E_0*N_evp for computational reasons
     edt_new = 2. *e0 *float(EVP_steps)
@@ -515,7 +515,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
       else
         CS%sig11(i,j) = 0.0
         CS%sig22(i,j) = 0.0
-        CS%sig12(i,j) = 0.0 ! eliminate internal ice forces 
+        CS%sig12(i,j) = 0.0 ! eliminate internal ice forces
       endif
     enddo ; enddo
 
@@ -525,15 +525,15 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     !TOM> viscosity and ice stress calculation in subroutines
     !     a) new: EVP solver as documented for CICE 4.0
     !     b) old: solver as in H&D and omsk_2008_03
-    !       if (evp_new) then
-    !    call ice_stress_new(prs,strn11,strn22,strn12,edt_new,               &
+    !  if (evp_new) then
+    !    call ice_stress_new(prs,strn11,strn22,strn12,edt_new, CS%EC,        &
     !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
     !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
-    !       else
-    !    call ice_stress_old(prs,strn11,strn22,strn12,edt,                   &
+    !  else
+    !    call ice_stress_old(prs,strn11,strn22,strn12,edt, CS%EC,            &
     !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
     !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
-    !       endif
+    !  endif
     !
 
 
@@ -563,7 +563,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
         tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
 
         fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * G%IareaBu(I,J)
-        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J) 
+        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J)
 
         !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
         ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &
@@ -585,7 +585,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
         fxoc(I,J) = fxoc(I,J) +  real(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
-        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))              
+        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
 
       endif
     enddo ; enddo
@@ -626,7 +626,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
       fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
       fxic(i,j) = fxic(i,j)*I_sub_steps ; fyic(i,j) = fyic(i,j)*I_sub_steps
-      fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps            
+      fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps
     endif
   enddo ; enddo
 
@@ -730,7 +730,7 @@ subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
 !                         model parameter values.
 !  (in/out)  CS - A pointer that is set to point to the control structure
 !                 for this module.
-!  
+!
 
 !   This subroutine registers the restart variables associated with the
 ! the ice dynamics.
@@ -771,12 +771,14 @@ end subroutine ice_B_dyn_end
 ! ice_stress_old - deriving ice stress as in SIS of CM2.1                      !
 !                  (after Hunke and Dukowicz, 1997)                            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
+subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
+                          sig11,sig22,sig12,del2,ice_present)
   !
   integer, intent(in) :: isc,iec,jsc,jec
   real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
   real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
   real,    intent(in   ), dimension(isc:iec,jsc:jec) :: edt
+  real,    intent(in   )                             :: EC
   real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
   real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
   logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
@@ -787,7 +789,9 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig
   real                             :: a, b, tmp
   real                             :: zeta, eta               ! bulk/shear viscosities
   !
-  real :: EC2I !Niki: What is EC2I?
+  real :: EC2I
+
+  EC2I = 1.0 / (EC*EC)
 
   do j=jsc,jec ; do i=isc,iec
     del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
@@ -824,7 +828,7 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig
     else
       sig11(i,j) = 0.0
       sig22(i,j) = 0.0
-      sig12(i,j) = 0.0 ! eliminate internal ice forces 
+      sig12(i,j) = 0.0 ! eliminate internal ice forces
     endif
   !
   enddo ; enddo
@@ -834,12 +838,13 @@ end subroutine ice_stress_old
 !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_stress_new - deriving ice stress as in CICE 4.0                          !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig22,sig12,del2,ice_present)
+subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
+                          sig11,sig22,sig12,del2,ice_present)
   integer, intent(in) :: isc,iec,jsc,jec
   !
   real,    intent(in   ), dimension(isc:iec,jsc:jec) :: prs                     ! ice pressure
   real,    intent(in   ), dimension(isc:iec,jsc:jec) :: strn11, strn12, strn22  ! strain tensor
-  real,    intent(in   )                             :: edt
+  real,    intent(in   )                             :: edt, EC
   real,    intent(inout), dimension(isc:iec,jsc:jec) :: sig11, sig22, sig12     ! stress tensor
   real,    intent(  out), dimension(isc:iec,jsc:jec) :: del2
   logical, intent(in   ), dimension(isc:iec,jsc:jec) :: ice_present
@@ -848,12 +853,13 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig
   real    :: zeta, eta               ! bulk/shear viscosities
   real    :: strn1, strn2, sig1, sig2
   real    :: tmp
-  !
-  real :: EC2I !Niki: What is EC2I?
+  real :: EC2I
+
+  EC2I = 1.0 / (EC*EC)
 
   do j=jsc,jec ; do i=isc,iec
-    del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
-                    + 4*EC2I*strn12(i,j)*strn12(i,j) +2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
+    del2(i,j) = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j))*(1+EC2I) + &
+                 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
     !
     ! calculate viscosities
     if (del2(i,j) > 4e-18 ) then
@@ -878,7 +884,7 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig
 
       sig1       = sig1       * 1./(1.+     edt)
       tmp        =              1./(1.+EC2I*edt)
-      sig2       = sig2       * tmp 
+      sig2       = sig2       * tmp
       sig12(i,j) = sig12(i,j) * tmp
 
       sig11(i,j) = 0.5*(sig1+sig2)
@@ -886,7 +892,7 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,sig11,sig
     else
       sig11(i,j) = 0.0
       sig22(i,j) = 0.0
-      sig12(i,j) = 0.0 ! eliminate internal ice forces 
+      sig12(i,j) = 0.0 ! eliminate internal ice forces
     endif
 
   enddo ; enddo

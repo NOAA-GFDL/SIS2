@@ -1062,7 +1062,7 @@ subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
 
   character(len=24) :: mesg_k
   integer :: k
-  
+
   do k=1,size(u_comp,3)
     if (k < 10) then ; write(mesg_k,'(" Layer",i2," ")') k
     elseif (k < 100) then ; write(mesg_k,'(" Layer",i3," ")') k
@@ -1094,7 +1094,7 @@ subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   real :: u_resym(G%IsdB:G%IedB,G%jsd:G%jed)
   real :: v_resym(G%isd:G%ied,G%JsdB:G%JedB)
   character(len=128) :: mesg2
- 
+
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
   integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1124,7 +1124,7 @@ subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   is_ch = Isq ; ie_ch = Ieq ; js_ch = Jsq ; je_ch = Jeq
   if (present(is)) is_ch = is ; if (present(ie)) ie_ch = ie
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
-  
+
   do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
     if (u_resym(i,j) /= u_comp(i,j) .and. &
         redundant_prints(3) < max_redundant_prints) then
@@ -1161,7 +1161,7 @@ subroutine check_redundant_sB3d(mesg, array, G, is, ie, js, je)
 
   character(len=24) :: mesg_k
   integer :: k
-  
+
   do k=1,size(array,3)
     if (k < 10) then ; write(mesg_k,'(" Layer",i2," ")') k
     elseif (k < 100) then ; write(mesg_k,'(" Layer",i3," ")') k
@@ -1187,7 +1187,7 @@ subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
   real :: a_nonsym(G%isd:G%ied,G%jsd:G%jed)
   real :: a_resym(G%IsdB:G%IedB,G%JsdB:G%JedB)
   character(len=128) :: mesg2
- 
+
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
   integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1218,7 +1218,7 @@ subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
   is_ch = Isq ; ie_ch = Ieq ; js_ch = Jsq ; je_ch = Jeq
   if (present(is)) is_ch = is ; if (present(ie)) ie_ch = ie
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
-  
+
   do i=is_ch,ie_ch ; do j=js_ch,je_ch
     if (a_resym(i,j) /= array(i,j) .and. &
         redundant_prints(2) < max_redundant_prints) then
@@ -1250,7 +1250,7 @@ subroutine check_redundant_vB3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
 
   character(len=24) :: mesg_k
   integer :: k
-  
+
   do k=1,size(u_comp,3)
     if (k < 10) then ; write(mesg_k,'(" Layer",i2," ")') k
     elseif (k < 100) then ; write(mesg_k,'(" Layer",i3," ")') k
@@ -1282,7 +1282,7 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   real :: u_resym(G%IsdB:G%IedB,G%JsdB:G%JedB)
   real :: v_resym(G%IsdB:G%IedB,G%JsdB:G%JedB)
   character(len=128) :: mesg2
- 
+
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
   integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1313,7 +1313,7 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   is_ch = Isq ; ie_ch = Ieq ; js_ch = Jsq ; je_ch = Jeq
   if (present(is)) is_ch = is ; if (present(ie)) ie_ch = ie
   if (present(js)) js_ch = js ; if (present(js)) je_ch = je
-  
+
   do i=is_ch,ie_ch ; do j=js_ch,je_ch
     if (u_resym(i,j) /= u_comp(i,j) .and. &
         redundant_prints(2) < max_redundant_prints) then
@@ -1350,7 +1350,7 @@ subroutine check_redundant_sT3d(mesg, array, G, is, ie, js, je)
 
   character(len=24) :: mesg_k
   integer :: k
-  
+
   do k=1,size(array,3)
     if (k < 10) then ; write(mesg_k,'(" Layer",i2," ")') k
     elseif (k < 100) then ; write(mesg_k,'(" Layer",i3," ")') k
@@ -1375,7 +1375,7 @@ subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
 
   real :: a_nonsym(G%isd:G%ied,G%jsd:G%jed)
   character(len=128) :: mesg2
- 
+
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
   integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1395,7 +1395,7 @@ subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
   enddo ; enddo
 
   call pass_var(a_nonsym, G%Domain)
-  
+
   do i=is_ch,ie_ch ; do j=js_ch,je_ch
     if (a_nonsym(i,j) /= array(i,j) .and. &
         redundant_prints(1) < max_redundant_prints) then
@@ -1427,7 +1427,7 @@ subroutine check_redundant_vT3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
 
   character(len=24) :: mesg_k
   integer :: k
-  
+
   do k=1,size(u_comp,3)
     if (k < 10) then ; write(mesg_k,'(" Layer",i2," ")') k
     elseif (k < 100) then ; write(mesg_k,'(" Layer",i3," ")') k
@@ -1457,7 +1457,7 @@ subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   real :: u_nonsym(G%isd:G%ied,G%jsd:G%jed)
   real :: v_nonsym(G%isd:G%ied,G%jsd:G%jed)
   character(len=128) :: mesg2
- 
+
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
   integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
@@ -1477,7 +1477,7 @@ subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   enddo ; enddo
 
   call pass_vector(u_nonsym, v_nonsym, G%Domain, direction, stagger=AGRID)
-  
+
   do i=is_ch,ie_ch ; do j=js_ch+1,je_ch
     if (u_nonsym(i,j) /= u_comp(i,j) .and. &
         redundant_prints(1) < max_redundant_prints) then

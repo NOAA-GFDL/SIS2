@@ -114,7 +114,7 @@ type, public :: SIS_diag_ctrl
   type(diag_type), dimension(:), allocatable :: diags
   integer :: next_free_diag_id
 
-  !default missing value to be sent to ALL diagnostics registerations 
+  !default missing value to be sent to ALL diagnostics registerations
   real :: missing_value = -1.0e34
 
 end type SIS_diag_ctrl
@@ -177,7 +177,7 @@ subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
   else
     Cartesian_grid = .false.
   endif
-  
+
   id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
             'Boundary point nominal longitude',set_name='ice', &
              Domain2=G%Domain%mpp_domain)
@@ -244,7 +244,7 @@ subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
   call defineAxes(diag_cs, (/ id_xq, id_yq /), diag_cs%axesB1)
   call defineAxes(diag_cs, (/ id_xq, id_yh /), diag_cs%axesCu1)
   call defineAxes(diag_cs, (/ id_xh, id_yq /), diag_cs%axesCv1)
- 
+
 end subroutine set_SIS_axes_info
 
 subroutine defineAxes(diag_cs, handles, axes)
@@ -290,7 +290,7 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   integer :: fms_diag_id
   type(diag_type), pointer :: diag
 
-  is_stat = .false. ; if (present(is_static)) is_stat = is_static 
+  is_stat = .false. ; if (present(is_static)) is_stat = is_static
 
   ! Get a pointer to the SIS diag type for this id, and the FMS-level diag id.
   call assert(diag_field_id < diag_cs%next_free_diag_id, &
@@ -340,7 +340,7 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
     if (present(mask)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag%mask2d)) then       
+    elseif(associated(diag%mask2d)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d)
     else
@@ -352,7 +352,7 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
-    elseif(associated(diag%mask2d)) then       
+    elseif(associated(diag%mask2d)) then
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask2d)
@@ -383,14 +383,14 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   integer :: fms_diag_id
   type(diag_type), pointer :: diag
 
-  is_stat = .false. ; if (present(is_static)) is_stat = is_static 
+  is_stat = .false. ; if (present(is_static)) is_stat = is_static
 
   ! Get a pointer to the SIS diag type for this id, and the FMS-level diag id.
   call assert(diag_field_id < diag_cs%next_free_diag_id, &
               'post_data_3d: Unregistered diagnostic id')
   diag => diag_cs%diags(diag_field_id)
   fms_diag_id = diag%fms_diag_id
-  
+
   ! Determine the proper array indices, noting that because of the (:,:)
   ! declaration of field, symmetric arrays are using a SW-grid indexing,
   ! but non-symmetric arrays are using a NE-grid indexing.  Send_data
@@ -434,7 +434,7 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
     if (present(mask)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag%mask3d)) then       
+    elseif(associated(diag%mask3d)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask3d)
     else
@@ -446,7 +446,7 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
-    elseif(associated(diag%mask3d)) then       
+    elseif(associated(diag%mask3d)) then
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask3d)
@@ -611,7 +611,7 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
           diag%mask3d =>  diag_cs%mask3dCvC
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
-  !            "unknown axes for diagnostic variable "//trim(field_name))     
+  !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     !2d masks
     elseif(axes%rank .eq. 2) then
@@ -627,11 +627,11 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
           diag%mask2d =>  diag_cs%mask2dCv
   !    else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
-  !            "unknown axes for diagnostic variable "//trim(field_name))     
+  !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     else
           call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
-               "unknown axes for diagnostic variable "//trim(field_name))          
+               "unknown axes for diagnostic variable "//trim(field_name))
     endif
   endif ! if (primary_id>-1)
 
@@ -711,7 +711,7 @@ function i2s(a,n_in)
 
     n=size(a)
     if(present(n_in)) n = n_in
- 
+
     i2s = ''
     do i=1,n
        write (i2s_temp, '(I4.4)') a(i)
@@ -746,7 +746,7 @@ subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
   diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
   diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
   diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
-  
+
   if (is_root_pe()) then
     if (present(component)) then
       doc_file_dflt = trim(component)//".available_diags"
@@ -800,10 +800,10 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
   diag_cs%mask2dCu => G%mask2dCu
   diag_cs%mask2dCv => G%mask2dCv
 
-  allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce)) 
-  allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce)) 
-  allocate(diag_cs%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce)) 
-  allocate(diag_cs%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce)) 
+  allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce))
+  allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce))
+  allocate(diag_cs%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce))
+  allocate(diag_cs%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce))
   do k=1,G%NkIce
     diag_cs%mask3dTL(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBuL(:,:,k) = diag_cs%mask2dBu(:,:)
@@ -811,10 +811,10 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
     diag_cs%mask3dCvL(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag_cs%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1)) 
-  allocate(diag_cs%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1)) 
-  allocate(diag_cs%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1)) 
-  allocate(diag_cs%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1)) 
+  allocate(diag_cs%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1))
+  allocate(diag_cs%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1))
+  allocate(diag_cs%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1))
+  allocate(diag_cs%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1))
   do k=1,G%NkIce+1
     diag_cs%mask3dTi(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBui(:,:,k) = diag_cs%mask2dBu(:,:)
@@ -822,10 +822,10 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
     diag_cs%mask3dCvi(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,G%CatIce)) 
-  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,G%CatIce)) 
-  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce)) 
-  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce)) 
+  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,G%CatIce))
+  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,G%CatIce))
+  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce))
+  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce))
   do k=1,G%CatIce
     diag_cs%mask3dTC(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBuC(:,:,k) = diag_cs%mask2dBu(:,:)
@@ -834,7 +834,7 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
   enddo
 
   diag_cs%missing_value = missing_value
- 
+
 end subroutine diag_masks_set
 
 subroutine SIS_diag_mediator_close_registration( )

@@ -95,7 +95,7 @@ contains
 subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer, &
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v)
-  integer,                         intent(in) :: nLtr              
+  integer,                         intent(in) :: nLtr
   type(sea_ice_grid_type),         intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
@@ -157,7 +157,7 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
         &all the tracers being registered via register_SIS_tracer.")') ntr+1
     call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
   endif
-  
+
   if (snow_tr) then
     Reg%ntr_snow = Reg%ntr_snow + 1
     Tr_here => Reg%Tr_snow(Reg%ntr_snow)
@@ -255,7 +255,7 @@ subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain, do_snow, do_ic
   if (present(compute_domain)) then ; if (compute_domain) then
     is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
   endif ; endif
-  
+
   do_snow_tr = .true. ; do_ice_tr = .true.
   if (present(do_snow)) do_snow_tr = do_snow
   if (present(do_ice))  do_ice_tr = do_ice

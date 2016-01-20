@@ -234,7 +234,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   call get_param(param_file, mod, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
                  "If true, project the evolution of the ice concentration \n"//&
                  "due to the convergence or divergence of the ice flow.", default=.true.)
-  
+
   call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
@@ -533,7 +533,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                       ! the ice thickness divided by the time step and the drag
                       ! coefficient, all in m s-1.
   real :: uio_C   ! A u-velocity difference between the ocean and ice, in m s-1.
-  real :: vio_C   ! A v-velocity difference between the ocean and ice, in m s-1.  
+  real :: vio_C   ! A v-velocity difference between the ocean and ice, in m s-1.
 
   real :: Tdamp   ! The damping timescale of the stress tensor components
                   ! toward their equilibrium solution due to the elastic terms,
@@ -650,20 +650,20 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP                       private(dxharm,sum_area,muq2,mvq2,muq,mvq,tot_area)
   if ((CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0)) then
 !$OMP do
-    do j=jsc,jec 
+    do j=jsc,jec
       do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
         ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
         ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
-      endif ; enddo 
+      endif ; enddo
       do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo
     enddo
 !$OMP end do nowait
 !$OMP do
-    do J=jsc-1,jec 
+    do J=jsc-1,jec
       do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
         vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
         vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
-      endif ; enddo 
+      endif ; enddo
       do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo
     enddo
 !$OMP end do nowait
@@ -782,7 +782,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
   enddo ; enddo
-!$OMP do 
+!$OMP do
   do j=jsc,jec ; do I=isc-1,iec
     ! Calculate terms related to the Coriolis force on the zonal velocity.
     azon(I,j) = 0.25 * mi_v(i+1,J) * q(I,J)
@@ -967,7 +967,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
                      (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                       ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
-                  
+
       uio_init = (ui(I,j)-uo(I,j))
 
       ! Determine the Coriolis acceleration and sum for averages...
@@ -1048,7 +1048,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       u2_at_v = CS%drag_bg_vel2 + 0.25 * &
                 (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                  ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
-                  
+
       vio_init = (vi(i,J)-vo(i,J))
 
       ! Determine the Coriolis acceleration and sum for averages...
@@ -1059,7 +1059,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       ! drag, but explicit treatments for everything else, to estimate the drag
       ! coefficient, then take the larger of the two estimates of
       ! the ice-ocean drag.
-      
+
         drag_v = 0.0
         if (G%mask2dCv(i,J) > 0.0) then
           m_vio_explicit = vio_init*mi_v(i,J) + dt * &
@@ -1175,7 +1175,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   I_sub_steps = 1.0/EVP_steps
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,G,fxoc,fxic,Cor_u,fxic_d,fxic_t, &
 !$OMP                               fxic_s,I_sub_steps,fyoc,fyic,Cor_v,fyic_d,       &
-!$OMP                               fyic_t,fyic_s) 
+!$OMP                               fyic_t,fyic_s)
 !$OMP do
   do j=jsc,jec ; do I=isc-1,iec
     fxoc(I,j) = fxoc(I,j) * (G%mask2dCu(I,j) * I_sub_steps)

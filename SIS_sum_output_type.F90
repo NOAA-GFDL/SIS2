@@ -37,7 +37,7 @@ type, public :: SIS_sum_out_CS ! ; private
     heat_col_prev, &            ! that were in the ice and snow the last time
     salt_col_prev               ! that write_ice_statistics was called,
                                 ! in kg m-2, J m-2, and kg m-2.
-         
+
   type(EFP_type) :: &
     fresh_water_in_EFP, &       ! These are extended fixed point versions of the
     net_salt_in_EFP, &          ! correspondingly named variables above.

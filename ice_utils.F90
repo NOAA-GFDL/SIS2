@@ -75,7 +75,7 @@ subroutine get_avg(x, cn, avg, wtd)
   if (do_wt) then
     avg(:,:) = 0.0 ; wts(:,:) = 0.0
 !$OMP parallel do default(none) shared(ni,nj,nk,avg,cn,x,wts)
-    do j=1,nj 
+    do j=1,nj
       do k=1,nk ; do i=1,ni
         avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
         wts(i,j) = wts(i,j) + cn(i,j,k)
@@ -86,15 +86,15 @@ subroutine get_avg(x, cn, avg, wtd)
         else
           avg(i,j) = 0.0
         endif
-      enddo 
+      enddo
     enddo
   else
     avg(:,:) = 0.0
 !$OMP parallel do default(none) shared(ni,nj,nk,avg,cn,x)
-    do j=1,nj 
+    do j=1,nj
       do k=1,nk ; do i=1,ni
         avg(i,j) = avg(i,j) + cn(i,j,k)*x(i,j,k)
-      enddo ; enddo 
+      enddo ; enddo
     enddo
   endif
 

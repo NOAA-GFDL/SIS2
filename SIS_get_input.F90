@@ -118,9 +118,9 @@ subroutine archaic_check_real(param_file, pf_name, nl_name, var, missing, defaul
   character(len=*),      intent(in) :: pf_name, nl_name
   real,                  intent(in) :: var, missing
   real, optional,        intent(in) :: default
-  
+
   real :: pf_val, def_val
-  
+
   if (var == missing) return
   if (is_root_pe()) then
     def_val = missing ; if (present(default)) def_val = default
@@ -140,7 +140,7 @@ subroutine archaic_check_real(param_file, pf_name, nl_name, var, missing, defaul
           trim(pf_name))
     endif
   endif
-  
+
 end subroutine archaic_check_real
 
 subroutine archaic_check_int(param_file, pf_name, nl_name, var, missing, default)
@@ -148,9 +148,9 @@ subroutine archaic_check_int(param_file, pf_name, nl_name, var, missing, default
   character(len=*),      intent(in) :: pf_name, nl_name
   integer,               intent(in) :: var, missing
   integer, optional,     intent(in) :: default
-  
+
   integer :: pf_val, def_val
-  
+
   if (var == missing) return
   if (is_root_pe()) then
     def_val = missing ; if (present(default)) def_val = default
@@ -170,7 +170,7 @@ subroutine archaic_check_int(param_file, pf_name, nl_name, var, missing, default
           trim(pf_name))
     endif
   endif
-  
+
 end subroutine archaic_check_int
 
 subroutine archaic_check_logical(param_file, pf_name, nl_name, var, missing, default)
@@ -178,9 +178,9 @@ subroutine archaic_check_logical(param_file, pf_name, nl_name, var, missing, def
   character(len=*),      intent(in) :: pf_name, nl_name
   logical,               intent(in) :: var, missing
   logical, optional,     intent(in) :: default
-  
+
   logical :: pf_val, def_val
-  
+
   if (var .eqv. missing) return
 
   if (is_root_pe()) then
@@ -197,7 +197,7 @@ subroutine archaic_check_logical(param_file, pf_name, nl_name, var, missing, def
           trim(pf_name))
     endif
   endif
-  
+
 end subroutine archaic_check_logical
 
 end module SIS_get_input
