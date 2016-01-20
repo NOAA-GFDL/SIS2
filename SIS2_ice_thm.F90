@@ -1638,7 +1638,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
       "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
       "has not yet been allocated.")
-    EOS = ITV%EOS
+    EOS => ITV%EOS
   endif
 
 end subroutine get_SIS2_thermo_coefs
