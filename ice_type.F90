@@ -331,27 +331,32 @@ type ice_data_type !  ice_public_type
   type(domain2D)                     :: Domain
   type(time_type)                    :: Time
   logical                            :: pe
-  integer, pointer, dimension(:)     :: pelist              =>NULL() ! Used for flux-exchange.
-     logical, pointer, dimension(:,:)   :: mask                =>NULL() ! where ice can be
-  logical, pointer, dimension(:,:,:) :: ice_mask            =>NULL() ! where ice actually is (Used for k-size only?)
+  integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
+     logical, pointer, dimension(:,:) :: mask     =>NULL() ! where ice can be
+  logical, pointer, dimension(:,:,:) :: ice_mask =>NULL() ! where ice actually is (Used for k-size only?)
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
   real, pointer, dimension(:,:,:) :: &
-    !### ADD COMMENTS DESCRIBING EACH FIELD.
-    part_size => NULL(), &
-    albedo    => NULL(), &
-    albedo_vis_dir => NULL(), &
-    albedo_nir_dir => NULL(), &
-    albedo_vis_dif => NULL(), &
-    albedo_nir_dif => NULL(), &
-    rough_mom   => NULL(), &
-    rough_heat  => NULL(), &
-    rough_moist => NULL(), &
-    t_surf      => NULL(), &
-    u_surf      => NULL(), &
-    v_surf      => NULL()
-  real, pointer, dimension(:,:)   :: s_surf         =>NULL()
+    part_size => NULL(), &    ! The fractional coverage of a grid cell by each ice
+                              ! thickness category, nondim, 0 to 1.  Category 1 is
+                              ! open ocean.  The sum of part_size is 1.
+    albedo    => NULL(), &    ! The surface albedo averaged across all wavelength
+                              ! and orientation bands within each ice-thickness
+                              ! category.  Nondimensional, between 0 and 1.
+    albedo_vis_dir => NULL(), &  ! The surface albedos for visible (_vis) or
+    albedo_nir_dir => NULL(), &  ! near-infrared (_nir) wavelengths of direct (_dir)
+    albedo_vis_dif => NULL(), &  ! diffuse (_dif) shortwave radiation in each
+    albedo_nir_dif => NULL(), &  ! ice-thickness category. Nondim, between 0 and 1.
+    rough_mom   => NULL(), &  ! The roughnesses for momentum, heat, and moisture
+    rough_heat  => NULL(), &  ! at the ocean surface, as provided by ocean_rough_mod,
+    rough_moist => NULL(), &  ! apparently in m.
+    t_surf      => NULL(), &  ! The surface temperature for the ocean or for
+                              ! each ice-thickness category, in Kelvin.
+    u_surf      => NULL(), &  ! The eastward (u_) and northward (v_) surface
+    v_surf      => NULL()     ! velocities of the ocean (:,:,1) or sea-ice, in m s-1.
+  real, pointer, dimension(:,:)   :: &
+    s_surf         =>NULL()   ! The ocean's surface salinity, in g/kg.
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
@@ -427,36 +432,61 @@ type :: ocean_ice_boundary_type
 end type
 
 type :: atmos_ice_boundary_type
-!### These arrays need to be described in comments with units and directionality.
-  real, dimension(:,:,:), pointer :: u_flux  =>NULL()
-  real, dimension(:,:,:), pointer :: v_flux  =>NULL()
-  real, dimension(:,:,:), pointer :: u_star  =>NULL()
-  real, dimension(:,:,:), pointer :: t_flux  =>NULL()
-  real, dimension(:,:,:), pointer :: q_flux  =>NULL()
-  real, dimension(:,:,:), pointer :: lw_flux =>NULL()
-  real, dimension(:,:,:), pointer :: sw_flux_vis_dir =>NULL()
-  real, dimension(:,:,:), pointer :: sw_flux_vis_dif =>NULL()
-  real, dimension(:,:,:), pointer :: sw_flux_nir_dir =>NULL()
-  real, dimension(:,:,:), pointer :: sw_flux_nir_dif =>NULL()
-  real, dimension(:,:,:), pointer :: lprec   =>NULL()
-  real, dimension(:,:,:), pointer :: fprec   =>NULL()
-  real, dimension(:,:,:), pointer :: dhdt    =>NULL()
-  real, dimension(:,:,:), pointer :: dedt    =>NULL()
-  real, dimension(:,:,:), pointer :: drdt    =>NULL()
-  real, dimension(:,:,:), pointer :: coszen  =>NULL()
-  real, dimension(:,:,:), pointer :: p       =>NULL()
-  real, dimension(:,:,:), pointer :: data    =>NULL()
-  integer                         :: xtype
-  type(coupler_3d_bc_type)        :: fluxes     ! array of fluxes used for additional tracers
+  real, dimension(:,:,:), pointer :: &
+    u_flux  => NULL(), & ! The true-eastward stresses (momentum fluxes) from the atmosphere
+                         ! to the ocean or ice in each category, discretized on an A-grid,
+                         ! and _not_ rotated to align with the model grid, in Pa.
+    v_flux  => NULL(), & ! The true-northward stresses (momentum fluxes) from the atmosphere
+                         ! to the ocean or ice in each category, discretized on an A-grid,
+                         ! and _not_ rotated to align with the model grid, in Pa.
+    u_star  => NULL(), & ! The atmospheric friction velocity on an A-grid, in Pa.
+    t_flux  => NULL(), & ! The sensible heat flux flux from the ocean or ice into the
+                         ! atmosphere at the surface, in W m-2.
+    q_flux  => NULL(), & ! The flux of moisture from the ice or ocean to the
+                         ! atmosphere due to evaporation or sublimation, in kg m-2 s-1.
+    lw_flux => NULL(), & ! The flux longwave radiation from the atmosphere into the 
+                         ! ice or ocean, in W m-2.
+    sw_flux_vis_dir => NULL(), &  ! The visible (_vis) or near-infrared (_nir),
+    sw_flux_vis_dif => NULL(), &  ! direct (_dir) or diffuse (_dif) shortwave
+    sw_flux_nir_dir => NULL(), &  ! radiation fluxes from the atmosphere into
+    sw_flux_nir_dif => NULL(), &  ! the ice or ocean, in W m-2.
+    lprec   => NULL(), & ! The liquid precipitation from the atmosphere onto the
+                         ! atmosphere or ice in each thickness category, in kg m-2 s-1.
+                         ! Rain falling on snow is currently assumed to pass or drain
+                         ! directly through the ice into the ocean; this should be
+                         ! revisitied!
+    fprec   => NULL(), & ! The frozen precipitation (snowfall) from the atmosphere
+                         ! to the ice or ocean, in kg m-2 s-1.  Currently in SIS2
+                         ! all frozen precipitation, including snow, sleet, hail
+                         ! or graupel, are all treated as snow.
+    dhdt    => NULL(), & ! The derivative of the upward sensible heat flux with the 
+                         ! surface temperature in W m-2 K-1.
+    dedt    => NULL(), & ! The derivative of the sublimation and evaporation rate
+                         ! with the surface temperature, in kg m-2 s-1 K-1.
+    drdt    => NULL(), & ! The derivative of the downward longwave radiative heat
+                         ! flux with surface temperature, in W m-2 K-1.
+    coszen  => NULL(), & ! The cosine of the solar zenith angle, nondim and <=1.
+    p       => NULL(), & ! The atmospheric surface pressure, in Pa, often ~1e5 Pa.
+    data    => NULL()
+  integer                   :: xtype  ! DIRECT or REDIST - used by coupler.
+  type(coupler_3d_bc_type)  :: fluxes ! array of fluxes used for additional tracers
 end type
 
 type :: land_ice_boundary_type
-  real, dimension(:,:),   pointer :: runoff  =>NULL()
-  real, dimension(:,:),   pointer :: calving =>NULL()
-  real, dimension(:,:),   pointer :: runoff_hflx  =>NULL()
-  real, dimension(:,:),   pointer :: calving_hflx =>NULL()
+  real, dimension(:,:),   pointer :: &
+    runoff  =>NULL(), &  ! The liquid runoff into the ocean, in kg m-2.
+    calving =>NULL(), &  ! The frozen runoff into each cell, that is offered
+                         ! first to the icebergs (if any), where it might be
+                         ! used or modified before being passed to the ocean,
+                         ! in kg m-2.
+    runoff_hflx  =>NULL(), & ! The heat flux associated with the temperature of
+                             ! of the liquid runoff, relative to liquid water
+                             ! at 0 deg C, in W m-2.
+    calving_hflx =>NULL()    ! The heat flux associated with the temperature of
+                             ! of the frozen runoff, relative to liquid? (or frozen?) water
+                             ! at 0 deg C, in W m-2.
   real, dimension(:,:,:), pointer :: data    =>NULL() ! collective field for "named" fields above
-  integer                         :: xtype            ! REGRID, REDIST or DIRECT used by coupler
+  integer                         :: xtype  ! REGRID, REDIST or DIRECT - used by coupler.
 end type
 
 contains
@@ -980,7 +1010,7 @@ subroutine IST_bounds_check(IST, G, msg)
 
 end subroutine IST_bounds_check
 
-!#######################################################################
+!=======================================================================
 ! <SUBROUTINE NAME="ice_model_restart">
 ! <DESCRIPTION>
 !  Write out restart files registered through register_restart_file
@@ -994,7 +1024,7 @@ subroutine ice_model_restart(Ice, time_stamp)
 
 end subroutine ice_model_restart
 ! </SUBROUTINE>
-!#######################################################################
+!=======================================================================
 
 subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   type(ice_data_type),     intent(inout)    :: Ice

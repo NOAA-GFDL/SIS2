@@ -909,6 +909,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       do m=1,G%NkIce ; IST%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
       !Niki: Is the following correct for diagnostics?
+      !   Probably this calculation of the "average" albedo should be replaced
+      ! with a calculation that weights the averaging by the fraction of the
+      ! shortwave radiation in each wavelength and orientation band.  However,
+      ! since this is only used for diagnostic purposes, making this change
+      ! might not be too urgent. -RWH
       Ice%albedo(i2,j2,k2)=(Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
                         +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
 
@@ -1197,9 +1202,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     dhdt, &   ! The derivative of the upward sensible heat flux with the surface
               ! temperature in W m-2 K-1.
     dedt, &   ! The derivative of the sublimation rate with the surface
-              ! temperature, in kg m-2 s-1 K-1 (I think).
+              ! temperature, in kg m-2 s-1 K-1.
     drdt      ! The derivative of the upward radiative heat flux with surface
-              ! temperature (i.e. d(flux)/d(surf_temp) in W m-2 K-1.
+              ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     diurnal_factor, cosz_alb
   real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
@@ -1589,7 +1594,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     ice_free_in, &      ! The initial fractional open water; nondimensional, between 0 & 1.
     ice_cover_in, &     ! The initial fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
-    WindStr_x_A_in, &   ! Initial onal (_x_) and meridional (_y_) wind stresses 
+    WindStr_x_A_in, &   ! Initial zonal (_x_) and meridional (_y_) wind stresses 
     WindStr_y_A_in      ! averaged over the ice categories on an A-grid, in Pa.
  real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses 
