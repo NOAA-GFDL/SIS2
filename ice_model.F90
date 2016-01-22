@@ -3871,7 +3871,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%avg_count = 0
   IST%n_calls = 0
 
-  call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS")
+  call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS", &
+                              doc_file_dir = dirs%output_directory)
   call set_SIS_axes_info(G, param_file, IST%diag)
 
   call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
@@ -4182,7 +4183,7 @@ subroutine ice_model_end (Ice)
   if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
   if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
 
-  call SIS_diag_mediator_end(IST%Time)
+  call SIS_diag_mediator_end(IST%Time, IST%diag)
 
   deallocate(Ice%Ice_state)
 

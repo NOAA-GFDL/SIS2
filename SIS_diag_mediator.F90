@@ -32,7 +32,7 @@ use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_safe_alloc, only : safe_alloc_ptr, safe_alloc_alloc
-use MOM_string_functions, only : lowercase
+use MOM_string_functions, only : lowercase, slasher
 use MOM_time_manager, only : time_type
 
 use diag_manager_mod, only : diag_manager_init
@@ -73,6 +73,8 @@ end type diag_type
 ! be shared between modules, and also to the variables that control the handling
 ! of model output.
 type, public :: SIS_diag_ctrl
+  integer :: doc_unit = -1 ! The unit number of a diagnostic documentation file.
+                           ! This file is open if doc_unit is > 0.
 
 ! The following fields are used for the output of the data.
 ! These give the computational-domain sizes, and are relative to a start value
@@ -118,8 +120,6 @@ type, public :: SIS_diag_ctrl
   real :: missing_value = -1.0e34
 
 end type SIS_diag_ctrl
-
-integer :: doc_unit = -1
 
 contains
 
@@ -567,16 +567,17 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
     diag%fms_diag_id = fms_id
   endif
 
-  if (is_root_pe() .and. doc_unit > 0) then
-     if (primary_id > 0) then
-        mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Used]'
-     else
-        mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Unused]'
-     endif
-     write(doc_unit, '(a)') trim(mesg)
-     if (present(long_name)) call describe_option("long_name", long_name)
-     if (present(units)) call describe_option("units", units)
-     if (present(standard_name)) call describe_option("standard_name", standard_name)
+  if (is_root_pe() .and. diag_CS%doc_unit > 0) then
+    if (primary_id > 0) then
+       mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Used]'
+    else
+       mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Unused]'
+    endif
+    write(diag_CS%doc_unit, '(a)') trim(mesg)
+    if (present(long_name)) call describe_option("long_name", long_name, diag_CS)
+    if (present(units)) call describe_option("units", units, diag_CS)
+    if (present(standard_name)) &
+      call describe_option("standard_name", standard_name, diag_CS)
   endif
 
   !Decide what mask to use based on the axes info
@@ -688,8 +689,9 @@ function register_static_field(module_name, field_name, axes, &
 
 end function register_static_field
 
-subroutine describe_option(opt_name, value)
-  character(len=*), intent(in) :: opt_name, value
+subroutine describe_option(opt_name, value, diag_CS)
+  character(len=*),    intent(in) :: opt_name, value
+  type(SIS_diag_ctrl), intent(in) :: diag_CS
 
   character(len=240) :: mesg
   integer :: start_ind = 1, end_ind, len_ind
@@ -697,7 +699,7 @@ subroutine describe_option(opt_name, value)
   len_ind = len_trim(value)
 
   mesg = "    ! "//trim(opt_name)//": "//trim(value)
-  write(doc_unit, '(a)') trim(mesg)
+  write(diag_CS%doc_unit, '(a)') trim(mesg)
 end subroutine describe_option
 
 function i2s(a,n_in)
@@ -720,20 +722,22 @@ function i2s(a,n_in)
     i2s = adjustl(i2s)
 end function i2s
 
-subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
+subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg, &
+                                  doc_file_dir)
   type(sea_ice_grid_type),    intent(inout) :: G
   type(param_file_type),      intent(in)    :: param_file
   type(SIS_diag_ctrl),        intent(inout) :: diag_cs
   character(len=*), optional, intent(in)    :: component
   character(len=*), optional, intent(out)   :: err_msg
+  character(len=*), optional, intent(in)    :: doc_file_dir
 
   ! This subroutine initializes the diag_mediator and the diag_manager.
   ! The grid type should have its dimensions set by this point, but it
   ! is not necessary that the metrics and axis labels be set up yet.
-  integer :: ios
+  integer :: ios, new_unit
   logical :: opened, new_file
   character(len=8)   :: this_pe
-  character(len=240) :: doc_file, doc_file_dflt
+  character(len=240) :: doc_file, doc_file_dflt, doc_path
   character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
 
   call diag_manager_init(err_msg=err_msg)
@@ -747,7 +751,7 @@ subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
   diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
   diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
 
-  if (is_root_pe()) then
+  if (is_root_pe() .and. (diag_CS%doc_unit < 0)) then
     if (present(component)) then
       doc_file_dflt = trim(component)//".available_diags"
     else
@@ -759,26 +763,33 @@ subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg)
                  "ocean diagnostics that can be included in a diag_table.", &
                  default=doc_file_dflt)
     if (len_trim(doc_file) > 0) then
-      new_file = .true. ; if (doc_unit /= -1) new_file = .false.
+      new_file = .true. ; if (diag_CS%doc_unit /= -1) new_file = .false.
     ! Find an unused unit number.
-      do doc_unit=512,42,-1
-        inquire( doc_unit, opened=opened)
+      do new_unit=512,42,-1
+        inquire( new_unit, opened=opened)
         if (.not.opened) exit
       enddo
 
       if (opened) call SIS_error(FATAL, &
           "diag_mediator_init failed to find an unused unit number.")
 
+      doc_path = doc_file
+      if (present(doc_file_dir)) then ; if (len_trim(doc_file_dir) > 0) then
+        doc_path = trim(slasher(doc_file_dir))//trim(doc_file)
+      endif ; endif
+
+      diag_CS%doc_unit = new_unit
+
       if (new_file) then
-        open(doc_unit, file=trim(doc_file), access='SEQUENTIAL', form='FORMATTED', &
+        open(diag_CS%doc_unit, file=trim(doc_path), access='SEQUENTIAL', form='FORMATTED', &
              action='WRITE', status='REPLACE', iostat=ios)
       else ! This file is being reopened, and should be appended.
-        open(doc_unit, file=trim(doc_file), access='SEQUENTIAL', form='FORMATTED', &
+        open(diag_CS%doc_unit, file=trim(doc_path), access='SEQUENTIAL', form='FORMATTED', &
              action='WRITE', status='OLD', position='APPEND', iostat=ios)
       endif
-      inquire(doc_unit, opened=opened)
+      inquire(diag_CS%doc_unit, opened=opened)
       if ((.not.opened) .or. (ios /= 0)) then
-        call SIS_error(FATAL, "Failed to open available diags file "//trim(doc_file)//".")
+        call SIS_error(FATAL, "Failed to open available diags file "//trim(doc_path)//".")
       endif
     endif
   endif
@@ -837,19 +848,21 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
 
 end subroutine diag_masks_set
 
-subroutine SIS_diag_mediator_close_registration( )
+subroutine SIS_diag_mediator_close_registration(diag_CS)
+  type(SIS_diag_ctrl), intent(inout) :: diag_CS
 
-  if (doc_unit > -1) then
-    close(doc_unit) ; doc_unit = -2
+  if (diag_CS%doc_unit > -1) then
+    close(diag_CS%doc_unit) ; diag_CS%doc_unit = -2
   endif
 
 end subroutine SIS_diag_mediator_close_registration
 
-subroutine SIS_diag_mediator_end(time)
+subroutine SIS_diag_mediator_end(time, diag_CS)
   type(time_type), intent(in) :: time
+  type(SIS_diag_ctrl), intent(inout) :: diag_CS
 
-  if (doc_unit > -1) then
-    close(doc_unit) ; doc_unit = -3
+  if (diag_CS%doc_unit > -1) then
+    close(diag_CS%doc_unit) ; diag_CS%doc_unit = -3
   endif
 
 end subroutine SIS_diag_mediator_end
