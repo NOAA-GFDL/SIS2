@@ -3107,7 +3107,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       endif
 
       m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
-      do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * G%H_to_kg_m2 / NkIce ; enddo
+      do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
       call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
                    IST%fprec_top(i,j,k)*dt_slow, 0.0, &
@@ -3118,9 +3118,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                    Enthalpy_evap=enth_evap, Enthalpy_melt=enth_ice_to_ocn, &
                    Enthalpy_freeze=enth_ocn_to_ice)
 
-      IST%mH_snow(i,j,k) = m_lay(0) / G%H_to_kg_m2
+      IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
-      IST%mH_ice(i,j,k) = mtot_ice / G%H_to_kg_m2
+      IST%mH_ice(i,j,k) = mtot_ice * G%kg_m2_to_H
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
@@ -3245,7 +3245,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       endif
 
       m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
-      do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * G%H_to_kg_m2 / NkIce ; enddo
+      do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
       call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
                    0.0, IST%frazil(i,j) * I_part, 0.0, 0.0, 0.0, &
@@ -3253,9 +3253,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    sn2ic, salt_to_ice, IST%ITV, IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
-      IST%mH_snow(i,j,k) = m_lay(0) / G%H_to_kg_m2
+      IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
-      IST%mH_ice(i,j,k) = mtot_ice / G%H_to_kg_m2
+      IST%mH_ice(i,j,k) = mtot_ice * G%kg_m2_to_H
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
@@ -3396,7 +3396,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
               endif
  
               m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
-              do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * G%H_to_kg_m2 / NkIce ; enddo
+              do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
               call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
                           0.0, 0.0, 0.0, 0.0, heating, &
@@ -3404,9 +3404,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                           heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                           snow_to_ice(i,j,k), salt_to_ice, IST%ITV, IST%ice_thm_CSp, bablt )
  
-              IST%mH_snow(i,j,k) = m_lay(0) / G%H_to_kg_m2
+              IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
               call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
-              IST%mH_ice(i,j,k) = mtot_ice / G%H_to_kg_m2
+              IST%mH_ice(i,j,k) = mtot_ice * G%kg_m2_to_H
  
               if (IST%mH_ice(i,j,k) == 0.0) then
                 do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
@@ -3457,7 +3457,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         endif
 
         m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
-        do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * G%H_to_kg_m2 / NkIce ; enddo
+        do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
         call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
                             0.0, -tot_heat/IST%part_size(i,j,k), 0.0, 0.0, 0.0, &
@@ -3465,9 +3465,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                             heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, &
                             evap_from_ocn, sn2ic, salt_to_ice, IST%ITV, IST%ice_thm_CSp)
 
-        IST%mH_snow(i,j,k) = m_lay(0) / G%H_to_kg_m2
+        IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
         call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
-        IST%mH_ice(i,j,k) = mtot_ice / G%H_to_kg_m2
+        IST%mH_ice(i,j,k) = mtot_ice * G%kg_m2_to_H
 
         if (IST%mH_ice(i,j,k) == 0.0) then
           do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
