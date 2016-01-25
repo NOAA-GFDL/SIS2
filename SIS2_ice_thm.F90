@@ -3,7 +3,7 @@
 !                       N-LAYER VERTICAL THERMODYNAMICS                        !
 !                                                                              !
 ! References:                                                                  !
-!   Hallberg, R., and M. Winton, 2014:  The SIS2.0 sea-ice model, in prep.     !
+!   Hallberg, R., and M. Winton, 2016:  The SIS2.0 sea-ice model, in prep.     !
 !                                                                              !
 !   Winton, M., 2011:  A conservative non-iterative n-layer sea ice            !
 !     temperature solver, in prep.                                             !
@@ -1647,15 +1647,13 @@ end subroutine get_SIS2_thermo_coefs
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
-                           Salin, snow, frazil, evap, tmlt, bmlt, tfw, NkIce, &
+subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
+                           snow, frazil, evap, tmlt, bmlt, tfw, NkIce, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, CS, bablt, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
-  real, intent(inout) :: mH_snow     ! snow mass per unit area in units of H (often kg m-2).
-  real, intent(inout) :: mH_ice      ! ice mass per unit area in units of H (often kg m-2).
-  real, intent(in)    :: H_to_kg_m2  ! The conversion factor from the thickness
-                                     ! units to kg m-2.
+  real, dimension(0:NkIce), &
+        intent(inout) :: m_lay       ! Snow and ice mass per unit area by layer in kg m-2.
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    ! Snow, ice, and ocean enthalpy by layer in enth_units
                                      ! (which might be J/kg).
@@ -1688,7 +1686,6 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
                                      ! mass gain by freezing, in J m-2.
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
-  real, dimension(0:NkIce) :: m_lay ! temporary ice masses in kg m-2.
   real :: mtot_ice    ! The summed ice mass in kg m-2.
   real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit.
   real :: enth_freeze ! The enthalpy of newly formed congelation ice, in enth_unit.
@@ -1715,6 +1712,7 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
   real :: enth_unit, LI
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   integer :: k
+  logical :: debug = .false.
 
   enth_unit = ITV%enth_unit ; LI = ITV%LI
   min_dEnth_freeze = (LI*enth_unit) * (1.0-CS%liq_lim)
@@ -1722,13 +1720,13 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
   top_melt = tmlt*enth_unit ; bot_melt = bmlt*enth_unit
 
   ! set mass mark; will subtract mass at end for melt flux to ocean
-  h2o_orig = H_to_kg_m2 * (mH_snow + mH_ice)
+  if (debug) then
+    h2o_orig = 0.0 ; do k=0,NkIce ; h2o_orig = h2o_orig + m_lay(k) ; enddo
+  endif
 
   enth_fr(0) = enthalpy_liquid_freeze(0.0, ITV)
-  m_lay(0) = mH_snow * H_to_kg_m2
   do k=1,NkIce ! break out individual layers
     enth_fr(k) = enthalpy_liquid_freeze(sice_therm(k), ITV)
-    m_lay(k) = mH_ice * H_to_kg_m2 / NkIce
   enddo
 
   heat_to_ocn = 0.0   ! for excess melt energy
@@ -1738,7 +1736,9 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
   salt_to_ice = 0.0
   enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
 
-  if (mH_ice == 0.0) m_lay(0) = 0.0  ! This should already be true! Trap an error?  Convert the snow to ice?
+  ! Delete this later, since it should not happen.
+  mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
+  if (mtot_ice == 0.0) m_lay(0) = 0.0  ! This should already be true! Trap an error?  Convert the snow to ice?
 
   m_lay(0) = m_lay(0) + snow ! add snow
   enthM_snowfall = snow*enthalpy(0)
@@ -1894,40 +1894,34 @@ subroutine ice_resize_SIS2(mH_snow, mH_ice, H_to_kg_m2, Enthalpy, Sice_therm, &
     snow_to_ice = 0.0
   endif
 
-  ! Even up ice layer thicknesses.
-  call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, enth_fr)
-
-  mH_ice = mtot_ice / H_to_kg_m2
-  mH_snow = m_lay(0) / H_to_kg_m2
-
-  h2o_to_ocn = h2o_orig + snow - (evap-evap_from_ocn) - H_to_kg_m2 * (mH_snow + mH_ice)
-
-  h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
-  if (abs(h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)) > &
-      max(1e-10, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
+  if (debug) then
+    mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
+    h2o_to_ocn = h2o_orig + snow - (evap-evap_from_ocn) - (m_lay(0) + mtot_ice)
     h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
-  endif
+    if (abs(h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)) > &
+        max(1e-10, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
+      h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
+    endif
 
-  call ice_check(mH_snow*H_to_kg_m2, mH_ice*H_to_kg_m2, enthalpy, Sice_therm, &
-                    NkIce, "at end of ice_resize_SIS2", ITV, &
-                    bmelt=bot_melt/enth_unit, tmelt=top_melt/enth_unit)
+    call ice_check(m_lay(0), mtot_ice, enthalpy, Sice_therm, &
+                      NkIce, "at end of ice_resize_SIS2", ITV, &
+                      bmelt=bot_melt/enth_unit, tmelt=top_melt/enth_unit)
+  endif
 
 end subroutine ice_resize_SIS2
 
-subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, enth_fr)
+subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
   real, dimension(0:NkIce),   intent(inout) :: m_lay
   real,                       intent(out)   :: mtot_ice
   real, dimension(0:NkIce+1), intent(inout) :: Enthalpy
   real, dimension(NkIce+1),   intent(inout) :: Salin
   integer,                    intent(in)    :: NkIce
-  real, dimension(0:NkIce),   intent(in)    :: enth_fr
-                                   ! enthalpy, in units of enth_unit.
+
 ! Arguments: m_lay     ! The ice mass by layer, in kg m-2. Intent in/out.
 !  (out)     mtot_ice  ! The summed ice mass in kg m-2.
 !  (in/out)  Enthalpy  ! Snow, ice, and ocean enthalpy by layer in enth_units.
 !  (in/out)  Salin     ! Conserved ice bulk salinity by layer (g/kg)
 !  (in)      NkIce     ! The number of ice layers.
-!  (in)      enth_fr   ! The snow and ice layers' freezing point enthalpy, in units of enth_unit.
 
   real :: m_k1_to_k2, m_ice_avg
   real, dimension(NkIce) :: mlay_new, enth_ice_new, sal_ice_new
@@ -1938,7 +1932,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, enth_fr
 
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
   if (mtot_ice == 0.0) then ! There is no ice, so quit.
-    do k=1,NkIce ; Enthalpy(k) = enth_fr(k) ; enddo
+    return
   else
     do k=1,NkIce ; mlay_new(k) = 0.0 ; enth_ice_new(k) = 0.0 ; enddo
     do k=1,NkIce ; sal_ice_new(k) = 0.0 ; enddo
