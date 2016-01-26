@@ -48,8 +48,8 @@ implicit none ; private
 #  define NINTMEM_(i) :
 #endif
 
-public register_SIS_tracer, get_SIS_tracer_pointer, SIS_tracer_chksum
-public add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
+public register_SIS_tracer, register_SIS_tracer_pair, get_SIS_tracer_pointer
+public SIS_tracer_chksum, add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
 public update_SIS_tracer_halos, set_massless_SIS_tracers
 public SIS_tracer_registry_init, SIS_tracer_registry_end
 
@@ -108,8 +108,7 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
   real, dimension(:,:,:,:), pointer, optional :: ad_4d_x, ad_4d_y
   real, intent(in), optional                  :: OBC_inflow
   real, pointer, dimension(:,:,:), optional   :: OBC_in_u, OBC_in_v
-! This subroutine registers a tracer to be advected and horizontally
-! diffused.
+! This subroutine registers a tracer to be advected.
 
 ! Arguments: tr1 - The pointer to the tracer, in arbitrary concentration units
 !                  (CONC), and dimensions of i-, j-, category, and layer.
@@ -195,6 +194,65 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
                                     Tr_here%OBC_in_v => OBC_in_v ; endif
 
 end subroutine register_SIS_tracer
+
+subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, &
+                                    name_snow, G, param_file, Reg, &
+                                    massless_iceval, massless_snowval)
+  integer,                         intent(in) :: nL_ice, nL_snow
+  type(sea_ice_grid_type),         intent(in) :: G
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL_ice),  target :: ice_tr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL_snow), target :: snow_tr
+  character(len=*), intent(in)                :: name_ice, name_snow
+  type(param_file_type), intent(in)           :: param_file
+  type(SIS_tracer_registry_type), pointer     :: Reg
+  real,                  intent(in), optional :: massless_iceval, massless_snowval
+! This subroutine registers a pair of ice and snow tracers to be advected.
+
+! Arguments: ice_tr - The pointer to the ice tracer, in arbitrary concentration
+!                   units (CONC), and dimensions of i-, j-, category, and layer.
+!  (in)      nL_ice - The number of vertical levels for the ice tracer.
+!  (in)      name_ice - The name to be used in messages about the tracer.
+!  (in)      snow_tr - The pointer to the snow tracer, in arbitrary concentration
+!                   units (CONC), and dimensions of i-, j-, category, and layer.
+!  (in)      nL_snow - The number of vertical levels for the snow tracer.
+!  (in)      name_snow - The name to be used in messages about the tracer.
+!  (in)      G - The sea ice grid type.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+!  (in/out)  Reg - A pointer to the tracer registry.
+!  (in,opt)  massless_iceval - The values to use to fill in massless ice categories.
+!  (in,opt)  massless_snowval - The values to use to fill in massless snow categories.
+
+  integer :: ntr
+  type(SIS_tracer_type), pointer :: Tr_ice=>NULL(), Tr_snow=>NULL()
+  character(len=256) :: mesg    ! Message for error messages.
+
+  if (.not. associated(Reg)) call SIS_tracer_registry_init(param_file, Reg)
+
+  ntr = max(Reg%ntr_ice, Reg%ntr_snow)
+  if (ntr>=MAX_FIELDS_) then
+    write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
+        &all the tracers being registered via register_SIS_tracer.")') ntr+1
+    call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
+  endif
+
+  Reg%ntr_ice = Reg%ntr_ice + 1
+  Tr_ice => Reg%Tr_ice(Reg%ntr_ice)
+  Tr_ice%name = trim(name_ice)
+  Tr_ice%t => ice_tr(:,:,:,1:nL_ice)
+  Tr_ice%nL = nL_ice
+
+  if (present(massless_iceval)) Tr_ice%massless_val = massless_iceval
+
+  Reg%ntr_snow = Reg%ntr_snow + 1
+  Tr_snow => Reg%Tr_snow(Reg%ntr_snow)
+  Tr_snow%name = trim(name_snow)
+  Tr_snow%t => snow_tr(:,:,:,1:nL_snow)
+  Tr_snow%nL = nL_snow
+
+  if (present(massless_snowval)) Tr_snow%massless_val = massless_snowval
+
+end subroutine register_SIS_tracer_pair
 
 subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
   character(len=*),          intent(in)      :: name

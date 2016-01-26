@@ -21,25 +21,22 @@ module SIS_tracer_advect
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
-!*  By Robert Hallberg, October 1996 - June 2002                       *
+!*  By Robert Hallberg, 1996 - 2012, adapted for SIS2 in 2014-2016.    *
 !*                                                                     *
 !*    This program contains the subroutines that advect tracers        *
-!*  horizontally (i.e. along layers).                                  *
+!*  horizontally (i.e. along layers).  This code was modified from the *
+!*  corresponding MOM6 / GOLD code to work with the snow and ice       *
+!*  tracers of SIS2.                                                   *
 !*                                                                     *
-!*    advect_tracer advects tracer concentrations using a combination  *
-!*  of the modified flux advection scheme from Easter (Mon. Wea. Rev., *
-!*  1993) with tracer distributions given by the monotonic modified    *
-!*  van Leer scheme proposed by Lin et al. (Mon. Wea. Rev., 1994).     *
-!*  This scheme conserves the total amount of tracer while avoiding    *
-!*  spurious maxima and minima of the tracer concentration.  If a      *
-!*  higher order accuracy scheme is needed, I would suggest the mono-  *
-!*  tonic piecewise parabolic method, as described in Carpenter et al. *
-!*  (MWR, 1990).  advect_tracer has 4 arguments, described below. This *
-!*  subroutine determines the volume of a layer in a grid cell at the  *
-!*  previous instance when the tracer concentration was changed, so    *
-!*  it is essential that the volume fluxes should be correct.  It is   *
-!*  also important that the tracer advection occurs before each        *
-!*  calculation of the diabatic forcing.                               *
+!*    advect_SIS_tracers advects tracer concentrations using the       *
+!*  modified flux advection scheme from Easter (Mon. Wea. Rev., 1993)  *
+!*  with tracer distributions that are piecewise constant,             *
+!*  piecewise linear (given by the monotonic scheme proposed by        *
+!*  Lin et al. (Mon. Wea. Rev., 1994)), or the montonic piecewise      *
+!*  parabolic method, as described in Carpenter et al. (MWR, 1990).    *
+!*  This detects the mass of ice or snow in a grid cell and thickness  *
+!*  category at the previous instance when the tracer concentration    *
+!*  was changed is consistent with the mass fluxes and the new masses. *
 !*                                                                     *
 !*     A small fragment of the grid is shown below:                    *
 !*                                                                     *

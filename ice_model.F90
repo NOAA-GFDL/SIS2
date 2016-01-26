@@ -91,7 +91,7 @@ use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use ice_grid_mod, only : sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
 use ice_spec_mod, only : get_sea_surface
 
-use SIS_tracer_registry, only : register_SIS_tracer
+use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 
 use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
 use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
@@ -4110,12 +4110,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
 
   ! Register tracers that will be advected around.
-  call register_SIS_tracer(IST%enth_ice, G, G%NkIce, "enth_ice", param_file, &
-                           IST%TrReg, snow_tracer=.false., &
-                           massless_val=massless_ice_enth*enth_unit)
-  call register_SIS_tracer(IST%enth_snow, G, 1, "enth_snow", param_file, &
-                           IST%TrReg, snow_tracer=.true., &
-                           massless_val=massless_snow_enth*enth_unit)
+  call register_SIS_tracer_pair(IST%enth_ice, G%NkIce, "enth_ice", &
+                                IST%enth_snow, 1, "enth_snow", &
+                                G, param_file, IST%TrReg, &
+                                massless_iceval=massless_ice_enth*enth_unit, &
+                                massless_snowval=massless_snow_enth*enth_unit)
+
   if (IST%ice_rel_salin > 0.0) then
     call register_SIS_tracer(IST%sal_ice, G, G%NkIce, "salin_ice", param_file, &
                              IST%TrReg, snow_tracer=.false., &
