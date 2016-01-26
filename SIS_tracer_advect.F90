@@ -119,7 +119,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr
        "SIS_tracer_advect_init must be called before advect_tracer.")
   if (.not. associated(Reg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "register_tracer must be called before advect_tracer.")
-  ntr = Reg%ntr_ice ; if (snow_tr) ntr = Reg%ntr_snow
+  ntr = Reg%ntr
   if (ntr==0) return
 
   call cpu_clock_begin(id_clock_advect)
@@ -1688,26 +1688,25 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
   real, dimension(SZI_(G),SZCAT_(G)) :: vol
   type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL()
   real :: Ivol_new
-  integer :: i, k, m, n, ntr
+  integer :: i, k, m, n
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracers_thicker.")
   if (.not. associated(Reg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "register_tracer must be called before advect_tracers_thicker.")
+  if (Reg%ntr==0) return
+
   if (snow_tr) then
-    ntr = Reg%ntr_snow
     Tr => Reg%Tr_snow
   else
-    ntr = Reg%ntr_ice
     Tr => Reg%Tr_ice
   endif
-  if (ntr==0) return
 
   do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
   do K=1,G%CatIce-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
     Ivol_new = 1.0 / (vol(i,k+1) + vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
-    do n=1,ntr ; do m=1,Tr(n)%nL
+    do n=1,Reg%ntr ; do m=1,Tr(n)%nL
       Tr(n)%t(i,j,k+1,m) = (vol_trans(i,K)*Tr(n)%t(i,j,k,m) + &
                        vol(i,k+1)*Tr(n)%t(i,j,k+1,m)) * Ivol_new
     enddo ; enddo
@@ -1718,7 +1717,7 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
   do K=G%CatIce-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) < 0.0) then
     Ivol_new = 1.0 / (vol(i,k) - vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
-    do n=1,ntr ; do m=1,Tr(n)%nL
+    do n=1,Reg%ntr ; do m=1,Tr(n)%nL
       Tr(n)%t(i,j,k,m) = (vol(i,k)*Tr(n)%t(i,j,k,m) - &
                          vol_trans(i,K)*Tr(n)%t(i,j,k+1,m)) * Ivol_new
     enddo ; enddo

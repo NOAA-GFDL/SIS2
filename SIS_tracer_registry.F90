@@ -82,10 +82,9 @@ type, public :: p3d
 end type p3d
 
 type, public :: SIS_tracer_registry_type
-  integer :: ntr_snow = 0        ! The number of registered tracers.
-  integer :: ntr_ice  = 0        ! The number of registered tracers.
-  type(SIS_tracer_type) :: Tr_snow(MAX_FIELDS_)  ! The array of registered tracers.
-  type(SIS_tracer_type) :: Tr_ice(MAX_FIELDS_)  ! The array of registered tracers.
+  integer :: ntr = 0        ! The number of registered tracers.
+  type(SIS_tracer_type) :: Tr_snow(MAX_FIELDS_) ! The array of registered snow tracers.
+  type(SIS_tracer_type) :: Tr_ice(MAX_FIELDS_)  ! The array of registered ice tracers.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
 end type SIS_tracer_registry_type
@@ -141,7 +140,6 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
 !  (in)      OBC_in_v - The value of the tracer at inflows through v-faces of
 !                       tracer cells, in the same units as tr (CONC).
 
-  integer :: ntr
   logical :: snow_tr
   type(SIS_tracer_type), pointer :: Tr_here=>NULL()
   character(len=256) :: mesg    ! Message for error messages.
@@ -150,19 +148,17 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
 
   snow_tr = .false. ; if (present(snow_tracer)) snow_tr = snow_tracer
 
-  ntr = Reg%ntr_ice ; if (snow_tr) ntr = Reg%ntr_snow
-  if (ntr>=MAX_FIELDS_) then
+  if (Reg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
-        &all the tracers being registered via register_SIS_tracer.")') ntr+1
+        &all the tracers being registered via register_SIS_tracer.")') Reg%ntr+1
     call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
   endif
 
+  Reg%ntr = Reg%ntr + 1
   if (snow_tr) then
-    Reg%ntr_snow = Reg%ntr_snow + 1
-    Tr_here => Reg%Tr_snow(Reg%ntr_snow)
+    Tr_here => Reg%Tr_snow(Reg%ntr)
   else
-    Reg%ntr_ice = Reg%ntr_ice + 1
-    Tr_here => Reg%Tr_ice(Reg%ntr_ice)
+    Tr_here => Reg%Tr_ice(Reg%ntr)
   endif
 
   Tr_here%name = trim(name)
@@ -223,34 +219,30 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
 !  (in,opt)  massless_iceval - The values to use to fill in massless ice categories.
 !  (in,opt)  massless_snowval - The values to use to fill in massless snow categories.
 
-  integer :: ntr
-  type(SIS_tracer_type), pointer :: Tr_ice=>NULL(), Tr_snow=>NULL()
   character(len=256) :: mesg    ! Message for error messages.
 
   if (.not. associated(Reg)) call SIS_tracer_registry_init(param_file, Reg)
 
-  ntr = max(Reg%ntr_ice, Reg%ntr_snow)
-  if (ntr>=MAX_FIELDS_) then
+  if (Reg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
-        &all the tracers being registered via register_SIS_tracer.")') ntr+1
+        &all the tracers being registered via register_SIS_tracer.")') Reg%ntr+1
     call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
   endif
 
-  Reg%ntr_ice = Reg%ntr_ice + 1
-  Tr_ice => Reg%Tr_ice(Reg%ntr_ice)
-  Tr_ice%name = trim(name_ice)
-  Tr_ice%t => ice_tr(:,:,:,1:nL_ice)
-  Tr_ice%nL = nL_ice
+  Reg%ntr = Reg%ntr + 1
+  Reg%Tr_ice(Reg%ntr)%name = trim(name_ice)
+  Reg%Tr_ice(Reg%ntr)%t => ice_tr(:,:,:,1:nL_ice)
+  Reg%Tr_ice(Reg%ntr)%nL = nL_ice
 
-  if (present(massless_iceval)) Tr_ice%massless_val = massless_iceval
+  if (present(massless_iceval)) &
+    Reg%Tr_ice(Reg%ntr)%massless_val = massless_iceval
 
-  Reg%ntr_snow = Reg%ntr_snow + 1
-  Tr_snow => Reg%Tr_snow(Reg%ntr_snow)
-  Tr_snow%name = trim(name_snow)
-  Tr_snow%t => snow_tr(:,:,:,1:nL_snow)
-  Tr_snow%nL = nL_snow
+  Reg%Tr_snow(Reg%ntr)%name = trim(name_snow)
+  Reg%Tr_snow(Reg%ntr)%t => snow_tr(:,:,:,1:nL_snow)
+  Reg%Tr_snow(Reg%ntr)%nL = nL_snow
 
-  if (present(massless_snowval)) Tr_snow%massless_val = massless_snowval
+  if (present(massless_snowval)) &
+    Reg%Tr_snow(Reg%ntr)%massless_val = massless_snowval
 
 end subroutine register_SIS_tracer_pair
 
@@ -262,13 +254,13 @@ subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
 
   integer :: m
 
-  do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr_ice) then ! This is an ice tracer.
+  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= Reg%ntr) then ! This is an ice tracer.
     Tr_ptr => Reg%Tr_ice(m)%t
     nLayer = Reg%Tr_ice(m)%nL
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr_snow) then ! This is a snow tracer.
+    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= Reg%ntr) then ! This is a snow tracer.
       Tr_ptr => Reg%Tr_snow(m)%t
       nLayer = Reg%Tr_snow(m)%nL
     else
@@ -285,15 +277,24 @@ subroutine update_SIS_tracer_halos(Reg, G, complete)
   logical,              optional, intent(in)    :: complete
 
   logical :: do_complete, comp_here
-  integer :: m, n
+  integer :: m, n, last_ice_tr
 
   do_complete = .true. ; if (present(complete)) do_complete=complete
+  if (Reg%ntr==0) return
 
-  do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
+  last_ice_tr = -1
+  do n=Reg%ntr,1,-1 ; if (Reg%Tr_ice(n)%nL > 0) then
+    last_ice_tr = n ; exit
+  endif ; enddo
+  if (last_ice_tr < 0) &
+    call SIS_error(FATAL, "At least 1 ice tracer needs to be registered for "//&
+                   "update_SIS_tracer_halos to work as currently written.")
+
+  do n=1,Reg%ntr ; do m=1,Reg%Tr_snow(n)%nL
     call pass_var(Reg%Tr_snow(n)%t(:,:,:,m), G%Domain, complete=.false.)
   enddo ; enddo
-  do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
-    comp_here = (do_complete .and. (n==Reg%ntr_ice) .and. (m==Reg%Tr_ice(n)%nL))
+  do n=1,Reg%ntr ; do m=1,Reg%Tr_ice(n)%nL
+    comp_here = (do_complete .and. (n==last_ice_tr) .and. (m==Reg%Tr_ice(n)%nL))
     call pass_var(Reg%Tr_ice(n)%t(:,:,:,m), G%Domain, complete=comp_here)
   enddo ; enddo
 
@@ -319,14 +320,14 @@ subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain, do_snow, do_ic
   if (present(do_ice))  do_ice_tr = do_ice
 
   if (do_snow_tr) then
-    do n=1,Reg%ntr_snow ; do m=1,Reg%Tr_snow(n)%nL
+    do n=1,Reg%ntr ; do m=1,Reg%Tr_snow(n)%nL
       do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
         Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
       enddo ; enddo ; enddo
     enddo ; enddo
   endif
   if (do_ice_tr) then
-    do n=1,Reg%ntr_ice ; do m=1,Reg%Tr_ice(n)%nL
+    do n=1,Reg%ntr ; do m=1,Reg%Tr_ice(n)%nL
       do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
         Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
       enddo ; enddo ; enddo
@@ -357,11 +358,11 @@ subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
   if (.not. associated(Reg)) call SIS_error(FATAL, "add_SIS_tracer_OBC_values :"// &
        "register_SIS_tracer must be called before add_SIS_tracer_OBC_values")
 
-  do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr_ice) then ; Tr_here => Reg%Tr_ice(m)
+  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_ice(m)
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr_snow) then ; Tr_here => Reg%Tr_snow(m)
+    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_snow(m)
     else
       call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
                trim(name)//" before add_SIS_tracer_OBC_values is called for it.")
@@ -408,11 +409,11 @@ subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
   if (.not. associated(Reg)) call SIS_error(FATAL, "add_SIS_tracer_diagnostics: "// &
        "register_SIS_tracer must be called before add_SIS_tracer_diagnostics")
 
-  do m=1,Reg%ntr_ice ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr_ice) then ; Tr_here => Reg%Tr_ice(m)
+  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_ice(m)
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr_snow ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr_snow) then ; Tr_here => Reg%Tr_snow(m)
+    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_snow(m)
     else
       call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
                trim(name)//" before add_SIS_tracer_OBC_values is called for it.")
@@ -451,12 +452,12 @@ subroutine SIS_tracer_chksum(mesg, Reg, G)
   character(len=8) :: mesg_l
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
-  do m=1,Reg%ntr_ice ; do l=1,Reg%Tr_ice(m)%nL
+  do m=1,Reg%ntr ; do l=1,Reg%Tr_ice(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_ice(m)%t(:,:,:,l), mesg//trim(Reg%Tr_ice(m)%name)//" "//&
                                  trim(adjustl(mesg_l)), G)
   enddo ; enddo
-  do m=1,Reg%ntr_snow ; do l=1,Reg%Tr_snow(m)%nL
+  do m=1,Reg%ntr ; do l=1,Reg%Tr_snow(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_snow(m)%t(:,:,:,l), mesg//trim(Reg%Tr_snow(m)%name)//" "//&
                                  trim(adjustl(mesg_l)), G)
