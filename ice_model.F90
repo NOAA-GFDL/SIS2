@@ -97,7 +97,7 @@ use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_r
 use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: ice_resize_SIS2, rebalance_ice_layers
+use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
 use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze, enthalpy_liquid, e_to_melt_TS
 use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
@@ -2913,17 +2913,22 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, k2, i_off, j_off
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt
-  real :: salt_to_ice
-  real :: mtot_ice
-  real :: e2m_tot  ! The total enthalpy requred to melt all ice and snow, in J m-2.
+  real :: salt_to_ice ! The flux of salt from the ocean to the ice, in kg m-2 s-1.
+                      ! This may be of either sign; in some places it is an
+                      ! average over the whole cell, while in others just a partition.
+  real :: mtot_ice    ! The total mass of ice ans snow in a cell, in kg m-2.
+  real :: e2m_tot     ! The total enthalpy requred to melt all ice and snow, in J m-2.
   real :: enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, enth_snowfall
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb
-  real :: enth_units, I_enth_units
-  real :: frac_keep, frac_melt
-  real :: ice_melt_lay, snow_melt
-  real :: enth_freeze, enth_to_melt
-  real :: I_Nk
+  real :: enth_units, I_enth_units ! The units of enthaply and their inverse.
+  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, nd.
+  real :: ice_melt_lay ! The amount of excess ice removed from each layer in kg/m2.
+  real :: snow_melt    ! The amount of excess snow that is melted, in kg/m2.
+  real :: enth_freeze  ! The freezing point enthalpy of a layer, in enth_units.
+  real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
+                       ! and snow in enth_unit kg/m2.
+  real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real, parameter :: LI = hlf
 
@@ -3287,11 +3292,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
-      call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
-                   0.0, IST%frazil(i,j) * I_part, 0.0, 0.0, 0.0, &
-                   T_Freeze_surf, NkIce, &
-                   heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                   sn2ic, salt_to_ice, IST%ITV, IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
+!      call ice_resize_SIS2(m_lay, enthalpy, S_col, Salin, &
+!                   0.0, IST%frazil(i,j) * I_part, 0.0, 0.0, 0.0, &
+!                   T_Freeze_surf, NkIce, &
+!                   heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
+!                   sn2ic, salt_to_ice, IST%ITV, IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
+      call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, IST%frazil(i,j) * I_part, &
+                   T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
+                   IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
       IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
@@ -3335,19 +3343,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       endif
 
       IST%frazil(i,j) = 0.0
-      !
-      ! spread frazil salinification of the ocean over all partitions
-      !
-      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + &
-             ((h2o_ice_to_ocn-h2o_ocn_to_ice) * IST%part_size(i,j,k)) * Idt_slow
+      IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) - &
+             (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops
   call mpp_clock_end(iceClock5)
 
-  !
-  ! Calculate QFLUX's from (1) restoring to obs and (2) limiting total ice.
-  !
   call mpp_clock_begin(iceClock6)
   if (IST%do_ice_limit) then
     qflx_lim_ice(:,:) = 0.0
@@ -3355,10 +3357,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP                                  spec_thermo_sal,kg_H_Nk,S_col,Obs_h_ice,dt_slow, &
 !$OMP                                  Obs_cn_ice,snow_to_ice,salt_change,qflx_lim_ice, &
 !$OMP                                  Idt_slow)                                        &
-!$OMP                          private(T_Freeze_surf,e2m,   &
-!$OMP                                  tot_heat,heating,evap_from_ocn,h2o_ice_to_ocn,   &
-!$OMP                                  heat_to_ocn,enthalpy,Salin,h2o_ocn_to_ice,       &
-!$OMP                                  salt_to_ice,bablt,sn2ic)
+!$OMP                          private(mtot_ice,frac_keep,frac_melt,salt_to_ice,  &
+!$OMP                                  h2o_ice_to_ocn,enth_to_melt,enth_ice_to_ocn,   &
+!$OMP                                  ice_melt_lay,snow_melt,enth_freeze)
     do j=jsc,jec ; do i=isc,iec
       mtot_ice = 0.0
       do k=1,ncat
@@ -3368,10 +3369,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       if (mtot_ice > IST%max_ice_limit*IST%Rho_ice) then
         frac_keep = IST%max_ice_limit*IST%Rho_ice / mtot_ice
         frac_melt = 1.0 - frac_keep
-        salt_to_ice = 0.0
-        h2o_ice_to_ocn = 0.0
-        enth_to_melt = 0.0
-        enth_ice_to_ocn = 0.0
+        salt_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0
+        enth_to_melt = 0.0 ; enth_ice_to_ocn = 0.0
         do k=1,ncat
           ice_melt_lay = frac_melt * IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*kg_H_Nk
           snow_melt = frac_melt * IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*G%H_to_kg_m2
