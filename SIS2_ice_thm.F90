@@ -1649,9 +1649,9 @@ end subroutine get_SIS2_thermo_coefs
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
-                           snow, frazil, evap, tmlt, bmlt, tfw, NkIce, &
+                           snow, evap, tmlt, bmlt, NkIce, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                           snow_to_ice, salt_to_ice, ITV, CS, bablt, &
+                           snow_to_ice, salt_to_ice, ITV, CS, ablation, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   real, dimension(0:NkIce), &
         intent(inout) :: m_lay       ! Snow and ice mass per unit area by layer in kg m-2.
@@ -1663,11 +1663,9 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       ! Conserved ice bulk salinity by layer (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
-  real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: evap        ! ice evaporation/sublimation (kg/m^2)
   real, intent(in   ) :: tmlt        ! top melting energy (J/m^2)
   real, intent(in   ) :: bmlt        ! bottom melting energy (J/m^2)
-  real, intent(in   ) :: tfw         ! seawater freezing temperature (deg-C)
   integer, intent(in) :: NkIce       ! The number of ice layers.
   real, intent(  out) :: heat_to_ocn ! energy left after ice all melted (J/m^2)
   real, intent(  out) :: h2o_ice_to_ocn ! liquid water flux to ocean (kg/m^2)
@@ -1678,26 +1676,19 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   type(SIS2_ice_thm_CS), intent(in) :: CS  ! The control structure
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
 
-  real, intent(  out), optional :: bablt ! bottom ablation (kg/m^2)
-  real, intent(  out), optional :: enthalpy_evap ! The enthalpy loss due to the
-                                     ! mass loss by evaporation / sublimation.
-  real, intent(  out), optional :: enthalpy_melt ! The enthalpy loss due to the
-                                     ! mass loss by melting, in J m-2.
-  real, intent(  out), optional :: enthalpy_freeze ! The enthalpy gain due to the
-                                     ! mass gain by freezing, in J m-2.
+  real, intent(  out) :: ablation      ! The mass loss from bottom melt, in kg m-2.
+  real, intent(  out) :: enthalpy_evap ! The enthalpy loss due to the mass loss
+                                       ! by evaporation / sublimation.
+  real, intent(  out) :: enthalpy_melt ! The enthalpy loss due to the mass loss
+                                       ! by melting, in J m-2.
+  real, intent(  out) :: enthalpy_freeze ! The enthalpy gain due to the mass gain
+                                       ! by freezing, in J m-2.
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
   real :: mtot_ice    ! The summed ice mass in kg m-2.
-  real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit.
   real :: enth_freeze ! The enthalpy of newly formed congelation ice, in enth_unit.
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy, in units of enth_unit.
-  real :: frazil_per_layer    ! The frazil heat sink from each of the sublayers of
-                              ! of the ice, in units of enth_unit.
-  real :: t_frazil  ! The temperature which with the frazil-ice is created, in C.
-  real :: m_frazil  ! The newly-formed mass per unit area of frazil ice, in kg m-2.
-  real :: hw                  ! waterline height above ice base.
-  real :: ablation  ! The mass loss from bottom melt, in kg m-2.
   real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when
                               ! freezing water, usually enough to account for
                               ! the latent heat of fusion in a small fraction of
@@ -1748,31 +1739,6 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   endif
   ! Assume that Salin(NkIce+1) already is the freezing salinity.
   salin_freeze = Salin(NkIce+1)
-
-  ! Add frazil:
-  !   Frazil mostly forms in leads, so add its heat uniformly over all of the
-  ! layers rather than just adding it to the ice bottom.
-  if (frazil > 0.0) then
-    frazil_per_layer = (enth_unit*frazil)/NkIce
-    do k=1,NkIce
-    ! ### t_frazil and enth_frazil are calculated in a kludgey way here; revisit this?
-      t_frazil = min(tfw, -ITV%mu_TS*sice_therm(k) - CS%Frazil_temp_offset)
-      enth_frazil = min(enth_from_TS(t_frazil, sice_therm(k), ITV), &
-                        enthalpy(NkIce+1) - min_dEnth_freeze)
-      m_frazil = frazil_per_layer / (enthalpy(NkIce+1) - enth_frazil)
-
-      Enthalpy(k) = (m_lay(k)*Enthalpy(k) + m_frazil*enth_frazil) / &
-                    (m_lay(k) + m_frazil)
-      Salin(k) = (m_lay(k)*Salin(k) + m_frazil*salin_freeze) / &
-                 (m_lay(k) + m_frazil)
-      Salt_to_ice = Salt_to_ice + m_frazil*salin_freeze
-
-      m_lay(k) = m_lay(k) + m_frazil
-      h2o_ocn_to_ice = h2o_ocn_to_ice + m_frazil
-
-      enthM_freezing = enthM_freezing + m_frazil*enthalpy(NkIce+1)
-    enddo
-  endif
 
   if (top_melt < 0.0) then  ! this usually shouldn't happen
     bot_melt = bot_melt + top_melt
@@ -1865,12 +1831,10 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
     heat_to_ocn = heat_to_ocn + melt_left/enth_unit
   endif
 
-  if (present(bablt)) bablt = ablation
-
   ! There are no further heat or mass losses or gains by the ice+snow.
-  if (present(Enthalpy_evap)) Enthalpy_evap = enthM_evap
-  if (present(Enthalpy_melt)) Enthalpy_melt = enthM_melt
-  if (present(Enthalpy_freeze)) Enthalpy_freeze = enthM_freezing
+  Enthalpy_evap = enthM_evap
+  Enthalpy_melt = enthM_melt
+  Enthalpy_freeze = enthM_freezing
 
   ! Make the snow below waterline adjustment.
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
@@ -1934,7 +1898,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   type(SIS2_ice_thm_CS), intent(in) :: CS
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
 
-  real, intent(  out), optional :: enthalpy_freeze ! The enthalpy gain due to the
+  real, intent(  out) :: enthalpy_freeze ! The enthalpy gain due to the
                                      ! mass gain by freezing, in J m-2.
 
   real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit.
@@ -1996,7 +1960,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   endif
 
   ! There are no further heat or mass losses or gains by the ice+snow.
-  if (present(Enthalpy_freeze)) Enthalpy_freeze = enthM_freezing
+  Enthalpy_freeze = enthM_freezing
 
   ! With the addition of frazil only, there is no need to make the snow below
   ! waterline adjustment, and no ice is converted to seawater.
