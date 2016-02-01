@@ -2880,7 +2880,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_sst, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec, icec_obs
-  real, dimension(SZI_(G),SZJ_(G))   :: qflx_lim_ice, qflx_res_ice
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    qflx_lim_ice, qflx_res_ice, &
+    net_melt              ! The net mass flux from the ice and snow into the
+                          ! ocean due to melting and freezing integrated
+                          ! across all categories, in kg m-2 s-1.
   real, dimension(SZI_(G),SZJ_(G),1:G%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
 
@@ -3065,9 +3069,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   call mpp_clock_begin(iceClock5)
 
-  snow_to_ice(:,:,:) = 0.0
+  snow_to_ice(:,:,:) = 0.0 ; net_melt(:,:) = 0.0
   bsnk(:,:) = 0.0
-
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IST,salt_change,kg_H_Nk, &
@@ -3244,7 +3247,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
                IST%sw_abs_ocn(i,j,k))
-  !    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * &
+  !    net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
   !            ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
 
       lpo_tmp(i,j,k,1) = IST%part_size(i,j,k) * &
@@ -3364,15 +3367,15 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       endif
 
       IST%frazil(i,j) = 0.0
-  !    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) - &
+  !    net_melt(i,j) = net_melt(i,j) - &
   !           (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
       lpo_tmp(i,j,k,2) = - (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops
 
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; do m=1,2
-    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + lpo_tmp(i,j,k,m)
+  do m=1,2 ; do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    net_melt(i,j) = net_melt(i,j) + lpo_tmp(i,j,k,m)
     IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + emio_tmp(i,j,k,m)
     salt_change(i,j) = salt_change(i,j) + sc_tmp(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
@@ -3423,7 +3426,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           IST%mH_ice(i,j,k) = frac_keep*IST%mH_ice(i,j,k)
           IST%mH_snow(i,j,k) = frac_keep*IST%mH_snow(i,j,k)
         enddo
-        IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + h2o_ice_to_ocn * Idt_slow
+        net_melt(i,j) = net_melt(i,j) + h2o_ice_to_ocn * Idt_slow
         qflx_lim_ice(i,j) = enth_to_melt * I_enth_units * Idt_slow
         IST%Enth_Mass_out_ocn(i,j) = IST%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (IST%ice_rel_salin > 0.0) then
@@ -3534,6 +3537,12 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   if (IST%id_qfres>0) call post_data(IST%id_qfres, qflx_res_ice, IST%diag, mask=G%Lmask2dT)
 
   call disable_SIS_averaging(IST%diag)
+
+  ! Combine the liquid precipitation with the net melt of ice and snow for
+  ! passing to the ocean. These may later be kept separate.
+  do j=jsc,jec ; do i=isc,iec
+    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + net_melt(i,j)
+  enddo ; enddo
 
 end subroutine SIS2_thermodynamics
 
