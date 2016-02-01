@@ -2888,8 +2888,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real, dimension(SZI_(G),SZJ_(G),1:G%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
 
-  real, dimension(SZI_(G),SZJ_(G),1:G%CatIce,2)   :: lpo_tmp, sc_tmp, emio_tmp
-
   real, dimension(G%NkIce) :: S_col        ! The salinity of a column of ice, in g/kg.
   real, dimension(G%NkIce+1) :: Salin      ! The conserved bulk salinity of each
                                            ! layer in g/kg, with the salinity of
@@ -3121,12 +3119,10 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   endif
 !$OMP end parallel
 
-  lpo_tmp(:,:,:,:) = 0.0 ; sc_tmp(:,:,:,:) = 0.0 ;  emio_tmp(:,:,:,:) = 0.0
-
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change)                                   &
+!$OMP                                  salt_change,net_melt)                          &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -3184,8 +3180,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         else
           do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
         endif
-   !     salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
-        sc_tmp(i,j,k,1) = IST%part_size(i,j,k) * salt_to_ice
+        salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
 
       ! The snow enthalpy should not have changed.  This should do nothing.
@@ -3198,9 +3193,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
 
-  !    IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
-  !        IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
-      emio_tmp(i,j,k,1) = IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
+      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+          IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
 
       IST%Enth_Mass_out_ocn(i,j) = IST%Enth_Mass_out_ocn(i,j) - &
           IST%part_size(i,j,k) * enth_ice_to_ocn
@@ -3247,12 +3241,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
                IST%sw_abs_ocn(i,j,k))
-  !    net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
-  !            ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
-
-      lpo_tmp(i,j,k,1) = IST%part_size(i,j,k) * &
+      net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
-
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt ! bot. melt. ablation
 
     endif ! Applying surface fluxes to each category.
@@ -3261,7 +3251,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change)                                   &
+!$OMP                                  salt_change,net_melt)                          &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -3337,16 +3327,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
         else
           do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
         endif
-  !      salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
-        sc_tmp(i,j,k,2) = IST%part_size(i,j,k) * salt_to_ice
+        salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
 
 !      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
 
-  !    IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
-  !        IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
-      emio_tmp(i,j,k,2) = IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
+      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+          IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
 
       if (IST%column_check) then
         heat_in(i,j,k) = heat_in(i,j,k) - IST%frazil(i,j) * I_part
@@ -3367,18 +3355,11 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       endif
 
       IST%frazil(i,j) = 0.0
-  !    net_melt(i,j) = net_melt(i,j) - &
-  !           (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
-      lpo_tmp(i,j,k,2) = - (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
+      net_melt(i,j) = net_melt(i,j) - &
+             (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
     endif
 
   enddo ; enddo ; enddo   ! i-, j-, and k-loops
-
-  do m=1,2 ; do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    net_melt(i,j) = net_melt(i,j) + lpo_tmp(i,j,k,m)
-    IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + emio_tmp(i,j,k,m)
-    salt_change(i,j) = salt_change(i,j) + sc_tmp(i,j,k,m)
-  enddo ; enddo ; enddo ; enddo
 
   call mpp_clock_end(iceClock5)
 
