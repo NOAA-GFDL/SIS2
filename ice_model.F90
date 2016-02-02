@@ -923,31 +923,12 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       enddo ; enddo
       call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
-      if (G%symmetric) then  ! This is a place-holder until the Tikal release.
-        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-        do j=jsc,jec ; do i=isc,iec
-          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-        enddo ; enddo
-        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
-
-        ! The under-ice current is needed for the water drag term.
-        do J=jsc-1,jec ; do I=isc-1,iec
-          IST%u_ocn(I,J) = u_nonsym(I,J) ; IST%v_ocn(I,J) = v_nonsym(I,J)
-        enddo ; enddo
-      else
-        do J=jsc,jec ; do I=isc,iec
-          IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
-          IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
-        enddo ; enddo
-      endif
-   !   This will be used with Tikal and later shared code.  However, it does
-   ! not appear to work properly yet.
-   !   do J=jsc,jec ; do I=isc,iec
-   !     IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
-   !     IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
-   !   enddo ; enddo
-   !   if (G%symmetric) &
-   !     call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+      do J=jsc,jec ; do I=isc,iec
+        IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+        IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+      enddo ; enddo
+      if (G%symmetric) &
+        call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
 
       call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
     endif
@@ -960,7 +941,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       do J=jsc,jec ; do i=isc,iec
         IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
       enddo ; enddo
-      ! This can only be used with Tikal and later shared code.
       if (G%symmetric) &
         call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
@@ -968,7 +948,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     else
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec
-        u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
+        u_nonsym(I,j) = u_surf_ice_bot(I,j) ; v_nonsym(i,J) = v_surf_ice_bot(i,J)
       enddo ; enddo
       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
       do J=jsc-1,jec ; do I=isc-1,iec
