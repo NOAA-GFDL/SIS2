@@ -1611,10 +1611,11 @@ end function energy_melt_enthS
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
-                                 Cp_SeaWater, EOS, specified_thermo_salinity)
+                                 Cp_SeaWater, Latent_fusion, EOS, specified_thermo_salinity)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, dimension(:), optional, intent(out) :: ice_salinity
   real,           optional, intent(out) :: Cp_Ice, enthalpy_units, Cp_SeaWater
+  real,           optional, intent(out) :: Latent_fusion
   type(EOS_type), optional, pointer     :: EOS
   logical,        optional, intent(out) :: specified_thermo_salinity
 ! Arguments: ITV - The ice_thermo_type that contains all sea-ice thermodynamic
@@ -1624,6 +1625,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
 !            enthalpy_units - A unit conversion factor for ethalpy from Joules.
 !            Cp_Ice - The heat capacity of ice in J kg-1 K-1.
 !            Cp_SeaWater - The heat capacity of seawater in J kg-1 K-1.
+!            Latent_fusion - The latent heat of fusion, in J kg-1.
 !            EOS - A pointer to the MOM6/SIS2 ocean equation-of-state type.
 !            specified_thermo_salinity - If true, all thermodynamic calculations
 !                  are done with a specified salinity profile that may be
@@ -1635,6 +1637,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
   if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
   if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
+  if (present(Latent_fusion)) Latent_fusion = ITV%LI
   if (present(EOS)) then
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
       "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&

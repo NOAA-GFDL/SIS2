@@ -2884,7 +2884,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
-  real :: I_part   ! The inverse of a part_size, nondim.
+  real :: I_part        ! The inverse of a part_size, nondim.
   logical :: spec_thermo_sal  ! If true, use the specified salinities of the
                               ! various sub-layers of the ice for all thermodynamic
                               ! calculations; otherwise use the prognostic
@@ -2894,9 +2894,10 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real :: Cp_water
   real :: drho_dT(1), drho_dS(1), pres_0(1)
 
-  real :: dt_slow, Idt_slow, yr_dtslow
-  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
-  integer :: i2, j2, k2, i_off, j_off
+  real :: dt_slow     ! The thermodynamic step, in s.
+  real :: Idt_slow    ! The inverse of the thermodynamic step, in s-1.
+  real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
+                      ! to change the units of several diagnostics to rate yr-1
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt
   real :: salt_to_ice ! The flux of salt from the ocean to the ice, in kg m-2 s-1.
                       ! This may be of either sign; in some places it is an
@@ -2906,6 +2907,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real :: enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, enth_snowfall
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb
+  real :: frazil_here  ! The frazil heating applied to the current thickness
+                       ! category, averaged over the area of that category in J m-2.
   real :: enth_units, I_enth_units ! The units of enthaply and their inverse.
   real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, nd.
   real :: ice_melt_lay ! The amount of excess ice removed from each layer in kg/m2.
@@ -2915,7 +2918,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
                        ! and snow in enth_unit kg/m2.
   real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
-  real, parameter :: LI = hlf
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i2, j2, k2, i_off, j_off
+  real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
@@ -2977,6 +2982,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   if (IST%do_ice_restore) then
     ! get observed ice thickness for ice restoring, if calculating qflux
     call get_sea_surface(IST%Time, Obs_SST, Obs_cn_ice, Obs_h_ice)
+    call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
     qflx_res_ice(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec
       e2m_tot = 0.0
@@ -2997,7 +3003,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           enddo ; endif
         endif
       enddo
-      qflx_res_ice(i,j) = -(LI*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
+      qflx_res_ice(i,j) = -(LatHtFus*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
                            (86400.0*IST%ice_restore_timescale)
       if (qflx_res_ice(i,j) < 0.0) then
         IST%frazil(i,j) = IST%frazil(i,j) - qflx_res_ice(i,j)*dt_slow
@@ -3239,7 +3245,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec ; if (IST%frazil(i,j)>0.0) then ; do k=1,ncat
     !
     ! absorb frazil in thinest ice partition available
     !
@@ -3251,7 +3257,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
       if (IST%column_check) then
         enth_prev(i,j,k) = 0.0 ; heat_in(i,j,k) = 0.0
-
         if (IST%mH_ice(i,j,k) > 0.0) then
           enth_prev(i,j,k) = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
           do m=1,G%NkIce
@@ -3259,9 +3264,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           enddo
           enth_prev(i,j,k) = enth_prev(i,j,k) * IST%part_size(i,j,k)
         endif
-
       endif
 
+      ! Combine the ice-free part size with one of the categories.
       IST%mH_snow(i,j,k) = IST%mH_snow(i,j,k) * IST%part_size(i,j,k)
       IST%mH_ice(i,j,k)  = IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)
       IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
@@ -3273,6 +3278,12 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       IST%mH_ice(i,j,k)  = IST%mH_ice(i,j,k)  * I_part
       IST%t_surf(i,j,k) = IST%t_surf(i,j,k) * I_part
 
+      ! Set the frazil that is absorbed in this category and remove it from
+      ! the overall frazil energy.
+      frazil_here = IST%frazil(i,j) * I_part
+      IST%frazil(i,j) = 0.0
+
+      ! Set up the columns of enthalpy, salinity, and mass.
       enthalpy(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enthalpy(m) = IST%enth_ice(i,j,k,m) ; enddo
       enthalpy_ocean = enthalpy_liquid(IST%t_ocn(i,j), IST%s_surf(i,j), IST%ITV)
@@ -3288,12 +3299,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       m_lay(0) = IST%mH_snow(i,j,k) * G%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
-      call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, IST%frazil(i,j) * I_part, &
+      call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, frazil_here, &
                    T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
                    IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
-      IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
+
+      ! Unpack the columns of mass, enthalpy and salinity.
+      IST%mH_snow(i,j,k) = m_lay(0) * G%kg_m2_to_H
       IST%mH_ice(i,j,k) = mtot_ice * G%kg_m2_to_H
 
       if (IST%mH_ice(i,j,k) == 0.0) then
@@ -3312,12 +3325,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
 !      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
-
       IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
           IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
+      net_melt(i,j) = net_melt(i,j) - &
+             (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
 
       if (IST%column_check) then
-        heat_in(i,j,k) = heat_in(i,j,k) - IST%frazil(i,j) * I_part
+        heat_in(i,j,k) = heat_in(i,j,k) - frazil_here
 
         enth_here = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
         do m=1,G%NkIce
@@ -3333,13 +3347,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
         enth_mass_in_col(i,j) = enth_mass_in_col(i,j) + IST%part_size(i,j,k) * enth_ocn_to_ice
       endif
-
-      IST%frazil(i,j) = 0.0
-      net_melt(i,j) = net_melt(i,j) - &
-             (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
     endif
 
-  enddo ; enddo ; enddo   ! i-, j-, and k-loops
+  enddo ; endif ; enddo ; enddo   ! k-, frazil>0, i-, and j-loops
 
   call mpp_clock_end(iceClock5)
 
