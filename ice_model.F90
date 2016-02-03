@@ -1452,8 +1452,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G )
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     !   I do not know whether this is needed.  It should have been set in
-    ! set_ice_surface_state and not changed since.
-    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
+    ! set_ice_surface_state and not changed since. !###
+    ! Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
   call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
@@ -2253,7 +2253,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
   call finish_ocean_top_stresses(Ice, IST, G)
 
-  ! Set appropriate surface quantities in categories with no ice.
+  ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(IST%s_surf(i,j),IST%ITV)
@@ -2432,8 +2432,8 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
   do k=0,G%CatIce ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
-  ! This may not be needed here?
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+  ! This may not be needed here? !###
+  !  Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
   if (IST%verbose) then
@@ -3269,8 +3269,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
       ! Combine the ice-free part size with one of the categories.
       IST%mH_snow(i,j,k) = IST%mH_snow(i,j,k) * IST%part_size(i,j,k)
       IST%mH_ice(i,j,k)  = IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)
-      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) &
-                           +(T_0degC + T_Freeze_surf)*IST%part_size(i,j,0))
+      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
+                           (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0))
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
       I_part = 1.0 / IST%part_size(i,j,k)
