@@ -3102,13 +3102,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt)                          &
+!$OMP                                  salt_change,net_melt,kg_H_nk)                  &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
 !$OMP                                  enth_ice_to_ocn,enth_ocn_to_ice,heat_input,  &
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
+!$OMP                                  m_lay, mtot_ice,                             &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
@@ -3231,13 +3232,14 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt)                          &
+!$OMP                                  salt_change,net_melt,kg_h_Nk)                  &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
 !$OMP                                  enth_ice_to_ocn,enth_ocn_to_ice,heat_input,  &
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
+!$OMP                                  m_lay,mtot_ice,                              &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (IST%frazil(i,j)>0.0) then
     frazil_cat(1:ncat) = 0.0
@@ -3355,7 +3357,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,G,I_enth_units,   &
 !$OMP                                  spec_thermo_sal,kg_H_Nk,S_col,Obs_h_ice,dt_slow, &
 !$OMP                                  Obs_cn_ice,snow_to_ice,salt_change,qflx_lim_ice, &
-!$OMP                                  Idt_slow)                                        &
+!$OMP                                  Idt_slow,net_melt)                               &
 !$OMP                          private(mtot_ice,frac_keep,frac_melt,salt_to_ice,  &
 !$OMP                                  h2o_ice_to_ocn,enth_to_melt,enth_ice_to_ocn,   &
 !$OMP                                  ice_melt_lay,snow_melt,enth_freeze)
