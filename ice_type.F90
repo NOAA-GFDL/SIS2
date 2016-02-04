@@ -261,6 +261,15 @@ type ice_state_type
   logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
+  logical :: filling_frazil  ! If true, apply frazil to fill as many categories
+                             ! as possible to fill in a uniform (minimum) amount
+                             ! of frazil in all the thinnest categories.
+                             ! Otherwise the frazil is always assigned to a
+                             ! single category with part size > 0.01.
+  real    :: fraz_fill_time  ! A timescale with which the filling frazil causes
+                             ! the thinest cells to attain similar thicknesses,
+                             ! or a negative number to apply the frazil flux
+                             ! uniformly, in s.
 
   integer :: ntrunc = 0      ! The number of times the velocity has been truncated
                              ! since the last call to write_ice_statistics.

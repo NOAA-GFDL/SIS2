@@ -2911,9 +2911,15 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
   real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
                        ! and snow in enth_unit kg/m2.
   real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
-  real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
+  real :: kg_H_Nk      ! The conversion factor from units of H to kg/m2 over Nk.
+  real :: part_sum     ! A running sum of partition sizes.
+  real :: d_enth       ! The change in enthalpy between categories.
+  real :: fill_frac    ! The fraction of the difference between the thicknesses
+                       ! in thin categories that will be removed within a single
+                       ! timestep with filling_frazil.
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, k2, i_off, j_off
+  integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
@@ -3229,6 +3235,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
 
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
@@ -3242,32 +3250,64 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
 !$OMP                                  m_lay,mtot_ice,                              &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (IST%frazil(i,j)>0.0) then
+
     frazil_cat(1:ncat) = 0.0
-    do k=1,ncat
-      !
-      ! absorb frazil in thinest ice partition available
-      !
-      if (IST%frazil(i,j)>0.0 .and. IST%part_size(i,j,0)+IST%part_size(i,j,k)>0.01) then
-        !                                                           was ...>0.0
+    k_merge = 1  ! Find the category that will be combined with the ice free category.
+    if (.not.IST%filling_frazil) then
+      do k=1,ncat ; if (IST%part_size(i,j,0)+IST%part_size(i,j,k)>0.01) then
+        ! absorb frazil in thinest ice partition available    (was ...>0.0)
         ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
+        k_merge = k ; exit
+      endif ; enddo
+    endif
 
-        T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
+!   if (IST%part_size(i,j,0) > 0.0) then
+      k = k_merge
+      T_Freeze_surf = T_Freeze(IST%s_surf(i,j),IST%ITV)
 
-        ! Combine the ice-free part size with one of the categories.
-        I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
-        IST%mH_snow(i,j,k) = (IST%mH_snow(i,j,k) * IST%part_size(i,j,k)) * I_part
-        IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
-        IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
-                         (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
-        IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
-        IST%part_size(i,j,0) = 0.0
+      ! Combine the ice-free part size with one of the categories.
+      I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
+      IST%mH_snow(i,j,k) = (IST%mH_snow(i,j,k) * IST%part_size(i,j,k)) * I_part
+      IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
+      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
+                       (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
+      IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
+      IST%part_size(i,j,0) = 0.0
+!   endif
 
-        ! Set the frazil that is absorbed in this category and remove it from
-        ! the overall frazil energy.
-        frazil_cat(k) = IST%frazil(i,j) * I_part
+    if (IST%filling_frazil) then
+      if (IST%fraz_fill_time < 0.0) then
+        frazil_cat(k) = IST%frazil(i,J)
         IST%frazil(i,j) = 0.0
+      else
+        part_sum = 0.0
+        fill_frac = 1.0 ; if (IST%fraz_fill_time > 0.0) &
+          fill_frac = dt_slow / (dt_slow + IST%fraz_fill_time)
+        do k=1,ncat-1
+          part_sum = part_sum + IST%part_size(i,j,k)
+          d_enth = fill_frac * max(0.0, LatHtFus * G%H_to_kg_m2 * &
+                         (G%mH_cat_bound(k+1) - IST%mH_ice(i,j,k)))
+          if (d_enth*part_sum > IST%frazil(i,j)) then
+            frazil_cat(k) = IST%frazil(i,j) / part_sum
+            IST%frazil(i,j) = 0.0
+            exit
+          else
+            frazil_cat(k) = d_enth
+            IST%frazil(i,j) = IST%frazil(i,j) - frazil_cat(k)*part_sum
+          endif
+        enddo
+        if (IST%frazil(i,j) > 0.0) &
+          frazil_cat(ncat) = IST%frazil(i,j)
+          ! Note that at this point we should have that part_sum = 1.0.
+        do k=ncat-1,1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
       endif
-    enddo
+    else
+      ! Set the frazil that is absorbed in this category and remove it from
+      ! the overall frazil energy.
+      I_part = 1.0 / (IST%part_size(i,j,k))
+      frazil_cat(k_merge) = IST%frazil(i,j) * I_part
+      IST%frazil(i,j) = 0.0
+    endif
 
     do k=1,ncat ; if (frazil_cat(k) > 0.0) then
       if (IST%column_check) then
@@ -3593,6 +3633,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "If true, use the thermodynamic calculations inhereted \n"//&
                  "from the SIS1 5 layer. Otherwise, use the newer SIS2 version.", &
                  default=.false.)
+  
   call get_param(param_file, mod, "INTERSPERSED_ICE_THERMO", IST%interspersed_thermo, &
                  "If true, the sea ice thermodynamic updates are applied \n"//&
                  "after the new velocities are determined, but before the \n"//&
@@ -3731,6 +3772,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "albedo within the sea ice model.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", IST%do_ridging, &
                  "If true, call the ridging routines.", default=.false.)
+  if (.not.IST%SIS1_5L_thermo) then
+    call get_param(param_file, mod, "SIS2_FILLING_FRAZIL", IST%filling_frazil, &
+                 "If true, apply frazil to fill as many categories as \n"//&
+                 "possible to fill in a uniform (minimum) amount of ice \n"//&
+                 "in all the thinnest categories. Otherwise the frazil is \n"//&
+                 "always assigned to a single category.", default=.false.) !###CHANGE DEFAULTS.
+    if (IST%filling_frazil) then
+      call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", IST%fraz_fill_time, &
+                 "A timescale with which the filling frazil causes the \n"//&
+                 "thinest cells to attain similar thicknesses, or a negative \n"//&
+                 "number to apply the frazil flux uniformly.", default=0.0, units="s")
+    endif
+  endif
   call get_param(param_file, mod, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
 
