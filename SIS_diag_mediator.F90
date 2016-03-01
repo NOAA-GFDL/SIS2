@@ -26,7 +26,7 @@ module SIS_diag_mediator
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
-use ice_grid_mod,    only: sea_ice_grid_type
+use ice_grid_mod,    only: sea_ice_grid_type, ice_grid_type
 
 use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, is_root_pe
@@ -123,14 +123,16 @@ end type SIS_diag_ctrl
 
 contains
 
-subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
+subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl),     intent(inout) :: diag_cs
   logical, optional,       intent(in)    :: set_vertical
 !   This subroutine sets up the grid and axis information for use by SIS.
 !
 ! Arguments: G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
@@ -199,8 +201,8 @@ subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
               Domain2=G%Domain%mpp_domain)
 
   if (set_vert) then
-    do k=1,G%NkIce+1 ; zinter_ice(k) = real(k-1) / real(G%NkIce) ; enddo
-    do k=1,G%NkIce ; zlev_ice(k) = (k-0.5) / real(G%NkIce) ; enddo
+    do k=1,IG%NkIce+1 ; zinter_ice(k) = real(k-1) / real(IG%NkIce) ; enddo
+    do k=1,IG%NkIce ; zlev_ice(k) = (k-0.5) / real(IG%NkIce) ; enddo
     id_zl = diag_axis_init('zl', zlev_ice, 'layer', 'z', 'Cell depth', &
                            set_name='ice')
     id_zi = diag_axis_init('zi', zinter_ice, 'interface', 'z', &
@@ -209,7 +211,7 @@ subroutine set_SIS_axes_info(G, param_file, diag_cs, set_vertical)
     id_zl = -1 ; id_zi = -1
   endif
 
-  id_ct = diag_axis_init('ct', G%cat_thick_lim(1:G%CatIce), 'meters', 'n', & ! 'z',?
+  id_ct = diag_axis_init('ct', IG%cat_thick_lim(1:IG%CatIce), 'meters', 'n', & ! 'z',?
                          'Ice thickness category bounds', set_name='ice')
 
   ! Note that there are no 4-d spatial axis groupings yet.  Ferret only started

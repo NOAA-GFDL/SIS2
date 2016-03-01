@@ -41,7 +41,31 @@ public :: set_ice_grid, ice_grid_end
 public :: isPointInCell
 public :: cell_area
 
+type, public :: ice_grid_type
+  ! This type contains sea-ice specific grid elements, including information
+  ! about the category descreptions and the vertical layers in the snow and ice.
+  integer :: CatIce     ! The number of sea ice categories.
+  integer :: NkIce      ! The number of vertical partitions within the
+                        ! sea ice.
+  integer :: NkSnow     ! The number of vertical partitions within the
+                        ! snow atop the sea ice.
+  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
+                        ! internal units of thickness to kg m-2.
+  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
+                        ! the internal units of thickness.
+  real :: H_subroundoff !   A thickness that is so small that it can be added to
+                        ! any physically meaningflu positive thickness without
+                        ! changing it at the bit level, in thickness units.
+
+  real, allocatable, dimension(:) :: &
+    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
+    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
+                  ! in units of H (often kg m-2).
+  
+end type ice_grid_type
+
 type, public :: sea_ice_grid_type
+  type(ice_grid_type), pointer :: IG => NULL()
   type(SIS_domain_type), pointer :: Domain => NULL()
   type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
   integer :: isc, iec, jsc, jec ! The range of the computational domain indicies
@@ -52,12 +76,6 @@ type, public :: sea_ice_grid_type
   integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indicies.
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
-!  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
-  integer :: CatIce             ! The number of sea ice categories.
-  integer :: NkIce              ! The number of vertical partitions within the
-                                ! sea ice.
-  integer :: NkSnow             ! The number of vertical partitions within the
-                                ! snow atop the sea ice.
 
   logical :: symmetric          ! True if symmetric memory is used.
   logical :: nonblocking_updates  ! If true, non-blocking halo updates are
@@ -136,6 +154,12 @@ type, public :: sea_ice_grid_type
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
+!  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
+  integer :: CatIce             ! The number of sea ice categories.
+  integer :: NkIce              ! The number of vertical partitions within the
+                                ! sea ice.
+  integer :: NkSnow             ! The number of vertical partitions within the
+                                ! snow atop the sea ice.
   real :: H_to_kg_m2    ! A constant that translates thicknesses from the
                         ! internal units of thickness to kg m-2.
   real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
@@ -144,10 +168,10 @@ type, public :: sea_ice_grid_type
                         ! any physically meaningflu positive thickness without
                         ! changing it at the bit level, in thickness units.
 
-  real, allocatable, dimension(:) :: &
-    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
-    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
-                  ! in units of H (often kg m-2).
+!  real, allocatable, dimension(:) :: &
+!    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
+!    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
+!                  ! in units of H (often kg m-2).
 
 end type sea_ice_grid_type
 
@@ -249,6 +273,9 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call clone_MOM_domain(G%domain, ice_domain, halo_size=0, symmetric=.false., &
                         domain_name="ice_nohalo")
 
+  ! Allocate the ice-specific grid.
+  if (.not.associated(G%IG)) allocate(G%IG)
+
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
   call get_param(param_file, mod_nm, "GLOBAL_INDEXING", global_indexing, &
@@ -300,6 +327,14 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
+
+  ! Copy equivalent fields into the ice-grid type.
+  G%IG%CatIce = G%CatIce
+  G%IG%NkIce = G%NkIce
+  G%IG%NkSnow = G%NkSnow
+  G%IG%H_to_kg_m2 = G%H_to_kg_m2
+  G%IG%kg_m2_to_H = G%kg_m2_to_H
+  G%IG%H_subroundoff = G%H_subroundoff
 
 
   !--- first determine the if the grid file is using the correct format
@@ -979,13 +1014,13 @@ subroutine allocate_metrics(G)
   allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
   allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
-  allocate(G%cat_thick_lim(1:G%CatIce+1)) ; G%cat_thick_lim(:) = 0.0
-  allocate(G%mH_cat_bound(1:G%CatIce+1)) ; G%mH_cat_bound(:) = 0.0
-
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
   allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
+
+  allocate(G%IG%cat_thick_lim(1:G%IG%CatIce+1)) ; G%IG%cat_thick_lim(:) = 0.0
+  allocate(G%IG%mH_cat_bound(1:G%IG%CatIce+1)) ; G%IG%mH_cat_bound(:) = 0.0
 
 end subroutine allocate_metrics
 

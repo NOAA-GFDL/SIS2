@@ -88,7 +88,7 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use ice_grid_mod, only : sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area
+use ice_grid_mod, only : sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
@@ -709,7 +709,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock1)
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
-                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, &
+                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, Ice%G%IG, &
                              Ocean_boundary%s, Ocean_boundary%sea_level )
   call mpp_clock_end(iceClock1)
   call mpp_clock_end(iceClock)
@@ -720,10 +720,11 @@ end subroutine update_ice_model_slow_up
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
-                                 frazil_ice_bot, OIB, G, s_surf_ice_bot, sea_lev_ice_bot )
+                                 frazil_ice_bot, OIB, G, IG, s_surf_ice_bot, sea_lev_ice_bot )
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
   type(sea_ice_grid_type),                 intent(inout) :: G
+  type(ice_grid_type),                     intent(inout) :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: t_surf_ice_bot, u_surf_ice_bot
   real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: v_surf_ice_bot, frazil_ice_bot
   type(ocean_ice_boundary_type),           intent(inout) :: OIB
@@ -733,7 +734,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h_ice_input
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: icec, icec_obs
   real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
-  real, dimension(G%NkIce) :: sw_abs_lay
+  real, dimension(IG%NkIce) :: sw_abs_lay
   real :: u, v
   real :: area_pt
   real :: I_Nk
@@ -746,10 +747,10 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-  I_Nk = 1.0 / G%NkIce ; kg_H_Nk = G%H_to_kg_m2 * I_Nk
+  I_Nk = 1.0 / IG%NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
   dt_slow = time_type_to_real(IST%Time_step_slow)
 
-  H_to_m_snow = G%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = G%H_to_kg_m2 / IST%Rho_ice
+  H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
 
   ! pass ocean state through ice on first partition
   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
@@ -760,7 +761,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
                          h_ice_input )
     do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(IST%Rho_ice*G%kg_m2_to_H)
+      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(IST%Rho_ice*IG%kg_m2_to_H)
     enddo ; enddo
 
     !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
@@ -768,8 +769,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     ! tracers are initialized to their default values, and snow is set to 0,
     ! and so do not need to be updated here.
     if (IST%do_ridging) then
-      do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,1) > G%mH_cat_bound(1)) then
-        do k=ncat,2,-1 ; if (IST%mH_ice(i,j,1) > G%mH_cat_bound(k-1)) then
+      do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(1)) then
+        do k=ncat,2,-1 ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(k-1)) then
           IST%part_size(i,j,k) = IST%part_size(i,j,1)
           IST%part_size(i,j,1) = 0.0
           IST%mH_ice(i,j,k) = IST%mH_ice(i,j,1) ; IST%mH_ice(i,j,1) = 0.0
@@ -1764,7 +1765,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
     if (IST%SIS1_5L_thermo) then
       call SIS1_5L_thermodynamics(Ice, IST, G)
     else
-      call SIS2_thermodynamics(Ice, IST, G)
+      call SIS2_thermodynamics(Ice, IST, G, G%IG)
     endif
 
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
@@ -1794,7 +1795,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IST%sum_output_CSp, &
                                 message="      Post_thermo A", check_column=.true.)
     call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
-                               IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
+                               IST%TrReg, G, G%IG, IST%ice_transport_CSp) !Niki: add ridging?
     call pass_var(IST%part_size, G%Domain)
     call pass_var(IST%mH_ice, G%Domain, complete=.false.)
     call pass_var(IST%mH_snow, G%Domain, complete=.true.)
@@ -2151,7 +2152,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       if (IST%SIS1_5L_thermo) then
         call SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, runoff_hflx, calving_hflx)
       else
-        call SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, runoff_hflx, calving_hflx)
+        call SIS2_thermodynamics(Ice, IST, G, G%IG) !, runoff, calving, runoff_hflx, calving_hflx)
       endif
 
       !TOM> calculate partial ice growth for ridging and aging.
@@ -2172,7 +2173,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       !  Other routines that do thermodynamic vertical processes should be added here.
 
       call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
-                                 IST%TrReg, G, IST%ice_transport_CSp) !Niki: add ridging?
+                                 IST%TrReg, G, G%IG, IST%ice_transport_CSp) !Niki: add ridging?
 
       ! Set up the thermodynamic fluxes in the externally visible structure Ice.
       call set_ocean_top_fluxes(Ice, IST, G)
@@ -2204,7 +2205,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
 
     if (IST%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%u_ice_C, IST%v_ice_C, &
-                         IST%TrReg, IST%sea_lev, dt_slow_dyn, G, IST%ice_transport_CSp, &
+                         IST%TrReg, IST%sea_lev, dt_slow_dyn, G, G%IG, IST%ice_transport_CSp, &
                          IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -2219,7 +2220,7 @@ subroutine update_ice_model_slow(Ice, IST, G, runoff, calving, &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, uc, vc, &
-                         IST%TrReg, IST%sea_lev, dt_slow_dyn, G, IST%ice_transport_CSp, &
+                         IST%TrReg, IST%sea_lev, dt_slow_dyn, G, G%IG, IST%ice_transport_CSp, &
                          IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     endif
@@ -2838,11 +2839,12 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G) !, runoff, calving, &
 
 end subroutine SIS1_5L_thermodynamics
 
-subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
+subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                                ! runoff_hflx, calving_hflx)
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(sea_ice_grid_type),            intent(inout) :: G
+  type(ice_grid_type),                intent(inout) :: IG
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
 
@@ -3285,8 +3287,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G) !, runoff, calving, &
           fill_frac = dt_slow / (dt_slow + IST%fraz_fill_time)
         do k=1,ncat-1
           part_sum = part_sum + IST%part_size(i,j,k)
-          d_enth = fill_frac * max(0.0, LatHtFus * G%H_to_kg_m2 * &
-                         (G%mH_cat_bound(k+1) - IST%mH_ice(i,j,k)))
+          d_enth = fill_frac * max(0.0, LatHtFus * IG%H_to_kg_m2 * &
+                         (IG%mH_cat_bound(k+1) - IST%mH_ice(i,j,k)))
           if (d_enth*part_sum > IST%frazil(i,j)) then
             frazil_cat(k) = IST%frazil(i,j) / part_sum
             IST%frazil(i,j) = 0.0
@@ -3582,6 +3584,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
   type(sea_ice_grid_type), pointer :: G => NULL()
+  type(ice_grid_type),     pointer :: IG => NULL()
 
   ! Parameters that are read in and used to initialize other modules.  If those
   ! other modules had control states, these would be moved to those modules.
@@ -3820,25 +3823,27 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call set_ice_grid(Ice%G, param_file, Ice%domain, nCat_dflt )
 
-  if (IST%slab_ice) G%CatIce = 1 ! open water and ice ... but never in same place
-  ! Initialize G%cat_thick_lim here.  ###This needs to be extended to add more options.
-  do k=1,min(G%CatIce+1,size(hlim_dflt(:)))
-    G%cat_thick_lim(k) = hlim_dflt(k)
+  IG => Ice%G%IG
+
+  if (IST%slab_ice) IG%CatIce = 1 ! open water and ice ... but never in same place
+  ! Initialize IG%cat_thick_lim here.  ###This needs to be extended to add more options.
+  do k=1,min(IG%CatIce+1,size(hlim_dflt(:)))
+    IG%cat_thick_lim(k) = hlim_dflt(k)
   enddo
-  if ((G%CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
-    do k=min(G%CatIce+1,size(hlim_dflt(:))) + 1, G%CatIce+1
-      G%cat_thick_lim(k) =  2.0*G%cat_thick_lim(k-1) - G%cat_thick_lim(k-2)
+  if ((IG%CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
+    do k=min(IG%CatIce+1,size(hlim_dflt(:))) + 1, IG%CatIce+1
+      IG%cat_thick_lim(k) =  2.0*IG%cat_thick_lim(k-1) - IG%cat_thick_lim(k-2)
     enddo
   endif
-  do k=1,G%CatIce+1
-    G%mH_cat_bound(k) = G%cat_thick_lim(k) * (IST%Rho_ice*G%kg_m2_to_H)
+  do k=1,IG%CatIce+1
+    IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (IST%Rho_ice*IG%kg_m2_to_H)
   enddo
 
   call set_domain(G%Domain%mpp_domain)
-  CatIce = G%CatIce
+  CatIce = IG%CatIce
 
   ! Allocate and register fields for restarts.
-  call ice_data_type_register_restarts(G%Domain%mpp_domain, G%CatIce, &
+  call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &
                          param_file, Ice, Ice%Ice_restart, restart_file)
 
   call ice_state_register_restarts(G, param_file, IST, Ice%Ice_restart, &
@@ -3878,7 +3883,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS", &
                               doc_file_dir = dirs%output_directory)
-  call set_SIS_axes_info(G, param_file, IST%diag)
+  call set_SIS_axes_info(G, IG, param_file, IST%diag)
 
   call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
                          init_EOS=IST%nudge_sea_ice)
