@@ -169,7 +169,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 
   if (CS%slab_ice) then
     call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-    call slab_ice_advect(uc, vc, mH_ice(:,:,1), 4.0*G%kg_m2_to_H, dt_slow, G, CS)
+    call slab_ice_advect(uc, vc, mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, CS)
     call pass_var(mH_ice(:,:,2), G%Domain)
     do j=G%jsd,G%jed ; do i=G%isd,G%ied
       if (mH_ice(i,j,1) > 0.0) then
@@ -343,15 +343,15 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 !$OMP                                  mH_snow,ice_cover,mca_snow)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
-      if (CS%roll_factor * (mH_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)**3 > &
-          (mca_ice(i,j,k)*G%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
+      if (CS%roll_factor * (mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
+          (mca_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
         ! This ice is thicker than it is wide even if all the ice in a grid
         ! cell is collected into a single cube, so it will roll.  Any snow on
         ! top will simply be redistributed into a thinner layer, although it
         ! should probably be dumped into the ocean.  Rolling makes the ice
         ! thinner so that it melts faster, but it should never be made thinner
         ! than IG%mH_cat_bound(1).
-        mH_ice(i,j,k) = max((CS%Rho_ice*G%kg_m2_to_H) * &
+        mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
              sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
                   (CS%roll_factor * mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
       endif

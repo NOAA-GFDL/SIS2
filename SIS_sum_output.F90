@@ -200,12 +200,13 @@ subroutine SIS_sum_output_end(CS)
   endif
 end subroutine SIS_sum_output_end
 
-subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !, tracer_CSp)
   type(ice_state_type),    intent(inout) :: IST
 
   type(time_type),         intent(inout) :: day
   integer,                 intent(in)    :: n
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   type(SIS_sum_out_CS),    pointer       :: CS
   character(len=*), optional, intent(in) :: message
   logical,          optional, intent(in) :: check_column
@@ -334,11 +335,11 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 !  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  ncat = G%IG%CatIce ; nlay = G%IG%NkIce
+  ncat = IG%CatIce ; nlay = IG%NkIce
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
   I_nlay = 1.0 / (1.0*nlay)
-  kg_H_nlay = G%H_to_kg_m2 * I_nlay
+  kg_H_nlay = IG%H_to_kg_m2 * I_nlay
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
@@ -420,10 +421,10 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
       area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
-      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * G%H_to_kg_m2 * &
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
                           (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k))
 
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * G%H_to_kg_m2 * &
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
                           (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1))
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &

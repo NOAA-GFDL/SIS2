@@ -160,13 +160,13 @@ type, public :: sea_ice_grid_type
 !                                ! sea ice.
 !  integer :: NkSnow             ! The number of vertical partitions within the
 !                                ! snow atop the sea ice.
-  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
-                        ! internal units of thickness to kg m-2.
-  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
-                        ! the internal units of thickness.
-  real :: H_subroundoff !   A thickness that is so small that it can be added to
-                        ! any physically meaningflu positive thickness without
-                        ! changing it at the bit level, in thickness units.
+!  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
+!                        ! internal units of thickness to kg m-2.
+!  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
+!                        ! the internal units of thickness.
+!  real :: H_subroundoff !   A thickness that is so small that it can be added to
+!                        ! any physically meaningflu positive thickness without
+!                        ! changing it at the bit level, in thickness units.
 
 !  real, allocatable, dimension(:) :: &
 !    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
@@ -318,12 +318,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 #endif
 
   call obsolete_logical(param_file, "SET_GRID_LIKE_SIS1", .false.)
-  call get_param(param_file, mod_nm, "H_TO_KG_M2", G%H_to_kg_m2, &
+  call get_param(param_file, mod_nm, "H_TO_KG_M2", IG%H_to_kg_m2, &
                "A constant that translates thicknesses from the model's \n"//&
                "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
                default=1.0)
-  G%kg_m2_to_H = 1.0 / G%H_to_kg_m2
-  G%H_subroundoff = 1e-30*G%kg_m2_to_H
+  IG%kg_m2_to_H = 1.0 / IG%H_to_kg_m2
+  IG%H_subroundoff = 1e-30*IG%kg_m2_to_H
   call get_param(param_file, mod_nm, "FIRST_DIRECTION", G%first_direction, &
                  "An integer that indicates which direction goes first \n"//&
                  "in parts of the code that use directionally split \n"//&
@@ -334,9 +334,10 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 !  G%CatIce = IG%CatIce
 !  G%NkIce = IG%NkIce
 !  IG%NkSnow = G%NkSnow
-  IG%H_to_kg_m2 = G%H_to_kg_m2
-  IG%kg_m2_to_H = G%kg_m2_to_H
-  IG%H_subroundoff = G%H_subroundoff
+
+!  G%H_to_kg_m2 = IG%H_to_kg_m2
+!  G%kg_m2_to_H = IG%kg_m2_to_H
+!  G%H_subroundoff = IG%H_subroundoff
 
 
   !--- first determine the if the grid file is using the correct format

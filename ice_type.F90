@@ -700,7 +700,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%H_to_kg_m2, &
+  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%IG%H_to_kg_m2, &
                                longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
                                no_domain=.true., mandatory=.false.)
 
@@ -797,14 +797,14 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   hs=0; if (present(haloshift)) hs=haloshift
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
-  call hchksum(IST%mH_ice*G%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
+  call hchksum(IST%mH_ice*G%IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
   do k=1,G%IG%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow*G%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
+  call hchksum(IST%mH_snow*G%IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B",G,haloshift=hs)
   if (associated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B",G,haloshift=hs)
@@ -906,9 +906,10 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
 
 end subroutine Ice_public_type_bounds_check
 
-subroutine IST_bounds_check(IST, G, msg)
+subroutine IST_bounds_check(IST, G, IG, msg)
   type(ice_state_type),    intent(in) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(in) :: IG
   character(len=*),        intent(in) :: msg
 
   character(len=512) :: mesg1, mesg2
@@ -922,11 +923,11 @@ subroutine IST_bounds_check(IST, G, msg)
   integer :: n_bad, i_bad, j_bad, k_bad
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  ncat = G%IG%CatIce ; NkIce = G%IG%NkIce
+  ncat = IG%CatIce ; NkIce = IG%NkIce
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
-  m_max = 1.0e6*G%kg_m2_to_H
+  m_max = 1.0e6*IG%kg_m2_to_H
 
   sum_part_sz(:,:) = 0.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -994,7 +995,7 @@ subroutine IST_bounds_check(IST, G, msg)
         do m=1,NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
       endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
-             IST%mH_ice(i,j,k)*G%H_to_kg_m2, IST%mH_snow(i,j,k)*G%H_to_kg_m2, &
+             IST%mH_ice(i,j,k)*IG%H_to_kg_m2, IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
              temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
              temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
       do m=2,NkIce
@@ -1285,6 +1286,7 @@ subroutine ice_stock_pe(Ice, index, value)
   integer, intent(in) :: index
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
+  type(ice_grid_type),  pointer :: IG => NULL()
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
@@ -1294,10 +1296,11 @@ subroutine ice_stock_pe(Ice, index, value)
   if(.not.Ice%pe) return
 
   IST => Ice%Ice_state
+  IG => Ice%G%IG
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
-  ncat = Ice%G%IG%CatIce ; I_NkIce = 1.0 / Ice%G%IG%NkIce
-  kg_H = Ice%G%H_to_kg_m2 ; kg_H_Nk = Ice%G%H_to_kg_m2 / Ice%G%IG%NkIce
+  ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce
+  kg_H = IG%H_to_kg_m2 ; kg_H_Nk = IG%H_to_kg_m2 / IG%NkIce
 
   select case (index)
 
@@ -1323,7 +1326,7 @@ subroutine ice_stock_pe(Ice, index, value)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-            do m=1,Ice%G%IG%NkIce
+            do m=1,IG%NkIce
               value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
                   Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
             enddo
@@ -1334,7 +1337,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_SALT)
       !There is no salt in the snow.
       value = 0.0
-      do m=1,Ice%G%IG%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+      do m=1,IG%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo

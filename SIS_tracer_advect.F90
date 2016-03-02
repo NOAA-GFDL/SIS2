@@ -221,7 +221,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
 ! calculations on them, even though they are never used.
   uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
   hprev(:,:,:) = landvolfill
-  h_neglect = G%H_subroundoff
+  h_neglect = IG%H_subroundoff
 !$OMP parallel default(none) shared(ncat,is,ie,js,je,domore_k,uhr,vhr,uhtr,vhtr,dt, &
 !$OMP                               hprev,G,h_prev,h_end,isd,ied,jsd,jed,uh_neglect, &
 !$OMP                               h_neglect,vh_neglect,ntr,Tr,domore_u,domore_v)
@@ -494,7 +494,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
   ! calculations on them, even though they are never used.
     uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
     hprev(:,:,:) = landvolfill
-    h_neglect = G%H_subroundoff
+    h_neglect = IG%H_subroundoff
 !$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
 !$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
 !$OMP                               h_neglect,vh_neglect,domore_u,domore_v)
@@ -697,7 +697,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
 
   usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = G%H_subroundoff
+  h_neglect = IG%H_subroundoff
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
   if (usePCM) then ; do i=is-1,ie+1 ; slope_x(i) = 0.0 ; enddo ; endif
@@ -715,7 +715,8 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
       call kernel_PLM_slope_x(G, is-1, ie+1, j, scalar(:,:,k), mass_mask, slope_x(:))
     endif ! usePLMslope
 
-    call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, domore_u(j,k))
+    call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, &
+                          domore_u(j,k), h_neglect)
 
     if (usePPM) then
       call kernel_PPMH3_Tr_x(G, is-1, ie, j, &
@@ -823,7 +824,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
 
   usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = G%H_subroundoff
+  h_neglect = IG%H_subroundoff
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
 
@@ -846,7 +847,8 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
       enddo ; enddo
     endif ! usePLMslope
 
-    call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, domore_u(j,k))
+    call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, &
+                          domore_u(j,k), h_neglect)
 
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
@@ -921,18 +923,17 @@ end subroutine advect_x
 !! the minimum of the remaining mass flux (uhr) and the half the mass
 !! in the cell plus whatever part of its half of the mass flux that
 !! the flux through the other side does not require.
-subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u)
+subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_neglect)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: hprev
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uhr
   real, dimension(SZIB_(G)),         intent(inout) :: uhh, CFL
   logical,                           intent(inout) :: domore_u
+  real,                              intent(in)    :: h_neglect
   ! Local
   integer :: i
-  real :: hup, hlos, h_neglect
-
-  h_neglect = G%H_subroundoff
+  real :: hup, hlos
 
   do I=is,ie
     if (uhr(I,j) == 0.0) then
@@ -1062,7 +1063,7 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
 
 end subroutine kernel_PPMH3_Tr_x
 
-subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, do_i)
+subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, do_i, h_neglect)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uh_neglect
@@ -1071,11 +1072,9 @@ subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, 
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: hprev
   real, dimension(SZI_(G)),          intent(inout) :: hlst, Ihnew
   logical, dimension(SZI_(G)),       intent(inout) :: do_i
+  real,                              intent(in)    :: h_neglect
   ! Local
   integer :: i
-  real :: h_neglect
-
-  h_neglect = G%H_subroundoff
 
   do I=is-1,ie
     uhr(I,j) = uhr(I,j) - uhh(I)
@@ -1130,7 +1129,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 !  type(ocean_OBC_type),                        pointer       :: OBC
   logical, dimension(SZJB_(G),SZCAT_(IG)),      intent(inout) :: domore_v
   real,                                         intent(in)    :: Idt
-  integer,                                      intent(in)    :: is, ie, js, je,k
+  integer,                                      intent(in)    :: is, ie, js, je, k
   logical,                                      intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
@@ -1173,7 +1172,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 
   usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = G%H_subroundoff
+  h_neglect = IG%H_subroundoff
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1193,7 +1192,8 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   endif ! usePLMslope
 
   do J=js-1,je ; if (domore_v(J,k)) then
-    call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, domore_v(:,k))
+    call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, &
+                          domore_v(:,k), h_neglect)
     if (usePPM) then
       call kernel_PPMH3_Tr_y(G, is, ie, J, &
              scalar(:,:,k), mass_mask, vhh, CFL, Tr_y(:,J))
@@ -1213,7 +1213,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 
   ! Calculate new tracer concentration in each cell after accounting for the j-direction fluxes.
   do j=js,je ; if (do_j_tr(j)) then
-!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
+!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i, h_neglect)
 !    call kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y(:,:), scalar(:,:,k))
     do i=is,ie
       if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
@@ -1306,7 +1306,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
 
   usePLMslope = .not.(usePCM .or. usePPM)
 
-  h_neglect = G%H_subroundoff
+  h_neglect = IG%H_subroundoff
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1328,7 +1328,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   endif ! usePLMslope
 
   do J=js-1,je ; if (domore_v(J,k)) then
-    call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, domore_v(:,k))
+    call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, &
+                          domore_v(:,k), h_neglect)
     if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PPMH3_Tr_y(G, is, ie, J, &
@@ -1353,7 +1354,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
 
   ! Calculate new tracer concentration in each cell after accounting for the j-direction fluxes.
   do j=js,je ; if (do_j_tr(j)) then
-!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i)
+!    call kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev(:,:,k), hlst, Ihnew, do_i, h_neglect)
     do i=is,ie
       if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
         do_i(i) = .true.
@@ -1423,7 +1424,7 @@ end subroutine advect_y
 !! the minimum of the remaining mass flux (vhr) and the half the mass
 !! in the cell plus whatever part of its half of the mass flux that
 !! the flux through the other side does not require.
-subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v)
+subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_neglect)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: hprev
@@ -1431,11 +1432,10 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v)
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vhh
   real, dimension(SZI_(G)),          intent(inout) :: CFL
   logical, dimension(SZJB_(G)),      intent(inout) :: domore_v
+  real,                              intent(in)    :: h_neglect
   ! Local
   integer :: i
-  real :: hup, hlos, h_neglect
-
-  h_neglect = G%H_subroundoff
+  real :: hup, hlos
 
   domore_v(J) = .false.
   do i=is,ie
@@ -1567,18 +1567,16 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
 
 end subroutine kernel_PPMH3_Tr_y
 
-subroutine kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev, hlst, Ihnew, do_i)
+subroutine kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev, hlst, Ihnew, do_i, h_neglect)
   type(sea_ice_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vh_neglect, vhh
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: hprev
   real, dimension(SZI_(G)),          intent(inout) :: hlst, Ihnew
   logical, dimension(SZI_(G)),       intent(inout) :: do_i
+  real,                              intent(in)    :: h_neglect
   ! Local
   integer :: i
-  real :: h_neglect
-
-  h_neglect = G%H_subroundoff
 
   do i=is,ie
     if ((vhh(i,J) /= 0.0) .or. (vhh(i,J-1) /= 0.0)) then
