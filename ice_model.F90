@@ -857,7 +857,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       Ice%albedo_nir_dif(i2,j2,k2) = Ice%albedo(i2,j2,k2)
     endif ; enddo ; enddo ; enddo
   else
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,i_off,j_off, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,IG,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice) &
 !$OMP                          private(i2,j2,k2,sw_abs_lay)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
@@ -2316,7 +2316,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
   if (do_temp_diags) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,spec_thermo_sal,temp_ice, &
-!$OMP                                  S_col,temp_snow)
+!$OMP                                  S_col,temp_snow,ncat,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
         if (spec_thermo_sal) then ; do m=1,NkIce
@@ -3027,7 +3027,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     enth_prev(:,:,:) = 0.0 ; heat_in(:,:,:) = 0.0
     enth_prev_col(:,:) = 0.0 ; heat_in_col(:,:) = 0.0 ; enth_mass_in_col(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,enth_prev,G,I_Nk, &
-!$OMP                                  heat_in_col,dt_slow,enth_prev_col)
+!$OMP                                  heat_in_col,dt_slow,enth_prev_col,NkIce)
     do j=jsc,jec
       do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
         enth_prev(i,j,k) = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
@@ -3066,7 +3066,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IST,salt_change,kg_H_Nk, &
-!$OMP                               h2o_change)
+!$OMP                               h2o_change,NkIce)
   if (IST%ice_rel_salin <= 0.0) then
 !$OMP do
     do j=jsc,jec ; do m=1,NkIce ; do k=1,ncat ; do i=isc,iec
@@ -3245,17 +3245,18 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 
   call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IG,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt,kg_h_Nk)                  &
+!$OMP                                  salt_change,net_melt,kg_h_Nk,LatHtFus)         &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
 !$OMP                                  enth_ice_to_ocn,enth_ocn_to_ice,heat_input,  &
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
-!$OMP                                  m_lay,mtot_ice,                              &
+!$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
+!$OMP                                  fill_frac,d_enth,                            &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (IST%frazil(i,j)>0.0) then
 
@@ -3462,7 +3463,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     do j=jsc,jec ; do i=isc,iec
       heat_in_col(i,j) = heat_in_col(i,j) + IST%frazil(i,j) + IST%flux_t_ocn_top(i,j)*dt_slow
     enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
       enth_col(i,j) = enth_col(i,j) + &
         (IST%mH_snow(i,j,k)*IST%part_size(i,j,k)) * IST%enth_snow(i,j,k,1)
@@ -3500,7 +3501,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   ! Determine the salt fluxes to ocean
   ! Note that at this point salt_change and h2o_change are the negative of the masses.
   if (IST%ice_rel_salin <= 0.0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,ncat,salt_change,IST,kg_H_Nk)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,ncat,salt_change,IST,kg_H_Nk,NkIce)
     do j=jsc,jec ; do m=1,NkIce ; do k=1,ncat ; do i=isc,iec
       salt_change(i,j) = salt_change(i,j) + &
          (IST%sal_ice(i,j,k,m)*(IST%mH_ice(i,j,k)*kg_H_Nk)) * IST%part_size(i,j,k)

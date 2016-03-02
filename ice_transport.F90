@@ -257,7 +257,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 
   !   Determine the whole-cell averaged mass of snow and ice.
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0; ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,mH_ice,mca_ice,part_sz, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,mH_ice,mca_ice,part_sz, &
 !$OMP                                  mca_snow,mH_snow,ice_cover,mHi_avg)
   do j=jsc,jec
     do k=1,G%CatIce ; do i=isc,iec
@@ -338,7 +338,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
 
   ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,mca_ice,mH_ice,part_sz, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,CS,mca_ice,mH_ice,part_sz, &
 !$OMP                                  mH_snow,ice_cover,mca_snow)
   do j=jsc,jec ; do k=1,G%CatIce ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
@@ -701,7 +701,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mH_ice, mH_snow, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do_j(:) = .false.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,part_sz,excess_cover, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
 !$OMP                                  mca_ice,mca_snow,mH_ice,mH_snow,CS,TrReg) &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
 !$OMP                                  compression_ratio,Icompress_here, &
