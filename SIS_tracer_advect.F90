@@ -59,7 +59,7 @@ use SIS_diag_mediator, only : register_SIS_diag_field, safe_alloc_ptr, time_type
 use MOM_domains, only : pass_var, pass_vector, sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use ice_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : sea_ice_grid_type, ice_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, SIS_tracer_chksum
 use MOM_variables, only : ocean_OBC_type, OBC_FLATHER_E
 use MOM_variables, only : OBC_FLATHER_W, OBC_FLATHER_N, OBC_FLATHER_S
@@ -87,11 +87,12 @@ integer :: id_clock_advect, id_clock_pass, id_clock_sync
 
 contains
 
-subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr ) ! (, OBC)
+subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, snow_tr ) ! (, OBC)
   type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_prev, h_end
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in) :: uhtr
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(in) :: vhtr
+  type(ice_grid_type),                         intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in) :: h_prev, h_end
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: uhtr
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(in) :: vhtr
   real,                                        intent(in)    :: dt
   type(SIS_tracer_advect_CS),                  pointer       :: CS
   type(SIS_tracer_registry_type),              pointer       :: Reg
@@ -107,6 +108,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr
 !!                  and what open boundary conditions are used.
 !  (in)      dt - Time increment in s.
 !  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_tracer_advect_init.
 !  (in)      Reg - A pointer to the tracer registry.
@@ -125,27 +127,28 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, CS, Reg, snow_tr
   call cpu_clock_begin(id_clock_advect)
   if (snow_tr) then
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+      call advect_upwind_2d(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
     else
-      call advect_tracer(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS)
+      call advect_tracer(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
     endif
   else
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+      call advect_upwind_2d(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
     else
-      call advect_tracer(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS)
+      call advect_tracer(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
     endif
   endif
   call cpu_clock_end(id_clock_advect)
 
 end subroutine advect_SIS_tracers
 
-subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC)
+subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (, OBC)
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
   type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)    :: h_prev, h_end
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in)    :: uhtr
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(in)    :: vhtr
+  type(ice_grid_type),                         intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_prev, h_end
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in)    :: uhtr
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(in)    :: vhtr
   real,                                        intent(in)    :: dt
   integer,                                     intent(in)    :: ntr
   type(SIS_tracer_advect_CS),                  pointer       :: CS
@@ -163,16 +166,17 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
 !!                  and what open boundary conditions are used.
 !  (in)      dt - Time increment in s.
 !  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_tracer_advect_init.
 !  (in)      Reg - A pointer to the tracer registry.
 
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     hprev           ! The cell volume at the end of the previous tracer
                     ! change, in m3.
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
     uhr             ! The remaining zonal thickness flux, in m3.
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)) :: &
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vhr             ! The remaining meridional thickness fluxes, in m3.
   real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
   real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
@@ -181,20 +185,20 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
   real :: landvolfill         ! An arbitrary? nonzero cell volume, m3.
   real :: Idt                 ! 1/dt in s-1.
   real :: h_neglect
-  logical :: domore_u(SZJ_(G),SZCAT_(G))  ! domore__ indicate whether there is more
-  logical :: domore_v(SZJB_(G),SZCAT_(G)) ! advection to be done in the corresponding
+  logical :: domore_u(SZJ_(G),SZCAT_(IG))  ! domore__ indicate whether there is more
+  logical :: domore_v(SZJB_(G),SZCAT_(IG)) ! advection to be done in the corresponding
                                 ! row or column.
   logical :: x_first            ! If true, advect in the x-direction first.
   integer :: max_iter           ! The maximum number of iterations in
                                 ! each layer.
-  integer :: domore_k(SZCAT_(G))
+  integer :: domore_k(SZCAT_(IG))
   integer :: stensil            ! The stensil of the advection scheme.
   integer :: nsten_halo         ! The number of stensils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
   integer :: isv, iev, jsv, jev ! The valid range of the indices.
 
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = G%CatIce
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20         ! This is arbitrary, but must be positive.
   stensil = 2                   ! The scheme's stensil; 2 for PLM.
@@ -346,11 +350,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       if (x_first) then
   !    First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv, iev, jsv-stensil, jev+stensil, k, G, IG, &
+                      CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -358,11 +363,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
       else
   !    First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv-stensil, iev+stensil, jsv, jev, k, G, IG, &
+                      CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -388,21 +394,34 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, CS) ! (, OBC
 
 end subroutine advect_tracer
 
-subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: scalar !< Scalar field to be advected
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in)    :: h_prev, h_end
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in)    :: uhtr
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(in)    :: vhtr
-  real,                                        intent(in)    :: dt
-  type(SIS_tracer_advect_CS),                  pointer       :: CS
+subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, OBC)
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar !< Scalar field to be advected
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_prev, h_end
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in)    :: uhtr
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(in)    :: vhtr
+  real,                                         intent(in)    :: dt
+  type(SIS_tracer_advect_CS),                   pointer       :: CS
+! Arguments: scalar - The scalar tracer field to be advected, in arbitrary units.
+!  (in)      h_prev - Category thickness times fractional coverage before advection, in m or kg m-2.
+!  (in)      h_end - Layer thickness times fractional coverage after advection, in m or kg m-2.
+!  (in)      uhtr - Accumulated volume or mass fluxes through zonal faces,
+!                   in m3 s-1 or kg s-1.
+!  (in)      vhtr - Accumulated volume or mass fluxes through meridional faces,
+!                   in m3 s-1 or kg s-1.
+!  (in)      dt - Time increment in s.
+!  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
+!  (in)      CS - The control structure returned by a previous call to
+!                 SIS_tracer_advect_init.
 
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)) :: &
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     hprev           ! The cell volume at the end of the previous tracer
                     ! change, in m3.
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)) :: &
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
     uhr             ! The remaining zonal thickness flux, in m3.
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)) :: &
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vhr             ! The remaining meridional thickness fluxes, in m3.
   real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
   real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
@@ -411,8 +430,8 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   real :: landvolfill         ! An arbitrary? nonzero cell volume, m3.
   real :: Idt                 ! 1/dt in s-1.
   real :: h_neglect
-  logical :: domore_u(SZJ_(G),SZCAT_(G))  ! domore__ indicate whether there is more
-  logical :: domore_v(SZJB_(G),SZCAT_(G)) ! advection to be done in the corresponding
+  logical :: domore_u(SZJ_(G),SZCAT_(IG))  ! domore__ indicate whether there is more
+  logical :: domore_v(SZJB_(G),SZCAT_(IG)) ! advection to be done in the corresponding
                                 ! row or column.
   logical :: x_first            ! If true, advect in the x-direction first.
   integer :: max_iter           ! The maximum number of iterations in
@@ -423,14 +442,14 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
   real    :: tr_up              ! Upwind tracer concentrations, in conc.
   real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
 
-  integer :: domore_k(SZCAT_(G))
+  integer :: domore_k(SZCAT_(IG))
   integer :: stensil            ! The stensil of the advection scheme.
   integer :: nsten_halo         ! The number of stensils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
   integer :: isv, iev, jsv, jev ! The valid range of the indices.
 
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = G%CatIce
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20         ! This is arbitrary, but must be positive.
   stensil = 2                   ! The scheme's stensil; 2 for PLM.
@@ -582,11 +601,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
         if (x_first) then
     !    First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv-stensil, jev+stensil, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv-stensil, jev+stensil, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -594,11 +613,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
         else
     !    First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv-stensil, iev+stensil, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv-stensil, iev+stensil, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv, jev, k, G, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -626,16 +645,17 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, CS) ! (, OBC)
 end subroutine advect_scalar
 
 subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: scalar
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: uhr
+                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: uhr
   real, dimension(SZIB_(G),SZJ_(G)),      intent(inout) :: uh_neglect
 !!  type(ocean_OBC_type),                   pointer       :: OBC
-  logical, dimension(SZJ_(G),SZCAT_(G)),  intent(inout) :: domore_u
+  logical, dimension(SZJ_(G),SZCAT_(IG)), intent(inout) :: domore_u
   real,                                   intent(in)    :: Idt
-  integer,                                intent(in)    :: is, ie, js, je,k
+  integer,                                intent(in)    :: is, ie, js, je, k
   logical,                                intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection in the zonal direction using
   ! a monotonic piecewise linear scheme.
@@ -751,14 +771,15 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
 end subroutine advect_scalar_x
 
 subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                intent(inout) :: G
-  type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(inout) :: uhr
+                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  type(SIS_tracer_type), dimension(ntr),        intent(inout) :: Tr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: uhr
   real, dimension(SZIB_(G),SZJ_(G)),      intent(inout) :: uh_neglect
 !!  type(ocean_OBC_type),                   pointer       :: OBC
-  logical, dimension(SZJ_(G),SZCAT_(G)),  intent(inout) :: domore_u
+  logical, dimension(SZJ_(G),SZCAT_(IG)), intent(inout) :: domore_u
   real,                                   intent(in)    :: Idt
   integer,                                intent(in)    :: ntr, nL_max, is, ie, js, je,k
   logical,                                intent(in)    :: usePPM, usePCM
@@ -1099,17 +1120,18 @@ subroutine kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x, scalar)
 end subroutine kernel_tracer_div_x
 
 subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: scalar
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(inout) :: vhr
-  real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vh_neglect
+                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(inout) :: vhr
+  real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vh_neglect
 !  type(ocean_OBC_type),                        pointer       :: OBC
-  logical, dimension(SZJB_(G),SZCAT_(G)),      intent(inout) :: domore_v
-  real,                                        intent(in)    :: Idt
-  integer,                                     intent(in)    :: is, ie, js, je,k
-  logical,                                     intent(in)    :: usePPM, usePCM
+  logical, dimension(SZJB_(G),SZCAT_(IG)),      intent(inout) :: domore_v
+  real,                                         intent(in)    :: Idt
+  integer,                                      intent(in)    :: is, ie, js, je,k
+  logical,                                      intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -1231,17 +1253,18 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 end subroutine advect_scalar_y
 
 subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                     intent(inout) :: G
-  type(SIS_tracer_type), dimension(ntr),  intent(inout) :: Tr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(inout) :: hprev
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(inout) :: vhr
-  real, dimension(SZI_(G),SZJB_(G)),           intent(inout) :: vh_neglect
+                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  type(SIS_tracer_type), dimension(ntr),        intent(inout) :: Tr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(inout) :: vhr
+  real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vh_neglect
 !  type(ocean_OBC_type),                        pointer       :: OBC
-  logical, dimension(SZJB_(G),SZCAT_(G)),      intent(inout) :: domore_v
-  real,                                        intent(in)    :: Idt
-  integer,                                     intent(in)    :: ntr, nL_max, is, ie, js, je,k
-  logical,                                     intent(in)    :: usePPM, usePCM
+  logical, dimension(SZJB_(G),SZCAT_(IG)),      intent(inout) :: domore_v
+  real,                                         intent(in)    :: Idt
+  integer,                                      intent(in)    :: ntr, nL_max, is, ie, js, je, k
+  logical,                                      intent(in)    :: usePPM, usePCM
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
   real, dimension(SZI_(G),SZJ_(G),nL_max,ntr) :: &
@@ -1595,12 +1618,13 @@ subroutine kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y,  scalar)
 
 end subroutine kernel_tracer_div_y
 
-subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
+subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
   type(sea_ice_grid_type),                     intent(inout) :: G
+  type(ice_grid_type),                         intent(inout) :: IG
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),  intent(in) :: h_prev, h_end
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(G)), intent(in) :: uhtr
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(G)), intent(in) :: vhtr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in) :: h_prev, h_end
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: uhtr
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(in) :: vhtr
   real,                                   intent(in)    :: dt
   integer,                                intent(in)    :: ntr
 ! Arguments: tr - The arrays of tracer concentration being worked on.
@@ -1612,6 +1636,7 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
 !                   in m3 s-1 or kg s-1.
 !  (in)      dt - Time increment in s.
 !  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 tracer_advect_init.
 !  (in)      Reg - A pointer to the tracer registry.
@@ -1632,7 +1657,7 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
   !        ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
   ! For now this is just non-directionally split upwind advection.
-  do m=1,ntr ; do l=1,Tr(m)%nL ; do k=1,G%CatIce
+  do m=1,ntr ; do l=1,Tr(m)%nL ; do k=1,IG%CatIce
     do j=js,je ; do I=is-1,ie
       if (uhtr(I,j,k) >= 0.0) then ; tr_up = Tr(m)%t(i,j,k,l)
       else ; tr_up = Tr(m)%t(i+1,j,k,l) ; endif
@@ -1676,19 +1701,20 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G)
 
 end subroutine advect_upwind_2d
 
-subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
+subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
                                   Reg, snow_tr, j, is, ie)
-  type(sea_ice_grid_type),            intent(in) :: G
-  real, dimension(SZI_(G),SZCAT_(G)), intent(in) :: vol_start, vol_trans
-  type(SIS_tracer_advect_CS),         pointer    :: CS
-  type(SIS_tracer_registry_type),     pointer    :: Reg
-  logical,                            intent(in) :: snow_tr
-  integer,                            intent(in) :: j, is, ie
+  type(sea_ice_grid_type),             intent(in) :: G
+  type(ice_grid_type),                 intent(inout) :: IG
+  real, dimension(SZI_(G),SZCAT_(IG)), intent(in) :: vol_start, vol_trans
+  type(SIS_tracer_advect_CS),          pointer    :: CS
+  type(SIS_tracer_registry_type),      pointer    :: Reg
+  logical,                             intent(in) :: snow_tr
+  integer,                             intent(in) :: j, is, ie
 
-  real, dimension(SZI_(G),SZCAT_(G)) :: vol
+  real, dimension(SZI_(G),SZCAT_(IG)) :: vol
   type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL()
   real :: Ivol_new
-  integer :: i, k, m, n
+  integer :: i, k, m, n, ncat
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracers_thicker.")
@@ -1696,14 +1722,16 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
        "register_tracer must be called before advect_tracers_thicker.")
   if (Reg%ntr==0) return
 
+  ncat = IG%CatIce
+
   if (snow_tr) then
     Tr => Reg%Tr_snow
   else
     Tr => Reg%Tr_ice
   endif
 
-  do k=1,G%CatIce ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
-  do K=1,G%CatIce-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
+  do k=1,ncat ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
+  do K=1,ncat-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
     Ivol_new = 1.0 / (vol(i,k+1) + vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
     do n=1,Reg%ntr ; do m=1,Tr(n)%nL
@@ -1714,7 +1742,7 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, CS, &
     vol(i,k) = vol(i,k) - vol_trans(i,K)
   endif ; enddo ; enddo
 
-  do K=G%CatIce-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) < 0.0) then
+  do K=ncat-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) < 0.0) then
     Ivol_new = 1.0 / (vol(i,k) - vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
     do n=1,Reg%ntr ; do m=1,Tr(n)%nL

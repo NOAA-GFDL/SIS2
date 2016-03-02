@@ -37,7 +37,7 @@ use MOM_domains,       only : pass_var
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use ice_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : sea_ice_grid_type, ice_grid_type
 
 implicit none ; private
 
@@ -91,12 +91,13 @@ end type SIS_tracer_registry_type
 
 contains
 
-subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer, &
+subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tracer, &
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v)
   integer,                         intent(in) :: nLtr
   type(sea_ice_grid_type),         intent(in) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nLtr), target :: tr1
+  type(ice_grid_type),             intent(in) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
   type(param_file_type), intent(in)           :: param_file
   type(SIS_tracer_registry_type), pointer     :: Reg
@@ -111,6 +112,8 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
 
 ! Arguments: tr1 - The pointer to the tracer, in arbitrary concentration units
 !                  (CONC), and dimensions of i-, j-, category, and layer.
+!  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      nLtr - The number of vertical levels for this tracer.
 !  (in)      name - The name to be used in messages about the tracer.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -192,12 +195,13 @@ subroutine register_SIS_tracer(tr1, G, nLtr, name, param_file, Reg, snow_tracer,
 end subroutine register_SIS_tracer
 
 subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, &
-                                    name_snow, G, param_file, Reg, &
+                                    name_snow, G, IG, param_file, Reg, &
                                     massless_iceval, massless_snowval)
   integer,                         intent(in) :: nL_ice, nL_snow
   type(sea_ice_grid_type),         intent(in) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL_ice),  target :: ice_tr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G),nL_snow), target :: snow_tr
+  type(ice_grid_type),             intent(in) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_ice),  target :: ice_tr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow), target :: snow_tr
   character(len=*), intent(in)                :: name_ice, name_snow
   type(param_file_type), intent(in)           :: param_file
   type(SIS_tracer_registry_type), pointer     :: Reg
@@ -301,16 +305,17 @@ subroutine update_SIS_tracer_halos(Reg, G, complete)
 end subroutine update_SIS_tracer_halos
 
 
-subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain, do_snow, do_ice)
-  type(sea_ice_grid_type),                 intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)), intent(in) :: mass
-  type(SIS_tracer_registry_type),          intent(inout) :: Reg
-  logical,                       optional, intent(in)    :: compute_domain, do_snow, do_ice
+subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, do_ice)
+  type(sea_ice_grid_type),                  intent(inout) :: G
+  type(ice_grid_type),                      intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mass
+  type(SIS_tracer_registry_type),           intent(inout) :: Reg
+  logical,                        optional, intent(in)    :: compute_domain, do_snow, do_ice
 
-  integer :: i, j, k, m, n, is, ie, js, je
+  integer :: i, j, k, m, n, is, ie, js, je, nCat
   logical :: do_snow_tr, do_ice_tr
 
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nCat = IG%CatIce
   if (present(compute_domain)) then ; if (compute_domain) then
     is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
   endif ; endif
@@ -321,14 +326,14 @@ subroutine set_massless_SIS_tracers(mass, Reg, G, compute_domain, do_snow, do_ic
 
   if (do_snow_tr) then
     do n=1,Reg%ntr ; do m=1,Reg%Tr_snow(n)%nL
-      do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+      do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
         Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
       enddo ; enddo ; enddo
     enddo ; enddo
   endif
   if (do_ice_tr) then
     do n=1,Reg%ntr ; do m=1,Reg%Tr_ice(n)%nL
-      do k=1,G%CatIce ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
+      do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
         Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
       enddo ; enddo ; enddo
     enddo ; enddo

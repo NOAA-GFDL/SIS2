@@ -155,9 +155,9 @@ type, public :: sea_ice_grid_type
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
 !  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
-  integer :: CatIce             ! The number of sea ice categories.
-  integer :: NkIce              ! The number of vertical partitions within the
-                                ! sea ice.
+!  integer :: CatIce             ! The number of sea ice categories.
+!  integer :: NkIce              ! The number of vertical partitions within the
+!                                ! sea ice.
 !  integer :: NkSnow             ! The number of vertical partitions within the
 !                                ! snow atop the sea ice.
   real :: H_to_kg_m2    ! A constant that translates thicknesses from the
@@ -286,10 +286,10 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                  "the same index. This does not work with static memory.", &
                  default=.false.)
 #ifdef STATIC_MEMORY_
-  call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
+  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=NCat_dflt)
-  if (G%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
+  if (IG%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
        "param_file or the input namelist file.")
   call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
@@ -306,7 +306,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   if (global_indexing) cal SIS_error(FATAL, "set_ice_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #else
-  call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
+  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=NCat_dflt)
   call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
@@ -331,8 +331,8 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                  "and odd numbers used for y-first.", default=0)
 
   ! Copy equivalent fields into the ice-grid type.
-  IG%CatIce = G%CatIce
-  G%NkIce = IG%NkIce
+!  G%CatIce = IG%CatIce
+!  G%NkIce = IG%NkIce
 !  IG%NkSnow = G%NkSnow
   IG%H_to_kg_m2 = G%H_to_kg_m2
   IG%kg_m2_to_H = G%kg_m2_to_H

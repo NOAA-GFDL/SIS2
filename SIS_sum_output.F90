@@ -42,7 +42,7 @@ use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use ice_type_mod, only : ice_data_type, ice_state_type
-use ice_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : sea_ice_grid_type, ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 
@@ -706,7 +706,7 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
@@ -774,7 +774,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
@@ -797,7 +797,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
 
 end subroutine accumulate_input_1
 
-subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
+subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
@@ -807,12 +807,14 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
 !                      thickness category, nondimensional, 0-1.
 !  (in)      dt - The amount of time over which to average.
 !  (in)      G - The sea ice model's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(G)), intent(in) :: part_size
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), intent(in) :: part_size
   real,                    intent(in) :: dt
   type(SIS_sum_out_CS),    pointer    :: CS
 
@@ -821,7 +823,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, CS)
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   ! This subroutine includes the accumulation of mass fluxes and heat fluxes

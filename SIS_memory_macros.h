@@ -5,27 +5,18 @@
 !***********************************************************************
 
 #ifdef STATIC_MEMORY_
-#  define NCATMEM_      NCAT_ICE_
-#  define NCATMEM0_     0:NCAT_ICE_
-#  define NKICEMEM_     NK_ICE_
-#  define NKSNOWMEM_    NK_SNOW_
 
-#  define SZCAT_(G)     NCAT_ICE_
-#  define SZCAT0_(G)    0:NCAT_ICE_
-#  define SZK_ICE_(G)   NK_ICE_
-#  define SZK_SNOW_(G)   NK_SNOW_
+#  define SZCAT_(IG)     NCAT_ICE_
+#  define SZCAT0_(IG)    0:NCAT_ICE_
+#  define SZK_ICE_(IG)   NK_ICE_
+#  define SZK_SNOW_(IG)  NK_SNOW_
 
 #else
 ! Dynamic memory allocation
 
-#  define NCATMEM_    :
-#  define NCATMEM0_  0:
-#  define NKICEMEM_   :
-#  define NKSNOWMEM_  :
-
-#  define SZCAT_(G)     G%CatIce
-#  define SZCAT0_(G)    0:G%CatIce
-#  define SZK_ICE_(G)   G%NkIce
-#  define SZK_SNOW_(G)  G%NkSnow
+#  define SZCAT_(IG)     IG%CatIce
+#  define SZCAT0_(IG)    0:IG%CatIce
+#  define SZK_ICE_(IG)   IG%NkIce
+#  define SZK_SNOW_(IG)  IG%NkSnow
 
 #endif

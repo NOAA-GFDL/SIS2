@@ -1766,7 +1766,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
     ! The thermodynamics routines return updated values of the ice and snow
     ! masses-per-unit area and enthalpies.
-    call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
+    call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
     if (IST%SIS1_5L_thermo) then
       call SIS1_5L_thermodynamics(Ice, IST, G, IG)
     else
@@ -2153,7 +2153,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       ! The thermodynamics routines return updated values of the ice and snow
       ! masses-per-unit area and enthalpies.
-      call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IST%sum_output_CSp)
+      call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
       if (IST%SIS1_5L_thermo) then
         call SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
       else
@@ -4097,17 +4097,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Register tracers that will be advected around.
   call register_SIS_tracer_pair(IST%enth_ice, IG%NkIce, "enth_ice", &
                                 IST%enth_snow, 1, "enth_snow", &
-                                G, param_file, IST%TrReg, &
+                                G, IG, param_file, IST%TrReg, &
                                 massless_iceval=massless_ice_enth*enth_unit, &
                                 massless_snowval=massless_snow_enth*enth_unit)
 
   if (IST%ice_rel_salin > 0.0) then
-    call register_SIS_tracer(IST%sal_ice, G, IG%NkIce, "salin_ice", param_file, &
+    call register_SIS_tracer(IST%sal_ice, G, IG, IG%NkIce, "salin_ice", param_file, &
                              IST%TrReg, snow_tracer=.false., &
                              massless_val=massless_ice_salin)
   endif
   if (IST%id_age>0) &
-    call register_SIS_tracer(IST%age_ice, G, 1, "age_ice", param_file, &
+    call register_SIS_tracer(IST%age_ice, G, IG, 1, "age_ice", param_file, &
                              IST%TrReg, snow_tracer=.false.)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &

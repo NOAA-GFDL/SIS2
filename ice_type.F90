@@ -614,7 +614,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
 
-  CatIce = G%CatIce ; NkIce = G%IG%NkIce
+  CatIce = G%IG%CatIce ; NkIce = G%IG%NkIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%t_ocn(SZI_(G), SZJ_(G))) ; IST%t_ocn(:,:) = 0.0   !NI X
@@ -871,7 +871,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   integer :: n_bad, i_bad, j_bad, k_bad
   real    :: t_min, t_max
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
@@ -921,7 +921,8 @@ subroutine IST_bounds_check(IST, G, msg)
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce; NkIce = G%IG%NkIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = G%IG%CatIce ; NkIce = G%IG%NkIce
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 

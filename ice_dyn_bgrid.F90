@@ -196,58 +196,60 @@ end subroutine ice_B_dyn_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! find_ice_strength - magnitude of force on ice in plastic deformation         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine find_ice_strength(mi, ci, ice_strength, G, CS) ! ??? may change to do loop
+subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
   type(sea_ice_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_B_dyn_CS),               pointer     :: CS
-  !Niki: TOM has a new option for calculating ice strength. If you want to use it set prs_rothrock=.ture.
-  !      In that case we need to review and fix the new code inside if (prs_rothrock)
-  !      Particularly work on getting hi3,ci3,hi3v,Cp, Cf
+  ! integer, intent(in) :: nCat
+  !Niki: TOM has a new option for calculating ice strength. If you want to use it set
+  !      prs_rothrock=.true.  In that case we need to review and fix the new code
+  !      inside if (prs_rothrock), particularly work on getting hi3,ci3,hi3v,Cp & Cf.
   logical :: prs_rothrock = .false.
   logical :: rdg_lipscomb = .true.
   !Niki: What are ci3,hi3,Cp, Cf?
-  real, dimension(SZI_(G),SZJ_(G),G%CatIce) :: hi3,ci3
-  real, dimension(G%CatIce) :: hi3v
+!  real, dimension(SZI_(G),SZJ_(G),nCat) :: hi3,ci3
+!  real, dimension(nCat) :: hi3v
   real :: Cp, Cf
 
-  integer :: i, j, isc, iec, jsc, jec, k, km
+  integer :: i, j, isc, iec, jsc, jec, k
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  km = G%CatIce
   ! ice strength derived after Rothrock et al. (JGR, 1975)
   if (prs_rothrock) then
-    do j=jsc,jec ; do i=isc,iec
+    call SIS_error(FATAL, "B-grid find_ice_strength: "//&
+                   "The Rothrock et al. strength scheme has not been coded yet.")
+!   do j=jsc,jec ; do i=isc,iec
 
-      ! preparations
-      ice_strength(i,j) = 0.0
-      do k=1,km
-        hi3v(k) = hi3(i,j,k)*ci3(i,j,k)
-      enddo
+!     ! preparations
+!     ice_strength(i,j) = 0.0
+!     do k=1,nCat
+!       hi3v(k) = hi3(i,j,k)*ci3(i,j,k)
+!     enddo
 !Niki: The arguments for the following call are missing
-!           call ice_ridging_init(km, ci3(i,j,:), hi3v, part_undef, part_undef_sum, &
+!           call ice_ridging_init(nCat, ci3(i,j,:), hi3v, part_undef, part_undef_sum, &
 !                hmin, hmax, efold, rdg_ratio)
-       !
-      if (rdg_lipscomb) then   ! based on exponential distribution after Lipscomb
-        do k=1,km
+!      !
+!     if (rdg_lipscomb) then   ! based on exponential distribution after Lipscomb
+!       do k=1,nCat
 !Niki                tmp(k) = hmin(k)*hmin(k) + 2.*hmin(k)*efold(k) + 2.*efold(k)*efold(k)
-        enddo
-      else   ! based on uniform distribution after Thorndike and Hibler
-        do k=1,km
+!       enddo
+!     else   ! based on uniform distribution after Thorndike and Hibler
+!       do k=1,nCat
 !Niki      tmp(k) = ( hmax(k)*hmax(k)*hmax(k) - hmin(k)*hmin(k)*hmin(k) ) / &
 !                      ( 3 * (hmax(k)-hmin(k)) )
-        enddo
-      endif
-      !
-      ! ice strength calculation
-      do k=1,km
+!       enddo
+!     endif
+!     !
+!     ! ice strength calculation
+!     do k=1,nCat
 !Niki   ice_strength(i,j) = ice_strength(i,j) + &
 !           part_undef(k)/rdg_ratio(k) * (tmp(k)) - &  ! potential energy of new ridges
 !           part_undef(k)*hi3(i,j,k)*hi3(i,j,k)        ! potential energy of ridging
-      enddo
-      !if (part_undef_sum>0.0 .and. part_undef_sum<=1.0) then
-      !  ice_strength(i,j) = ice_strength(i,j) * Cf * Cp / part_undef_sum
-      !
-    enddo ; enddo
+!     enddo
+!     !if (part_undef_sum>0.0 .and. part_undef_sum<=1.0) then
+!     !  ice_strength(i,j) = ice_strength(i,j) * Cf * Cp / part_undef_sum
+!     !
+!   enddo ; enddo
 
   else
     ! ice strength derived after Hibler, JGR, 1979 (default!)
