@@ -158,8 +158,8 @@ type, public :: sea_ice_grid_type
   integer :: CatIce             ! The number of sea ice categories.
   integer :: NkIce              ! The number of vertical partitions within the
                                 ! sea ice.
-  integer :: NkSnow             ! The number of vertical partitions within the
-                                ! snow atop the sea ice.
+!  integer :: NkSnow             ! The number of vertical partitions within the
+!                                ! snow atop the sea ice.
   real :: H_to_kg_m2    ! A constant that translates thicknesses from the
                         ! internal units of thickness to kg m-2.
   real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
@@ -239,6 +239,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
   type(domain2d)     :: domain2
   type(domain2d), pointer :: Domain => NULL()
+  type(ice_grid_type), pointer :: IG => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
 
@@ -275,6 +276,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 
   ! Allocate the ice-specific grid.
   if (.not.associated(G%IG)) allocate(G%IG)
+  IG => G%IG
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
@@ -290,16 +292,16 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   if (G%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
        "param_file or the input namelist file.")
-  call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
+  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=NK_ICE_)
-  if (G%NkIce /= NK_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
+  if (IG%NkIce /= NK_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
 
-  call get_param(param_file, mod_nm, "NK_SNOW", G%NkSnow, &
+  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=NK_SNOW_)
-  if (G%NkSnow /= NK_SNOW_) call SIS_error(FATAL, "set_ice_grid: " // &
+  if (IG%NkSnow /= NK_SNOW_) call SIS_error(FATAL, "set_ice_grid: " // &
        "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
   if (global_indexing) cal SIS_error(FATAL, "set_ice_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
@@ -307,10 +309,10 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   call get_param(param_file, mod_nm, "NCAT_ICE", G%CatIce, &
                  "The number of sea ice thickness categories.", units="nondim", &
                  default=NCat_dflt)
-  call get_param(param_file, mod_nm, "NK_ICE", G%NkIce, &
+  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
                  "The number of layers within the sea ice.", units="nondim", &
                  default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
-  call get_param(param_file, mod_nm, "NK_SNOW", G%NkSnow, &
+  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
                  "The number of layers within the snow atop the sea ice.", &
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
@@ -329,12 +331,12 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                  "and odd numbers used for y-first.", default=0)
 
   ! Copy equivalent fields into the ice-grid type.
-  G%IG%CatIce = G%CatIce
-  G%IG%NkIce = G%NkIce
-  G%IG%NkSnow = G%NkSnow
-  G%IG%H_to_kg_m2 = G%H_to_kg_m2
-  G%IG%kg_m2_to_H = G%kg_m2_to_H
-  G%IG%H_subroundoff = G%H_subroundoff
+  IG%CatIce = G%CatIce
+  G%NkIce = IG%NkIce
+!  IG%NkSnow = G%NkSnow
+  IG%H_to_kg_m2 = G%H_to_kg_m2
+  IG%kg_m2_to_H = G%kg_m2_to_H
+  IG%H_subroundoff = G%H_subroundoff
 
 
   !--- first determine the if the grid file is using the correct format

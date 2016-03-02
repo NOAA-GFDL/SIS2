@@ -331,9 +331,10 @@ subroutine write_ice_statistics(IST, day, n, G, CS, message, check_column) !, tr
 ! vars(16) = vardesc("Heat_chg","Total Heat Change between Entries",'1','1','s',"Joules")
 ! vars(17) = vardesc("Heat_anom","Anomalous Total Heat Change",'1','1','s',"Joules")
 
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = G%CatIce; nlay = G%NkIce
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 !  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = G%IG%CatIce ; nlay = G%IG%NkIce
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
   I_nlay = 1.0 / (1.0*nlay)

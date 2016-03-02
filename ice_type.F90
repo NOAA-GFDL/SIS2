@@ -14,7 +14,7 @@ use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use constants_mod,    only: T_0degC=>Tfreeze
 
-use ice_grid_mod,     only: sea_ice_grid_type, cell_area
+use ice_grid_mod,     only: sea_ice_grid_type, ice_grid_type, cell_area
 
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
@@ -611,10 +611,10 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   character(len=*),        intent(in)    :: restart_file
 
   type(domain2d), pointer :: domain
-  integer :: CatIce, idr, n
+  integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
 
-  CatIce = G%CatIce
+  CatIce = G%CatIce ; NkIce = G%IG%NkIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%t_ocn(SZI_(G), SZJ_(G))) ; IST%t_ocn(:,:) = 0.0   !NI X
@@ -660,15 +660,15 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
 
   allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
   allocate(IST%mH_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%mH_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
-  allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, G%NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+  allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
 
   allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
@@ -798,7 +798,7 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
   call hchksum(IST%mH_ice*G%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
-  do k=1,G%NkIce
+  do k=1,G%IG%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
@@ -914,14 +914,14 @@ subroutine IST_bounds_check(IST, G, msg)
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
-  real, dimension(G%NkIce) :: S_col
+  real, dimension(G%IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
   logical :: spec_thermo_sal
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%CatIce; NkIce = G%IG%NkIce
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
@@ -963,7 +963,7 @@ subroutine IST_bounds_check(IST, G, msg)
     endif
   enddo ; enddo ; enddo
 
-  do m=1,G%NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif
@@ -990,26 +990,26 @@ subroutine IST_bounds_check(IST, G, msg)
       call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
                                  specified_thermo_salinity=spec_thermo_sal)
       if (.not.spec_thermo_sal) then
-        do m=1,G%NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
+        do m=1,NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
       endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
              IST%mH_ice(i,j,k)*G%H_to_kg_m2, IST%mH_snow(i,j,k)*G%H_to_kg_m2, &
              temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
              temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
-      do m=2,G%NkIce
+      do m=2,NkIce
         write(mesg2,'(", ", 1pe12.4)') temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)
       write(mesg1,'("enth_snow = ",1pe12.4," enth_ice = ",1pe12.4)') &
              IST%enth_snow(i,j,k,1), IST%enth_ice(i,j,k,1)
-      do m=2,G%NkIce
+      do m=2,NkIce
         write(mesg2,'(", ", 1pe12.4)') IST%enth_ice(i,j,k,m)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)
       write(mesg1,'("salin_ice = ",1pe12.4)') IST%sal_ice(i,j,k,1)
-      do m=2,G%NkIce
+      do m=2,NkIce
         write(mesg2,'(", ", 1pe12.4)') IST%sal_ice(i,j,k,m)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
@@ -1082,9 +1082,9 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'Volume-averaged ice temperature', 'C', missing_value=missing)
   IST%id_s_iceav = register_SIS_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
-  call safe_alloc_ids_1d(IST%id_t, G%NkIce)
-  call safe_alloc_ids_1d(IST%id_sal, G%NkIce)
-  do n=1,G%NkIce
+  call safe_alloc_ids_1d(IST%id_t, G%IG%NkIce)
+  call safe_alloc_ids_1d(IST%id_sal, G%IG%NkIce)
+  do n=1,G%IG%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
                  diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
@@ -1142,8 +1142,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
 
-  call safe_alloc_ids_1d(IST%id_sw_abs_ice, G%NkIce)
-  do n=1,G%NkIce
+  call safe_alloc_ids_1d(IST%id_sw_abs_ice, G%IG%NkIce)
+  do n=1,G%IG%NkIce
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
                  diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
@@ -1295,8 +1295,8 @@ subroutine ice_stock_pe(Ice, index, value)
   IST => Ice%Ice_state
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
-  ncat = Ice%G%CatIce ; I_NkIce = 1.0 / Ice%G%NkIce
-  kg_H = Ice%G%H_to_kg_m2 ; kg_H_Nk = Ice%G%H_to_kg_m2 / Ice%G%NkIce
+  ncat = Ice%G%IG%CatIce ; I_NkIce = 1.0 / Ice%G%IG%NkIce
+  kg_H = Ice%G%H_to_kg_m2 ; kg_H_Nk = Ice%G%H_to_kg_m2 / Ice%G%IG%NkIce
 
   select case (index)
 
@@ -1322,7 +1322,7 @@ subroutine ice_stock_pe(Ice, index, value)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-            do m=1,Ice%G%NkIce
+            do m=1,Ice%G%IG%NkIce
               value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
                   Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
             enddo
@@ -1333,7 +1333,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_SALT)
       !There is no salt in the snow.
       value = 0.0
-      do m=1,Ice%G%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+      do m=1,Ice%G%IG%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo

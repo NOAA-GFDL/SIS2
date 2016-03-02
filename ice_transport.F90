@@ -250,8 +250,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
   if (CS%check_conservation) then
-    call get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice(1), tot_snow(1))
-    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, enth_ice(1), &
+    call get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice(1), tot_snow(1))
+    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(1), &
                             enth_snow(1))
   endif
 
@@ -431,9 +431,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
 
   if (CS%check_conservation) then
-    call get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice(2), tot_snow(2))
+    call get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice(2), tot_snow(2))
 
-    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, enth_ice(2), &
+    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(2), &
                             enth_snow(2))
 
     if (is_root_pe()) then
@@ -870,10 +870,11 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
 
 end subroutine slab_ice_advect
 
-subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice, tot_snow)
+subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice, tot_snow)
   type(sea_ice_grid_type), intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in)  :: mH_ice, mH_snow
-  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(in)  :: part_sz
+  type(ice_grid_type),                          intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(in)  :: mH_ice, mH_snow
+  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(in)  :: part_sz
   type(EFP_type), intent(out) :: tot_ice, tot_snow
 ! Arguments: part_sz - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1 at the end, in/out.
@@ -892,7 +893,7 @@ subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice, tot_snow)
 
   sum_mca_ice(:,:) = 0.0
   sum_mca_snow(:,:) = 0.0
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+  do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     sum_mca_ice(i,j) = sum_mca_ice(i,j) + G%areaT(i,j) * (part_sz(i,j,k)*mH_ice(i,j,k))
     sum_mca_snow(i,j) = sum_mca_snow(i,j) + G%areaT(i,j) * (part_sz(i,j,k)*mH_snow(i,j,k))
   enddo ; enddo ; enddo
@@ -903,8 +904,9 @@ subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, tot_ice, tot_snow)
 end subroutine get_total_amounts
 
 subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
-                              G, enth_ice, enth_snow)
+                              G, IG, enth_ice, enth_snow)
   type(sea_ice_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(G)),   intent(in)  :: mH_ice, mH_snow
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(G)), intent(in)  :: part_sz
   type(SIS_tracer_registry_type),               pointer     :: TrReg
@@ -917,6 +919,7 @@ subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
 !                     ice in each category in units of H (often kg m-2).
 !  (in)      TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (out)     enth_ice - The globally integrated total ice enthalpy in J.
 !  (out)     enth_snow - The globally integrated total snow enthalpy in J.
 
@@ -935,12 +938,12 @@ subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
   call get_SIS_tracer_pointer("enth_snow", TrReg, heat_snow, nLay)
   sum_enth_ice(:,:) = 0.0 ; sum_enth_snow(:,:) = 0.0
 
-  I_Nk = 1.0 / G%NkIce
-  do m=1,G%NkIce ; do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+  I_Nk = 1.0 / IG%NkIce
+  do m=1,IG%NkIce ; do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
               ((mH_ice(i,j,k)*part_sz(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
-  do k=1,G%CatIce ; do j=jsc,jec ; do i=isc,iec
+  do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
               (mH_snow(i,j,k)*part_sz(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo

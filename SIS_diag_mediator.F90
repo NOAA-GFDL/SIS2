@@ -139,7 +139,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
   integer :: k
-  real :: zlev_ice(G%NkIce), zinter_ice(G%NkIce+1)
+  real :: zlev_ice(IG%NkIce), zinter_ice(IG%NkIce+1)
   logical :: set_vert, Cartesian_grid
   character(len=80) :: grid_config, units_temp
 ! This include declares and sets the variable "version".
@@ -806,40 +806,42 @@ subroutine diag_masks_set(G, missing_value, diag_cs)
   real,                            intent(in)    :: missing_value
   type(SIS_diag_ctrl),             intent(inout) :: diag_cs
   ! Local variables
-  integer :: k
+  integer :: k, NkIce, CatIce
+
+  NkIce = G%IG%NkIce ; CatIce = G%IG%CatIce
 
   diag_cs%mask2dT  => G%mask2dT
   diag_cs%mask2dBu => G%mask2dBu
   diag_cs%mask2dCu => G%mask2dCu
   diag_cs%mask2dCv => G%mask2dCv
 
-  allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce))
-  allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce))
-  allocate(diag_cs%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce))
-  allocate(diag_cs%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce))
-  do k=1,G%NkIce
+  allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:NkIce))
+  allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:NkIce))
+  allocate(diag_cs%mask3dCuL(G%IsdB:G%IedB,G%jsd:G%jed,1:NkIce))
+  allocate(diag_cs%mask3dCvL(G%isd:G%ied,G%JsdB:G%JedB,1:NkIce))
+  do k=1,NkIce
     diag_cs%mask3dTL(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBuL(:,:,k) = diag_cs%mask2dBu(:,:)
     diag_cs%mask3dCuL(:,:,k) = diag_cs%mask2dCu(:,:)
     diag_cs%mask3dCvL(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag_cs%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:G%NkIce+1))
-  allocate(diag_cs%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:G%NkIce+1))
-  allocate(diag_cs%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:G%NkIce+1))
-  allocate(diag_cs%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:G%NkIce+1))
-  do k=1,G%NkIce+1
+  allocate(diag_cs%mask3dTi(G%isd:G%ied,G%jsd:G%jed,1:NkIce+1))
+  allocate(diag_cs%mask3dBui(G%IsdB:G%IedB,G%JsdB:G%JedB,1:NkIce+1))
+  allocate(diag_cs%mask3dCui(G%IsdB:G%IedB,G%jsd:G%jed,1:NkIce+1))
+  allocate(diag_cs%mask3dCvi(G%isd:G%ied,G%JsdB:G%JedB,1:NkIce+1))
+  do k=1,NkIce+1
     diag_cs%mask3dTi(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBui(:,:,k) = diag_cs%mask2dBu(:,:)
     diag_cs%mask3dCui(:,:,k) = diag_cs%mask2dCu(:,:)
     diag_cs%mask3dCvi(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,G%CatIce))
-  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,G%CatIce))
-  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,G%CatIce))
-  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,G%CatIce))
-  do k=1,G%CatIce
+  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,CatIce))
+  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,CatIce))
+  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,CatIce))
+  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,CatIce))
+  do k=1,CatIce
     diag_cs%mask3dTC(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBuC(:,:,k) = diag_cs%mask2dBu(:,:)
     diag_cs%mask3dCuC(:,:,k) = diag_cs%mask2dCu(:,:)
