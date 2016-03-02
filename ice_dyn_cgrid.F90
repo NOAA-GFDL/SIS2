@@ -68,6 +68,8 @@ type, public :: ice_C_dyn_CS ; private
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
   real :: drag_bg_vel2 = 0.0  ! A background (subgridscale) velocity for drag
                               ! with the ocean squared, in m2 s-2.
+  real :: min_ocn_inertial_h = 0. ! A minimum ocean thickness used to limit the viscous coupling
+                              ! rate implied for the ocean by the ice-ocean stress.
   real :: Tdamp   ! The damping timescale of the stress tensor components
                   ! toward their equilibrium solution due to the elastic terms,
                   ! in s.
@@ -227,6 +229,10 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   call get_param(param_file, mod, "ICE_CDRAG_WATER", CS%cdw, &
                  "The drag coefficient between the sea ice and water.", &
                  units="nondim", default=3.24e-3)
+  call get_param(param_file, mod, "MIN_OCN_INTERTIAL_H", CS%min_ocn_inertial_h, &
+                 "A minimum ocean thickness used to limit the viscous coupling rate\n"//&
+                 "implied for the ocean by the ice-ocean stress. Only used if positive.", &
+                 units="m", default=0.0)
   call get_param(param_file, mod, "ICE_DEL_SH_MIN_SCALE", CS%del_sh_min_scale, &
                  "A scaling factor for the lower bound on the shear rates \n"//&
                  "used in the denominator of the stress calculation. This \n"//&
@@ -512,6 +518,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real :: Cor       ! A Coriolis accleration, in m s-2.
   real :: fxic_now, fyic_now  ! ice internal stress convergence, in kg m-1 s-2.
   real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points, in kg m-2 s-1.
+  real :: drag_max  ! A maximum drag rate allowed in the ocean, in kg m-2 s-1.
   real :: tot_area  ! The sum of the area of the four neighboring cells, in m2.
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings, in m.
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
@@ -604,6 +611,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   endif
   dt = dt_slow/EVP_steps
 
+  drag_max = CS%Rho_ocean * CS%min_ocn_inertial_h / dt_slow
   I_cdRhoDt = 1.0 / (CS%cdw * CS%Rho_ocean * dt)
   do_trunc_its = (CS%CFL_check_its .and. (CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0))
 
@@ -947,7 +955,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP                                  G,CS,dy2T,dx2B,vo,uo,Cor_u,f2dt_u,I1_f2dt2_u,    &
 !$OMP                                  mi_u,dt,PFu,fxat,I_cdRhoDt,cdRho,m_neglect,fxoc, &
 !$OMP                                  fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,          &
-!$OMP                                  ui_min_trunc,ui_max_trunc) &
+!$OMP                                  ui_min_trunc,ui_max_trunc,drag_max) &
 !$OMP                          private(Cor,fxic_now,v2_at_u,uio_init,drag_u,b_vel0, &
 !$OMP                                  m_uio_explicit,uio_pred,uio_C)
     do j=jsc,jec ; do I=isc-1,iec
@@ -995,6 +1003,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       else
         drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
       endif
+      if (drag_max>0.) drag_u = min( drag_u, drag_max )
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
@@ -1031,7 +1040,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP                                  dx2T,dy2B,uo,vo,vi,Cor_v,f2dt_v,I1_f2dt2_v,mi_v, &
 !$OMP                                  dt,PFv,fyat,I_cdRhoDt,cdRho,m_neglect,fyoc,fyic, &
 !$OMP                                  fyic_d,fyic_t,fyic_s,do_trunc_its,vi_min_trunc,  &
-!$OMP                                  vi_max_trunc) &
+!$OMP                                  vi_max_trunc,drag_max) &
 !$OMP                          private(Cor,fyic_now,u2_at_v,vio_init,drag_v,    &
 !$OMP                                  m_vio_explicit,b_vel0,vio_pred,vio_C)
     do J=jsc-1,jec ; do i=isc,iec
@@ -1077,6 +1086,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       else
         drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
       endif
+      if (drag_max>0.) drag_v = min( drag_v, drag_max )
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
