@@ -379,10 +379,11 @@ end subroutine avg_top_quantities
 !   tracers from the ice model's internal state to the public ice data type    !
 !   for use by the ocean model.                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_fluxes(Ice, IST, G)
+subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type), intent(inout) :: IG
 
   real :: I_count
   integer :: i, j, isc, iec, jsc, jec, m, n, i2, j2, i_off, j_off, ind
@@ -390,7 +391,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, G)
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_fluxes", IST, G)
+    call IST_chksum("Start set_ocean_top_fluxes", IST, G, IG)
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
   endif
 
@@ -435,7 +436,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, G)
   enddo ; enddo
 
   if (IST%debug) then
-    call IST_chksum("End set_ocean_top_fluxes", IST, G)
+    call IST_chksum("End set_ocean_top_fluxes", IST, G, IG)
     call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
   endif
 
@@ -471,21 +472,22 @@ end subroutine finish_ocean_top_stresses
 !   version of the routine uses wind and ice-ocean stresses on a B-grid.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water, &
-                                      str_ice_oce_x, str_ice_oce_y, part_size, G)
+                                      str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type), intent(inout) :: IG
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
-  real, dimension (SZI_(G),SZJ_(G),0:G%IG%CatIce), intent(in) :: part_size
+  real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
 
   real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
   integer :: i, j, k, isc, iec, jsc, jec, ncat, i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_stress_Bgrid", IST, G)
+    call IST_chksum("Start set_ocean_top_stress_Bgrid", IST, G, IG)
     call Ice_public_type_chksum("Start set_ocean_top_stress_Bgrid", Ice)
   endif
 
@@ -578,7 +580,7 @@ subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water
   IST%stress_count = IST%stress_count + 1
 
   if (IST%debug) then
-    call IST_chksum("End set_ocean_top_stress_Bgrid", IST, G)
+    call IST_chksum("End set_ocean_top_stress_Bgrid", IST, G, IG)
     call Ice_public_type_chksum("End set_ocean_top_stress_Bgrid", Ice)
   endif
 
@@ -591,21 +593,22 @@ end subroutine set_ocean_top_stress_Bgrid
 !   version of the routine uses wind and ice-ocean stresses on a C-grid.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water, &
-                                      str_ice_oce_x, str_ice_oce_y, part_size, G)
+                                      str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
   type(ice_data_type),  intent(inout) :: Ice
   type(ice_state_type), intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),  intent(inout) :: IG
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
-  real, dimension (SZI_(G),SZJ_(G),0:G%IG%CatIce), intent(in) :: part_size
+  real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
 
   real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
   integer :: i, j, k, isc, iec, jsc, jec, ncat, i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_stress_Cgrid", IST, G)
+    call IST_chksum("Start set_ocean_top_stress_Cgrid", IST, G, IG)
     call Ice_public_type_chksum("Start set_ocean_top_stress_Cgrid", Ice)
   endif
 
@@ -696,7 +699,7 @@ subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water
   IST%stress_count = IST%stress_count + 1
 
   if (IST%debug) then
-    call IST_chksum("End set_ocean_top_stress_Cgrid", IST, G)
+    call IST_chksum("End set_ocean_top_stress_Cgrid", IST, G, IG)
     call Ice_public_type_chksum("End set_ocean_top_stress_Cgrid", Ice)
   endif
 
@@ -795,7 +798,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state")
 
   if (IST%debug) then
-    call IST_chksum("Start set_ice_surface_state", IST, G)
+    call IST_chksum("Start set_ice_surface_state", IST, G, IG)
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
     call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT u_surf_ice_bot")
     call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT v_surf_ice_bot")
@@ -1103,7 +1106,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   call disable_SIS_averaging(IST%diag)
 
   if (IST%debug) then
-    call IST_chksum("End set_ice_surface_state", IST, G)
+    call IST_chksum("End set_ice_surface_state", IST, G, IG)
     call Ice_public_type_chksum("End set_ice_surface_state", Ice)
   endif
 
@@ -1191,7 +1194,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   IST%n_fast = IST%n_fast + 1
 
   if (IST%debug) then
-    call IST_chksum("Start do_update_ice_model_fast", IST, G)
+    call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
     call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
   endif
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
@@ -1493,7 +1496,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   call disable_SIS_averaging(IST%diag)
 
   if (IST%debug) then
-    call IST_chksum("End do_update_ice_model_fast", IST, G)
+    call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
   endif
 
@@ -1612,7 +1615,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   IST%stress_count = 0
 
   if (IST%debug) then
-    call IST_chksum("Start update_ice_model_slow", IST, G)
+    call IST_chksum("Start update_ice_model_slow", IST, G, IG)
     call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
   endif
 
@@ -1793,7 +1796,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     !  Other routines that do thermodynamic vertical processes should be added here
 
     ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-    call set_ocean_top_fluxes(Ice, IST, G)
+    call set_ocean_top_fluxes(Ice, IST, G, IG)
     call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
 
     if (IST%column_check) &
@@ -1956,7 +1959,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       endif
 
       if (IST%debug) then
-        call IST_chksum("Before ice_C_dynamics", IST, G)
+        call IST_chksum("Before ice_C_dynamics", IST, G, IG)
         call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G)
         call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G)
         call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G)
@@ -1977,7 +1980,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
-        call IST_chksum("After ice_dynamics", IST, G)
+        call IST_chksum("After ice_dynamics", IST, G, IG)
       endif
 
       call mpp_clock_begin(iceClockb)
@@ -1991,7 +1994,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       if (IST%id_fay>0) call post_data(IST%id_fay, WindStr_y_Cv, IST%diag)
 
       call set_ocean_top_stress_Cgrid(Ice, IST, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
-                                      str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G)
+                                      str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, IG)
       call mpp_clock_end(iceClockc)
 
     else ! B-grid dynamics.
@@ -2069,7 +2072,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       endif
 
       if (IST%debug) then
-        call IST_chksum("Before ice_dynamics", IST, G)
+        call IST_chksum("Before ice_dynamics", IST, G, IG)
         call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
         call hchksum(ms_sum, "ms_sum before ice_dynamics", G)
         call hchksum(mi_sum, "mi_sum before ice_dynamics", G)
@@ -2090,7 +2093,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
-        call IST_chksum("After ice_dynamics", IST, G)
+        call IST_chksum("After ice_dynamics", IST, G, IG)
       endif
 
       call mpp_clock_begin(iceClockb)
@@ -2121,7 +2124,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       endif
 
       call set_ocean_top_stress_Bgrid(Ice, IST, WindStr_x_ocn_B, WindStr_y_ocn_B, &
-                                      str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G)
+                                      str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G, IG)
       call mpp_clock_end(iceClockc)
     endif ! End of B-grid dynamics
 
@@ -2181,7 +2184,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
                                  IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
 
       ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-      call set_ocean_top_fluxes(Ice, IST, G)
+      call set_ocean_top_fluxes(Ice, IST, G, IG)
       call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
 
       if (IST%column_check) &
@@ -2205,7 +2208,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     endif
 
     if (IST%debug) then
-      call IST_chksum("Before ice_transport", IST, G)
+      call IST_chksum("Before ice_transport", IST, G, IG)
     endif
 
     if (IST%Cgrid_dyn) then
@@ -2263,7 +2266,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   enddo ; enddo ; enddo
 
   if (IST%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport")
-  if (IST%debug) call IST_chksum("After ice_transport", IST, G)
+  if (IST%debug) call IST_chksum("After ice_transport", IST, G, IG)
 
   ! Sum the concentration weighted mass.
   mass(:,:) = 0.0
@@ -2446,7 +2449,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   call mpp_clock_end(iceClock9)
 
   if (IST%debug) then
-    call IST_chksum("End UIMS", IST, G)
+    call IST_chksum("End UIMS", IST, G, IG)
     call Ice_public_type_chksum("End UIMS", Ice)
   endif
 
@@ -3853,7 +3856,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &
                          param_file, Ice, Ice%Ice_restart, restart_file)
 
-  call ice_state_register_restarts(G, param_file, IST, Ice%Ice_restart, &
+  call ice_state_register_restarts(G, IG, param_file, IST, Ice%Ice_restart, &
                                    restart_file)
 
   if (IST%Cgrid_dyn) then
@@ -3888,7 +3891,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%avg_count = 0
   IST%n_calls = 0
 
-  call SIS_diag_mediator_init(G, param_file, IST%diag, component="SIS", &
+  call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
                               doc_file_dir = dirs%output_directory)
   call set_SIS_axes_info(G, IG, param_file, IST%diag)
 

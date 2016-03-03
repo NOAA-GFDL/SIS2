@@ -724,9 +724,10 @@ function i2s(a,n_in)
     i2s = adjustl(i2s)
 end function i2s
 
-subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg, &
+subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg, &
                                   doc_file_dir)
   type(sea_ice_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
   type(param_file_type),      intent(in)    :: param_file
   type(SIS_diag_ctrl),        intent(inout) :: diag_cs
   character(len=*), optional, intent(in)    :: component
@@ -796,19 +797,20 @@ subroutine SIS_diag_mediator_init(G, param_file, diag_cs, component, err_msg, &
     endif
   endif
 
-  call diag_masks_set(G, -1.0e34, diag_cs)
+  call diag_masks_set(G, IG, -1.0e34, diag_cs)
 
 end subroutine SIS_diag_mediator_init
 
-subroutine diag_masks_set(G, missing_value, diag_cs)
+subroutine diag_masks_set(G, IG, missing_value, diag_cs)
 ! Setup the 2d masks for diagnostics
   type(sea_ice_grid_type), target, intent(in)    :: G
+  type(ice_grid_type),             intent(inout) :: IG
   real,                            intent(in)    :: missing_value
   type(SIS_diag_ctrl),             intent(inout) :: diag_cs
   ! Local variables
   integer :: k, NkIce, CatIce
 
-  NkIce = G%IG%NkIce ; CatIce = G%IG%CatIce
+  NkIce = IG%NkIce ; CatIce = IG%CatIce
 
   diag_cs%mask2dT  => G%mask2dT
   diag_cs%mask2dBu => G%mask2dBu

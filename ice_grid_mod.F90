@@ -440,7 +440,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 
   i_off = isca - G%isc ; j_off = jsca - G%jsc
 
-  call allocate_metrics(G)
+  call allocate_metrics(G, G%IG)
 
   !--- read data from grid_spec.nc
   allocate(depth(G%isc:G%iec,G%jsc:G%jec))
@@ -951,8 +951,9 @@ end subroutine extrapolate_metric
 
 !---------------------------------------------------------------------
 
-subroutine allocate_metrics(G)
+subroutine allocate_metrics(G, IG)
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type), intent(inout) :: IG
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
   ! This subroutine allocates the lateral elements of the sea_ice_grid_type that
@@ -1022,8 +1023,8 @@ subroutine allocate_metrics(G)
   allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
-  allocate(G%IG%cat_thick_lim(1:G%IG%CatIce+1)) ; G%IG%cat_thick_lim(:) = 0.0
-  allocate(G%IG%mH_cat_bound(1:G%IG%CatIce+1)) ; G%IG%mH_cat_bound(:) = 0.0
+  allocate(IG%cat_thick_lim(1:IG%CatIce+1)) ; IG%cat_thick_lim(:) = 0.0
+  allocate(IG%mH_cat_bound(1:IG%CatIce+1)) ; IG%mH_cat_bound(:) = 0.0
 
 end subroutine allocate_metrics
 

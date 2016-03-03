@@ -603,8 +603,9 @@ end subroutine ice_data_type_register_restarts
 !     and register any variables in the ice data type that need to be included !
 !     in the restart files.                                                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_file)
+subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, restart_file)
   type(sea_ice_grid_type), intent(in)    :: G
+  type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -614,7 +615,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
 
-  CatIce = G%IG%CatIce ; NkIce = G%IG%NkIce
+  CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
   allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
   allocate(IST%t_ocn(SZI_(G), SZJ_(G))) ; IST%t_ocn(:,:) = 0.0   !NI X
@@ -700,7 +701,7 @@ subroutine ice_state_register_restarts(G, param_file, IST, Ice_restart, restart_
                                domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', G%IG%H_to_kg_m2, &
+  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
                                longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
                                no_domain=.true., mandatory=.false.)
 
@@ -778,10 +779,11 @@ subroutine dealloc_IST_arrays(IST)
 
 end subroutine dealloc_IST_arrays
 
-subroutine IST_chksum(mesg, IST, G, haloshift)
+subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   character(len=*),        intent(in)    :: mesg
   type(ice_state_type),    intent(inout) :: IST
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   integer, optional,       intent(in)    :: haloshift
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
@@ -797,14 +799,14 @@ subroutine IST_chksum(mesg, IST, G, haloshift)
   hs=0; if (present(haloshift)) hs=haloshift
 
   call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
-  call hchksum(IST%mH_ice*G%IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
-  do k=1,G%IG%NkIce
+  call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
+  do k=1,IG%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow*G%IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
+  call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
   if (associated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B",G,haloshift=hs)
   if (associated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B",G,haloshift=hs)
@@ -871,7 +873,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   integer :: n_bad, i_bad, j_bad, k_bad
   real    :: t_min, t_max
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
@@ -915,7 +917,7 @@ subroutine IST_bounds_check(IST, G, IG, msg)
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
   real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
-  real, dimension(G%IG%NkIce) :: S_col
+  real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
   logical :: spec_thermo_sal
@@ -1047,10 +1049,11 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   real, parameter       :: missing = -1e34
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
-  integer :: i, j, k, isc, iec, jsc, jec, n
+  integer :: i, j, k, isc, iec, jsc, jec, n, nLay
   character(len=8) :: nstr
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  nLay = Ice%G%IG%NkIce
 
   Ice%axes(1:2) = diag%axesTc%handles(1:2)
 
@@ -1084,9 +1087,9 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'Volume-averaged ice temperature', 'C', missing_value=missing)
   IST%id_s_iceav = register_SIS_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
-  call safe_alloc_ids_1d(IST%id_t, G%IG%NkIce)
-  call safe_alloc_ids_1d(IST%id_sal, G%IG%NkIce)
-  do n=1,G%IG%NkIce
+  call safe_alloc_ids_1d(IST%id_t, nLay)
+  call safe_alloc_ids_1d(IST%id_sal, nLay)
+  do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_t(n)   = register_SIS_diag_field('ice_model', 'T'//trim(nstr), &
                  diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
@@ -1144,8 +1147,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
 
-  call safe_alloc_ids_1d(IST%id_sw_abs_ice, G%IG%NkIce)
-  do n=1,G%IG%NkIce
+  call safe_alloc_ids_1d(IST%id_sw_abs_ice, nLay)
+  do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
                  diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
