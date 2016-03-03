@@ -88,7 +88,8 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use ice_grid_mod, only : sea_ice_grid_type, set_ice_grid, ice_grid_end, cell_area, ice_grid_type
+use ice_grid_mod, only : sea_ice_grid_type, set_hor_grid, sea_ice_grid_end, cell_area
+use ice_grid_mod, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
@@ -3832,7 +3833,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   nCat_dflt = 5
   if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
 
-  call set_ice_grid(Ice%G, Ice%IG, param_file, Ice%domain, nCat_dflt )
+  call set_ice_grid(Ice%IG, param_file, nCat_dflt)
+  call set_hor_grid(Ice%G, param_file, Ice%domain)
 
   if (IST%slab_ice) IG%CatIce = 1 ! open water and ice ... but never in same place
   ! Initialize IG%cat_thick_lim here.  ###This needs to be extended to add more options.
@@ -4193,7 +4195,8 @@ subroutine ice_model_end (Ice)
   call ice_transport_end(IST%ice_transport_CSp)
   call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 
-  call ice_grid_end(Ice%G)
+  call sea_ice_grid_end(Ice%G)
+  call ice_grid_end(Ice%IG)
   call dealloc_Ice_arrays(Ice)
   call dealloc_IST_arrays(IST)
   deallocate(Ice%Ice_restart)

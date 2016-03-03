@@ -37,7 +37,7 @@ implicit none ; private
 include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-public :: set_ice_grid, ice_grid_end
+public :: set_ice_grid, set_hor_grid, sea_ice_grid_end, ice_grid_end
 public :: isPointInCell
 public :: cell_area
 
@@ -154,25 +154,6 @@ type, public :: sea_ice_grid_type
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
-!  integer :: ks, ke             ! The range of ocean layer's vertical indicies.
-!  integer :: CatIce             ! The number of sea ice categories.
-!  integer :: NkIce              ! The number of vertical partitions within the
-!                                ! sea ice.
-!  integer :: NkSnow             ! The number of vertical partitions within the
-!                                ! snow atop the sea ice.
-!  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
-!                        ! internal units of thickness to kg m-2.
-!  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
-!                        ! the internal units of thickness.
-!  real :: H_subroundoff !   A thickness that is so small that it can be added to
-!                        ! any physically meaningflu positive thickness without
-!                        ! changing it at the bit level, in thickness units.
-
-!  real, allocatable, dimension(:) :: &
-!    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
-!    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
-!                  ! in units of H (often kg m-2).
-
 end type sea_ice_grid_type
 
 type, public :: SIS2_domain_type
@@ -196,22 +177,20 @@ type, public :: SIS2_domain_type
 end type SIS2_domain_type
 
 ! This is still here as an artefact of an older public interface and should go.
+! ###REMOVE THIS ARRAY!
 real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ice_grid - initialize sea ice grid for dynamics and transport            !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
+!> set_hor_grid initializes the sea ice grid parameters.
+subroutine set_hor_grid(G, param_file, ice_domain)
   type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type),   intent(inout) :: IG
-  type(param_file_type), intent(in)    :: param_file
-  type(domain2D),        intent(inout) :: ice_domain
-  integer,               intent(in)    :: NCat_dflt
+  type(param_file_type)  , intent(in)    :: param_file
+  type(domain2D),          intent(inout) :: ice_domain
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
-! Arguments: G - The sea-ice's grid structure.
+! Arguments: G - The sea-ice's horizontal grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
 !  (inout)   ice_domain - A domain with no halos that can be shared publicly.
@@ -237,7 +216,7 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
   character(len=256) :: grid_file, ocean_topog
   character(len=256) :: ocean_hgrid, ocean_mosaic
   character(len=200) :: mesg
-  character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
+  character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
   type(domain2d)     :: domain2
   type(domain2d), pointer :: Domain => NULL()
 
@@ -282,68 +261,26 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
                  "the same index. This does not work with static memory.", &
                  default=.false.)
 #ifdef STATIC_MEMORY_
-  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
-                 "The number of sea ice thickness categories.", units="nondim", &
-                 default=NCat_dflt)
-  if (IG%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
-       "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
-       "param_file or the input namelist file.")
-  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
-                 "The number of layers within the sea ice.", units="nondim", &
-                 default=NK_ICE_)
-  if (IG%NkIce /= NK_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
-       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
-
-  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
-                 "The number of layers within the snow atop the sea ice.", &
-                 units="nondim", default=NK_SNOW_)
-  if (IG%NkSnow /= NK_SNOW_) call SIS_error(FATAL, "set_ice_grid: " // &
-       "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
-  if (global_indexing) cal SIS_error(FATAL, "set_ice_grid : "//&
+  if (global_indexing) cal SIS_error(FATAL, "set_hor_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
-#else
-  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
-                 "The number of sea ice thickness categories.", units="nondim", &
-                 default=NCat_dflt)
-  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
-                 "The number of layers within the sea ice.", units="nondim", &
-                 default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
-  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
-                 "The number of layers within the snow atop the sea ice.", &
-                 units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
 
   call obsolete_logical(param_file, "SET_GRID_LIKE_SIS1", .false.)
-  call get_param(param_file, mod_nm, "H_TO_KG_M2", IG%H_to_kg_m2, &
-               "A constant that translates thicknesses from the model's \n"//&
-               "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
-               default=1.0)
-  IG%kg_m2_to_H = 1.0 / IG%H_to_kg_m2
-  IG%H_subroundoff = 1e-30*IG%kg_m2_to_H
+
   call get_param(param_file, mod_nm, "FIRST_DIRECTION", G%first_direction, &
                  "An integer that indicates which direction goes first \n"//&
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  ! Copy equivalent fields into the ice-grid type.
-!  G%CatIce = IG%CatIce
-!  G%NkIce = IG%NkIce
-!  IG%NkSnow = G%NkSnow
-
-!  G%H_to_kg_m2 = IG%H_to_kg_m2
-!  G%kg_m2_to_H = IG%kg_m2_to_H
-!  G%H_subroundoff = IG%H_subroundoff
-
-
   !--- first determine the if the grid file is using the correct format
   if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
             field_exist(grid_file, 'gridfiles')) ) call SIS_error(FATAL, &
-    'Error from ice_grid_mod(set_ice_grid): '//&
+    'Error from ice_grid_mod(set_hor_grid): '//&
     'ocn_mosaic_file or gridfiles does not exist in file ' //trim(grid_file)//&
     '\nSIS2 only works with a mosaic format grid file.')
 
-  call SIS_mesg("   Note from ice_grid_mod(set_ice_grid): "//&
+  call SIS_mesg("   Note from ice_grid_mod(set_hor_grid): "//&
                  "read grid from mosaic version grid", 5)
 
   if( field_exist(grid_file, "ocn_mosaic_file") ) then ! coupler mosaic
@@ -353,7 +290,7 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
     ocean_mosaic = trim(grid_file)
   end if
   ntiles = get_mosaic_ntiles(ocean_mosaic)
-  if (ntiles /= 1) call SIS_error(FATAL, "Error from ice_grid_mod(set_ice_grid): "//&
+  if (ntiles /= 1) call SIS_error(FATAL, "Error from ice_grid_mod(set_hor_grid): "//&
       "ntiles should be 1 for ocean mosaic.")
   call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
   ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
@@ -361,10 +298,10 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
   ! This code should be moved to MOM_domains_init once we start using a cubed-sphere grid.
   ! if (field_exist(ocean_mosaic, "contacts") ) then
   !   ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-  !   if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+  !   if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
   !        'number of contacts should be larger than 0 when field contacts exist in file '//&
   !        trim(ocean_mosaic) )
-  !   if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_ice_grid): '//&
+  !   if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
   !        'number of contacts should be no larger than 2')
   !   call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
   !        istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
@@ -372,34 +309,34 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
   !   do m = 1, ncontacts
   !     if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
   !       if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_ice_grid): only cyclic condition is allowed for x-boundary")
+  !            "==>Error from ice_grid_mod(set_hor_grid): only cyclic condition is allowed for x-boundary")
   !       x_cyclic = .true.
   !     elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
   !       if ( jstart1(m) == jstart2(m) ) then ! folded north
   !          tripolar_grid=.true.
   !       else
-  !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_ice_grid): "//&
+  !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_hor_grid): "//&
   !            "only folded-north condition is allowed for y-boundary")
   !       endif
   !     else
   !       call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_ice_grid): invalid boundary contact")
+  !            "==>Error from ice_grid_mod(set_hor_grid): invalid boundary contact")
   !     endif
   !   enddo
   ! endif
 
   !--- get grid size from the input file hgrid file.
   call field_size(ocean_hgrid, 'x', dims)
-  if(mod(dims(1),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+  if(mod(dims(1),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
       'x-size of x in file '//trim(ocean_hgrid)//' should be 2*niglobal+1')
-  if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_ice_grid): '//&
+  if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
       'y-size of x in file '//trim(ocean_hgrid)//' should be 2*njglobal+1')
   ni = dims(1)/2
   nj = dims(2)/2
 
-  if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_ice_grid: "//&
+  if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_hor_grid: "//&
     "The total i-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-  if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_ice_grid: "//&
+  if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_hor_grid: "//&
     "The total j-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
 
   call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
@@ -436,7 +373,7 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
 
   i_off = isca - G%isc ; j_off = jsca - G%jsc
 
-  call allocate_metrics(G, IG)
+  call allocate_metrics(G)
 
   !--- read data from grid_spec.nc
   allocate(depth(G%isc:G%iec,G%jsc:G%jec))
@@ -538,6 +475,72 @@ subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
     endif ; enddo
     deallocate(pelist, islist, ielist, jslist, jelist)
   endif
+
+end subroutine set_hor_grid
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ice_grid initializes sea ice specific grid parameters
+subroutine set_ice_grid(IG, param_file, NCat_dflt)
+  type(ice_grid_type),   intent(inout) :: IG
+  type(param_file_type), intent(in)    :: param_file
+  integer,               intent(in)    :: NCat_dflt
+!   This subroutine sets up the necessary domain types and the sea-ice grid.
+
+! Arguments: IG - The sea-ice specific grid structure.
+!  (in)      param_file - A structure indicating the open file to parse for
+!                         model parameter values.
+!  (inout)   ice_domain - A domain with no halos that can be shared publicly.
+!  (in)      NCat_dflt - The default number of ice categories.
+
+! This include declares and sets the variable "version".
+#include "version_variable.h"
+
+! character(len=200) :: mesg
+  character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
+
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod_nm, version)
+#ifdef STATIC_MEMORY_
+  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=NCat_dflt)
+  if (IG%CatIce /= NCAT_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
+       "Mismatched number of categories NCAT_ICE between SIS_memory.h and "//&
+       "param_file or the input namelist file.")
+  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=NK_ICE_)
+  if (IG%NkIce /= NK_ICE_) call SIS_error(FATAL, "set_ice_grid: " // &
+       "Mismatched number of layers NK_ICE between SIS_memory.h and param_file")
+
+  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=NK_SNOW_)
+  if (IG%NkSnow /= NK_SNOW_) call SIS_error(FATAL, "set_ice_grid: " // &
+       "Mismatched number of layers NK_SNOW between SIS_memory.h and param_file")
+  if (global_indexing) cal SIS_error(FATAL, "set_ice_grid : "//&
+       "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
+#else
+  call get_param(param_file, mod_nm, "NCAT_ICE", IG%CatIce, &
+                 "The number of sea ice thickness categories.", units="nondim", &
+                 default=NCat_dflt)
+  call get_param(param_file, mod_nm, "NK_ICE", IG%NkIce, &
+                 "The number of layers within the sea ice.", units="nondim", &
+                 default=4) ! Valid for SIS5L; Perhaps this should be ..., fail_if_missing=.true.
+  call get_param(param_file, mod_nm, "NK_SNOW", IG%NkSnow, &
+                 "The number of layers within the snow atop the sea ice.", &
+                 units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
+#endif
+
+  call get_param(param_file, mod_nm, "H_TO_KG_M2", IG%H_to_kg_m2, &
+               "A constant that translates thicknesses from the model's \n"//&
+               "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
+               default=1.0)
+  IG%kg_m2_to_H = 1.0 / IG%H_to_kg_m2
+  IG%H_subroundoff = 1e-30*IG%kg_m2_to_H
+
+  call allocate_ice_metrics(IG)
 
 end subroutine set_ice_grid
 
@@ -947,9 +950,8 @@ end subroutine extrapolate_metric
 
 !---------------------------------------------------------------------
 
-subroutine allocate_metrics(G, IG)
+subroutine allocate_metrics(G)
   type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type), intent(inout) :: IG
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
   ! This subroutine allocates the lateral elements of the sea_ice_grid_type that
@@ -1019,10 +1021,20 @@ subroutine allocate_metrics(G, IG)
   allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
+end subroutine allocate_metrics
+!---------------------------------------------------------------------
+
+!> Allocate any required arrays in the ice_grid_type.
+subroutine allocate_ice_metrics(IG)
+  type(ice_grid_type), intent(inout) :: IG
+  integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
+
+  ! This subroutine allocates any extensive elements of the ice_grid_type
+  ! and zeros them out.
   allocate(IG%cat_thick_lim(1:IG%CatIce+1)) ; IG%cat_thick_lim(:) = 0.0
   allocate(IG%mH_cat_bound(1:IG%CatIce+1)) ; IG%mH_cat_bound(:) = 0.0
+end subroutine allocate_ice_metrics
 
-end subroutine allocate_metrics
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
 logical function isPointInCell(G, i, j, x, y)
@@ -1057,8 +1069,8 @@ logical function isPointInCell(G, i, j, x, y)
 end function isPointInCell
 
 !---------------------------------------------------------------------
-!--- release memory
-subroutine ice_grid_end(G)
+!> Release memory used by the sea_ice_grid_type and related structures.
+subroutine sea_ice_grid_end(G)
   type(sea_ice_grid_type), intent(inout) :: G
 
   DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
@@ -1093,6 +1105,16 @@ subroutine ice_grid_end(G)
 
   deallocate(G%Domain%mpp_domain)
   deallocate(G%Domain)
+
+end subroutine sea_ice_grid_end
+
+!---------------------------------------------------------------------
+!> Release memory used by the ice_grid_type and related structures.
+subroutine ice_grid_end(IG)
+  type(ice_grid_type), intent(inout) :: IG
+
+  deallocate(IG%cat_thick_lim)
+  deallocate(IG%mH_cat_bound)
 
 end subroutine ice_grid_end
 
