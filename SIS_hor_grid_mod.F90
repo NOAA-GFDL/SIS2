@@ -9,38 +9,33 @@ module SIS_hor_grid_mod
 use mpp_domains_mod, only : mpp_define_domains, FOLD_NORTH_EDGE
 use mpp_domains_mod, only : domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
 use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
-use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain !, mpp_set_domain_symmetry
+use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
 use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
-! use mpp_domains_mod, only : mpp_set_global_domain, mpp_set_data_domain, mpp_set_compute_domain
 use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
 use mpp_domains_mod, only : domain1D, mpp_get_domain_components
 
 use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
 use MOM_domains, only : PE_here, root_PE, broadcast, MOM_domains_init, clone_MOM_domain
-use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All ! , AGRID
+use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : slasher
 
-use fms_io_mod, only : file_exist ! , parse_mask_table
+use fms_io_mod, only : file_exist
 use fms_mod,    only : field_exist, field_size, read_data
-! use fms_mod,    only : get_global_att_value, stderr
 use mosaic_mod, only : get_mosaic_ntiles, get_mosaic_ncontacts, get_mosaic_contact
-! use mosaic_mod, only : calc_mosaic_grid_area
-! use grid_mod,   only : get_grid_cell_vertices
 
 implicit none ; private
 
 include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-public :: set_hor_grid, sea_ice_grid_end, isPointInCell
+public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
 public :: cell_area
 
-
-type, public :: sea_ice_grid_type
+type, public :: SIS_hor_grid_type
   type(SIS_domain_type), pointer :: Domain => NULL()
   type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
   integer :: isc, iec, jsc, jec ! The range of the computational domain indicies
@@ -129,7 +124,7 @@ type, public :: sea_ice_grid_type
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
-end type sea_ice_grid_type
+end type SIS_hor_grid_type
 
 type, public :: SIS2_domain_type
   type(domain2D), pointer :: mpp_domain => NULL() ! The domain with halos on
@@ -160,7 +155,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_hor_grid initializes the sea ice grid parameters.
 subroutine set_hor_grid(G, param_file, ice_domain)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type)  , intent(in)    :: param_file
   type(domain2D),          intent(inout) :: ice_domain
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
@@ -453,38 +448,9 @@ subroutine set_hor_grid(G, param_file, ice_domain)
 
 end subroutine set_hor_grid
 
-!---------------------------------------------------------------------
-
-! real function lon_avg(lons)
-!   real, dimension(:), intent(in) :: lons
-
-!   real, dimension(size(lons(:))) :: lons2 ! lons relative to lon(1)
-!   integer                        :: i
-
-!   lons2(1) = 0.0
-!   do i=2,size(lons(:))
-!     lons2(i) = lons(i)-lons(1)
-!     if (lons2(i) >  180) lons2(i) = lons2(i) - 360;
-!     if (lons2(i) < -180) lons2(i) = lons2(i) + 360;
-!   end do
-!   lon_avg = lons(1)+sum(lons2)/size(lons(:))
-! end function lon_avg
-
-! !---------------------------------------------------------------------
-! function edge_length(x1, y1, x2, y2)
-!   real, intent(in) :: x1, x2, y1, y2 ! end-point coordinates in degrees
-!   real             :: edge_length
-!   real             :: dx, dy
-
-!   dx = (x2-x1)*cos((atan(1.0)/45)*(y2+y1)/2)
-!   dy = y2-y1
-!   edge_length = radius*(atan(1.0)/45)*(dx*dx+dy*dy)**0.5
-! end function edge_length
-
-! ------------------------------------------------------------------------------
 
 subroutine set_grid_derived_metrics(G, param_file)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
 ! Arguments:
 !  (inout)   G - The ocean's grid structure.
@@ -594,7 +560,7 @@ function Adcroft_reciprocal(val) result(I_val)
 end function Adcroft_reciprocal
 
 subroutine set_grid_metrics_from_mosaic(G,param_file)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
 !   This subroutine sets the grid metrics from a mosaic file.  This should be
 ! identical to the corresponding subroutine in MOM_grid_initialize.F90.
@@ -855,15 +821,13 @@ subroutine extrapolate_metric(var, jh, missing)
 
 end subroutine extrapolate_metric
 
-
-
 !---------------------------------------------------------------------
 
 subroutine allocate_metrics(G)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
-  ! This subroutine allocates the lateral elements of the sea_ice_grid_type that
+  ! This subroutine allocates the lateral elements of the SIS_hor_grid_type that
   ! are always used and zeros them out.
 
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -931,11 +895,12 @@ subroutine allocate_metrics(G)
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
 end subroutine allocate_metrics
+
 !---------------------------------------------------------------------
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
 logical function isPointInCell(G, i, j, x, y)
-  type(sea_ice_grid_type),   intent(in) :: G    !< Grid type
+  type(SIS_hor_grid_type),   intent(in) :: G    !< Grid type
   integer,                   intent(in) :: i, j !< i,j indices of cell to test
   real,                      intent(in) :: x, y !< x,y coordinates of point
 ! This is a crude calculation that assume a geographic coordinate system
@@ -966,9 +931,9 @@ logical function isPointInCell(G, i, j, x, y)
 end function isPointInCell
 
 !---------------------------------------------------------------------
-!> Release memory used by the sea_ice_grid_type and related structures.
-subroutine sea_ice_grid_end(G)
-  type(sea_ice_grid_type), intent(inout) :: G
+!> Release memory used by the SIS_hor_grid_type and related structures.
+subroutine SIS_hor_grid_end(G)
+  type(SIS_hor_grid_type), intent(inout) :: G
 
   DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
   DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
@@ -1003,6 +968,6 @@ subroutine sea_ice_grid_end(G)
   deallocate(G%Domain%mpp_domain)
   deallocate(G%Domain)
 
-end subroutine sea_ice_grid_end
+end subroutine SIS_hor_grid_end
 
 end module SIS_hor_grid_mod

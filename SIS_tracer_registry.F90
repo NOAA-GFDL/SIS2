@@ -37,7 +37,7 @@ use MOM_domains,       only : pass_var
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 
 implicit none ; private
@@ -96,7 +96,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tra
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v)
   integer,                         intent(in) :: nLtr
-  type(sea_ice_grid_type),         intent(in) :: G
+  type(SIS_hor_grid_type),         intent(in) :: G
   type(ice_grid_type),             intent(in) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
@@ -199,7 +199,7 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
                                     name_snow, G, IG, param_file, Reg, &
                                     massless_iceval, massless_snowval)
   integer,                         intent(in) :: nL_ice, nL_snow
-  type(sea_ice_grid_type),         intent(in) :: G
+  type(SIS_hor_grid_type),         intent(in) :: G
   type(ice_grid_type),             intent(in) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_ice),  target :: ice_tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow), target :: snow_tr
@@ -278,7 +278,7 @@ end subroutine get_SIS_tracer_pointer
 
 subroutine update_SIS_tracer_halos(Reg, G, complete)
   type(SIS_tracer_registry_type), intent(inout) :: Reg
-  type(sea_ice_grid_type),        intent(inout) :: G
+  type(SIS_hor_grid_type),        intent(inout) :: G
   logical,              optional, intent(in)    :: complete
 
   logical :: do_complete, comp_here
@@ -307,7 +307,7 @@ end subroutine update_SIS_tracer_halos
 
 
 subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, do_ice)
-  type(sea_ice_grid_type),                  intent(inout) :: G
+  type(SIS_hor_grid_type),                  intent(inout) :: G
   type(ice_grid_type),                      intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mass
   type(SIS_tracer_registry_type),           intent(inout) :: Reg
@@ -448,7 +448,7 @@ end subroutine add_SIS_tracer_diagnostics
 subroutine SIS_tracer_chksum(mesg, Reg, G)
   character(len=*),               intent(in) :: mesg
   type(SIS_tracer_registry_type), pointer    :: Reg
-  type(sea_ice_grid_type),        intent(in) :: G
+  type(SIS_hor_grid_type),        intent(in) :: G
 !   This subroutine writes out chksums for the model's thermodynamic state
 ! variables.
 ! Arguments: mesg - A message that appears on the chksum lines.

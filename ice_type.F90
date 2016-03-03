@@ -14,7 +14,7 @@ use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use constants_mod,    only: T_0degC=>Tfreeze
 
-use SIS_hor_grid_mod, only : sea_ice_grid_type, cell_area
+use SIS_hor_grid_mod, only : SIS_hor_grid_type, cell_area
 use ice_grid_mod, only : ice_grid_type
 
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
@@ -416,7 +416,7 @@ type ice_data_type !  ice_public_type
                     ! to determine its value.
 
       type(icebergs), pointer     :: icebergs => NULL()
-  type(sea_ice_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
@@ -606,7 +606,7 @@ end subroutine ice_data_type_register_restarts
 !     in the restart files.                                                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, restart_file)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
@@ -784,7 +784,7 @@ end subroutine dealloc_IST_arrays
 subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   character(len=*),        intent(in)    :: mesg
   type(ice_state_type),    intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   integer, optional,       intent(in)    :: haloshift
 !   This subroutine writes out chksums for the model's basic state variables.
@@ -866,9 +866,9 @@ subroutine Ice_public_type_chksum(mesg, Ice)
 end subroutine Ice_public_type_chksum
 
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
-  type(ice_data_type),     intent(in) :: Ice
-  type(sea_ice_grid_type), intent(inout) :: G
-  character(len=*),        intent(in) :: msg
+  type(ice_data_type),     intent(in)    :: Ice
+  type(SIS_hor_grid_type), intent(inout) :: G
+  character(len=*),        intent(in)    :: msg
 
   character(len=512) :: mesg1, mesg2
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -911,10 +911,10 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
 end subroutine Ice_public_type_bounds_check
 
 subroutine IST_bounds_check(IST, G, IG, msg)
-  type(ice_state_type),    intent(in) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(in) :: IG
-  character(len=*),        intent(in) :: msg
+  type(ice_state_type),    intent(in)    :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(in)    :: IG
+  character(len=*),        intent(in)    :: msg
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
@@ -1042,9 +1042,9 @@ end subroutine ice_model_restart
 !=======================================================================
 
 subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
-  type(ice_data_type),     intent(inout)    :: Ice
+  type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(SIS_diag_ctrl),     intent(in)    :: diag
   type(time_type),         intent(inout) :: Time
 

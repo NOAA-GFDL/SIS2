@@ -59,7 +59,7 @@ use SIS_diag_mediator, only : register_SIS_diag_field, safe_alloc_ptr, time_type
 use MOM_domains, only : pass_var, pass_vector, sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, SIS_tracer_chksum
 use MOM_variables, only : ocean_OBC_type, OBC_FLATHER_E
@@ -89,7 +89,7 @@ integer :: id_clock_advect, id_clock_pass, id_clock_sync
 contains
 
 subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, snow_tr ) ! (, OBC)
-  type(sea_ice_grid_type),                     intent(inout) :: G
+  type(SIS_hor_grid_type),                     intent(inout) :: G
   type(ice_grid_type),                         intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in) :: h_prev, h_end
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: uhtr
@@ -145,7 +145,7 @@ end subroutine advect_SIS_tracers
 
 subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (, OBC)
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
-  type(sea_ice_grid_type),                     intent(inout) :: G
+  type(SIS_hor_grid_type),                     intent(inout) :: G
   type(ice_grid_type),                         intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_prev, h_end
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(in)    :: uhtr
@@ -396,7 +396,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
 end subroutine advect_tracer
 
 subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, OBC)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar !< Scalar field to be advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_prev, h_end
@@ -647,7 +647,7 @@ end subroutine advect_scalar
 
 subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
@@ -774,7 +774,7 @@ end subroutine advect_scalar_x
 
 subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   type(SIS_tracer_type), dimension(ntr),        intent(inout) :: Tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
@@ -925,7 +925,7 @@ end subroutine advect_x
 !! in the cell plus whatever part of its half of the mass flux that
 !! the flux through the other side does not require.
 subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_neglect)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: hprev
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uhr
@@ -968,7 +968,7 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
 end subroutine kernel_uhh_CFL_x
 
 subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask
@@ -988,7 +988,7 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
 end subroutine kernel_PLM_slope_x
 
 subroutine kernel_PLM_Tr_x(G, is, ie, j, scalar, uhh, CFL, slope_x, Tr_x)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZIB_(G)),         intent(in)    :: uhh, CFL
@@ -1011,7 +1011,7 @@ subroutine kernel_PLM_Tr_x(G, is, ie, j, scalar, uhh, CFL, slope_x, Tr_x)
 end subroutine kernel_PLM_Tr_x
 
 subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask
@@ -1065,7 +1065,7 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
 end subroutine kernel_PPMH3_Tr_x
 
 subroutine kernel_uhr_x(G, is, ie, j, uh_neglect, uhh, uhr, hprev, hlst, Ihnew, do_i, h_neglect)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uh_neglect
   real, dimension(SZIB_(G)),         intent(in)    :: uhh
@@ -1103,7 +1103,7 @@ end subroutine kernel_uhr_x
 
 !> Updates a scalar with the divergence of x-flux
 subroutine kernel_tracer_div_x(G, is, ie, j, do_i, hlst, Ihnew, flux_x, scalar)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   logical, dimension(SZI_(G)),       intent(in)    :: do_i
   real, dimension(SZI_(G)),          intent(in)    :: hlst, Ihnew
@@ -1121,7 +1121,7 @@ end subroutine kernel_tracer_div_x
 
 subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: scalar
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
@@ -1255,7 +1255,7 @@ end subroutine advect_scalar_y
 
 subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   type(SIS_tracer_type), dimension(ntr),        intent(inout) :: Tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: hprev
@@ -1426,7 +1426,7 @@ end subroutine advect_y
 !! in the cell plus whatever part of its half of the mass flux that
 !! the flux through the other side does not require.
 subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_neglect)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: hprev
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhr
@@ -1471,7 +1471,7 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
 end subroutine kernel_vhh_CFL_y
 
 subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask
@@ -1491,7 +1491,7 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
 end subroutine kernel_PLM_slope_y
 
 subroutine kernel_PLM_Tr_y(G, is, ie, J, scalar, vhh, CFL, slope_y, Tr_y)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh
@@ -1515,7 +1515,7 @@ subroutine kernel_PLM_Tr_y(G, is, ie, J, scalar, vhh, CFL, slope_y, Tr_y)
 end subroutine kernel_PLM_Tr_y
 
 subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, J
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask
@@ -1569,7 +1569,7 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
 end subroutine kernel_PPMH3_Tr_y
 
 subroutine kernel_hlst_y(G, is, ie, j, vh_neglect, vhh, hprev, hlst, Ihnew, do_i, h_neglect)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vh_neglect, vhh
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: hprev
@@ -1601,7 +1601,7 @@ end subroutine kernel_hlst_y
 
 !> Updates a scalar with the divergence of y-flux
 subroutine kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y,  scalar)
-  type(sea_ice_grid_type),           intent(in)    :: G
+  type(SIS_hor_grid_type),           intent(in)    :: G
   integer,                           intent(in)    :: is, ie, j
   logical, dimension(SZI_(G)),       intent(in)    :: do_i
   real, dimension(SZI_(G)),          intent(in)    :: hlst, Ihnew
@@ -1618,7 +1618,7 @@ subroutine kernel_tracer_div_y(G, is, ie, j, do_i, hlst, Ihnew, flux_y,  scalar)
 end subroutine kernel_tracer_div_y
 
 subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
-  type(sea_ice_grid_type),                     intent(inout) :: G
+  type(SIS_hor_grid_type),                     intent(inout) :: G
   type(ice_grid_type),                         intent(inout) :: IG
   type(SIS_tracer_type), dimension(ntr),       intent(inout) :: Tr
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in) :: h_prev, h_end
@@ -1702,7 +1702,7 @@ end subroutine advect_upwind_2d
 
 subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
                                   Reg, snow_tr, j, is, ie)
-  type(sea_ice_grid_type),             intent(in) :: G
+  type(SIS_hor_grid_type),             intent(in) :: G
   type(ice_grid_type),                 intent(inout) :: IG
   real, dimension(SZI_(G),SZCAT_(IG)), intent(in) :: vol_start, vol_trans
   type(SIS_tracer_advect_CS),          pointer    :: CS
@@ -1756,7 +1756,7 @@ end subroutine advect_tracers_thicker
 
 subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
   type(time_type), target, intent(in)    :: Time
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(SIS_tracer_advect_CS),  pointer       :: CS

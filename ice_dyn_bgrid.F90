@@ -33,7 +33,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
 use constants_mod,    only : pi
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use ice_ridging_mod,  only : ridge_rate
 
@@ -83,7 +83,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
-  type(sea_ice_grid_type),     intent(in)    :: G
+  type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(ice_B_dyn_CS),          pointer       :: CS
@@ -197,7 +197,7 @@ end subroutine ice_B_dyn_init
 ! find_ice_strength - magnitude of force on ice in plastic deformation         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
-  type(sea_ice_grid_type),          intent(in)  :: G
+  type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_B_dyn_CS),               pointer     :: CS
@@ -266,7 +266,7 @@ end subroutine find_ice_strength
 subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
 
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type),            intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci, msnow, mice  ! ice properties
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui, vi      ! ice velocity
   real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: uo, vo      ! ocean velocity
@@ -413,7 +413,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     ! calculate elastic parameter:
     ! E=zeta/(E_0*dt) => E*dt_Rheo=zeta/(E_0*N_evp), where dt_Rheo=dt/N_evp
     ! here, edt_new is 2*zeta/(E*dt_Rheo) = 2*E_0*N_evp for computational reasons
-    edt_new = 2. *e0 *float(EVP_steps)
+    edt_new = 2. * e0 * REAL(EVP_steps)
   else
     ! This is H&D97, Eq. 44, with their E_0 = 0.25.
     I_2dt_Rheo = 1.0 / (2.0*dt_Rheo)
@@ -680,7 +680,7 @@ end subroutine ice_B_dynamics
 ! sigI - first stress invariant                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 function sigI(mi, ci, sig11, sig22, sig12, G, CS)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type),          intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigI
   type(ice_B_dyn_CS),               pointer    :: CS
@@ -700,7 +700,7 @@ end function sigI
 ! sigII - second stress invariant                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 function sigII(mi, ci, sig11, sig22, sig12, G, CS)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type),          intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigII
   type(ice_B_dyn_CS),               pointer    :: CS
@@ -721,7 +721,7 @@ end function sigII
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
   type(ice_B_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart

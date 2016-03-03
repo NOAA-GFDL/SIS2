@@ -48,7 +48,7 @@ use MOM_obsolete_params, only : obsolete_logical
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 ! use MOM_variables, only : ocean_OBC_type, OBC_SIMPLE
 ! use MOM_variables, only : OBC_FLATHER_E, OBC_FLATHER_W, OBC_FLATHER_N, OBC_FLATHER_S
@@ -86,7 +86,7 @@ end type loop_bounds_type
 contains
 
 subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
-  type(sea_ice_grid_type),                  intent(inout) :: G
+  type(SIS_hor_grid_type),                  intent(inout) :: G
   type(ice_grid_type),                      intent(inout) :: IG
   real, dimension(SZIB_(G),SZJ_(G)),        intent(in)    :: u
   real, dimension(SZI_(G),SZJB_(G)),        intent(in)    :: v
@@ -231,11 +231,11 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 end subroutine ice_continuity
 
 subroutine zonal_mass_flux(u, h_in, uh, dt, G, IG, CS, LB)
-  type(sea_ice_grid_type),                  intent(inout) :: G
+  type(SIS_hor_grid_type),                  intent(inout) :: G
   type(ice_grid_type),                      intent(inout) :: IG
   real, dimension(SZIB_(G),SZJ_(G)),        intent(in)    :: u
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_in
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(out)   :: uh
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)  :: h_in
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), intent(out) :: uh
   real,                                     intent(in)    :: dt
   type(SIS_continuity_CS),                  pointer       :: CS
   type(loop_bounds_type),                   intent(in)    :: LB
@@ -318,7 +318,7 @@ end subroutine zonal_mass_flux
 
 subroutine zonal_flux_layer(u, h, hL, hR, uh, duhdu, visc_rem, dt, G, j, &
                             ish, ieh, do_i, vol_CFL)
-  type(sea_ice_grid_type),      intent(inout) :: G
+  type(SIS_hor_grid_type),      intent(inout) :: G
   real, dimension(SZIB_(G)),    intent(in)    :: u, visc_rem
   real, dimension(SZI_(G)),     intent(in)    :: h, hL, hR
   real, dimension(SZIB_(G)),    intent(inout) :: uh, duhdu
@@ -377,11 +377,11 @@ subroutine zonal_flux_layer(u, h, hL, hR, uh, duhdu, visc_rem, dt, G, j, &
 end subroutine zonal_flux_layer
 
 subroutine meridional_mass_flux(v, h_in, vh, dt, G, IG, CS, LB)
-  type(sea_ice_grid_type),                  intent(inout) :: G
+  type(SIS_hor_grid_type),                  intent(inout) :: G
   type(ice_grid_type),                      intent(inout) :: IG
   real, dimension(SZI_(G),SZJB_(G)),        intent(in)    :: v
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: h_in
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(out)   :: vh
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)  :: h_in
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(out) :: vh
   real,                                     intent(in)    :: dt
   type(SIS_continuity_CS),                  pointer       :: CS
   type(loop_bounds_type),                   intent(in)    :: LB
@@ -465,7 +465,7 @@ end subroutine meridional_mass_flux
 
 subroutine merid_flux_layer(v, h, hL, hR, vh, dvhdv, visc_rem, dt, G, J, &
                             ish, ieh, do_i, vol_CFL)
-  type(sea_ice_grid_type),          intent(inout) :: G
+  type(SIS_hor_grid_type),          intent(inout) :: G
   real, dimension(SZI_(G)),         intent(in)    :: v, visc_rem
   real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h, hL, hR
   real, dimension(SZI_(G)),         intent(inout) :: vh, dvhdv
@@ -525,7 +525,7 @@ subroutine merid_flux_layer(v, h, hL, hR, vh, dvhdv, visc_rem, dt, G, J, &
 end subroutine merid_flux_layer
 
 subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_2nd)
-  type(sea_ice_grid_type),          intent(in)  :: G
+  type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l, h_r
   type(loop_bounds_type),           intent(in)  :: LB
@@ -624,7 +624,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
 end subroutine PPM_reconstruction_x
 
 subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_2nd)
-  type(sea_ice_grid_type),          intent(in)  :: G
+  type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l, h_r
   type(loop_bounds_type),           intent(in)  :: LB
@@ -719,11 +719,11 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
 end subroutine PPM_reconstruction_y
 
 subroutine PPM_limit_pos(h_in, h_L, h_R, h_min, G, iis, iie, jis, jie)
-  type(sea_ice_grid_type),          intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)     :: h_in
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout)  :: h_L, h_R
-  real,                             intent(in)     :: h_min
-  integer,                          intent(in)     :: iis, iie, jis, jie
+  type(SIS_hor_grid_type),          intent(in)    :: G
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_L, h_R
+  real,                             intent(in)    :: h_min
+  integer,                          intent(in)    :: iis, iie, jis, jie
 ! This subroutine limits the left/right edge values of the PPM reconstruction
 ! to give a reconstruction that is positive-definite.  Here this is
 ! reinterpreted as giving a constant thickness if the mean thickness is less
@@ -764,10 +764,10 @@ subroutine PPM_limit_pos(h_in, h_L, h_R, h_min, G, iis, iie, jis, jie)
 end subroutine PPM_limit_pos
 
 subroutine PPM_limit_CW84(h_in, h_l, h_r, G, iis, iie, jis, jie)
-  type(sea_ice_grid_type),          intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)     :: h_in
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout)  :: h_l, h_r
-  integer,                          intent(in)     :: iis, iie, jis, jie
+  type(SIS_hor_grid_type),          intent(in)    :: G
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_l, h_r
+  integer,                          intent(in)    :: iis, iie, jis, jie
 ! This subroutine limits the left/right edge values of the PPM reconstruction
 ! according to the monotonic prescription of Colella and Woodward, 1984.
 ! Arguments: h_in    - thickness of layer (2D)
@@ -801,7 +801,7 @@ end subroutine PPM_limit_CW84
 
 subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
   type(time_type), target, intent(in)    :: Time
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(SIS_continuity_CS), pointer       :: CS

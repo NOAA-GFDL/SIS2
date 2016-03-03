@@ -40,7 +40,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
 use time_manager_mod, only : set_date, get_time, get_date
@@ -140,7 +140,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   type(time_type),     target, intent(in)    :: Time
-  type(sea_ice_grid_type),     intent(in)    :: G
+  type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(ice_C_dyn_CS),          pointer       :: CS
@@ -397,7 +397,7 @@ end subroutine ice_C_dyn_init
 ! find_ice_strength - magnitude of force on ice in plastic deformation         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
-  type(sea_ice_grid_type),          intent(in)  :: G
+  type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(ice_C_dyn_CS),               pointer     :: CS
@@ -419,7 +419,7 @@ end subroutine find_ice_strength
 subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                           fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type),           intent(inout) :: G
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci, msnow, mice  ! ice properties
   real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui      ! ice velocity
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi      ! ice velocity
@@ -1336,7 +1336,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 end subroutine ice_C_dynamics
 
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
-  type(sea_ice_grid_type),            intent(in)    :: G
+  type(SIS_hor_grid_type),            intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice, mice
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s
@@ -1462,7 +1462,7 @@ end subroutine limit_stresses
 ! sigI - first stress invariant                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci, str_d
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI
   type(ice_C_dyn_CS),               pointer     :: CS
@@ -1485,11 +1485,11 @@ end subroutine find_sigI
 ! sigII - second stress invariant                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
-  type(sea_ice_grid_type),            intent(in)  :: G
+  type(SIS_hor_grid_type),            intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi, ci, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII
-  type(ice_C_dyn_CS),                  pointer    :: CS
+  type(ice_C_dyn_CS),                 pointer     :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     strength ! The ice strength, in Pa.
@@ -1532,7 +1532,7 @@ end subroutine find_sigII
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
-  type(sea_ice_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(param_file_type),   intent(in)    :: param_file
   type(ice_C_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -1576,7 +1576,7 @@ end subroutine ice_C_dyn_register_restarts
 subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, &
                          dt_slow, G, CS)
   integer, intent(in) :: I, j
-  type(sea_ice_grid_type),           intent(in) :: G
+  type(SIS_hor_grid_type),           intent(in) :: G
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui, u_IC, uo
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc, fxic, Cor_u, PFu, fxat
@@ -1636,7 +1636,7 @@ end subroutine write_u_trunc
 subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, &
                          dt_slow, G, CS)
   integer, intent(in) :: i, j
-  type(sea_ice_grid_type),           intent(in) :: G
+  type(SIS_hor_grid_type),           intent(in) :: G
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi, v_IC, vo
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc, fyic, Cor_v, PFv, fyat

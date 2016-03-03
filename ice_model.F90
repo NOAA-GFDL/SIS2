@@ -88,7 +88,7 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use SIS_hor_grid_mod, only : sea_ice_grid_type, set_hor_grid, sea_ice_grid_end, cell_area
+use SIS_hor_grid_mod, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, cell_area
 use ice_grid_mod, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
@@ -153,7 +153,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
   type(ice_data_type),              intent(inout) :: Ice
   type(ice_state_type),             intent(inout) :: IST
   type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
-  type(sea_ice_grid_type),          intent(inout) :: G
+  type(SIS_hor_grid_type),          intent(inout) :: G
   type(ice_grid_type),              intent(inout) :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
@@ -267,7 +267,7 @@ end subroutine sum_top_quantities
 subroutine avg_top_quantities(Ice, IST, G, IG)
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
 
   real    :: u, v, divid, sign
@@ -381,10 +381,10 @@ end subroutine avg_top_quantities
 !   for use by the ocean model.                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
-  type(ice_data_type),  intent(inout) :: Ice
-  type(ice_state_type), intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type), intent(inout) :: IG
+  type(ice_data_type),     intent(inout) :: Ice
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
 
   real :: I_count
   integer :: i, j, isc, iec, jsc, jec, m, n, i2, j2, i_off, j_off, ind
@@ -448,9 +448,9 @@ end subroutine set_ocean_top_fluxes
 !   them through the stresses by the number of times they have been augmented. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine finish_ocean_top_stresses(Ice, IST, G)
-  type(ice_data_type),  intent(inout) :: Ice
-  type(ice_state_type), intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_data_type),     intent(inout) :: Ice
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
 
   real :: I_count
 
@@ -474,10 +474,10 @@ end subroutine finish_ocean_top_stresses
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_data_type),  intent(inout) :: Ice
-  type(ice_state_type), intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type), intent(inout) :: IG
+  type(ice_data_type),     intent(inout) :: Ice
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
   real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
@@ -595,10 +595,10 @@ end subroutine set_ocean_top_stress_Bgrid
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_data_type),  intent(inout) :: Ice
-  type(ice_state_type), intent(inout) :: IST
-  type(sea_ice_grid_type), intent(inout) :: G
-  type(ice_grid_type),  intent(inout) :: IG
+  type(ice_data_type),     intent(inout) :: Ice
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
   real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
@@ -730,12 +730,12 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
                                  frazil_ice_bot, OIB, G, IG, s_surf_ice_bot, sea_lev_ice_bot )
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
-  type(sea_ice_grid_type),                 intent(inout) :: G
+  type(SIS_hor_grid_type),                 intent(inout) :: G
   type(ice_grid_type),                     intent(inout) :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: t_surf_ice_bot, u_surf_ice_bot
-  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: v_surf_ice_bot, frazil_ice_bot
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: t_surf_ice_bot, u_surf_ice_bot
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: v_surf_ice_bot, frazil_ice_bot
   type(ocean_ice_boundary_type),           intent(inout) :: OIB
-  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h_ice_input
@@ -1140,7 +1140,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
   type(ice_data_type),           intent(inout) :: Ice
   type(ice_state_type),          intent(inout) :: IST
-  type(sea_ice_grid_type),       intent(inout) :: G
+  type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(inout) :: IG
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce) :: &
@@ -1516,7 +1516,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
   type(ice_data_type),                   intent(inout) :: Ice
   type(ice_state_type),                  intent(inout) :: IST
-  type(sea_ice_grid_type),               intent(inout) :: G
+  type(SIS_hor_grid_type),               intent(inout) :: G
   type(ice_grid_type),                   intent(inout) :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
@@ -2472,7 +2472,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                                ! runoff_hflx, calving_hflx)
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
-  type(sea_ice_grid_type),            intent(inout) :: G
+  type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
@@ -2853,7 +2853,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                                ! runoff_hflx, calving_hflx)
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
-  type(sea_ice_grid_type),            intent(inout) :: G
+  type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
 !  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
@@ -3594,7 +3594,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   type(param_file_type) :: param_file
   type(ice_state_type),    pointer :: IST => NULL()
-  type(sea_ice_grid_type), pointer :: G => NULL()
+  type(SIS_hor_grid_type), pointer :: G => NULL()
   type(ice_grid_type),     pointer :: IG => NULL()
 
   ! Parameters that are read in and used to initialize other modules.  If those
@@ -4195,7 +4195,7 @@ subroutine ice_model_end (Ice)
   call ice_transport_end(IST%ice_transport_CSp)
   call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 
-  call sea_ice_grid_end(Ice%G)
+  call SIS_hor_grid_end(Ice%G)
   call ice_grid_end(Ice%IG)
   call dealloc_Ice_arrays(Ice)
   call dealloc_IST_arrays(IST)
@@ -4221,8 +4221,8 @@ end subroutine ice_model_end
 !             T. Martin, April/June 2008                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_aging(G, IG, mi, age, mi_old, dt)
-  type(sea_ice_grid_type), intent(in) :: G
-  type(ice_grid_type), intent(in) :: IG
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(ice_grid_type),     intent(in) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi, mi_old
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),1), intent(inout) :: age
   real, intent(in) :: dt   ! has unit seconds

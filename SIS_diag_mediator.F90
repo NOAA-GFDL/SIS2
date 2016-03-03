@@ -26,7 +26,7 @@ module SIS_diag_mediator
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 
 use MOM_coms, only : PE_here
@@ -125,7 +125,7 @@ end type SIS_diag_ctrl
 contains
 
 subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl),     intent(inout) :: diag_cs
@@ -267,8 +267,8 @@ subroutine defineAxes(diag_cs, handles, axes)
 end subroutine defineAxes
 
 subroutine set_SIS_diag_mediator_grid(G, diag_cs)
-  type(sea_ice_grid_type), intent(inout) :: G
-  type(SIS_diag_ctrl),       intent(inout) :: diag_cs
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_diag_ctrl),     intent(inout) :: diag_cs
 ! Arguments: G - The ocean's grid structure.
 !  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
   diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
@@ -727,7 +727,7 @@ end function i2s
 
 subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg, &
                                   doc_file_dir)
-  type(sea_ice_grid_type),    intent(inout) :: G
+  type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(inout) :: IG
   type(param_file_type),      intent(in)    :: param_file
   type(SIS_diag_ctrl),        intent(inout) :: diag_cs
@@ -804,7 +804,7 @@ end subroutine SIS_diag_mediator_init
 
 subroutine diag_masks_set(G, IG, missing_value, diag_cs)
 ! Setup the 2d masks for diagnostics
-  type(sea_ice_grid_type), target, intent(in)    :: G
+  type(SIS_hor_grid_type), target, intent(in)    :: G
   type(ice_grid_type),             intent(inout) :: IG
   real,                            intent(in)    :: missing_value
   type(SIS_diag_ctrl),             intent(inout) :: diag_cs

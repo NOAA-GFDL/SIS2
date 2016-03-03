@@ -35,7 +35,7 @@ use MOM_error_handler, only : is_root_pe
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_error_checking, only : hchksum, Bchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B
-use SIS_hor_grid_mod,   only : sea_ice_grid_type
+use SIS_hor_grid_mod,   only : SIS_hor_grid_type
 
 implicit none ; private
 
@@ -106,9 +106,9 @@ end subroutine get_avg
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_line(year, day, second, cn_ocn, sst, G)
   integer,                         intent(in) :: year, day, second
-  type(sea_ice_grid_type),         intent(in) :: G
+  type(SIS_hor_grid_type),         intent(in) :: G
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: cn_ocn
-  real, dimension(G%isc:G%iec,G%jsc:G%jec),   intent(in) :: sst
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: sst
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
   real :: gx(3)
@@ -142,7 +142,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
   integer,                 intent(in) :: id
   real, dimension(:,:,:),  intent(in) :: val, part
   type(SIS_diag_ctrl),     intent(in) :: diag
-  type(sea_ice_grid_type), optional, intent(in) :: G
+  type(SIS_hor_grid_type), optional, intent(in) :: G
   logical, dimension(:,:), optional, intent(in) :: mask
   real,                    optional, intent(in) :: scale, offset
   logical,                 optional, intent(in) :: wtd
@@ -223,7 +223,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
   real, dimension(:,:,:,:), intent(in) :: val
   real, dimension(:,:,:),   intent(in) :: part
   type(SIS_diag_ctrl),      intent(in) :: diag
-  type(sea_ice_grid_type), optional, intent(in) :: G
+  type(SIS_hor_grid_type), optional, intent(in) :: G
   logical, dimension(:,:), optional, intent(in) :: mask
   real,                    optional, intent(in) :: scale, offset
   logical,                 optional, intent(in) :: wtd
@@ -298,7 +298,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
 end subroutine post_avg_4d
 
 subroutine ice_grid_chksum(G, haloshift)
-  type(sea_ice_grid_type), optional, intent(inout) :: G
+  type(SIS_hor_grid_type), optional, intent(inout) :: G
   integer, optional, intent(in) :: haloshift
 
   integer :: isc, iec, jsc, jec, hs

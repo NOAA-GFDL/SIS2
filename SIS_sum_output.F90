@@ -42,7 +42,7 @@ use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use ice_type_mod, only : ice_data_type, ice_state_type
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
@@ -105,7 +105,7 @@ contains
 
 subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
                                ntrunc)
-  type(sea_ice_grid_type),  intent(inout) :: G
+  type(SIS_hor_grid_type),  intent(inout) :: G
   type(param_file_type),    intent(in)    :: param_file
   character(len=*),         intent(in)    :: directory
   type(time_type),          intent(in)    :: Input_start_time
@@ -206,7 +206,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 
   type(time_type),         intent(inout) :: day
   integer,                 intent(in)    :: n
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(SIS_sum_out_CS),    pointer       :: CS
   character(len=*), optional, intent(in) :: message
@@ -698,7 +698,7 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 !  (in)      G - The sea ice model's grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
   real,                    intent(in)    :: dt
@@ -752,7 +752,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
   real,                    intent(in) :: dt
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(SIS_sum_out_CS),    pointer    :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -812,7 +812,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
 !  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST

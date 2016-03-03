@@ -40,7 +40,7 @@ use SIS_tracer_advect, only : advect_scalar
 use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
 
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 use ice_ridging_mod, only : ice_ridging
 
@@ -91,7 +91,7 @@ contains
 subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
                          dt_slow, G, IG, CS, rdg_hice, age_ice, snow2ocn, &
                          rdg_rate, rdg_open, rdg_vosh)
-  type(sea_ice_grid_type),                      intent(inout) :: G
+  type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: mH_ice, mH_snow
@@ -477,7 +477,7 @@ end subroutine ice_transport
 
 
 subroutine adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, IG, CS)
-  type(sea_ice_grid_type),                    intent(inout) :: G
+  type(SIS_hor_grid_type),                    intent(inout) :: G
   type(ice_grid_type),                        intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mH_ice, mH_snow
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
@@ -659,7 +659,7 @@ end subroutine adjust_ice_categories
 
 subroutine compress_ice(part_sz, mca_ice, mca_snow, mH_ice, mH_snow, &
                         TrReg, G, IG, CS)
-  type(sea_ice_grid_type),                       intent(inout) :: G
+  type(SIS_hor_grid_type),                       intent(inout) :: G
   type(ice_grid_type),                           intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mca_ice, mca_snow, mH_ice, mH_snow
@@ -810,7 +810,7 @@ end subroutine compress_ice
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type),           intent(inout) :: G
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  ! x-face advecting velocity
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  ! y-face advecting velocity
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc ! tracer to advect
@@ -875,7 +875,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
 end subroutine slab_ice_advect
 
 subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice, tot_snow)
-  type(sea_ice_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(in)  :: mH_ice, mH_snow
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(in)  :: part_sz
@@ -909,7 +909,7 @@ end subroutine get_total_amounts
 
 subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
                               G, IG, enth_ice, enth_snow)
-  type(sea_ice_grid_type),                       intent(inout) :: G
+  type(SIS_hor_grid_type),                       intent(inout) :: G
   type(ice_grid_type),                           intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(in)  :: mH_ice, mH_snow
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(in)  :: part_sz
@@ -962,7 +962,7 @@ end subroutine get_total_enthalpy
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
-  type(sea_ice_grid_type),     intent(in)    :: G
+  type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(ice_transport_CS),      pointer       :: CS

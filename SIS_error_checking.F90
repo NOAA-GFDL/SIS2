@@ -26,7 +26,7 @@ use MOM_domains, only : pass_vector, pass_var, pe_here
 use MOM_domains, only : BGRID_NE, AGRID, To_All, Scalar_Pair
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : log_version, param_file_type
-use SIS_hor_grid_mod, only : sea_ice_grid_type
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 
 implicit none ; private
 
@@ -87,7 +87,7 @@ contains
 ! =====================================================================
 
 subroutine chksum_h_2d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%isd:,G%jsd:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -136,7 +136,7 @@ subroutine chksum_h_2d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%jsd:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, bc
@@ -150,7 +150,7 @@ subroutine chksum_h_2d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%jsd:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, n
@@ -178,7 +178,7 @@ end subroutine chksum_h_2d
 ! =====================================================================
 
 subroutine chksum_B_2d(array, mesg, G, haloshift, symmetric)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%IsdB:,G%JsdB:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -242,7 +242,7 @@ subroutine chksum_B_2d(array, mesg, G, haloshift, symmetric)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%JsdB:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, bc
@@ -256,7 +256,7 @@ subroutine chksum_B_2d(array, mesg, G, haloshift, symmetric)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%JsdB:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, n
@@ -284,7 +284,7 @@ end subroutine chksum_B_2d
 ! =====================================================================
 
 subroutine chksum_u_2d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%IsdB:,G%jsd:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -333,7 +333,7 @@ subroutine chksum_u_2d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%jsd:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, bc
@@ -347,7 +347,7 @@ subroutine chksum_u_2d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%jsd:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, n
@@ -375,7 +375,7 @@ end subroutine chksum_u_2d
 ! =====================================================================
 
 subroutine chksum_v_2d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%isd:,G%JsdB:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -424,7 +424,7 @@ subroutine chksum_v_2d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%JsdB:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, bc
@@ -438,7 +438,7 @@ subroutine chksum_v_2d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%JsdB:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, n
@@ -466,7 +466,7 @@ end subroutine chksum_v_2d
 ! =====================================================================
 
 subroutine chksum_h_3d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%isd:,G%jsd:,:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -515,7 +515,7 @@ subroutine chksum_h_3d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%jsd:,:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, k, bc
@@ -529,7 +529,7 @@ subroutine chksum_h_3d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%jsd:,:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, k, n
@@ -557,7 +557,7 @@ end subroutine chksum_h_3d
 ! =====================================================================
 
 subroutine chksum_B_3d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%IsdB:,G%JsdB:,:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -606,7 +606,7 @@ subroutine chksum_B_3d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%JsdB:,:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, k, bc
@@ -620,7 +620,7 @@ subroutine chksum_B_3d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%JsdB:,:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, k, n
@@ -648,7 +648,7 @@ end subroutine chksum_B_3d
 ! =====================================================================
 
 subroutine chksum_u_3d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%IsdB:,G%jsd:,:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -697,7 +697,7 @@ subroutine chksum_u_3d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%jsd:,:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, k, bc
@@ -711,7 +711,7 @@ subroutine chksum_u_3d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%IsdB:,G%jsd:,:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, k, n
@@ -739,7 +739,7 @@ end subroutine chksum_u_3d
 ! =====================================================================
 
 subroutine chksum_v_3d(array, mesg, G, haloshift)
-  type(sea_ice_grid_type), intent(in) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
   real, dimension(G%isd:,G%JsdB:,:), intent(in) :: array
   character(len=*), intent(in) :: mesg
   integer, intent(in), optional :: haloshift
@@ -788,7 +788,7 @@ subroutine chksum_v_3d(array, mesg, G, haloshift)
   contains
 
   integer function subchk(array, G, di, dj)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%JsdB:,:), intent(in) :: array
     integer, intent(in) :: di, dj
     integer :: bitcount, i, j, k, bc
@@ -802,7 +802,7 @@ subroutine chksum_v_3d(array, mesg, G, haloshift)
   end function subchk
 
   subroutine subStats(G, array, mesg)
-    type(sea_ice_grid_type), intent(in) :: G
+    type(SIS_hor_grid_type), intent(in) :: G
     real, dimension(G%isd:,G%JsdB:,:), intent(in) :: array
     character(len=*), intent(in) :: mesg
     integer :: i, j, k, n
@@ -1048,7 +1048,7 @@ end subroutine chksum_error
 subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                    intent(in)    :: mesg
-  type(sea_ice_grid_type),             intent(inout) :: G
+  type(SIS_hor_grid_type),             intent(inout) :: G
   real, dimension(G%IsdB:,G%jsd:,:),   intent(in)    :: u_comp
   real, dimension(G%isd:,G%JsdB:,:),   intent(in)    :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
@@ -1077,7 +1077,7 @@ end subroutine  check_redundant_vC3d
 subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                intent(in)    :: mesg
-  type(sea_ice_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(inout) :: G
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp
   real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
@@ -1151,7 +1151,7 @@ end subroutine  check_redundant_vC2d
 
 subroutine check_redundant_sB3d(mesg, array, G, is, ie, js, je)
   character(len=*),                     intent(in)    :: mesg
-  type(sea_ice_grid_type),              intent(inout) :: G
+  type(SIS_hor_grid_type),              intent(inout) :: G
   real, dimension(G%IsdB:,G%JsdB:,:),   intent(in) :: array
   integer,                    optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
@@ -1176,7 +1176,7 @@ end subroutine  check_redundant_sB3d
 
 subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
   character(len=*),                intent(in)    :: mesg
-  type(sea_ice_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(inout) :: G
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: array
   integer,               optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
@@ -1234,11 +1234,11 @@ end subroutine  check_redundant_sB2d
 
 
 subroutine check_redundant_vB3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
-                               direction)
+                                direction)
   character(len=*),                    intent(in)    :: mesg
-  type(sea_ice_grid_type),             intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:,:),  intent(in) :: u_comp
-  real, dimension(G%IsdB:,G%JsdB:,:),  intent(in) :: v_comp
+  type(SIS_hor_grid_type),             intent(inout) :: G
+  real, dimension(G%IsdB:,G%JsdB:,:),  intent(in)    :: u_comp
+  real, dimension(G%IsdB:,G%JsdB:,:),  intent(in)    :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
   integer,                   optional, intent(in)    :: direction
 ! Arguments: u_comp - The u-component of the vector being checked.
@@ -1263,9 +1263,9 @@ subroutine check_redundant_vB3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
 end subroutine  check_redundant_vB3d
 
 subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
-                               direction)
+                                direction)
   character(len=*),                intent(in)    :: mesg
-  type(sea_ice_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(inout) :: G
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: u_comp
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
@@ -1340,8 +1340,8 @@ end subroutine  check_redundant_vB2d
 
 subroutine check_redundant_sT3d(mesg, array, G, is, ie, js, je)
   character(len=*),                     intent(in)    :: mesg
-  type(sea_ice_grid_type),              intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:,:),   intent(in) :: array
+  type(SIS_hor_grid_type),              intent(inout) :: G
+  real, dimension(G%IsdB:,G%JsdB:,:),   intent(in)    :: array
   integer,                    optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
@@ -1364,10 +1364,10 @@ end subroutine  check_redundant_sT3d
 
 
 subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
-  character(len=*),                intent(in)    :: mesg
-  type(sea_ice_grid_type),         intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: array
-  integer,               optional, intent(in)    :: is, ie, js, je
+  character(len=*),                 intent(in)    :: mesg
+  type(SIS_hor_grid_type),          intent(inout) :: G
+  real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: array
+  integer,                optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
 !  (in)      G - The ocean's grid structure.
@@ -1413,7 +1413,7 @@ end subroutine  check_redundant_sT2d
 subroutine check_redundant_vT3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                direction)
   character(len=*),                    intent(in)    :: mesg
-  type(sea_ice_grid_type),             intent(inout) :: G
+  type(SIS_hor_grid_type),             intent(inout) :: G
   real, dimension(G%isd:,G%jsd:,:),    intent(in) :: u_comp
   real, dimension(G%isd:,G%jsd:,:),    intent(in) :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
@@ -1442,9 +1442,9 @@ end subroutine  check_redundant_vT3d
 subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                direction)
   character(len=*),                intent(in)    :: mesg
-  type(sea_ice_grid_type),         intent(inout) :: G
-  real, dimension(G%isd:,G%jsd:), intent(in)   :: u_comp
-  real, dimension(G%isd:,G%jsd:), intent(in)   :: v_comp
+  type(SIS_hor_grid_type),         intent(inout) :: G
+  real, dimension(G%isd:,G%jsd:),  intent(in)   :: u_comp
+  real, dimension(G%isd:,G%jsd:),  intent(in)   :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
   integer,               optional, intent(in)    :: direction
 ! Arguments: u_comp - The u-component of the vector being checked.
