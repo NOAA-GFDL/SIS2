@@ -30,12 +30,12 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use SIS_error_checking, only : chksum, Bchksum, hchksum, check_redundant_B
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,     only : pass_var, pass_vector, BGRID_NE
-use constants_mod,   only : pi
-use ice_grid_mod,    only : sea_ice_grid_type
-use fms_io_mod,      only : register_restart_field, restart_file_type
-use ice_ridging_mod, only : ridge_rate
+use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
+use constants_mod,    only : pi
+use SIS_hor_grid_mod, only : sea_ice_grid_type
+use fms_io_mod,       only : register_restart_field, restart_file_type
+use ice_ridging_mod,  only : ridge_rate
 
 implicit none ; private
 

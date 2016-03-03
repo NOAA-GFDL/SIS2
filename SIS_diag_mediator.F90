@@ -26,7 +26,8 @@ module SIS_diag_mediator
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
-use ice_grid_mod,    only: sea_ice_grid_type, ice_grid_type
+use SIS_hor_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : ice_grid_type
 
 use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, is_root_pe

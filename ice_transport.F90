@@ -40,7 +40,8 @@ use SIS_tracer_advect, only : advect_scalar
 use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
 
-use ice_grid_mod, only : sea_ice_grid_type, ice_grid_type
+use SIS_hor_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : ice_grid_type
 use ice_ridging_mod, only : ice_ridging
 
 implicit none ; private

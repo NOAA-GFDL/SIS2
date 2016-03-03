@@ -42,7 +42,8 @@ use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use ice_type_mod, only : ice_data_type, ice_state_type
-use ice_grid_mod, only : sea_ice_grid_type, ice_grid_type
+use SIS_hor_grid_mod, only : sea_ice_grid_type
+use ice_grid_mod, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 

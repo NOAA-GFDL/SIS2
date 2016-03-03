@@ -88,7 +88,7 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use ice_grid_mod, only : sea_ice_grid_type, set_hor_grid, sea_ice_grid_end, cell_area
+use SIS_hor_grid_mod, only : sea_ice_grid_type, set_hor_grid, sea_ice_grid_end, cell_area
 use ice_grid_mod, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
