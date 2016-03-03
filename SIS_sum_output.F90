@@ -707,7 +707,7 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
@@ -775,7 +775,7 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)

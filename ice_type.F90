@@ -415,10 +415,11 @@ type ice_data_type !  ice_public_type
                     ! to determine its value.
 
       type(icebergs), pointer     :: icebergs => NULL()
-  type(sea_ice_grid_type), pointer :: G ! A structure containing metrics and grid info.
+  type(sea_ice_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
-  type(restart_file_type), pointer :: Ice_restart
+  type(restart_file_type), pointer :: Ice_restart => NULL()
 end type ice_data_type !  ice_public_type
 
 !   The following three types are for data exchange with the FMS coupler
@@ -873,7 +874,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   integer :: n_bad, i_bad, j_bad, k_bad
   real    :: t_min, t_max
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%G%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
@@ -1053,7 +1054,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   character(len=8) :: nstr
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  nLay = Ice%G%IG%NkIce
+  nLay = Ice%IG%NkIce
 
   Ice%axes(1:2) = diag%axesTc%handles(1:2)
 
@@ -1299,7 +1300,7 @@ subroutine ice_stock_pe(Ice, index, value)
   if(.not.Ice%pe) return
 
   IST => Ice%Ice_state
-  IG => Ice%G%IG
+  IG => Ice%IG
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce

@@ -134,7 +134,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock2)
-  call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Ice%G%IG, &
+  call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Ice%IG, &
                              Land_boundary%runoff, Land_boundary%calving, &
                              Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
   call mpp_clock_end(iceClock2)
@@ -715,7 +715,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock1)
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
-                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, Ice%G%IG, &
+                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, Ice%IG, &
                              Ocean_boundary%s, Ocean_boundary%sea_level )
   call mpp_clock_end(iceClock1)
   call mpp_clock_end(iceClock)
@@ -1127,7 +1127,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock3)
 
-  call do_update_ice_model_fast( Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%G%IG )
+  call do_update_ice_model_fast( Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
 
   call mpp_clock_end(iceClock3)
   call mpp_clock_end(iceClock)
@@ -3624,9 +3624,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                     "Ice%Ice_state structure. Model is already initialized.")
     return
   endif
-  allocate(Ice%Ice_state) ; IST => Ice%Ice_state
-  allocate(Ice%G) ; G => Ice%G
-  allocate(Ice%Ice_restart)
+  if (.not.associated(Ice%Ice_state)) allocate(Ice%Ice_state) ; IST => Ice%Ice_state
+  if (.not.associated(Ice%G)) allocate(Ice%G) ; G => Ice%G
+  if (.not.associated(Ice%IG)) allocate(Ice%IG) ; IG => Ice%IG
+  if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -3831,9 +3832,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   nCat_dflt = 5
   if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
 
-  call set_ice_grid(Ice%G, param_file, Ice%domain, nCat_dflt )
-
-  IG => Ice%G%IG
+  call set_ice_grid(Ice%G, Ice%IG, param_file, Ice%domain, nCat_dflt )
 
   if (IST%slab_ice) IG%CatIce = 1 ! open water and ice ... but never in same place
   ! Initialize IG%cat_thick_lim here.  ###This needs to be extended to add more options.

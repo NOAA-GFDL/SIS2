@@ -203,8 +203,9 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_grid - initialize sea ice grid for dynamics and transport            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
+subroutine set_ice_grid(G, IG, param_file, ice_domain, NCat_dflt)
   type(sea_ice_grid_type), intent(inout) :: G
+  type(ice_grid_type),   intent(inout) :: IG
   type(param_file_type), intent(in)    :: param_file
   type(domain2D),        intent(inout) :: ice_domain
   integer,               intent(in)    :: NCat_dflt
@@ -239,7 +240,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
   type(domain2d)     :: domain2
   type(domain2d), pointer :: Domain => NULL()
-  type(ice_grid_type), pointer :: IG => NULL()
 
   grid_file = 'INPUT/grid_spec.nc'
 
@@ -273,10 +273,6 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
                         domain_name="ice model aux")
   call clone_MOM_domain(G%domain, ice_domain, halo_size=0, symmetric=.false., &
                         domain_name="ice_nohalo")
-
-  ! Allocate the ice-specific grid.
-  if (.not.associated(G%IG)) allocate(G%IG)
-  IG => G%IG
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
@@ -440,7 +436,7 @@ subroutine set_ice_grid(G, param_file, ice_domain, NCat_dflt)
 
   i_off = isca - G%isc ; j_off = jsca - G%jsc
 
-  call allocate_metrics(G, G%IG)
+  call allocate_metrics(G, IG)
 
   !--- read data from grid_spec.nc
   allocate(depth(G%isc:G%iec,G%jsc:G%jec))
