@@ -1133,11 +1133,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       if (CS%id_sh_s_hifreq > 0) call post_SIS_data(CS%id_sh_s_hifreq, sh_Ds, CS%diag)
       if (CS%id_sigi_hifreq>0) then
         call find_sigI(mice, ci_proj, CS%str_d, diag_val, G, CS)
-        call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
+        call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag)
       endif
       if (CS%id_sigii_hifreq>0) then
         call find_sigII(mice, ci_proj, CS%str_t, CS%str_s, diag_val, G, CS)
-        call post_SIS_data(CS%id_sigii_hifreq, diag_val, CS%diag, mask=G%Lmask2dT)
+        call post_SIS_data(CS%id_sigii_hifreq, diag_val, CS%diag)
       endif
       if (CS%id_ci_hifreq>0) call post_SIS_data(CS%id_ci_hifreq, ci_proj, CS%diag)
       if (CS%id_stren_hifreq>0) then
@@ -1292,11 +1292,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
     if (CS%id_sigi>0) then
       call find_sigI(mice, ci, CS%str_d, diag_val, G, CS)
-      call post_SIS_data(CS%id_sigi, diag_val, CS%diag, mask=G%Lmask2dT)
+      call post_SIS_data(CS%id_sigi, diag_val, CS%diag)
     endif
     if (CS%id_sigii>0) then
       call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, CS)
-      call post_SIS_data(CS%id_sigii, diag_val, CS%diag, mask=G%Lmask2dT)
+      call post_SIS_data(CS%id_sigii, diag_val, CS%diag)
     endif
     if (CS%id_stren>0) then
       if (CS%project_ci) then
@@ -1304,11 +1304,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       else
         call find_ice_strength(mice, ci, diag_val, G, CS)
       endif
-      call post_SIS_data(CS%id_stren, diag_val, CS%diag, mask=G%Lmask2dT)
+      call post_SIS_data(CS%id_stren, diag_val, CS%diag)
     endif
     if (CS%id_stren0>0) then
       call find_ice_strength(mice, ci, diag_val, G, CS)
-      call post_SIS_data(CS%id_stren0, diag_val, CS%diag, mask=G%Lmask2dT)
+      call post_SIS_data(CS%id_stren0, diag_val, CS%diag)
     endif
 
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)

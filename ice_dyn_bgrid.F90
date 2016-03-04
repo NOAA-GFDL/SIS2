@@ -634,30 +634,30 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
   ! Write out diagnostics associated with the ice dynamics.
   if (query_SIS_averaging_enabled(CS%diag)) then
-     if (CS%id_fix>0) call post_SIS_data(CS%id_fix, fxic, CS%diag)
-     if (CS%id_fiy>0) call post_SIS_data(CS%id_fiy, fyic, CS%diag)
-     if (CS%id_fcx>0) call post_SIS_data(CS%id_fcx, fxco, CS%diag)
-     if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, fyco, CS%diag)
-     if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
-     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
-     !  The diagnistics of fxat and fyat are supposed to be taken over all partitions
-     !  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
+    if (CS%id_fix>0) call post_SIS_data(CS%id_fix, fxic, CS%diag)
+    if (CS%id_fiy>0) call post_SIS_data(CS%id_fiy, fyic, CS%diag)
+    if (CS%id_fcx>0) call post_SIS_data(CS%id_fcx, fxco, CS%diag)
+    if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, fyco, CS%diag)
+    if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
+    if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
+    !  The diagnistics of fxat and fyat are supposed to be taken over all partitions
+    !  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
 
-     if (CS%id_sigi>0) then
-        diag_val(:,:) =  sigI(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
-        call post_SIS_data(CS%id_sigi, diag_val, CS%diag, mask=G%Lmask2dT)
-     endif
-     if (CS%id_sigii>0) then
-        diag_val(:,:) = sigII(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
-        call post_SIS_data(CS%id_sigii, diag_val, CS%diag, mask=G%Lmask2dT)
-     endif
-     if (CS%id_stren>0) then
-        call find_ice_strength(mice, ci, diag_val, G, CS)
-        call post_SIS_data(CS%id_stren, diag_val, CS%diag, mask=G%Lmask2dT)
-     endif
+    if (CS%id_sigi>0) then
+      diag_val(:,:) =  sigI(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
+      call post_SIS_data(CS%id_sigi, diag_val, CS%diag)
+    endif
+    if (CS%id_sigii>0) then
+      diag_val(:,:) = sigII(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
+      call post_SIS_data(CS%id_sigii, diag_val, CS%diag)
+    endif
+    if (CS%id_stren>0) then
+      call find_ice_strength(mice, ci, diag_val, G, CS)
+      call post_SIS_data(CS%id_stren, diag_val, CS%diag)
+    endif
 
-     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
-     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
+    if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
+    if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
   endif
 
   !
