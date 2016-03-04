@@ -66,7 +66,9 @@ end type axesType
 type, private :: diag_type
   logical :: in_use
   integer :: fms_diag_id         ! underlying FMS diag id
+  character(len=24) :: name
   real, pointer, dimension(:,:)   :: mask2d => null()
+  real, pointer, dimension(:,:)   :: mask2d_comp => null()
   real, pointer, dimension(:,:,:) :: mask3d => null()
 end type diag_type
 
@@ -112,6 +114,8 @@ type, public :: SIS_diag_ctrl
   real, dimension(:,:,:), pointer :: mask3dBuC => null()
   real, dimension(:,:,:), pointer :: mask3dCuC => null()
   real, dimension(:,:,:), pointer :: mask3dCvC => null()
+  ! Computational domain mask arrays for diagnostics.
+  real, dimension(:,:),   pointer :: mask2dT_comp => null()
 
 #define DIAG_ALLOC_CHUNK_SIZE 15
   type(diag_type), dimension(:), allocatable :: diags
@@ -289,6 +293,7 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 !  (in,opt)  is_static - If true, this is a static field that is always offered.
 !  (in,opt)  mask - If present, use this real array as the data mask.
   logical :: used, is_stat
+  logical :: i_data, j_data
   integer :: isv, iev, jsv, jev
   integer :: fms_diag_id
   type(diag_type), pointer :: diag
@@ -309,43 +314,53 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   isv = diag_cs%is ; iev = diag_cs%ie ; jsv = diag_cs%js ; jev = diag_cs%je
 
   if ( size(field,1) == diag_cs%ied-diag_cs%isd +1 ) then
-    isv = diag_cs%is ; iev = diag_cs%ie        ! Data domain
+    isv = diag_cs%is ; iev = diag_cs%ie ; i_data = .true.   ! Data domain
   elseif ( size(field,1) == diag_cs%ied-diag_cs%isd +2 ) then
-    isv = diag_cs%is ; iev = diag_cs%ie+1      ! Symmetric data domain
+    isv = diag_cs%is ; iev = diag_cs%ie+1 ; i_data = .true. ! Symmetric data domain
   elseif ( size(field,1) == diag_cs%ie-diag_cs%is +1 ) then
-    isv = 1 ; iev = diag_cs%ie + 1-diag_cs%is  ! Computational domain
+    isv = 1 ; iev = diag_cs%ie + 1-diag_cs%is ; i_data = .false. ! Computational domain
   elseif ( size(field,1) == diag_cs%ie-diag_cs%is +2 ) then
-    isv = 1 ; iev = diag_cs%ie + 2-diag_cs%is  ! Symmetric computational domain
+    isv = 1 ; iev = diag_cs%ie + 2-diag_cs%is ; i_data = .false. ! Symmetric computational domain
   else
-    call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in i-direction")
+    call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in i-direction of "//trim(diag%name))
   endif
   if ( size(field,2) == diag_cs%jed-diag_cs%jsd +1 ) then
-    jsv = diag_cs%js ; jev = diag_cs%je        ! Data domain
+    jsv = diag_cs%js ; jev = diag_cs%je ; j_data = .true.   ! Data domain
   elseif ( size(field,2) == diag_cs%jed-diag_cs%jsd +2 ) then
-    jsv = diag_cs%js ; jev = diag_cs%je+1      ! Symmetric data domain
+    jsv = diag_cs%js ; jev = diag_cs%je+1 ; j_data = .true. ! Symmetric data domain
   elseif ( size(field,2) == diag_cs%je-diag_cs%js +1 ) then
-    jsv = 1 ; jev = diag_cs%je + 1-diag_cs%js  ! Computational domain
+    jsv = 1 ; jev = diag_cs%je + 1-diag_cs%js ; j_data = .false. ! Computational domain
   elseif ( size(field,1) == diag_cs%je-diag_cs%js +2 ) then
-    jsv = 1 ; jev = diag_cs%je + 2-diag_cs%js  ! Symmetric computational domain
+    jsv = 1 ; jev = diag_cs%je + 2-diag_cs%js ; j_data = .false. ! Symmetric computational domain
   else
-    call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in j-direction")
+    call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in j-direction "//trim(diag%name))
   endif
+  
+  ! Handle cases where the data and computational domain are the same size.
+  if (diag_cs%ied-diag_cs%isd == diag_cs%ie-diag_cs%is) i_data = j_data 
+  if (diag_cs%jed-diag_cs%jsd == diag_cs%je-diag_cs%js) j_data = i_data 
 
   if (present(mask)) then
     if ((size(field,1) /= size(mask,1)) .or. &
         (size(field,2) /= size(mask,2))) then
       call SIS_error(FATAL, "post_SIS_data_2d: post_SIS_data called with a mask "//&
-                            "that does not match the size of field.")
+                            "that does not match the size of field "//trim(diag%name))
     endif
+  elseif ( i_data .NEQV. j_data ) then
+    call SIS_error(FATAL, "post_SIS_data_2d: post_SIS_data called for "//&
+                   trim(diag%name)//" with mixed computational and data domain array sizes.")
   endif
 
   if (is_stat) then
     if (present(mask)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
-    elseif(associated(diag%mask2d)) then
+    elseif(i_data .and. associated(diag%mask2d)) then
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d)
+    elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
+      used = send_data(fms_diag_id, field, &
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d_comp)
     else
       used = send_data(fms_diag_id, field, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
@@ -355,10 +370,14 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
-    elseif(associated(diag%mask2d)) then
+    elseif(i_data .and. associated(diag%mask2d)) then
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask2d)
+    elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
+      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+                       is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
+                       weight=diag_cs%time_int, rmask=diag%mask2d_comp)
     else
       used = send_data(fms_diag_id, field, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
@@ -568,6 +587,9 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
     primary_id = get_new_diag_id(diag_cs)
     diag => diag_cs%diags(primary_id)
     diag%fms_diag_id = fms_id
+    if (len(field_name) > len(diag%name)) then
+      diag%name = field_name(1:len(diag%name))
+    else ; diag%name = field_name ; endif
   endif
 
   if (is_root_pe() .and. diag_CS%doc_unit > 0) then
@@ -586,56 +608,55 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
   !Decide what mask to use based on the axes info
   if (primary_id > 0) then
   !3d masks
-    if(axes%rank .eq. 3) then
-      diag%mask2d => null()
-      diag%mask3d => null()
-      if (axes%id .eq. diag_cs%axesTL%id) then
-          diag%mask3d =>  diag_cs%mask3dTL
-      elseif (axes%id .eq. diag_cs%axesBL%id) then
-          diag%mask3d =>  diag_cs%mask3dBuL
-      elseif (axes%id .eq. diag_cs%axesCuL%id ) then
-          diag%mask3d =>  diag_cs%mask3dCuL
-      elseif (axes%id .eq. diag_cs%axesCvL%id) then
-          diag%mask3d =>  diag_cs%mask3dCvL
-      elseif (axes%id .eq. diag_cs%axesTi%id) then
-          diag%mask3d =>  diag_cs%mask3dTi
-      elseif (axes%id .eq. diag_cs%axesBi%id) then
-          diag%mask3d =>  diag_cs%mask3dBui
-      elseif (axes%id .eq. diag_cs%axesCui%id ) then
-          diag%mask3d =>  diag_cs%mask3dCui
-      elseif (axes%id .eq. diag_cs%axesCvi%id) then
-          diag%mask3d =>  diag_cs%mask3dCvi
-      elseif (axes%id .eq. diag_cs%axesTc%id) then
-          diag%mask3d =>  diag_cs%mask3dTC
-      elseif (axes%id .eq. diag_cs%axesBc%id) then
-          diag%mask3d =>  diag_cs%mask3dBuC
-      elseif (axes%id .eq. diag_cs%axesCuc%id ) then
-          diag%mask3d =>  diag_cs%mask3dCuC
-      elseif (axes%id .eq. diag_cs%axesCvc%id) then
-          diag%mask3d =>  diag_cs%mask3dCvC
-  !    else
+    if (axes%rank == 3) then
+      diag%mask2d => null() ; diag%mask2d_comp => null() ; diag%mask3d => null()
+      if (axes%id == diag_cs%axesTL%id) then
+        diag%mask3d =>  diag_cs%mask3dTL
+      elseif (axes%id == diag_cs%axesBL%id) then
+        diag%mask3d =>  diag_cs%mask3dBuL
+      elseif (axes%id == diag_cs%axesCuL%id ) then
+        diag%mask3d =>  diag_cs%mask3dCuL
+      elseif (axes%id == diag_cs%axesCvL%id) then
+        diag%mask3d =>  diag_cs%mask3dCvL
+      elseif (axes%id == diag_cs%axesTi%id) then
+        diag%mask3d =>  diag_cs%mask3dTi
+      elseif (axes%id == diag_cs%axesBi%id) then
+        diag%mask3d =>  diag_cs%mask3dBui
+      elseif (axes%id == diag_cs%axesCui%id ) then
+        diag%mask3d =>  diag_cs%mask3dCui
+      elseif (axes%id == diag_cs%axesCvi%id) then
+        diag%mask3d =>  diag_cs%mask3dCvi
+      elseif (axes%id == diag_cs%axesTc%id) then
+        diag%mask3d =>  diag_cs%mask3dTC
+      elseif (axes%id == diag_cs%axesBc%id) then
+        diag%mask3d =>  diag_cs%mask3dBuC
+      elseif (axes%id == diag_cs%axesCuc%id ) then
+        diag%mask3d =>  diag_cs%mask3dCuC
+      elseif (axes%id == diag_cs%axesCvc%id) then
+        diag%mask3d =>  diag_cs%mask3dCvC
+  !   else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     !2d masks
-    elseif(axes%rank .eq. 2) then
-      diag%mask2d => null()
-      diag%mask3d => null()
-      if (axes%id .eq. diag_cs%axesT1%id) then
-          diag%mask2d =>  diag_cs%mask2dT
-      elseif (axes%id .eq. diag_cs%axesB1%id) then
-          diag%mask2d =>  diag_cs%mask2dBu
-      elseif (axes%id .eq. diag_cs%axesCu1%id) then
-          diag%mask2d =>  diag_cs%mask2dCu
-      elseif (axes%id .eq. diag_cs%axesCv1%id) then
-          diag%mask2d =>  diag_cs%mask2dCv
-  !    else
+    elseif (axes%rank == 2) then
+      diag%mask2d => null() ; diag%mask2d_comp => null() ; diag%mask3d => null()
+      if (axes%id == diag_cs%axesT1%id) then
+        diag%mask2d =>  diag_cs%mask2dT
+        diag%mask2d_comp => diag_cs%mask2dT_comp
+      elseif (axes%id == diag_cs%axesB1%id) then
+        diag%mask2d =>  diag_cs%mask2dBu
+      elseif (axes%id == diag_cs%axesCu1%id) then
+        diag%mask2d =>  diag_cs%mask2dCu
+      elseif (axes%id == diag_cs%axesCv1%id) then
+        diag%mask2d =>  diag_cs%mask2dCv
+  !   else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     else
-          call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
-               "unknown axes for diagnostic variable "//trim(field_name))
+      call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
+           "unknown axes for diagnostic variable "//trim(field_name))
     endif
   endif ! if (primary_id>-1)
 
@@ -809,7 +830,7 @@ subroutine diag_masks_set(G, IG, missing_value, diag_cs)
   real,                            intent(in)    :: missing_value
   type(SIS_diag_ctrl),             intent(inout) :: diag_cs
   ! Local variables
-  integer :: k, NkIce, CatIce
+  integer :: i, j, k, NkIce, CatIce
 
   NkIce = IG%NkIce ; CatIce = IG%CatIce
 
@@ -817,6 +838,11 @@ subroutine diag_masks_set(G, IG, missing_value, diag_cs)
   diag_cs%mask2dBu => G%mask2dBu
   diag_cs%mask2dCu => G%mask2dCu
   diag_cs%mask2dCv => G%mask2dCv
+
+  allocate(diag_cs%mask2dT_comp(G%isc:G%iec,G%jsc:G%jec))
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    diag_cs%mask2dT_comp(i,j) = diag_cs%mask2dT(i,j)
+  enddo ; enddo
 
   allocate(diag_cs%mask3dTL(G%isd:G%ied,G%jsd:G%jed,1:NkIce))
   allocate(diag_cs%mask3dBuL(G%IsdB:G%IedB,G%JsdB:G%JedB,1:NkIce))
