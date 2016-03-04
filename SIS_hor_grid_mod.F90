@@ -66,8 +66,6 @@ type, public :: SIS_hor_grid_type
     IareaT, &    ! IareaT = 1/areaT, in m-2.
     sin_rot, &   ! The sine and cosine of the angular rotation between the local
     cos_rot      ! model grid's northward and the true northward directions.
-  logical ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
-    Lmask2dT     ! .true. for ocean points, .false. for land on the h-grid.
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     mask2dCu, &  ! 0 for boundary points and 1 for ocean points on the u grid.  Nondim.
@@ -79,8 +77,6 @@ type, public :: SIS_hor_grid_type
     dy_Cu_obc, & ! The unblocked lengths of the u-faces of the h-cell in m for OBC.
     IareaCu, &   ! The masked inverse areas of u-grid cells in m2.
     areaCu       ! The areas of the u-grid cells in m2.
-  logical ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
-    Lmask2dCu    ! .true. for ocean points, .false. for land on the v-grid.
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     mask2dCv, &  ! 0 for boundary points and 1 for ocean points on the v grid.  Nondim.
@@ -92,8 +88,6 @@ type, public :: SIS_hor_grid_type
     dx_Cv_obc, & ! The unblocked lengths of the v-faces of the h-cell in m for OBC.
     IareaCv, &   ! The masked inverse areas of v-grid cells in m2.
     areaCv       ! The areas of the v-grid cells in m2.
-  logical ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
-    Lmask2dCv    ! .true. for ocean points, .false. for land on the v-grid.
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     mask2dBu, &  ! 0 for boundary points and 1 for ocean points on the q grid.  Nondim.
@@ -103,8 +97,6 @@ type, public :: SIS_hor_grid_type
     dyBu, IdyBu, & ! dyBu is delta y at q points, in m, and IdyBu is 1/dyBu in m-1.
     areaBu, &    ! areaBu is the area of a q-cell, in m2
     IareaBu      ! IareaBu = 1/areaBu in m-2.
-  logical ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
-    Lmask2dBu    ! .true. for ocean points, .false. for land on the q-grid.
 
   real, pointer, dimension(:) :: &
     gridLatT => NULL(), gridLatB => NULL() ! The latitude of T or B points for
@@ -358,42 +350,29 @@ subroutine set_hor_grid(G, param_file, ice_domain)
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
         G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
-       G%mask2dBu(I,J) = 1.0 ; G%Lmask2dBu(I,J) = .true.
+       G%mask2dBu(I,J) = 1.0
     else
-       G%mask2dBu(I,J) = 0.0 ; G%Lmask2dBu(I,J) = .false.
+       G%mask2dBu(I,J) = 0.0
     endif
   enddo ; enddo
 
   do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
-       G%mask2dCu(I,j) = 1.0 ; G%Lmask2dCu(I,j) = .true.
+       G%mask2dCu(I,j) = 1.0
     else
-       G%mask2dCu(I,j) = 0.0 ; G%Lmask2dCu(I,j) = .false.
+       G%mask2dCu(I,j) = 0.0
     endif
   enddo ; enddo
 
   do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
     if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
-       G%mask2dCv(i,J) = 1.0 ; G%Lmask2dCv(i,J) = .true.
+       G%mask2dCv(i,J) = 1.0
     else
-       G%mask2dCv(i,J) = 0.0 ; G%Lmask2dCv(i,J) = .false.
+       G%mask2dCv(i,J) = 0.0
     endif
   enddo ; enddo
   call pass_var(G%mask2dBu, G%Domain, position=CORNER)
   call pass_vector(G%mask2dCu, G%mask2dCv, G%Domain, To_All+Scalar_pair)
-
-  do j=G%jsd,G%jed ; do i=G%isd,G%ied
-    G%Lmask2dT(i,j) = (G%mask2dT(i,j) > 0.5)
-  enddo ; enddo
-  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
-    G%Lmask2dCv(i,J) = (G%mask2dCv(i,J) > 0.5)
-  enddo ; enddo
-  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
-    G%Lmask2dCu(I,j) = (G%mask2dCu(I,j) > 0.5)
-  enddo ; enddo
-  do J=G%JsdB,G%JedB ; do I=G%IsdB,G%IedB
-    G%Lmask2dBu(I,J) = (G%mask2dBu(I,J) > 0.5)
-  enddo ; enddo
 
   call set_grid_metrics_from_mosaic(G, param_file)
 
@@ -861,10 +840,6 @@ subroutine allocate_metrics(G)
   ALLOC_(G%mask2dCu(IsdB:IedB,jsd:jed))   ; G%mask2dCu(:,:) = 0.0
   ALLOC_(G%mask2dCv(isd:ied,JsdB:JedB))   ; G%mask2dCv(:,:) = 0.0
   ALLOC_(G%mask2dBu(IsdB:IedB,JsdB:JedB)) ; G%mask2dBu(:,:) = 0.0
-  ALLOC_(G%Lmask2dT(isd:ied,jsd:jed))      ; G%Lmask2dT(:,:) = .false.
-  ALLOC_(G%Lmask2dCu(IsdB:IedB,jsd:jed))   ; G%Lmask2dCu(:,:) = .false.
-  ALLOC_(G%Lmask2dCv(isd:ied,JsdB:JedB))   ; G%Lmask2dCv(:,:) = .false.
-  ALLOC_(G%Lmask2dBu(IsdB:IedB,JsdB:JedB)) ; G%Lmask2dBu(:,:) = .false.
   ALLOC_(G%geoLatT(isd:ied,jsd:jed))      ; G%geoLatT(:,:) = 0.0
   ALLOC_(G%geoLatCu(IsdB:IedB,jsd:jed))   ; G%geoLatCu(:,:) = 0.0
   ALLOC_(G%geoLatCv(isd:ied,JsdB:JedB))   ; G%geoLatCv(:,:) = 0.0
