@@ -238,7 +238,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     call get_avg(flux_lw(:,:,:) + STEFAN*IST%t_surf(isc:iec,jsc:jec,:)**4, &
                        IST%part_size(isc:iec,jsc:jec,:), tmp(:,:))
     do j=jsc,jec ; do i=isc,iec
-      if (G%Lmask2dT(i,j)) IST%lwdn(i,j) = IST%lwdn(i,j) + tmp(i,j)
+      if (G%mask2dT(i,j)>0.5) IST%lwdn(i,j) = IST%lwdn(i,j) + tmp(i,j)
     enddo ; enddo
   endif
 
@@ -247,7 +247,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
 !$OMP                          private(i2,j2,k2)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       IST%swdn(i,j) = IST%swdn(i,j) + IST%part_size(i,j,k) * ( &
             (flux_sw_vis_dir(i,j,k)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
@@ -515,7 +515,7 @@ subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water
             ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
              (windstr_y_water(I-1,J) + windstr_y_water(I,J-1)))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
@@ -530,13 +530,13 @@ subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water
     do j=jsc,jec
       do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + windstr_x_water(I,J) * ps_vel
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + windstr_y_water(I,J) * ps_vel
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
@@ -549,23 +549,23 @@ subroutine set_ocean_top_stress_Bgrid(Ice, IST, windstr_x_water, windstr_y_water
     do j=jsc,jec
       do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * &
                 0.5 * (windstr_x_water(I,J) + windstr_x_water(I,J-1))
-        ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * &
                 0.5 * (windstr_y_water(I,J) + windstr_y_water(I-1,J))
       enddo
       do k=1,ncat ; do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        if (G%Lmask2dCu(I,j)) then
+        if (G%mask2dCu(I,j)>0.5) then
           ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
           Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * &
               0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
         endif
-        if (G%Lmask2dCv(i,J)) then
+        if (G%mask2dCv(i,J)>0.5) then
           ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
           Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * &
                   0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
@@ -634,7 +634,7 @@ subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * 0.5 * &
                             (windstr_y_water(I,j) + windstr_y_water(i,J-1))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%Lmask2dT(i,j)) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) +  part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j))
@@ -647,7 +647,7 @@ subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water
     do j=jsc,jec
       do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dBu(I,J)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         ! Consider deleting the masks here?
@@ -656,7 +656,7 @@ subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_y_water(I,j) + windstr_y_water(i+1,J))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%Lmask2dBu(I,J)) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
@@ -671,20 +671,20 @@ subroutine set_ocean_top_stress_Cgrid(Ice, IST, windstr_x_water, windstr_y_water
     do j=jsc,jec
       do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        ps_vel = 1.0 ; if (G%Lmask2dCu(I,j)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
         Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * windstr_x_water(I,j)
-        ps_vel = 1.0 ; if (G%Lmask2dCv(i,J)) ps_vel = &
+        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
         Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * windstr_y_water(i,J)
       enddo
       do k=1,ncat ; do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
-        if (G%Lmask2dCu(I,j)) then
+        if (G%mask2dCu(I,j)>0.5) then
           ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
           Ice%flux_u(i2,j2) = Ice%flux_u(i2,j2) + ps_vel * str_ice_oce_x(I,j)
         endif
-        if (G%Lmask2dCv(i,J)) then
+        if (G%mask2dCv(i,J)>0.5) then
           ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
           Ice%flux_v(i2,j2) = Ice%flux_v(i2,j2) + ps_vel * str_ice_oce_y(I,j)
         endif

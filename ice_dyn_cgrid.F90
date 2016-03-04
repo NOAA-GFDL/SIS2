@@ -742,7 +742,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (sum_area <= 0.0) then
       ! This is a land point.
       mi_ratio_A_q(I,J) = 0.0
-    elseif (G%Lmask2dBu(I,J)) then
+    elseif (G%mask2dBu(I,J)>0.5) then
       ! This is an interior ocean point.
       !   Determine an appropriately averaged mass on q-points. The following
       ! expression for mi_q is mi when the masses are all equal, and goes to 4
@@ -1428,7 +1428,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
 !        ! The factor of 2 here arises because of the definitions of the str_#.
 !        stress_mag = 2.0 * sqrt(min(0.0, str_d_q + 0.5*pres_avg)**2 + &
 !                                EC2 * (str_s(I,J)**2 + str_t_q**2))
-!        if ((stress_mag > pres_avg) .and. G%Lmask2dBu(I,j)) &
+!        if ((stress_mag > pres_avg) .and. (G%mask2dBu(I,j)>0.5)) &
 !          str_s(I,J) = str_s(I,J) * (pres_avg / stress_mag)
 !      endif
 !    endif
