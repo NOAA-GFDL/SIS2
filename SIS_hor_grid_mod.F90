@@ -38,12 +38,12 @@ public :: cell_area
 type, public :: SIS_hor_grid_type
   type(SIS_domain_type), pointer :: Domain => NULL()
   type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
-  integer :: isc, iec, jsc, jec ! The range of the computational domain indicies
-  integer :: isd, ied, jsd, jed ! and data domain indicies at tracer cell centers.
-  integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indicies.
-  integer :: IscB, IecB, JscB, JecB ! The range of the computational domain indicies
-  integer :: IsdB, IedB, JsdB, JedB ! and data domain indicies at tracer cell vertices.
-  integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indicies.
+  integer :: isc, iec, jsc, jec ! The range of the computational domain indices
+  integer :: isd, ied, jsd, jed ! and data domain indices at tracer cell centers.
+  integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indices.
+  integer :: IscB, IecB, JscB, JecB ! The range of the computational domain indices
+  integer :: IsdB, IedB, JsdB, JedB ! and data domain indices at tracer cell vertices.
+  integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indices.
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
 
@@ -110,9 +110,11 @@ type, public :: SIS_hor_grid_type
     x_axis_units, &     !   The units that are used in labeling the coordinate
     y_axis_units        ! axes.
 
-  character(len=40) :: axis_units = ' '! Units for the horizontal coordinates.
+!  character(len=40) :: axis_units = ' '! Units for the horizontal coordinates.
 
   real :: g_Earth !   The gravitational acceleration in m s-2.
+  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+    bathyT        ! Ocean bottom depth at tracer points, in m.
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
 
@@ -178,6 +180,8 @@ subroutine set_hor_grid(G, param_file, ice_domain)
   character(len=256) :: grid_file, ocean_topog
   character(len=256) :: ocean_hgrid, ocean_mosaic
   character(len=200) :: mesg
+  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
+  character(len=200) :: topo_varname                  ! Variable name in file
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
   type(domain2d)     :: domain2
   type(domain2d), pointer :: Domain => NULL()
@@ -338,13 +342,36 @@ subroutine set_hor_grid(G, param_file, ice_domain)
   call allocate_metrics(G)
 
   !--- read data from grid_spec.nc
-  allocate(depth(G%isc:G%iec,G%jsc:G%jec))
+
+  ! Replace these with properly parsed input parameter calls.
+!  call get_param(param_file, mod, "INPUTDIR", inputdir, default=".")
+!  call get_param(param_file, mod, "TOPO_FILE", topo_file, &
+!                 "The file from which the bathymetry is read.", &
+!                 default="topog.nc")
+!  call get_param(param_file, mod, "TOPO_VARNAME", topo_varname, &
+!                 "The name of the bathymetry variable in TOPO_FILE.", &
+!                 default="depth")
+
+  inputdir = "INPUT" ; topo_file = "topog.nc"
+  topo_varname = "depth"
+  
+  inputdir = slasher(inputdir)
+  filename = trim(inputdir)//trim(topo_file)
+
+!  call log_param(param_file, mod, "INPUTDIR/TOPO_FILE", filename)
+!  if (.not.file_exists(filename, G%Domain)) call MOM_error(FATAL, &
+!       " initialize_topography_from_file: Unable to open "//trim(filename))
+
   ocean_topog = 'INPUT/topog.nc'
-  call read_data(ocean_topog, 'depth', depth(G%isc:G%iec,G%jsc:G%jec), G%Domain%mpp_domain)
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (depth(i,j) > 0) then
+  call read_data(filename,trim(topo_varname), G%bathyT, &
+                 domain=G%Domain%mpp_domain)
+
+!  call apply_topography_edits_from_file(D, G, param_file)
+
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (G%bathyT(i,j) > 0.0) then
     G%mask2dT(i,j) = 1.0
   endif ; enddo ; enddo
-  deallocate(depth)
+
   call pass_var(G%mask2dT, G%Domain)
 
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
@@ -802,6 +829,47 @@ end subroutine extrapolate_metric
 
 !---------------------------------------------------------------------
 
+!> Returns true if the coordinates (x,y) are within the h-cell (i,j)
+logical function isPointInCell(G, i, j, x, y)
+  type(SIS_hor_grid_type),   intent(in) :: G    !< Grid type
+  integer,                   intent(in) :: i, j !< i,j indices of cell to test
+  real,                      intent(in) :: x, y !< x,y coordinates of point
+! This is a crude calculation that assume a geographic coordinate system
+  real :: xNE, xNW, xSE, xSW, yNE, yNW, ySE, ySW
+  real :: p0, p1, p2, p3, l0, l1, l2, l3
+  isPointInCell = .false.
+  xNE = G%geoLonBu(i  ,j  ) ; yNE = G%geoLatBu(i  ,j  )
+  xNW = G%geoLonBu(i-1,j  ) ; yNW = G%geoLatBu(i-1,j  )
+  xSE = G%geoLonBu(i  ,j-1) ; ySE = G%geoLatBu(i  ,j-1)
+  xSW = G%geoLonBu(i-1,j-1) ; ySW = G%geoLatBu(i-1,j-1)
+  if (x<min(xNE,xNW,xSE,xSW) .or. x>max(xNE,xNW,xSE,xSW) .or. &
+      y<min(yNE,yNW,ySE,ySW) .or. y>max(yNE,yNW,ySE,ySW) ) then
+    return ! Avoid the more complicated calculation
+  endif
+  l0 = (x-xSW)*(ySE-ySW) - (y-ySW)*(xSE-xSW)
+  l1 = (x-xSE)*(yNE-ySE) - (y-ySE)*(xNE-xSE)
+  l2 = (x-xNE)*(yNW-yNE) - (y-yNE)*(xNW-xNE)
+  l3 = (x-xNW)*(ySW-yNW) - (y-yNW)*(xSW-xNW)
+
+  p0 = sign(1., l0) ; if (l0 == 0.) p0=0.
+  p1 = sign(1., l1) ; if (l1 == 0.) p1=0.
+  p2 = sign(1., l2) ; if (l2 == 0.) p2=0.
+  p3 = sign(1., l3) ; if (l3 == 0.) p3=0.
+
+  if ( (abs(p0)+abs(p2)) + (abs(p1)+abs(p3)) == abs((p0+p2) + (p1+p3)) ) then
+    isPointInCell=.true.
+  endif
+end function isPointInCell
+
+subroutine set_first_direction(G, y_first)
+  type(SIS_hor_grid_type), intent(inout) :: G
+  integer,               intent(in) :: y_first
+
+  G%first_direction = y_first
+end subroutine set_first_direction
+
+!---------------------------------------------------------------------
+
 subroutine allocate_metrics(G)
   type(SIS_hor_grid_type), intent(inout) :: G
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
@@ -859,6 +927,7 @@ subroutine allocate_metrics(G)
   ALLOC_(G%IareaCu(IsdB:IedB,jsd:jed)) ; G%IareaCu(:,:) = 0.0
   ALLOC_(G%IareaCv(isd:ied,JsdB:JedB)) ; G%IareaCv(:,:) = 0.0
 
+  ALLOC_(G%bathyT(isd:ied, jsd:jed)) ; G%bathyT(:,:) = 0.0
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
 
   allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
@@ -870,40 +939,6 @@ subroutine allocate_metrics(G)
   allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
 
 end subroutine allocate_metrics
-
-!---------------------------------------------------------------------
-
-!> Returns true if the coordinates (x,y) are within the h-cell (i,j)
-logical function isPointInCell(G, i, j, x, y)
-  type(SIS_hor_grid_type),   intent(in) :: G    !< Grid type
-  integer,                   intent(in) :: i, j !< i,j indices of cell to test
-  real,                      intent(in) :: x, y !< x,y coordinates of point
-! This is a crude calculation that assume a geographic coordinate system
-  real :: xNE, xNW, xSE, xSW, yNE, yNW, ySE, ySW
-  real :: p0, p1, p2, p3, l0, l1, l2, l3
-  isPointInCell = .false.
-  xNE = G%geoLonBu(i  ,j  ); yNE = G%geoLatBu(i  ,j  )
-  xNW = G%geoLonBu(i-1,j  ); yNW = G%geoLatBu(i-1,j  )
-  xSE = G%geoLonBu(i  ,j-1); ySE = G%geoLatBu(i  ,j-1)
-  xSW = G%geoLonBu(i-1,j-1); ySW = G%geoLatBu(i-1,j-1)
-  if (x<min(xNE,xNW,xSE,xSW) .or. x>max(xNE,xNW,xSE,xSW) .or. &
-      y<min(yNE,yNW,ySE,ySW) .or. y>max(yNE,yNW,ySE,ySW) ) then
-    return ! Avoid the more complicated calculation
-  endif
-  l0=(x-xSW)*(ySE-ySW)-(y-ySW)*(xSE-xSW)
-  l1=(x-xSE)*(yNE-ySE)-(y-ySE)*(xNE-xSE)
-  l2=(x-xNE)*(yNW-yNE)-(y-yNE)*(xNW-xNE)
-  l3=(x-xNW)*(ySW-yNW)-(y-yNW)*(xSW-xNW)
-
-  p0=sign(1., l0); if (l0.eq.0.) p0=0.
-  p1=sign(1., l1); if (l1.eq.0.) p1=0.
-  p2=sign(1., l2); if (l2.eq.0.) p2=0.
-  p3=sign(1., l3); if (l3.eq.0.) p3=0.
-
-  if ( (abs(p0)+abs(p2))+(abs(p1)+abs(p3)) .eq. abs((p0+p2)+(p1+p3)) ) then
-    isPointInCell=.true.
-  endif
-end function isPointInCell
 
 !---------------------------------------------------------------------
 !> Release memory used by the SIS_hor_grid_type and related structures.
@@ -932,11 +967,11 @@ subroutine SIS_hor_grid_end(G)
   DEALLOC_(G%dx_Cv) ; DEALLOC_(G%dy_Cu)
   DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
 
-  DEALLOC_(G%CoriolisBu)
+  DEALLOC_(G%bathyT)  ; DEALLOC_(G%CoriolisBu)
   DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
 
-  deallocate(G%gridLatT) ; deallocate(G%gridLatB)
-  deallocate(G%gridLonT) ; deallocate(G%gridLonB)
+  deallocate(G%gridLonT) ; deallocate(G%gridLatT)
+  deallocate(G%gridLonB) ; deallocate(G%gridLatB)
 
   deallocate(cell_area)
 
