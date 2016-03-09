@@ -120,26 +120,6 @@ type, public :: SIS_hor_grid_type
 
 end type SIS_hor_grid_type
 
-type, public :: SIS2_domain_type
-  type(domain2D), pointer :: mpp_domain => NULL() ! The domain with halos on
-                                        ! this processor, centered at h points.
-  integer :: niglobal, njglobal         ! The total horizontal domain sizes.
-  integer :: nihalo, njhalo             ! The X- and Y- halo sizes in memory.
-  logical :: symmetric                  ! True if symmetric memory is used with
-                                        ! this domain.
-  logical :: nonblocking_updates        ! If true, non-blocking halo updates are
-                                        ! allowed.  The default is .false. (for now).
-  integer :: layout(2), io_layout(2)    ! Saved data for sake of constructing
-  integer :: X_FLAGS, Y_FLAGS           ! new domains of different resolution.
-  logical :: use_io_layout              ! True if an I/O layout is available.
-  logical, pointer :: maskmap(:,:)=>NULL() ! A pointer to an array indicating
-                                ! which logical processors are actually used for
-                                ! the ocean code. The other logical processors
-                                ! would be all land points and are not assigned
-                                ! to actual processors. This need not be
-                                ! assigned if all logical processors are used.
-end type SIS2_domain_type
-
 ! This is still here as an artefact of an older public interface and should go.
 ! ###REMOVE THIS ARRAY!
 real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
@@ -230,8 +210,6 @@ subroutine set_hor_grid(G, param_file, ice_domain)
   if (global_indexing) cal SIS_error(FATAL, "set_hor_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #endif
-
-  call obsolete_logical(param_file, "SET_GRID_LIKE_SIS1", .false.)
 
   call get_param(param_file, mod_nm, "FIRST_DIRECTION", G%first_direction, &
                  "An integer that indicates which direction goes first \n"//&
