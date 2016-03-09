@@ -88,7 +88,9 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use SIS_hor_grid_mod, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, cell_area
+use SIS_hor_grid_mod, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
+! ### Eliminate cell_area once flux_exchange.F90 is fixed.
+use SIS_hor_grid_mod, only : cell_area
 use ice_grid_mod, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
@@ -112,7 +114,9 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe, cell_area
+public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
+! ### Eliminate cell_area once flux_exchange.F90 is fixed.
+public :: cell_area
 public :: update_ice_model_slow_up, update_ice_model_slow_dn
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
@@ -810,6 +814,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     Ice%ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
   enddo ; enddo
   m_ice_tot(:,:) = 0.0
+  ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
   Ice%ice_mask(:,:,1) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,t_surf_ice_bot,          &
 !$OMP                                  s_surf_ice_bot,frazil_ice_bot,sea_lev_ice_bot, &
@@ -836,6 +841,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       endif
     enddo
 
+    ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
     do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       Ice%ice_mask(i2,j2,k2) = (IST%mH_ice(i,j,k) > 0.0)
@@ -1430,18 +1436,18 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   endif
 
   ! This routine works on the boundary exchange state.
-  call compute_ocean_roughness (Ice%mask, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
+  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! This routine works on the boundary exchange state.
   if (IST%do_sun_angle_for_alb) then
     call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
                  IST%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
-    call compute_ocean_albedo(Ice%mask, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
+    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                               Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                               Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
   else
-    call compute_ocean_albedo(Ice%mask, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
+    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
                               Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                               Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
   endif
@@ -2418,7 +2424,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     if (IST%id_rdgr>0) call post_data(IST%id_rdgr, rdg_rate(isc:iec,jsc:jec), IST%diag)
 !    if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time)
 !    if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time)
-!    if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*cell_area(isc:iec,jsc:jec), &
+!    if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*Ice%area(:,:), &
   endif
 
   !   Copy the surface properties, fractional areas and other variables to the
@@ -3876,7 +3882,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%mask(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
+    Ice%ocean_pt(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
     Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
 

@@ -14,7 +14,7 @@ use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use constants_mod,    only: T_0degC=>Tfreeze
 
-use SIS_hor_grid_mod, only : SIS_hor_grid_type, cell_area
+use SIS_hor_grid_mod, only : SIS_hor_grid_type
 use ice_grid_mod, only : ice_grid_type
 
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
@@ -342,7 +342,8 @@ type ice_data_type !  ice_public_type
   type(time_type)                    :: Time
   logical                            :: pe
   integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
-     logical, pointer, dimension(:,:) :: mask     =>NULL() ! where ice can be
+  logical, pointer, dimension(:,:)   :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
+  ! ### ice_mask should be eliminated as soon as flux_exchange.F90 is corrected.
   logical, pointer, dimension(:,:,:) :: ice_mask =>NULL() ! where ice actually is (Used for k-size only?)
 
   ! These fields are used to provide information about the ice surface to the
@@ -395,8 +396,10 @@ type ice_data_type !  ice_public_type
                               ! reference temperature, in ???.
     flux_salt  => NULL()  ! The flux of salt out of the ocean in kg m-2.
 
-  real, pointer, dimension(:,:) :: area => NULL()
-  real, pointer, dimension(:,:) :: mi   => NULL() ! The total ice+snow mass, in kg m-2.
+  real, pointer, dimension(:,:) :: &
+    area => NULL() , &    ! The area of ocean cells, in m2.  Land cells have
+                          ! a value of 0, so this could also be used as a mask.
+    mi   => NULL()        ! The total ice+snow mass, in kg m-2.
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
@@ -523,7 +526,8 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
+  allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+! ### Delete ice_mask once flux_exchange.F90 is corrected.
   allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
@@ -731,7 +735,9 @@ end subroutine ice_state_register_restarts
 subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice
 
-  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf)
+  deallocate(Ice%ocean_pt, Ice%t_surf, Ice%s_surf)
+  ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
+  deallocate(Ice%ice_mask)
   deallocate(Ice%u_surf, Ice%v_surf, Ice%part_size)
   deallocate(Ice%rough_mom, Ice%rough_heat, Ice%rough_moist)
   deallocate(Ice%albedo, Ice%albedo_vis_dir, Ice%albedo_nir_dir)
@@ -1261,7 +1267,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
   if (id_geo_lon>0) call post_data(id_geo_lon, G%geoLonT, diag, is_static=.true.)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
-  if (id_cell_area>0) call post_data(id_cell_area, cell_area, diag, is_static=.true.)
+  if (id_cell_area>0) call post_data(id_cell_area, Ice%area/(4*PI*RADIUS**2), diag, is_static=.true.)
 
 
 !### This doesn't work here!  age_ice needs to go into its own module!

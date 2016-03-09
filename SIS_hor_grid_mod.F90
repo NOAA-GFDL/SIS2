@@ -121,7 +121,7 @@ type, public :: SIS_hor_grid_type
 end type SIS_hor_grid_type
 
 ! This is still here as an artefact of an older public interface and should go.
-! ###REMOVE THIS ARRAY!
+! ### Eliminate cell_area once flux_exchange.F90 is fixed.
 real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
 
 contains
@@ -385,10 +385,11 @@ subroutine set_hor_grid(G, param_file, ice_domain)
 
   ! cell_area is unfortunately used outside of the ice model for various
   ! things, so it has to be set, but it should be eliminated. -RWH
-  allocate ( cell_area(isca:ieca,jsca:jeca) )
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
-  enddo ; enddo
+  ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
+   allocate( cell_area(isca:ieca,jsca:jeca) )
+   do j=G%jsc,G%jec ; do i=G%isc,G%iec
+     cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
+   enddo ; enddo
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
@@ -951,10 +952,11 @@ subroutine SIS_hor_grid_end(G)
   deallocate(G%gridLonT) ; deallocate(G%gridLatT)
   deallocate(G%gridLonB) ; deallocate(G%gridLatB)
 
-  deallocate(cell_area)
-
   deallocate(G%Domain%mpp_domain)
   deallocate(G%Domain)
+
+  ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
+  deallocate(cell_area)
 
 end subroutine SIS_hor_grid_end
 
