@@ -340,7 +340,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
     jsv = jsv + stensil ; jev = jev - stensil
 !$OMP parallel do default(none) shared(ncat,domore_k,x_first,Tr,hprev,uhr,uh_neglect, &
 !$OMP                                  domore_u,ntr,nL_max,Idt,isv,iev,jsv,jev,       &
-!$OMP                                  stensil,G,CS,vhr,vh_neglect,domore_v)
+!$OMP                                  stensil,G,CS,vhr,vh_neglect,domore_v,IG)
     do k=1,ncat ; if (domore_k(k) > 0) then
 !    To ensure positive definiteness of the thickness at each iteration, the
 !  mass fluxes out of each layer are checked each step, and limited to keep
@@ -591,7 +591,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
       jsv = jsv + stensil ; jev = jev - stensil
 !$OMP parallel do default(none) shared(ncat,isv,iev,jsv,jev,x_first,domore_k,scalar, &
 !$OMP                                  hprev,uhr,uh_neglect,domore_u,Idt,stensil,G,  &
-!$OMP                                  CS,vhr,vh_neglect,domore_v)
+!$OMP                                  CS,vhr,vh_neglect,domore_v,IG)
       do k=1,ncat ; if (domore_k(k) > 0) then
   !    To ensure positive definiteness of the thickness at each iteration, the
   !  mass fluxes out of each layer are checked each step, and limited to keep
