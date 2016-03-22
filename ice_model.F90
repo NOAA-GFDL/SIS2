@@ -2883,7 +2883,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
                           ! and the surface ocean, in enth_units (often J/kg).
-  real, dimension(IG%NkIce) :: frazil_cat  ! The frazil heating applied to each thickness
+  real, dimension(IG%CatIce) :: frazil_cat  ! The frazil heating applied to each thickness
                        ! category, averaged over the area of that category in J m-2.
   real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
   real :: heat_fill_val   ! An enthalpy to use for massless categories, in enth_units.
