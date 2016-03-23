@@ -134,7 +134,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
-!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt) &
+!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt,nCat) &
 !$OMP                       private(h_up)
 !$OMP do
     do j=js,je ; do k=1,nCat ; do I=is-1,ie
