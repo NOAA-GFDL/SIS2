@@ -1238,7 +1238,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
         endif
       enddo ; enddo
     endif
-    if (len_trim(CS%u_trunc_file) > 0) then
+    if (len_trim(CS%v_trunc_file) > 0) then
       do J=jsc-1,jec ; do i=isc,iec
         if ((vi(i,J) < vi_min_trunc(i,J)) .or. (vi(i,J) > vi_max_trunc(i,J))) then
           if (mi_v(i,J) > m_neglect) then
