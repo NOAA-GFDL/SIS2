@@ -54,7 +54,7 @@ use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
-use MOM_domains,       only : fill_symmetric_edges
+use MOM_domains,       only : fill_symmetric_edges, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
@@ -3843,7 +3843,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
 
   call set_ice_grid(Ice%IG, param_file, nCat_dflt)
-  call set_hor_grid(Ice%G, param_file, Ice%domain)
+
+  call set_hor_grid(Ice%G, param_file)
+  ! Copy the ice model's domain into one with no halos that can be shared
+  ! publicly for use by the exchange grid.
+  call clone_MOM_domain(Ice%G%domain, Ice%domain, halo_size=0, symmetric=.false., &
+                        domain_name="ice_nohalo")
 
   call initialize_fixed_SIS_grid(Ice%G, param_file)
 

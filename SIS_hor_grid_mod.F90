@@ -14,7 +14,7 @@ use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_globa
 use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
 use mpp_domains_mod, only : domain1D, mpp_get_domain_components
 
-use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use MOM_domains, only : MOM_domain_type, pass_var, pass_vector
 use MOM_domains, only : PE_here, root_PE, broadcast, MOM_domains_init, clone_MOM_domain
 use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
@@ -35,8 +35,8 @@ include 'netcdf.inc'
 public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
 
 type, public :: SIS_hor_grid_type
-  type(SIS_domain_type), pointer :: Domain => NULL()
-  type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
+  type(MOM_domain_type), pointer :: Domain => NULL()
+  type(MOM_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
   integer :: isc, iec, jsc, jec ! The range of the computational domain indices
   integer :: isd, ied, jsd, jed ! and data domain indices at tracer cell centers.
   integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indices.
@@ -123,17 +123,14 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_hor_grid initializes the sea ice grid parameters.
-subroutine set_hor_grid(G, param_file, ice_domain)
+subroutine set_hor_grid(G, param_file)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type)  , intent(in)    :: param_file
-  type(domain2D),          intent(inout) :: ice_domain
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
 ! Arguments: G - The sea-ice's horizontal grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (inout)   ice_domain - A domain with no halos that can be shared publicly.
-!  (in)      NCat_dflt - The default number of ice categories.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -163,7 +160,7 @@ subroutine set_hor_grid(G, param_file, ice_domain)
 
   grid_file = 'INPUT/grid_spec.nc'
 
-  ! Set up the SIS_domain_type.  This will later occur via a call to MOM_domains_init.
+  ! Set up the MOM_domain_type.  This will later occur via a call to MOM_domains_init.
   ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
   if (.not.associated(G%Domain)) then
     allocate(G%Domain)
@@ -191,8 +188,6 @@ subroutine set_hor_grid(G, param_file, ice_domain)
 #endif
   call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
                         domain_name="ice model aux")
-  call clone_MOM_domain(G%domain, ice_domain, halo_size=0, symmetric=.false., &
-                        domain_name="ice_nohalo")
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)

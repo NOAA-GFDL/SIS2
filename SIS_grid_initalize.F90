@@ -16,7 +16,7 @@ use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_globa
 use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
 use mpp_domains_mod, only : domain1D, mpp_get_domain_components
 
-use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
+use MOM_domains, only : MOM_domain_type, pass_var, pass_vector
 use MOM_domains, only : PE_here, root_PE, broadcast
 use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
@@ -340,7 +340,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   character(len=200) :: filename, grid_file, inputdir
   character(len=64)  :: mod="MOM_grid_init set_grid_metrics_from_mosaic"
   integer :: err=0, ni, nj, global_indices(4)
-  type(SIS_domain_type) :: SGdom ! Supergrid domain
+  type(MOM_domain_type) :: SGdom ! Supergrid domain
   integer :: i, j, i2, j2
   integer :: npei,npej
   integer, dimension(:), allocatable :: exni,exnj
