@@ -1,8 +1,8 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_hor_grid_mod - sets up grid and processor domains and a wide variety of  !
+! SIS_hor_grid - sets up grid and processor domains and a wide variety of  !
 !   metric terms in a way that is very similar to MOM6. - Robert Hallberg      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_hor_grid_mod
+module SIS_hor_grid
 
   use constants_mod, only : omega, pi, grav
 
@@ -379,4 +379,4 @@ subroutine SIS_hor_grid_end(G)
 
 end subroutine SIS_hor_grid_end
 
-end module SIS_hor_grid_mod
+end module SIS_hor_grid

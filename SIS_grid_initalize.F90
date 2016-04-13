@@ -1,12 +1,12 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_hor_grid_mod - sets up grid and processor domains and a wide variety of  !
+! SIS_hor_grid - sets up grid and processor domains and a wide variety of  !
 !   metric terms in a way that is very similar to MOM6. - Robert Hallberg      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_grid_initialize
 
   use constants_mod, only : omega, pi
 
-use SIS_hor_grid_mod, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
+use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
 
 use mpp_domains_mod, only : mpp_define_domains, FOLD_NORTH_EDGE
 use mpp_domains_mod, only : domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
