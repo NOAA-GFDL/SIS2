@@ -135,43 +135,16 @@ subroutine set_hor_grid(G, param_file)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
 
-  real, allocatable, dimension(:,:)   :: depth, tmpx, tmpy, tmp_2d
-  real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
-  real    :: angle, lon_scale
-
-  integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
-  integer :: i, j, m, pe, ntiles, ncontacts
   integer :: isg, ieg, jsg, jeg
-  integer :: is, ie, js, je, i_off, j_off
-  integer :: ni, nj, dims(4)
+  integer :: i_off, j_off
   integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
-  integer :: npes
 
   logical :: symmetric       ! If true, use symmetric memory allocation.
-  logical :: global_indexing
-  character(len=256) :: grid_file, ocean_topog
-  character(len=256) :: ocean_hgrid, ocean_mosaic
-  character(len=200) :: mesg
-  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
-  character(len=200) :: topo_varname                  ! Variable name in file
+  logical :: global_indexing ! If true use global index values instead of having
+                             ! the data domain on each processor start at 1.
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
-  type(domain2d)     :: domain2
-  type(domain2d), pointer :: Domain => NULL()
 
-  grid_file = 'INPUT/grid_spec.nc'
-
-  ! Set up the MOM_domain_type.  This will later occur via a call to MOM_domains_init.
-  ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
-  if (.not.associated(G%Domain)) then
-    allocate(G%Domain)
-    allocate(G%Domain%mpp_domain)
-    allocate(G%Domain_aux)
-    allocate(G%Domain_aux%mpp_domain)
-  endif
-
-!  pe = PE_here()
-  npes = num_PEs()
-
+  ! Set up the MOM_domain_type structures.
 #ifdef SYMMETRIC_MEMORY_
   symmetric = .true.
 #else
@@ -207,72 +180,6 @@ subroutine set_hor_grid(G, param_file)
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  !--- first determine the if the grid file is using the correct format
-  if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
-            field_exist(grid_file, 'gridfiles')) ) call SIS_error(FATAL, &
-    'Error from ice_grid_mod(set_hor_grid): '//&
-    'ocn_mosaic_file or gridfiles does not exist in file ' //trim(grid_file)//&
-    '\nSIS2 only works with a mosaic format grid file.')
-
-  call SIS_mesg("   Note from ice_grid_mod(set_hor_grid): "//&
-                 "read grid from mosaic version grid", 5)
-
-  if( field_exist(grid_file, "ocn_mosaic_file") ) then ! coupler mosaic
-    call read_data(grid_file, "ocn_mosaic_file", ocean_mosaic)
-    ocean_mosaic = "INPUT/"//trim(ocean_mosaic)
-  else
-    ocean_mosaic = trim(grid_file)
-  end if
-  ntiles = get_mosaic_ntiles(ocean_mosaic)
-  if (ntiles /= 1) call SIS_error(FATAL, "Error from ice_grid_mod(set_hor_grid): "//&
-      "ntiles should be 1 for ocean mosaic.")
-  call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
-  ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
-
-  ! This code should be moved to MOM_domains_init once we start using a cubed-sphere grid.
-  ! if (field_exist(ocean_mosaic, "contacts") ) then
-  !   ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-  !   if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
-  !        'number of contacts should be larger than 0 when field contacts exist in file '//&
-  !        trim(ocean_mosaic) )
-  !   if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
-  !        'number of contacts should be no larger than 2')
-  !   call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
-  !        istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
-  !        istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
-  !   do m = 1, ncontacts
-  !     if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
-  !       if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_hor_grid): only cyclic condition is allowed for x-boundary")
-  !       x_cyclic = .true.
-  !     elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
-  !       if ( jstart1(m) == jstart2(m) ) then ! folded north
-  !          tripolar_grid=.true.
-  !       else
-  !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_hor_grid): "//&
-  !            "only folded-north condition is allowed for y-boundary")
-  !       endif
-  !     else
-  !       call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_hor_grid): invalid boundary contact")
-  !     endif
-  !   enddo
-  ! endif
-
-  !--- get grid size from the input file hgrid file.
-  call field_size(ocean_hgrid, 'x', dims)
-  if(mod(dims(1),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
-      'x-size of x in file '//trim(ocean_hgrid)//' should be 2*niglobal+1')
-  if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
-      'y-size of x in file '//trim(ocean_hgrid)//' should be 2*njglobal+1')
-  ni = dims(1)/2
-  nj = dims(2)/2
-
-  if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_hor_grid: "//&
-    "The total i-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-  if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_hor_grid: "//&
-    "The total j-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-
   call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
   call mpp_get_data_domain(G%Domain%mpp_domain, isda, ieda, jsda, jeda )
   call mpp_get_global_domain(G%Domain%mpp_domain, isg, ieg, jsg, jeg )
@@ -288,7 +195,7 @@ subroutine set_hor_grid(G, param_file)
   G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
   G%isd = isda-i_off ; G%ied = ieda-i_off ; G%jsd = jsda-j_off ; G%jed = jeda-j_off
   G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
-!  G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
+!  G%ke = 0  ! Change this for shared ocean / ice grids.
 
   G%symmetric = G%Domain%symmetric
   G%nonblocking_updates = G%Domain%nonblocking_updates
@@ -305,30 +212,9 @@ subroutine set_hor_grid(G, param_file)
   G%IedB = G%ied ; G%JedB = G%jed
   G%IegB = G%ieg ; G%JegB = G%jeg
 
-  i_off = isca - G%isc ; j_off = jsca - G%jsc
-
   call allocate_metrics(G)
 
   G%g_Earth = grav
-
-  !--- z1l: loop through the pelist to find the symmetry processor.
-  !--- This is needed to address the possibility that some of the all-land processor
-  !--- regions are masked out. This is only needed for tripolar grid.
-  if (G%Domain%Y_flags == FOLD_NORTH_EDGE) then
-    allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
-    call mpp_get_pelist(G%Domain%mpp_domain, pelist)
-    call mpp_get_compute_domains(G%Domain%mpp_domain, &
-             xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
-
-    do pe=1,npes ; if ( jslist(pe) == jsca .and. islist(pe) + ieca == ni+1 ) then
-      if ( jelist(pe) /= jeca ) call SIS_error(FATAL, &
-              "ice_model: jelist(p) /= jec but jslist(p) == jsc")
-      if ( ielist(pe) + isca /= ni+1) call SIS_error(FATAL, &
-              "ice_model: ielist(p) + isc /= ni+1 but islist(p) + iec == ni+1")
-      exit
-    endif ; enddo
-    deallocate(pelist, islist, ielist, jslist, jelist)
-  endif
 
 end subroutine set_hor_grid
 
