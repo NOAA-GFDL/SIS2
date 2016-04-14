@@ -106,6 +106,10 @@ type, public :: SIS_hor_grid_type
     dF_dx, dF_dy  ! Derivatives of f (Coriolis parameter) at h-points, in s-1 m-1.
   real :: g_Earth !   The gravitational acceleration in m s-2.
 
+  ! These variables are for block structures.
+  integer                   :: nblocks
+  type(hor_index_type), pointer :: Block(:) => NULL() ! store indices for each block
+
 end type SIS_hor_grid_type
 
 contains
@@ -123,14 +127,14 @@ subroutine set_hor_grid(G, param_file)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-
-  integer :: isg, ieg, jsg, jeg
-  integer :: i_off, j_off
-  integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
-
+  integer :: isd, ied, jsd, jed, nk, idg_off, jdg_off
+  integer :: IsdB, IedB, JsdB, JedB
+  integer :: ied_max, jed_max
+  integer :: niblock, njblock, nihalo, njhalo, nblocks, n, i, j
   logical :: symmetric       ! If true, use symmetric memory allocation.
   logical :: global_indexing ! If true use global index values instead of having
                              ! the data domain on each processor start at 1.
+  integer, allocatable, dimension(:) :: ibegin, iend, jbegin, jend
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
 
   ! Set up the MOM_domain_type structures.
@@ -169,26 +173,29 @@ subroutine set_hor_grid(G, param_file)
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
-  call mpp_get_data_domain(G%Domain%mpp_domain, isda, ieda, jsda, jeda )
-  call mpp_get_global_domain(G%Domain%mpp_domain, isg, ieg, jsg, jeg )
 
-  ! Allocate and fill in default values for elements of the sea ice grid type.
-  if (global_indexing) then
-    i_off = 0 ; j_off = 0
-  else
-    i_off = isda-1 ; j_off = jsda-1
-    ! i_off = 1000 ; j_off = 1000 ! Use this for debugging.
-  endif
+  call get_param(param_file, mod_nm, "NIBLOCK", niblock, "The number of blocks "// &
+                 "in the x-direction on each processor (for openmp).", default=1, &
+                 layoutParam=.true.)
+  call get_param(param_file, mod_nm, "NJBLOCK", njblock, "The number of blocks "// &
+                 "in the y-direction on each processor (for openmp).", default=1, &
+                 layoutParam=.true.)
 
-  G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
-  G%isd = isda-i_off ; G%ied = ieda-i_off ; G%jsd = jsda-j_off ; G%jed = jeda-j_off
-  G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
-!  G%ke = 0  ! Change this for shared ocean / ice grids.
+  call hor_index_init(G%Domain, G%HI, param_file, &
+                      local_indexing=.not.global_indexing)
 
-  G%symmetric = G%Domain%symmetric
+  ! get_domain_extent ensures that domains start at 1 for compatibility between
+  ! static and dynamically allocated arrays, unless global_indexing is true.
+  call get_domain_extent(G%Domain, G%isc, G%iec, G%jsc, G%jec, &
+                         G%isd, G%ied, G%jsd, G%jed, &
+                         G%isg, G%ieg, G%jsg, G%jeg, &
+                         idg_off, jdg_off, G%symmetric, &
+                         local_indexing=.not.global_indexing)
+  G%isd_global = G%isd+idg_off ; G%jsd_global = G%jsd+jdg_off
+
   G%nonblocking_updates = G%Domain%nonblocking_updates
 
+  ! Set array sizes for fields that are discretized at tracer cell boundaries.
   G%IscB = G%isc ; G%JscB = G%jsc
   G%IsdB = G%isd ; G%JsdB = G%jsd
   G%IsgB = G%isg ; G%JsgB = G%jsg
@@ -205,19 +212,81 @@ subroutine set_hor_grid(G, param_file)
 
   G%g_Earth = grav
 
+! setup block indices.
+  nihalo = G%Domain%nihalo
+  njhalo = G%Domain%njhalo
+  nblocks = niblock * njblock
+  if (nblocks < 1) call SIS_error(FATAL, "SIS: set_hor_grid: " // &
+       "nblocks(=NI_BLOCK*NJ_BLOCK) must be no less than 1")
+
+  allocate(ibegin(niblock), iend(niblock), jbegin(njblock), jend(njblock))
+  call compute_block_extent(G%HI%isc,G%HI%iec,niblock,ibegin,iend)
+  call compute_block_extent(G%HI%jsc,G%HI%jec,njblock,jbegin,jend)
+  !-- make sure the last block is the largest.
+  do i = 1, niblock-1
+    if (iend(i)-ibegin(i) > iend(niblock)-ibegin(niblock) ) call SIS_error(FATAL, &
+       "SIS: set_hor_grid: the last block size in x-direction is not the largest")
+  enddo
+  do j = 1, njblock-1
+    if (jend(j)-jbegin(j) > jend(njblock)-jbegin(njblock) ) call SIS_error(FATAL, &
+       "SIS: set_hor_grid: the last block size in y-direction is not the largest")
+  enddo
+
+  G%nblocks = nblocks
+  allocate(G%Block(nblocks))
+  ied_max = 1 ; jed_max = 1
+  do n = 1,nblocks
+    ! Copy all information from the array index type describing the local grid.
+    G%Block(n) = G%HI
+
+    i = mod((n-1), niblock) + 1
+    j = (n-1)/niblock + 1
+    !--- isd and jsd are always 1 for each block to permit array reuse.
+    G%Block(n)%isd = 1 ; G%Block(n)%jsd = 1
+    G%Block(n)%isc = G%Block(n)%isd+nihalo
+    G%Block(n)%jsc = G%Block(n)%jsd+njhalo
+    G%Block(n)%iec = G%Block(n)%isc + iend(i) - ibegin(i)
+    G%Block(n)%jec = G%Block(n)%jsc + jend(j) - jbegin(j)
+    G%Block(n)%ied = G%Block(n)%iec + nihalo
+    G%Block(n)%jed = G%Block(n)%jec + njhalo
+    G%Block(n)%IscB = G%Block(n)%isc; G%Block(n)%IecB = G%Block(n)%iec
+    G%Block(n)%JscB = G%Block(n)%jsc; G%Block(n)%JecB = G%Block(n)%jec
+    !   For symmetric memory domains, the first block will have the extra point
+    ! at the lower boundary of its computational domain.
+    if (G%symmetric) then
+      if (i==1) G%Block(n)%IscB = G%Block(n)%IscB-1
+      if (j==1) G%Block(n)%JscB = G%Block(n)%JscB-1
+    endif
+    G%Block(n)%IsdB = G%Block(n)%isd; G%Block(n)%IedB = G%Block(n)%ied
+    G%Block(n)%JsdB = G%Block(n)%jsd; G%Block(n)%JedB = G%Block(n)%jed
+    !--- For symmetric memory domain, every block will have an extra point
+    !--- at the lower boundary of its data domain.
+    if (G%symmetric) then
+      G%Block(n)%IsdB = G%Block(n)%IsdB-1
+      G%Block(n)%JsdB = G%Block(n)%JsdB-1
+    endif
+    G%Block(n)%idg_offset = (ibegin(i) - G%Block(n)%isc) + G%HI%idg_offset
+    G%Block(n)%jdg_offset = (jbegin(j) - G%Block(n)%jsc) + G%HI%jdg_offset
+    ! Find the largest values of ied and jed so that all blocks will have the
+    ! same size in memory.
+    ied_max = max(ied_max, G%Block(n)%ied)
+    jed_max = max(jed_max, G%Block(n)%jed)
+  enddo
+
+  ! Reset all of the data domain sizes to match the largest for array reuse,
+  ! recalling that all block have isd=jed=1 for array reuse.
+  do n = 1,nblocks
+    G%Block(n)%ied = ied_max ; G%Block(n)%IedB = ied_max
+    G%Block(n)%jed = jed_max ; G%Block(n)%JedB = jed_max
+  enddo
+
+  !-- do some bounds error checking
+  if ( G%block(nblocks)%ied+G%block(nblocks)%idg_offset > G%HI%ied + G%HI%idg_offset ) &
+        call SIS_error(FATAL, "SIS: set_hor_grid: G%ied_bk > G%ied")
+  if ( G%block(nblocks)%jed+G%block(nblocks)%jdg_offset > G%HI%jed + G%HI%jdg_offset ) &
+        call SIS_error(FATAL, "SIS: set_hor_grid: G%jed_bk > G%jed")
+
 end subroutine set_hor_grid
-
-
-function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val
-  real :: I_val
-  ! This function implements Adcroft's rule for division by 0.
-
-  I_val = 0.0
-  if (val /= 0.0) I_val = 1.0/val
-end function Adcroft_reciprocal
-
-!---------------------------------------------------------------------
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
 logical function isPointInCell(G, i, j, x, y)
