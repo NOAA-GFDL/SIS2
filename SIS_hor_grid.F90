@@ -6,30 +6,17 @@ module SIS_hor_grid
 
   use constants_mod, only : omega, pi, grav
 
-use mpp_domains_mod, only : mpp_define_domains, FOLD_NORTH_EDGE
-use mpp_domains_mod, only : domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
-use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
 use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
-use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
-use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
-use mpp_domains_mod, only : domain1D, mpp_get_domain_components
+use mpp_domains_mod, only : mpp_get_global_domain
 
-use MOM_domains, only : MOM_domain_type, pass_var, pass_vector
-use MOM_domains, only : PE_here, root_PE, broadcast, MOM_domains_init, clone_MOM_domain
-use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
+use MOM_hor_index, only : hor_index_type, hor_index_init
+use MOM_domains, only : MOM_domain_type, get_domain_extent, compute_block_extent
+use MOM_domains, only : MOM_domains_init, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_obsolete_params, only : obsolete_logical
-use MOM_string_functions, only : slasher
-
-use fms_io_mod, only : file_exist
-use fms_mod,    only : field_exist, field_size, read_data
-use mosaic_mod, only : get_mosaic_ntiles, get_mosaic_ncontacts, get_mosaic_contact
 
 implicit none ; private
 
-include 'netcdf.inc'
 #include <SIS2_memory.h>
 
 public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
@@ -37,6 +24,7 @@ public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
 type, public :: SIS_hor_grid_type
   type(MOM_domain_type), pointer :: Domain => NULL()
   type(MOM_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
+  type(hor_index_type) :: HI
   integer :: isc, iec, jsc, jec ! The range of the computational domain indices
   integer :: isd, ied, jsd, jed ! and data domain indices at tracer cell centers.
   integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indices.
@@ -107,25 +95,26 @@ type, public :: SIS_hor_grid_type
                         ! On many grids these are the same as geoLonT & geoLonBu.
   character(len=40) :: &
     x_axis_units, &     !   The units that are used in labeling the coordinate
-    y_axis_units        ! axes.
+    y_axis_units        ! axes.  Except on a Cartesian grid, these are usually
+                        ! some variant of "degrees".
 
-!  character(len=40) :: axis_units = ' '! Units for the horizontal coordinates.
-
-  real :: g_Earth !   The gravitational acceleration in m s-2.
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     bathyT        ! Ocean bottom depth at tracer points, in m.
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
+  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+    dF_dx, dF_dy  ! Derivatives of f (Coriolis parameter) at h-points, in s-1 m-1.
+  real :: g_Earth !   The gravitational acceleration in m s-2.
 
 end type SIS_hor_grid_type
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_hor_grid initializes the sea ice grid parameters.
+!> set_hor_grid initializes the sea ice grid array sizes and grid memory.
 subroutine set_hor_grid(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type)  , intent(in)    :: param_file
+  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid type
+  type(param_file_type)  , intent(in)    :: param_file !< Parameter file handle
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
 ! Arguments: G - The sea-ice's horizontal grid structure.
@@ -270,9 +259,9 @@ subroutine set_first_direction(G, y_first)
 end subroutine set_first_direction
 
 !---------------------------------------------------------------------
-
+!> Allocate memory used by the SIS_hor_grid_type and related structures.
 subroutine allocate_metrics(G)
-  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G !< The horizontal grid type
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
   ! This subroutine allocates the lateral elements of the SIS_hor_grid_type that
@@ -330,9 +319,11 @@ subroutine allocate_metrics(G)
 
   ALLOC_(G%bathyT(isd:ied, jsd:jed)) ; G%bathyT(:,:) = 0.0
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
+  ALLOC_(G%dF_dx(isd:ied, jsd:jed)) ; G%dF_dx(:,:) = 0.0
+  ALLOC_(G%dF_dy(isd:ied, jsd:jed)) ; G%dF_dy(:,:) = 0.0
 
-  allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
-  allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
+  ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
+  ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
@@ -344,7 +335,7 @@ end subroutine allocate_metrics
 !---------------------------------------------------------------------
 !> Release memory used by the SIS_hor_grid_type and related structures.
 subroutine SIS_hor_grid_end(G)
-  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G !< The horizontal grid type
 
   DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
   DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
@@ -369,6 +360,7 @@ subroutine SIS_hor_grid_end(G)
   DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
 
   DEALLOC_(G%bathyT)  ; DEALLOC_(G%CoriolisBu)
+  DEALLOC_(G%dF_dx)  ; DEALLOC_(G%dF_dy)
   DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
 
   deallocate(G%gridLonT) ; deallocate(G%gridLatT)
