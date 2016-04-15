@@ -60,7 +60,7 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_string_functions, only : uppercase
 use MOM_EOS, only : EOS_type, calculate_density_derivs
-
+use MOM_coms, only : reproducing_sum
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
@@ -2864,6 +2864,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_sst, Obs_h_ice ! for qflux calculation
   real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec, icec_obs
+  real, dimension(G%isc:G%iec,G%jsc:G%jec,2)   :: melt_nudge, extent_ice
   real, dimension(SZI_(G),SZJ_(G))   :: &
     qflx_lim_ice, qflx_res_ice, &
     net_melt              ! The net mass flux from the ice and snow into the
@@ -2932,6 +2933,13 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
 
+  real :: fw_nudge_sum ! total freshwater contribution from sea-ice nudging scheme
+  real :: extent_sum   ! total sea-ice extent
+  integer :: hem          ! hemisphere index
+  real, dimension(2) :: Nudge_NS  ! freshwater contribution from sea-ice nudging
+                                  ! in each hemisphere
+  real, dimension(2) :: Extent_NS ! sea-ice extent in each hemisphere
+
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -2976,7 +2984,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                                   ((Cp_Water*drho_dS(1)) * max(IST%s_surf(i,j), 1.0) )
           endif
         endif
-      elseif (icec(i,j) > icec_obs(i,j) + IST%nudge_conc_tol) then
+      elseif (icec(i,j) > icec_obs(i,j) + IST%nudge_conc_tol .and. IST%nudge_symmetric) then
         ! Heat the ice but do not apply a fresh water flux.
         IST%cool_nudge(i,j) = -IST%nudge_sea_ice_rate * &
              (icec(i,j) - (icec_obs(i,j)+IST%nudge_conc_tol))**2.0 ! W/m2
@@ -2987,7 +2995,30 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       elseif (IST%cool_nudge(i,J) < 0.0) then
         IST%bheat(i,j) = IST%bheat(i,j) - IST%cool_nudge(i,j)
       endif
+
     enddo ; enddo
+
+    if (IST%balance_sea_ice_nudge) then
+       melt_nudge = 0.0
+!  sum the sea-ice melt nudging flux in each hemisphere weighted by the fractional ice coverage
+!   and subtract from the nudging at each ice-covered point in each hemisphere  
+        do j=jsc,jec; do i=isc,iec
+          hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
+          if (icec(i,j)>0.0) then
+             melt_nudge(i,j,hem) = IST%melt_nudge(i,j)*G%mask2dT(i,j)*G%areaT(i,j)
+             extent_ice(i,j,hem) = G%mask2dT(i,j)*G%areaT(i,j)
+          endif
+        enddo; enddo
+        fw_nudge_sum = reproducing_sum(melt_nudge,sums=Nudge_NS)
+        extent_sum   = reproducing_sum(extent_ice,sums=Extent_NS)
+        do j=jsc,jec; do i=isc,iec
+          hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
+          if (icec(i,j)>0.0 .and. Extent_NS(hem) > 0.0) then
+             IST%melt_nudge(i,j) = IST%melt_nudge(i,j) - Nudge_NS(hem)/Extent_NS(hem)
+          endif
+        enddo; enddo
+    endif
+
   endif
   if (IST%do_ice_restore) then
     ! get observed ice thickness for ice restoring, if calculating qflux
@@ -3764,6 +3795,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "associated with the sea ice nudging of warm water includes \n"//&
                  "a freshwater flux so as to be destabilizing on net (<1), \n"//&
                  "stabilizing (>1), or neutral (=1).", units="nondim", default=1.0)
+    call get_param(param_file, mod, "BALANCE_SEA_ICE_NUDGE", IST%balance_sea_ice_nudge, &
+                 "A flag that determines whether the liquid mass flux \n"//&
+                 "associated with the sea ice nudging of warm water \n"//&
+                 "is compensated by hemisphere under sea-ice  (<1)", default=.false.)
+    call get_param(param_file, mod, "NUDGE_SYMMETRIC", IST%nudge_symmetric, &
+                 "A flag that determines whether the ice concentration nudging \n"//&
+                 "scheme is used to melt excess ice  \n", default=.false.)
   endif
 
   call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &

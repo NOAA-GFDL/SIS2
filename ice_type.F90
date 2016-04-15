@@ -283,6 +283,9 @@ type ice_state_type
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
   logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
+  logical :: balance_sea_ice_nudge = .false. ! If true, balance fw increment under each ice 
+                                             ! in respective hemispheres
+  logical :: nudge_symmetric = .false.  ! If true, use sea ice nudging scheme to melt excess ice.
   real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
                               ! should be ice  covered in order to constrained the
                               ! ice concentration to track observations.  A suggested
