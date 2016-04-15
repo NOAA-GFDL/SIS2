@@ -25,7 +25,6 @@ use mpp_domains_mod, only : mpp_get_domain_extents, mpp_deallocate_domain
 
 implicit none ; private
 
-include 'netcdf.inc'
 #include <SIS2_memory.h>
 
 public :: initialize_fixed_SIS_grid, Adcroft_reciprocal
@@ -58,6 +57,14 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
 !  call log_version(param_file, mod_nm, version)
 
 
+  call set_grid_metrics_from_mosaic(G, param_file)
+
+! Calculate derived metrics (i.e. reciprocals and products)
+  call set_grid_derived_metrics(G, param_file)
+
+
+! Initialize the topography.
+
   ! Replace these with properly parsed input parameter calls.
 !  call get_param(param_file, mod, "INPUTDIR", inputdir, default=".")
 !  call get_param(param_file, mod, "TOPO_FILE", topo_file, &
@@ -79,17 +86,14 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
 
   call read_data(filename,trim(topo_varname), G%bathyT, &
                  domain=G%Domain%mpp_domain)
-
-  call set_grid_metrics_from_mosaic(G, param_file)
-
 !  call apply_topography_edits_from_file(D, G, param_file)
 
+  ! Initialize the various masks and any masked metrics.
   call initialize_SIS_masks(G, param_file)
 
-  call set_grid_derived_metrics(G, param_file)
-  
-  call set_masked_metrics(G, param_file)
-  
+  ! This is where any channel information might be applied.
+
+  ! Set up the Coriolis parameter.
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
   enddo ; enddo
@@ -110,47 +114,6 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
   call pass_var(G%sin_rot, G%Domain)
 
 end subroutine initialize_fixed_SIS_grid
-
-subroutine initialize_SIS_masks(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type)  , intent(in)    :: param_file
-
-  integer :: i, j
-
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (G%bathyT(i,j) > 0.0) then
-    G%mask2dT(i,j) = 1.0
-  endif ; enddo ; enddo
-
-  call pass_var(G%mask2dT, G%Domain)
-
-  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
-        G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
-       G%mask2dBu(I,J) = 1.0
-    else
-       G%mask2dBu(I,J) = 0.0
-    endif
-  enddo ; enddo
-
-  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
-    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
-       G%mask2dCu(I,j) = 1.0
-    else
-       G%mask2dCu(I,j) = 0.0
-    endif
-  enddo ; enddo
-
-  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
-    if( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
-       G%mask2dCv(i,J) = 1.0
-    else
-       G%mask2dCv(i,J) = 0.0
-    endif
-  enddo ; enddo
-  call pass_var(G%mask2dBu, G%Domain, position=CORNER)
-  call pass_vector(G%mask2dCu, G%mask2dCv, G%Domain, To_All+Scalar_pair)
-
-end subroutine initialize_SIS_masks
 
 
 subroutine set_grid_derived_metrics(G, param_file)
@@ -253,58 +216,6 @@ subroutine set_grid_derived_metrics(G, param_file)
 end subroutine set_grid_derived_metrics
 
 
-!> This function implements Adcroft's rule for reciprocals, namely that
-!!   Adcroft_Inv(x) = 1/x for |x|>0 or 0 for x=0.
-function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val  !< The value being inverted.
-  real :: I_val            !< The Adcroft reciprocal of val.
-
-  I_val = 0.0
-  if (val /= 0.0) I_val = 1.0/val
-end function Adcroft_reciprocal
-
-
-subroutine set_masked_metrics(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
-! Arguments:
-!  (inout)   G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-
-!    Calculate the values of the metric terms that might be used
-!  and save them in arrays.  This should be identical to the corresponding
-!  subroutine in MOM_grid_initialize.F90.
-!    Within this subroutine, the x- and y- grid spacings and their
-!  inverses and the cell areas centered on T, Bu, Cu, and Cv points are
-!  calculated, as are the geographic locations of each of these 4
-!  sets of points.
-  character( len = 128) :: warnmesg
-  integer :: i,j, isd, ied, jsd, jed
-!  integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
-  integer :: IsdB, IedB, JsdB, JedB
-
-!  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-!  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
-  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-
-  call MOM_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
-
-  do j=jsd,jed ; do I=IsdB,IedB
-    G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
-    G%areaCu(I,j) = G%dxCu(I,j)*G%dyCu(I,j)  !### Replace with * G%dy_Cu(I,j)?
-    G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
-  enddo ; enddo
-
-  do J=JsdB,JedB ; do i=isd,ied
-    G%dx_Cv(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
-    G%areaCv(i,J) = G%dyCv(i,J)*G%dxCv(i,J)  !### Replace with * G%dx_Cv(i,J)?
-    G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
-  enddo ; enddo
-
-end subroutine set_masked_metrics
-
 subroutine set_grid_metrics_from_mosaic(G,param_file)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
@@ -355,7 +266,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
     call MOM_error(FATAL," set_grid_metrics_from_mosaic: Unable to open "//&
                            trim(filename))
 
-! Initialize everything to a small number
+! Initialize everything to 0.
   dxCu(:,:) = 0.0 ; dyCu(:,:) = 0.0
   dxCv(:,:) = 0.0 ; dyCv(:,:) = 0.0
   dxBu(:,:) = 0.0 ; dyBu(:,:) = 0.0 ; areaBu(:,:) = 0.0
@@ -576,5 +487,71 @@ subroutine extrapolate_metric(var, jh, missing)
 
 end subroutine extrapolate_metric
 
+!> This function implements Adcroft's rule for reciprocals, namely that
+!!   Adcroft_Inv(x) = 1/x for |x|>0 or 0 for x=0.
+function Adcroft_reciprocal(val) result(I_val)
+  real, intent(in) :: val  !< The value being inverted.
+  real :: I_val            !< The Adcroft reciprocal of val.
+
+  I_val = 0.0
+  if (val /= 0.0) I_val = 1.0/val
+end function Adcroft_reciprocal
+
+!> initialize_SIS_masks initializes the grid masks and any metrics that come
+!!    with masks already applied.
+subroutine initialize_SIS_masks(G, param_file)
+  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid structure
+  type(param_file_type)  , intent(in)    :: param_file !< The param_file handle
+
+  integer :: i, j
+
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (G%bathyT(i,j) > 0.0) then
+    G%mask2dT(i,j) = 1.0
+  endif ; enddo ; enddo
+
+  call pass_var(G%mask2dT, G%Domain)
+
+  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
+      G%mask2dCu(I,j) = 1.0
+    else
+      G%mask2dCu(I,j) = 0.0
+    endif
+  enddo ; enddo
+
+  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
+    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
+      G%mask2dCv(i,J) = 1.0
+    else
+      G%mask2dCv(i,J) = 0.0
+    endif
+  enddo ; enddo
+
+  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
+         G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
+      G%mask2dBu(I,J) = 1.0
+    else
+      G%mask2dBu(I,J) = 0.0
+    endif
+  enddo ; enddo
+
+  call pass_var(G%mask2dBu, G%Domain, position=CORNER)
+  call pass_vector(G%mask2dCu, G%mask2dCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
+
+  do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
+    G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
+    G%areaCu(I,j) = G%dxCu(I,j)*G%dyCu(I,j)  !### Replace with * G%dy_Cu(I,j)?
+    G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
+  enddo ; enddo
+
+  do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
+    G%dx_Cv(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
+    G%areaCv(i,J) = G%dyCv(i,J)*G%dxCv(i,J)  !### Replace with * G%dx_Cv(i,J)?
+    G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
+  enddo ; enddo
+
+
+end subroutine initialize_SIS_masks
 
 end module SIS_grid_initialize
