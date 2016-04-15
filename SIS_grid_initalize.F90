@@ -8,31 +8,27 @@ module SIS_grid_initialize
 
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
 
-use mpp_domains_mod, only : mpp_define_domains, FOLD_NORTH_EDGE
-use mpp_domains_mod, only : domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
-use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
-use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
-use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
-use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
-use mpp_domains_mod, only : domain1D, mpp_get_domain_components
-
-use MOM_domains, only : MOM_domain_type, pass_var, pass_vector
-use MOM_domains, only : PE_here, root_PE, broadcast
-use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_domains, only : pass_var, pass_vector, pe_here, root_PE, broadcast
+use MOM_domains, only : AGRID, BGRID_NE, CGRID_NE, To_All, Scalar_Pair
+use MOM_domains, only : To_North, To_South, To_East, To_West
+use MOM_domains, only : MOM_define_domain, MOM_define_IO_domain
+use MOM_domains, only : MOM_domain_type
+use MOM_error_handler, only : MOM_error, FATAL, WARNING, MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_string_functions, only : slasher
 
 use fms_io_mod, only : file_exist
 use fms_mod,    only : field_exist, field_size, read_data
+use mpp_domains_mod, only : CORNER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
+use mpp_domains_mod, only : mpp_get_domain_extents, mpp_deallocate_domain
 
 implicit none ; private
 
 include 'netcdf.inc'
 #include <SIS2_memory.h>
 
-public :: initialize_fixed_SIS_grid
+public :: initialize_fixed_SIS_grid, Adcroft_reciprocal
 
 contains
 
@@ -173,26 +169,23 @@ subroutine set_grid_derived_metrics(G, param_file)
 !  calculated, as are the geographic locations of each of these 4
 !  sets of points.
   character( len = 128) :: warnmesg
-  integer :: i,j, isd, ied, jsd, jed
-!  integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
+  integer :: i, j, isd, ied, jsd, jed
   integer :: IsdB, IedB, JsdB, JedB
 
-!  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-!  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
-  call SIS_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
+  call MOM_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
 
   do j=jsd,jed ; do i=isd,ied
     if (G%dxT(i,j) < 0.0) then
       write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dxT(i,j) = 0.0
     endif
     if (G%dyT(i,j) < 0.0) then
       write(warnmesg,68)  pe_here(),"dyT",i,j,G%dyT(i,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dyT(i,j) = 0.0
     endif
     G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
@@ -203,12 +196,12 @@ subroutine set_grid_derived_metrics(G, param_file)
   do j=jsd,jed ; do I=IsdB,IedB
     if (G%dxCu(I,j) < 0.0) then
       write(warnmesg,68)  pe_here(),"dxCu",I,j,G%dxCu(I,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dxCu(I,j) = 0.0
     endif
     if (G%dyCu(I,j) < 0.0) then
       write(warnmesg,68)  pe_here(),"dyCu",I,j,G%dyCu(I,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dyCu(I,j) = 0.0
     endif
     G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
@@ -220,13 +213,13 @@ subroutine set_grid_derived_metrics(G, param_file)
 
   do J=JsdB,JedB ; do i=isd,ied
     if (G%dxCv(i,J) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dxCv",i,j,G%dxCv(i,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
-      G%dxCv(i,j) = 0.0
+      write(warnmesg,68)  pe_here(),"dxCv",i,J,G%dxCv(i,J),0.0
+      call MOM_mesg(warnmesg, all_print=.true.)
+      G%dxCv(i,J) = 0.0
     endif
-    if (G%dyCv(i,J) <= 0.0) then
-      write(warnmesg,68)  pe_here(),"dyCv",i,j,G%dyCv(i,j),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+    if (G%dyCv(i,J) < 0.0) then
+      write(warnmesg,68)  pe_here(),"dyCv",i,J,G%dyCv(i,J),0.0
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dyCv(i,J) = 0.0
     endif
     G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
@@ -239,25 +232,36 @@ subroutine set_grid_derived_metrics(G, param_file)
   do J=JsdB,JedB ; do I=IsdB,IedB
     if (G%dxBu(I,J) < 0.0) then
       write(warnmesg,68)  pe_here(),"dxBu",I,J,G%dxBu(I,J),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dxBu(I,J) = 0.0
     endif
     if (G%dyBu(I,J) < 0.0) then
       write(warnmesg,68)  pe_here(),"dyBu",I,J,G%dyBu(I,J),0.0
-      call SIS_mesg(warnmesg, all_print=.true.)
+      call MOM_mesg(warnmesg, all_print=.true.)
       G%dyBu(I,J) = 0.0
     endif
 
     G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
     G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
-    ! G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    ! G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)  ! This is set elsewhere.
     G%IareaBu(I,J) = Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 
-68 FORMAT ("WARNING: PE ",I4," ",a3,"(",I4,",",I4,") = ",ES12.4, &
+68 FORMAT ("WARNING: PE ",I4," ",a4,"(",I4,",",I4,") = ",ES12.4, &
            " is being changed to ",ES12.4,".")
 
 end subroutine set_grid_derived_metrics
+
+
+!> This function implements Adcroft's rule for reciprocals, namely that
+!!   Adcroft_Inv(x) = 1/x for |x|>0 or 0 for x=0.
+function Adcroft_reciprocal(val) result(I_val)
+  real, intent(in) :: val  !< The value being inverted.
+  real :: I_val            !< The Adcroft reciprocal of val.
+
+  I_val = 0.0
+  if (val /= 0.0) I_val = 1.0/val
+end function Adcroft_reciprocal
 
 
 subroutine set_masked_metrics(G, param_file)
@@ -285,7 +289,7 @@ subroutine set_masked_metrics(G, param_file)
 !  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
-  call SIS_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
+  call MOM_mesg("  MOM_grid_init.F90, set_grid_derived_metrics: deriving metrics", 5)
 
   do j=jsd,jed ; do I=IsdB,IedB
     G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
@@ -300,15 +304,6 @@ subroutine set_masked_metrics(G, param_file)
   enddo ; enddo
 
 end subroutine set_masked_metrics
-
-function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val
-  real :: I_val
-  ! This function implements Adcroft's rule for division by 0.
-
-  I_val = 0.0
-  if (val /= 0.0) I_val = 1.0/val
-end function Adcroft_reciprocal
 
 subroutine set_grid_metrics_from_mosaic(G,param_file)
   type(SIS_hor_grid_type), intent(inout) :: G
@@ -344,10 +339,9 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   integer :: i, j, i2, j2
   integer :: npei,npej
   integer, dimension(:), allocatable :: exni,exnj
-  type(domain1D) :: domx, domy
   integer        :: start(4), nread(4)
 
-  call SIS_mesg("   MOM_grid_init.F90, set_grid_metrics_from_mosaic: reading grid", 5)
+  call MOM_mesg("   MOM_grid_init.F90, set_grid_metrics_from_mosaic: reading grid", 5)
 
   call get_param(param_file, mod, "GRID_FILE", grid_file, &
                  "Name of the file from which to read horizontal grid data.", &
@@ -358,7 +352,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   filename = trim(adjustl(inputdir)) // trim(adjustl(grid_file))
   call log_param(param_file, mod, "INPUTDIR/GRID_FILE", filename)
   if (.not.file_exist(filename)) &
-    call SIS_error(FATAL," set_grid_metrics_from_mosaic: Unable to open "//&
+    call MOM_error(FATAL," set_grid_metrics_from_mosaic: Unable to open "//&
                            trim(filename))
 
 ! Initialize everything to a small number
@@ -373,9 +367,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
 ! Define a domain for the supergrid (SGdom)
   npei = G%domain%layout(1) ; npej = G%domain%layout(2)
   allocate(exni(npei)) ; allocate(exnj(npej))
-  call mpp_get_domain_components(G%domain%mpp_domain, domx, domy)
-  call mpp_get_compute_domains(domx, size=exni)
-  call mpp_get_compute_domains(domy, size=exnj)
+  call mpp_get_domain_extents(G%domain%mpp_domain, exni, exnj)
   allocate(SGdom%mpp_domain)
   SGdom%nihalo = 2*G%domain%nihalo+1
   SGdom%njhalo = 2*G%domain%njhalo+1
@@ -390,13 +382,13 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   global_indices(4) = SGdom%njglobal+SGdom%njhalo
   exni(:) = 2*exni(:) ; exnj(:) = 2*exnj(:)
   if(ASSOCIATED(G%domain%maskmap)) then
-     call mpp_define_domains(global_indices, SGdom%layout, SGdom%mpp_domain, &
+     call MOM_define_domain(global_indices, SGdom%layout, SGdom%mpp_domain, &
             xflags=G%domain%X_FLAGS, yflags=G%domain%Y_FLAGS, &
             xhalo=SGdom%nihalo, yhalo=SGdom%njhalo, &
             xextent=exni,yextent=exnj, &
             symmetry=.true., name="MOM_MOSAIC", maskmap=G%domain%maskmap)
   else
-     call mpp_define_domains(global_indices, SGdom%layout, SGdom%mpp_domain, &
+     call MOM_define_domain(global_indices, SGdom%layout, SGdom%mpp_domain, &
             xflags=G%domain%X_FLAGS, yflags=G%domain%Y_FLAGS, &
             xhalo=SGdom%nihalo, yhalo=SGdom%njhalo, &
             xextent=exni,yextent=exnj, &
@@ -404,7 +396,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   endif
 
   if (SGdom%use_io_layout) &
-    call mpp_define_IO_domain(SGdom%mpp_domain, SGdom%io_layout)
+    call MOM_define_IO_domain(SGdom%mpp_domain, SGdom%io_layout)
   deallocate(exni)
   deallocate(exnj)
 
@@ -493,6 +485,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
 
   ni=SGdom%niglobal
   nj=SGdom%njglobal
+  call mpp_deallocate_domain(SGdom%mpp_domain)
   deallocate(SGdom%mpp_domain)
 
   call pass_vector(dyCu, dxCv, G%Domain, To_All+Scalar_Pair, CGRID_NE)
@@ -523,31 +516,42 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
     call read_data(filename, "x", tmpGlbl, start, nread, no_domain=.TRUE.)
   call broadcast(tmpGlbl, 2*(ni+1), root_PE())
 
-  G%gridLonT(:) = tmpGlbl(2:ni:2,2)
-  G%gridLonB(:) = tmpGlbl(1:ni+1:2,1)
+  ! I don't know why the second axis is 1 or 2 here. -RWH
+  do i=G%isg,G%ieg
+    G%gridLonT(i) = tmpGlbl(2*(i-G%isg)+2,2)
+  enddo
+  do I=G%IsgB,G%IegB
+    G%gridLonB(I) = tmpGlbl(2*(I-G%isg)+3,1)
+  enddo
   deallocate( tmpGlbl )
 
-  allocate  ( tmpGlbl(1, nj+1) )
+  allocate( tmpGlbl(1, nj+1) )
   start(:) = 1 ; nread(:) = 1
   start(1) = int(ni/4)+1 ; nread(2) = nj+1
   if (is_root_PE()) &
     call read_data(filename, "y", tmpGlbl, start, nread, no_domain=.TRUE.)
   call broadcast(tmpGlbl, nj+1, root_PE())
 
-  G%gridLatT(:) = tmpGlbl(1,2:nj:2)
-  G%gridLatB(:) = tmpGlbl(1,1:nj+1:2)
+  do j=G%jsg,G%jeg
+    G%gridLatT(j) = tmpGlbl(1,2*(j-G%jsg)+2)
+  enddo
+  do J=G%JsgB,G%JegB
+    G%gridLatB(J) = tmpGlbl(1,2*(j-G%jsg)+3)
+  enddo
   deallocate( tmpGlbl )
 
 end subroutine set_grid_metrics_from_mosaic
 
 ! ------------------------------------------------------------------------------
 
+!> extrapolate_metric extrapolates missing metric data into all the halo regions.
 subroutine extrapolate_metric(var, jh, missing)
-  real, dimension(:,:), intent(inout) ::  var
-  integer, intent(in) :: jh
-  real, optional, intent(in) :: missing
+  real, dimension(:,:), intent(inout) :: var     !< The array in which to fill in halos
+  integer,              intent(in)    :: jh      !< The size of the halos to be filled
+  real,       optional, intent(in)    :: missing !< The missing data fill value, 0 by default.
   real :: badval
   integer :: i,j
+
   badval = 0.0 ; if (present(missing)) badval = missing
 
   ! Fill in southern halo by extrapolating from the computational domain
@@ -571,5 +575,6 @@ subroutine extrapolate_metric(var, jh, missing)
   enddo ; enddo
 
 end subroutine extrapolate_metric
+
 
 end module SIS_grid_initialize
