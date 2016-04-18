@@ -2999,7 +2999,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     enddo ; enddo
 
     if (IST%balance_sea_ice_nudge) then
-       melt_nudge = 0.0
+       melt_nudge = 0.0; extent_ice = 0.0
 !  sum the sea-ice melt nudging flux in each hemisphere weighted by the fractional ice coverage
 !   and subtract from the nudging at each ice-covered point in each hemisphere  
         do j=jsc,jec; do i=isc,iec
