@@ -13,14 +13,11 @@ use MOM_domains, only : AGRID, BGRID_NE, CGRID_NE, To_All, Scalar_Pair
 use MOM_domains, only : To_North, To_South, To_East, To_West
 use MOM_domains, only : MOM_define_domain, MOM_define_IO_domain
 use MOM_domains, only : MOM_domain_type
-use MOM_error_handler, only : MOM_error, FATAL, WARNING, MOM_mesg
-use MOM_error_handler, only : is_root_pe
+use MOM_error_handler, only : MOM_error, MOM_mesg, FATAL, is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_string_functions, only : slasher
+use MOM_io, only : read_data, slasher, file_exists
+use MOM_io, only : CORNER, NORTH_FACE, EAST_FACE
 
-use fms_io_mod, only : file_exist
-use fms_mod,    only : field_exist, field_size, read_data
-use mpp_domains_mod, only : CORNER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
 use mpp_domains_mod, only : mpp_get_domain_extents, mpp_deallocate_domain
 
 implicit none ; private
@@ -32,7 +29,9 @@ public :: initialize_fixed_SIS_grid, Adcroft_reciprocal
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_hor_grid initializes the sea ice grid parameters.
+!> initialize_fixed_SIS_grid is used to set the primary values in the model's horizontal
+!!   grid.  The bathymetry, land-sea mask and any restricted channel widths are
+!!   not know yet, so these are set later.
 subroutine initialize_fixed_SIS_grid(G, param_file)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type)  , intent(in)    :: param_file
@@ -116,13 +115,11 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
 end subroutine initialize_fixed_SIS_grid
 
 
+!> set_grid_derived_metrics is sets additional grid metrics that can be derived
+!!   from the basic grid lengths and areas.
 subroutine set_grid_derived_metrics(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
-! Arguments:
-!  (inout)   G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
+  type(SIS_hor_grid_type), intent(inout) :: G           !< The horizontal grid structure
+  type(param_file_type),   intent(in)    :: param_file  !< Parameter file structure
 
 !    Calculate the values of the metric terms that might be used
 !  and save them in arrays.  This should be identical to the corresponding
@@ -169,9 +166,6 @@ subroutine set_grid_derived_metrics(G, param_file)
     endif
     G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
     G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
-!    G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
-!    G%areaCu(I,j) = G%dxCu(I,j)*G%dyCu(I,j)  !### Replace with * G%dy_Cu(I,j)?
-!    G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
   enddo ; enddo
 
   do J=JsdB,JedB ; do i=isd,ied
@@ -187,9 +181,6 @@ subroutine set_grid_derived_metrics(G, param_file)
     endif
     G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
     G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
-!    G%dx_Cv(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
-!    G%areaCv(i,J) = G%dyCv(i,J)*G%dxCv(i,J)  !### Replace with * G%dx_Cv(i,J)?
-!    G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
   enddo ; enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB
@@ -206,7 +197,8 @@ subroutine set_grid_derived_metrics(G, param_file)
 
     G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
     G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
-    ! G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)  ! This is set elsewhere.
+    ! areaBu has usually been set to a positive area elsewhere.
+    if (G%areaBu(I,J) <= 0.0) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
     G%IareaBu(I,J) = Adcroft_reciprocal(G%areaBu(I,J))
   enddo ; enddo
 
@@ -262,7 +254,7 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   inputdir = slasher(inputdir)
   filename = trim(adjustl(inputdir)) // trim(adjustl(grid_file))
   call log_param(param_file, mod, "INPUTDIR/GRID_FILE", filename)
-  if (.not.file_exist(filename)) &
+  if (.not.file_exists(filename)) &
     call MOM_error(FATAL," set_grid_metrics_from_mosaic: Unable to open "//&
                            trim(filename))
 
@@ -499,40 +491,68 @@ end function Adcroft_reciprocal
 
 !> initialize_SIS_masks initializes the grid masks and any metrics that come
 !!    with masks already applied.
-subroutine initialize_SIS_masks(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid structure
-  type(param_file_type)  , intent(in)    :: param_file !< The param_file handle
+subroutine initialize_SIS_masks(G, PF)
+  type(SIS_hor_grid_type), intent(inout) :: G  !< The horizontal grid structure
+  type(param_file_type),   intent(in)    :: PF !< The param_file handle
 
+!    Initialize_masks sets mask2dT, mask2dCu, mask2dCv, and mask2dBu to mask out
+! flow over any points which are shallower than Dmin and permit an
+! appropriate treatment of the boundary conditions.  mask2dCu and mask2dCv
+! are 0.0 at any points adjacent to a land point.  mask2dBu is 0.0 at
+! any land or boundary point.  For points in the interior, mask2dCu,
+! mask2dCv, and mask2dBu are all 1.0.
+
+  real :: Dmin, min_depth, mask_depth
+  character(len=40)  :: mod = "initialize_SIS_masks"
   integer :: i, j
 
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec ; if (G%bathyT(i,j) > 0.0) then
-    G%mask2dT(i,j) = 1.0
-  endif ; enddo ; enddo
 
-  call pass_var(G%mask2dT, G%Domain)
+  call get_param(PF, mod, "MINIMUM_DEPTH", min_depth, &
+                 "If MASKING_DEPTH is unspecified, then anything shallower than\n"//&
+                 "MINIMUM_DEPTH is assumed to be land and all fluxes are masked out.\n"//&
+                 "If MASKING_DEPTH is specified, then all depths shallower than\n"//&
+                 "MINIMUM_DEPTH but deeper than MASKING_DEPTH are rounded to MINIMUM_DEPTH.", &
+                 units="m", default=0.0)
+  call get_param(PF, mod, "MASKING_DEPTH", mask_depth, &
+                 "The depth below which to mask points as land points, for which all\n"//&
+                 "fluxes are zeroed out. MASKING_DEPTH is ignored if negative.", &
+                 units="m", default=-9999.0)
+  Dmin = min_depth
+  if (mask_depth>=0.) Dmin = mask_depth
 
-  do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
-    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i+1,j)>0.5 ) then
-      G%mask2dCu(I,j) = 1.0
+  call pass_var(G%bathyT, G%Domain)
+  G%mask2dCu(:,:) = 0.0 ; G%mask2dCv(:,:) = 0.0 ; G%mask2dBu(:,:) = 0.0
+
+  do j=G%jsd,G%jed ; do i=G%isd,G%ied
+    if (G%bathyT(i,j) <= Dmin) then
+      G%mask2dT(i,j) = 0.0
     else
+      G%mask2dT(i,j) = 1.0
+    endif
+  enddo ; enddo
+
+  do j=G%jsd,G%jed ; do I=G%isd,G%ied-1
+    if ((G%bathyT(i,j) <= Dmin) .or. (G%bathyT(i+1,j) <= Dmin)) then
       G%mask2dCu(I,j) = 0.0
+    else
+      G%mask2dCu(I,j) = 1.0
     endif
   enddo ; enddo
 
-  do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
-    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 ) then
-      G%mask2dCv(i,J) = 1.0
-    else
+  do J=G%jsd,G%jed-1 ; do i=G%isd,G%ied
+    if ((G%bathyT(i,j) <= Dmin) .or. (G%bathyT(i,j+1) <= Dmin)) then
       G%mask2dCv(i,J) = 0.0
+    else
+      G%mask2dCv(i,J) = 1.0
     endif
   enddo ; enddo
 
-  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-    if ( G%mask2dT(i,j)>0.5 .and. G%mask2dT(i,j+1)>0.5 .and. &
-         G%mask2dT(i+1,j)>0.5 .and. G%mask2dT(i+1,j+1)>0.5 ) then
-      G%mask2dBu(I,J) = 1.0
-    else
+  do J=G%jsd,G%jed-1 ; do I=G%isd,G%ied-1
+    if ((G%bathyT(i+1,j) <= Dmin) .or. (G%bathyT(i+1,j+1) <= Dmin) .or. &
+        (G%bathyT(i,j) <= Dmin) .or. (G%bathyT(i,j+1) <= Dmin)) then
       G%mask2dBu(I,J) = 0.0
+    else
+      G%mask2dBu(I,J) = 1.0
     endif
   enddo ; enddo
 
@@ -541,13 +561,13 @@ subroutine initialize_SIS_masks(G, param_file)
 
   do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
     G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
-    G%areaCu(I,j) = G%dxCu(I,j)*G%dyCu(I,j)  !### Replace with * G%dy_Cu(I,j)?
+    G%areaCu(I,j) = G%dxCu(I,j) * G%dy_Cu(I,j)
     G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
   enddo ; enddo
 
   do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
     G%dx_Cv(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
-    G%areaCv(i,J) = G%dyCv(i,J)*G%dxCv(i,J)  !### Replace with * G%dx_Cv(i,J)?
+    G%areaCv(i,J) = G%dyCv(i,J) * G%dx_Cv(i,J)
     G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
   enddo ; enddo
 
