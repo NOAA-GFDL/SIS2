@@ -90,7 +90,7 @@ use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
 use SIS_grid_initialize, only : SIS_set_grid_metrics
-use SIS_grid_initialize, only : SIS_initialize_fixed
+use SIS_fixed_initialization, only : SIS_initialize_fixed
 
 use ice_grid, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
