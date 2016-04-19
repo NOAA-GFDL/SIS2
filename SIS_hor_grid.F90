@@ -110,6 +110,14 @@ type, public :: SIS_hor_grid_type
   integer                   :: nblocks
   type(hor_index_type), pointer :: Block(:) => NULL() ! store indices for each block
 
+  ! These parameters are run-time parameters that are used during some
+  ! initialization routines (but not all)
+  real :: south_lat     ! The latitude (or y-coordinate) of the first v-line
+  real :: west_lon      ! The longitude (or x-coordinate) of the first u-line
+  real :: len_lat = 0.  ! The latitudinal (or y-coord) extent of physical domain
+  real :: len_lon = 0.  ! The longitudinal (or x-coord) extent of physical domain
+  real :: Rad_Earth = 6.378e6 ! The radius of the planet in meters.
+  real :: max_depth     ! The maximum depth of the ocean in meters.
 end type SIS_hor_grid_type
 
 contains
