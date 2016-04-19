@@ -89,7 +89,9 @@ use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
-use SIS_grid_initialize, only : initialize_fixed_SIS_grid
+use SIS_grid_initialize, only : SIS_set_grid_metrics
+use SIS_grid_initialize, only : SIS_initialize_fixed
+
 use ice_grid, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
@@ -3850,7 +3852,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call clone_MOM_domain(Ice%G%domain, Ice%domain, halo_size=0, symmetric=.false., &
                         domain_name="ice_nohalo")
 
-  call initialize_fixed_SIS_grid(Ice%G, param_file)
+  ! Set the basic (bathymetry and mask independent) grid metrics.
+  call SIS_set_grid_metrics(Ice%G, param_file)
+
+  ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
+  call SIS_initialize_fixed(Ice%G, param_file)
 
   if (IST%slab_ice) IG%CatIce = 1 ! open water and ice ... but never in same place
   ! Initialize IG%cat_thick_lim here.  ###This needs to be extended to add more options.

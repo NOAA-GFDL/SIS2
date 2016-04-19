@@ -24,15 +24,15 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: initialize_fixed_SIS_grid, Adcroft_reciprocal
+public :: SIS_set_grid_metrics, SIS_initialize_fixed, Adcroft_reciprocal
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> initialize_fixed_SIS_grid is used to set the primary values in the model's horizontal
+!> SIS_set_grid_metrics is used to set the primary values in the model's horizontal
 !!   grid.  The bathymetry, land-sea mask and any restricted channel widths are
-!!   not know yet, so these are set later.
-subroutine initialize_fixed_SIS_grid(G, param_file)
+!!   not known yet, so these are set later.
+subroutine SIS_set_grid_metrics(G, param_file)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(param_file_type)  , intent(in)    :: param_file
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
@@ -43,14 +43,7 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-
-  real    :: angle, lon_scale
-  integer :: i, j
-
-  character(len=200) :: mesg
-  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
-  character(len=200) :: topo_varname                  ! Variable name in file
-  character(len=40)  :: mod_nm  = "SIS_fixed_init" ! This module's name.
+  character(len=40)  :: mod_nm  = "SIS_grid_initialize" ! This module's name.
 
   ! Read all relevant parameters and write them to the model log.
 !  call log_version(param_file, mod_nm, version)
@@ -61,15 +54,34 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
 ! Calculate derived metrics (i.e. reciprocals and products)
   call set_grid_derived_metrics(G, param_file)
 
+end subroutine SIS_set_grid_metrics
+
+
+!> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
+!!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
+subroutine SIS_initialize_fixed(G, PF)
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The model's horizontal grid structure.
+  type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
+                                                !! to parse for model parameter values.
+
+  real    :: angle, lon_scale
+  integer :: i, j
+
+  character(len=200) :: mesg
+  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
+  character(len=200) :: topo_varname                  ! Variable name in file
+  character(len=40)  :: mod_nm  = "SIS_fixed_init" ! This module's name.
+! This include declares and sets the variable "version".
+#include "version_variable.h"
 
 ! Initialize the topography.
 
   ! Replace these with properly parsed input parameter calls.
-!  call get_param(param_file, mod, "INPUTDIR", inputdir, default=".")
-!  call get_param(param_file, mod, "TOPO_FILE", topo_file, &
+!  call get_param(PF, mod, "INPUTDIR", inputdir, default=".")
+!  call get_param(PF, mod, "TOPO_FILE", topo_file, &
 !                 "The file from which the bathymetry is read.", &
 !                 default="topog.nc")
-!  call get_param(param_file, mod, "TOPO_VARNAME", topo_varname, &
+!  call get_param(PF, mod, "TOPO_VARNAME", topo_varname, &
 !                 "The name of the bathymetry variable in TOPO_FILE.", &
 !                 default="depth")
 
@@ -79,16 +91,16 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
   inputdir = slasher(inputdir)
   filename = trim(inputdir)//trim(topo_file)
 
-!  call log_param(param_file, mod, "INPUTDIR/TOPO_FILE", filename)
+!  call log_param(PF, mod, "INPUTDIR/TOPO_FILE", filename)
 !  if (.not.file_exists(filename, G%Domain)) call MOM_error(FATAL, &
 !       " initialize_topography_from_file: Unable to open "//trim(filename))
 
   call read_data(filename,trim(topo_varname), G%bathyT, &
                  domain=G%Domain%mpp_domain)
-!  call apply_topography_edits_from_file(D, G, param_file)
+!  call apply_topography_edits_from_file(D, G, PF)
 
   ! Initialize the various masks and any masked metrics.
-  call initialize_SIS_masks(G, param_file)
+  call initialize_SIS_masks(G, PF)
 
   ! This is where any channel information might be applied.
 
@@ -112,7 +124,7 @@ subroutine initialize_fixed_SIS_grid(G, param_file)
   call pass_var(G%cos_rot, G%Domain)
   call pass_var(G%sin_rot, G%Domain)
 
-end subroutine initialize_fixed_SIS_grid
+end subroutine SIS_initialize_fixed
 
 
 !> set_grid_derived_metrics is sets additional grid metrics that can be derived
