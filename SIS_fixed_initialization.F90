@@ -36,9 +36,7 @@ subroutine SIS_initialize_fixed(G, PF)
 
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
 
-  character(len=200) :: mesg
-!  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
-!  character(len=200) :: topo_varname                  ! Variable name in file
+  character(len=200) :: config
   character(len=40)  :: mod  = "SIS_initialize_fixed" ! This module's name.
   logical :: debug
 ! This include declares and sets the variable "version".
@@ -50,22 +48,37 @@ subroutine SIS_initialize_fixed(G, PF)
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
 
-  ! Initialize the various masks and any masked metrics.
+! Initialize the various masks and any masked metrics.
   call initialize_SIS_masks(G, PF)
 
-  ! This is where any channel information might be applied.
+! Modulate geometric scales according to geography.
+  call get_param(PF, mod, "CHANNEL_CONFIG", config, &
+                 "A parameter that determines which set of channels are \n"//&
+                 "restricted to specific  widths.  Options are:\n"//&
+                 " \t none - All channels have the grid width.\n"//&
+                 " \t global_1deg - Sets 16 specific channels appropriate \n"//&
+                 " \t\t for a 1-degree model, as used in CM2G.\n"//&
+                 " \t list - Read the channel locations and widths from a \n"//&
+                 " \t\t text file, like MOM_channel_list in the MOM_SIS \n"//&
+                 " \t\t test case.\n"//&
+                 " \t file - Read open face widths everywhere from a \n"//&
+                 " \t\t NetCDF file on the model grid.", &
+                 default="none")
+  select case ( trim(config) )
+    case ("none")
+    case ("list") ; call reset_face_lengths_list(G, PF)
+    case ("file") ; call reset_face_lengths_file(G, PF)
+    case ("global_1deg") ; call reset_face_lengths_named(G, PF, trim(config))
+    case default ; call MOM_error(FATAL, "MOM_initialize_fixed: "// &
+      "Unrecognized channel configuration "//trim(config))
+  end select
+
 
 !    Calculate the value of the Coriolis parameter at the latitude   !
 !  of the q grid points, in s-1.
   call MOM_initialize_rotation(G%CoriolisBu, G, PF)
 !   Calculate the components of grad f (beta)
   call MOM_calculate_grad_Coriolis(G%dF_dx, G%dF_dy, G)
-
-!  pi = 4.0*atan(1.0)
-!  ! Set up the Coriolis parameter.
-!  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-!    G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
-!  enddo ; enddo
 
   call initialize_grid_rotation_angle(G, PF)
 
