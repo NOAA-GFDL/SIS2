@@ -4,7 +4,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_hor_grid
 
-  use constants_mod, only : omega, pi, grav
+  use constants_mod, only : grav
 
 use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
 use mpp_domains_mod, only : mpp_get_global_domain
@@ -164,12 +164,20 @@ subroutine set_hor_grid(G, param_file)
                         domain_name="ice model aux")
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod_nm, version)
+  call log_version(param_file, mod_nm, version, &
+                   "Parameters providing information about the lateral grid.")
+  G%g_Earth = grav
+  call log_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
+                 "The gravitational acceleration of the Earth.", &
+                 units="m s-2")
+!  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
+!                 "The gravitational acceleration of the Earth.", &
+!                 units="m s-2", default = 9.80)
   call get_param(param_file, mod_nm, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
                  "that corresponding points on different processors have \n"//&
                  "the same index. This does not work with static memory.", &
-                 default=.false.)
+                 default=.false., layoutParam=.true.)
 #ifdef STATIC_MEMORY_
   if (global_indexing) cal SIS_error(FATAL, "set_hor_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
@@ -217,8 +225,6 @@ subroutine set_hor_grid(G, param_file)
   G%IegB = G%ieg ; G%JegB = G%jeg
 
   call allocate_metrics(G)
-
-  G%g_Earth = grav
 
 ! setup block indices.
   nihalo = G%Domain%nihalo
