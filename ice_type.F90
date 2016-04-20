@@ -22,7 +22,7 @@ use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
+use constants_mod,    only: radius, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -48,9 +48,6 @@ public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
 
-public  :: earth_area
-
-  real, parameter :: earth_area = 4*PI*RADIUS*RADIUS !5.10064471909788E+14 m^2
   real, parameter :: missing = -1e34
   integer, parameter :: miss_int = -9999
 
@@ -1267,8 +1264,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
   if (id_geo_lon>0) call post_data(id_geo_lon, G%geoLonT, diag, is_static=.true.)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
-  if (id_cell_area>0) call post_data(id_cell_area, Ice%area/(4*PI*RADIUS**2), diag, is_static=.true.)
-
+  if (id_cell_area>0) call post_data(id_cell_area, &
+            Ice%area / (16.0*atan(1.0)*G%Rad_Earth**2), diag, is_static=.true.)
 
 !### This doesn't work here!  age_ice needs to go into its own module!
   ! Register for restarts any of the diagnostics set here that must evolve in time.

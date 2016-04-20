@@ -73,7 +73,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod,only: coupler_3d_bc_type
-use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, grav, STEFAN
+use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, STEFAN
 use data_override_mod, only : data_override
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
@@ -111,7 +111,7 @@ use ice_transport_mod, only : adjust_ice_categories
 use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
 ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-  use constants_mod, only : radius, pi
+  use constants_mod, only : radius
 
 implicit none ; private
 
@@ -2444,7 +2444,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     else
       Ice%p_surf(i2,j2) = 0.0
     endif
-    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + grav*mass(i,j)
+    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*mass(i,j)
 
     Ice%mi(i2,j2) = mass(i,j)
   enddo ; enddo
@@ -3595,6 +3595,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...CatIce
   real :: enth_spec_snow, enth_spec_ice
   real, allocatable :: S_col(:)
+  real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
   logical :: spec_thermo_sal
@@ -4197,6 +4198,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
    allocate( cell_area(LBOUND(Ice%t_surf,1):UBOUND(Ice%t_surf,1),&
                        LBOUND(Ice%t_surf,2):UBOUND(Ice%t_surf,2)) )
+   pi = 4.0*atan(1.0)
    do j=G%jsc,G%jec ; do i=G%isc,G%iec
      cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
    enddo ; enddo

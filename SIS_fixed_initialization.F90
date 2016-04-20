@@ -2,7 +2,7 @@
 !! topography and Coriolis, in a way that is very similar to MOM6.
 module SIS_fixed_initialization
 
-  use constants_mod, only : omega, pi
+  use constants_mod, only : omega
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use SIS_grid_initialize, only : initialize_SIS_masks
@@ -30,6 +30,7 @@ subroutine SIS_initialize_fixed(G, PF)
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
 
+  real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
   real    :: angle, lon_scale
   integer :: i, j
 
@@ -70,6 +71,7 @@ subroutine SIS_initialize_fixed(G, PF)
 
   ! This is where any channel information might be applied.
 
+  pi = 4.0*atan(1.0)
   ! Set up the Coriolis parameter.
   do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
     G%CoriolisBu(I,J) = 2*omega*sin(G%geoLatBu(I,J)*pi/180)
