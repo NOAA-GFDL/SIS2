@@ -340,8 +340,6 @@ type ice_data_type !  ice_public_type
   logical                            :: pe
   integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
   logical, pointer, dimension(:,:)   :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
-  ! ### ice_mask should be eliminated as soon as flux_exchange.F90 is corrected.
-  logical, pointer, dimension(:,:,:) :: ice_mask =>NULL() ! where ice actually is (Used for k-size only?)
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
@@ -524,8 +522,6 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   km = CatIce + 1
 
   allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
-! ### Delete ice_mask once flux_exchange.F90 is corrected.
-  allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
@@ -733,8 +729,6 @@ subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice
 
   deallocate(Ice%ocean_pt, Ice%t_surf, Ice%s_surf)
-  ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
-  deallocate(Ice%ice_mask)
   deallocate(Ice%u_surf, Ice%v_surf, Ice%part_size)
   deallocate(Ice%rough_mom, Ice%rough_heat, Ice%rough_moist)
   deallocate(Ice%albedo, Ice%albedo_vis_dir, Ice%albedo_nir_dir)

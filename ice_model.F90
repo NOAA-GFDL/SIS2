@@ -110,9 +110,6 @@ use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_e
 use ice_transport_mod, only : adjust_ice_categories
 use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
-! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-  use constants_mod, only : radius
-
 implicit none ; private
 
 #include <SIS2_memory.h>
@@ -124,15 +121,8 @@ public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 
-! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-public :: cell_area
-
 integer :: iceClock, iceClock1, iceCLock2, iceCLock3, iceClock4, iceClock5, &
            iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
-
-! This is still here as an artefact of an older public interface and should go.
-! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-real, allocatable, dimension(:,:) ::  cell_area  ! grid cell area; sphere frac.
 
 contains
 
@@ -822,8 +812,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     Ice%ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
   enddo ; enddo
   m_ice_tot(:,:) = 0.0
-  ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
-  Ice%ice_mask(:,:,1) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,t_surf_ice_bot,          &
 !$OMP                                  s_surf_ice_bot,frazil_ice_bot,sea_lev_ice_bot, &
 !$OMP                                  ncat,m_ice_tot,Ice,i_off,j_off)                &
@@ -848,12 +836,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
         IST%bheat(i,j) = 0.0
       endif
     enddo
-
-    ! ###Eliminate ice_mask once flux_exchange.F90 is fixed.
-    do k=1,ncat ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%ice_mask(i2,j2,k2) = (IST%mH_ice(i,j,k) > 0.0)
-    enddo ; enddo
   enddo
 
   if (IST%slab_ice) then
@@ -4193,16 +4175,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
       (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
 
-  ! cell_area is unfortunately used outside of the ice model for various
-  ! things, so it has to be set, but it should be eliminated. -RWH
-  ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-   allocate( cell_area(LBOUND(Ice%t_surf,1):UBOUND(Ice%t_surf,1),&
-                       LBOUND(Ice%t_surf,2):UBOUND(Ice%t_surf,2)) )
-   pi = 4.0*atan(1.0)
-   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-     cell_area(i+i_off,j+j_off) = G%mask2dT(i,j) * G%areaT(i,j)/(4*PI*RADIUS**2)
-   enddo ; enddo
-
 end subroutine ice_model_init
 
 
@@ -4241,9 +4213,6 @@ subroutine ice_model_end (Ice)
   call SIS_diag_mediator_end(IST%Time, IST%diag)
 
   deallocate(Ice%Ice_state)
-
-  ! ### Eliminate cell_area once flux_exchange.F90 is fixed.
-  deallocate(cell_area)
 
 end subroutine ice_model_end
 
