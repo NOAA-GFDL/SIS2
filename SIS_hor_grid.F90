@@ -4,8 +4,6 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_hor_grid
 
-  use constants_mod, only : grav
-
 use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
 use mpp_domains_mod, only : mpp_get_global_domain
 
@@ -166,13 +164,9 @@ subroutine set_hor_grid(G, param_file)
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version, &
                    "Parameters providing information about the lateral grid.")
-  G%g_Earth = grav
-  call log_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
+  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
                  "The gravitational acceleration of the Earth.", &
-                 units="m s-2")
-!  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
-!                 "The gravitational acceleration of the Earth.", &
-!                 units="m s-2", default = 9.80)
+                 units="m s-2", default = 9.80)
   call get_param(param_file, mod_nm, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
                  "that corresponding points on different processors have \n"//&

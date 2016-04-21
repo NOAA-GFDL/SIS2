@@ -2,8 +2,6 @@
 !! topography and Coriolis, in a way that is very similar to MOM6.
 module SIS_fixed_initialization
 
-  use constants_mod, only : omega_const => omega
-
 use SIS_hor_grid, only : SIS_hor_grid_type, ocean_grid_type=>SIS_hor_grid_type
 use SIS_grid_initialize, only : initialize_SIS_masks
 
@@ -578,12 +576,9 @@ subroutine set_rotation_planetary(f, G, param_file)
 
  ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
 
-!  call get_param(param_file, "set_rotation_planetary", "OMEGA", omega, &
-!                 "The rotation rate of the earth.", units="s-1", &
-!                 default=7.2921e-5)
-  omega = omega_const
-  call log_param(param_file, "set_rotation_planetary", "OMEGA", omega, &
-                 "The rotation rate of the earth.", units="s-1")
+  call get_param(param_file, "set_rotation_planetary", "OMEGA", omega, &
+                 "The rotation rate of the earth.", units="s-1", &
+                 default=7.2921e-5)
   PI = 4.0*atan(1.0)
 
   do I=G%IsdB,G%IedB ; do J=G%JsdB,G%JedB
