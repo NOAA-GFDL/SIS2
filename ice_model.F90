@@ -73,7 +73,6 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod,only: coupler_3d_bc_type
-use constants_mod,    only: T_0degC=>Tfreeze, STEFAN
 use data_override_mod, only : data_override
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
@@ -98,7 +97,7 @@ use ice_spec_mod, only : get_sea_surface
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 
 use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
+use ice_thm_mod,      only: TFI, CI, e_to_melt
 use SIS2_ice_thm,  only: ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
@@ -161,8 +160,8 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
-
-  real,dimension(G%isc:G%iec,G%jsc:G%jec)                 :: tmp
+  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
+                    ! strictly diagnostic purposes.
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind, max_num_fields, next_index
 
@@ -237,11 +236,11 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
   enddo ; enddo
 
   if (IST%id_lwdn > 0) then
-    call get_avg(flux_lw(:,:,:) + STEFAN*IST%t_surf(isc:iec,jsc:jec,:)**4, &
-                       IST%part_size(isc:iec,jsc:jec,:), tmp(:,:))
-    do j=jsc,jec ; do i=isc,iec
-      if (G%mask2dT(i,j)>0.5) IST%lwdn(i,j) = IST%lwdn(i,j) + tmp(i,j)
-    enddo ; enddo
+    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      IST%lwdn(i,j) = IST%lwdn(i,j) + IST%part_size(i,j,k) * &
+                           (flux_lw(i,j,k) + Stefan*IST%t_surf(i,j,k)**4)
+    endif ; enddo ; enddo ; enddo
   endif
 
   if (IST%id_swdn > 0) then
@@ -753,6 +752,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real :: dt_slow        ! The ice thermodynamics time step
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -1182,6 +1182,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
@@ -1587,6 +1588,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   real :: enth_units, I_enth_units
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
@@ -2501,6 +2503,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                                ! conversion factor from thickness units, in m H-1.
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
@@ -2934,6 +2937,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
@@ -3616,6 +3620,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                          ! model run and the input files.
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: idr, id_sal
   logical :: read_aux_restart
   character(len=16)  :: stagger, dflt_stagger

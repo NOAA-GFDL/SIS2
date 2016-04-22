@@ -9,7 +9,7 @@
 !                                                                              !
 !         ->+---------+ <- ts - diagnostic surface temperature ( <= 0C )       !
 !        /  |         |                                                        !
-!      hs   |  snow   | <- tsn   One snow layer with heat capapcity
+!      hs   |  snow   | <- tsn   One snow layer with heat capacity
 !        \  |         |                                                        !
 !         =>+---------+                                                        !
 !        /  |         |                                                        !
@@ -34,9 +34,6 @@
 
 module ice_thm_mod
 
-
-use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
-
 implicit none ; private
 
 public :: DS, DI, DW, MU_TS, TFI, CI, slab_ice_optics, get_thermo_coefs
@@ -52,7 +49,7 @@ end interface
 ! properties of ice, snow, and seawater (NCAR CSM values)
 !
 
-!real, parameter :: LI = 334e3 ! temporary replacement for constants_mod ref
+real, parameter :: LI = 334e3        ! Latent heat of fusion 334000 J/kg
 
 real            :: KS    = 0.31      ! conductivity of snow - 0.31 W/(mK)
 real, parameter :: DS    = 330.0     ! density of snow - 330 kg/(m^3)
