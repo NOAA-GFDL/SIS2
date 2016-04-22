@@ -461,7 +461,7 @@ subroutine set_grid_metrics_cartesian(G, param_file)
   niglobal = G%Domain%niglobal ; njglobal = G%Domain%njglobal
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-  I1off = G%isd_global - isd ; J1off = G%jsd_global - jsd;
+  I1off = G%idg_offset ; J1off = G%jdg_offset
 
 !  call callTree_enter("set_grid_metrics_cartesian(), MOM_grid_initialize.F90")
  
@@ -586,7 +586,6 @@ subroutine set_grid_metrics_spherical(G, param_file)
   real :: PI, PI_180! PI = 3.1415926... as 4*atan(1)
   integer :: i, j, isd, ied, jsd, jed
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
-  integer :: i_offset, j_offset
   real :: grid_latT(G%jsd:G%jed), grid_latB(G%JsdB:G%JedB)
   real :: grid_lonT(G%isd:G%ied), grid_lonB(G%IsdB:G%IedB)
   real :: dLon,dLat,latitude,longitude,dL_di
@@ -596,7 +595,6 @@ subroutine set_grid_metrics_spherical(G, param_file)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-  i_offset = G%isd_global - isd; j_offset = G%jsd_global - jsd
 
 !  call callTree_enter("set_grid_metrics_spherical(), MOM_grid_initialize.F90")
  
@@ -638,18 +636,18 @@ subroutine set_grid_metrics_spherical(G, param_file)
   enddo
 
   do J=JsdB,JedB
-    latitude = G%south_lat + dLat* REAL(J+J_offset-(G%jsg-1))
+    latitude = G%south_lat + dLat* REAL(J+G%jdg_offset-(G%jsg-1))
     grid_LatB(J) = MIN(MAX(latitude,-90.),90.)
   enddo
   do j=jsd,jed
-    latitude = G%south_lat + dLat*(REAL(j+J_offset-G%jsg)+0.5)
+    latitude = G%south_lat + dLat*(REAL(j+G%jdg_offset-G%jsg)+0.5)
     grid_LatT(j) = MIN(MAX(latitude,-90.),90.)
   enddo
   do I=IsdB,IedB
-    grid_LonB(I) = G%west_lon + dLon*REAL(I+I_offset-(G%isg-1))
+    grid_LonB(I) = G%west_lon + dLon*REAL(I+G%idg_offset-(G%isg-1))
   enddo
   do i=isd,ied
-    grid_LonT(i) = G%west_lon + dLon*(REAL(i+I_offset-G%isg)+0.5)
+    grid_LonT(i) = G%west_lon + dLon*(REAL(i+G%idg_offset-G%isg)+0.5)
   enddo
 
   dL_di = (G%len_lon * 4.0*atan(1.0)) / (180.0 * G%Domain%niglobal)
@@ -723,7 +721,7 @@ subroutine set_grid_metrics_mercator(G, param_file)
 !  calculated, as are the geographic locations of each of these 4
 !  sets of points.
   integer :: i, j, isd, ied, jsd, jed
-  integer :: X1off, Y1off
+  integer :: i_off, j_off
   type(GPS) :: GP
   character(len=128) :: warnmesg
   character(len=48)  :: mod = "SIS_grid_initialize set_grid_metrics_mercator"
@@ -758,7 +756,7 @@ subroutine set_grid_metrics_mercator(G, param_file)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-  X1off = G%isd_global - isd ; Y1off = G%jsd_global - jsd;
+  i_off = G%idg_offset ; j_off = G%jdg_offset
 
   GP%niglobal = G%Domain%niglobal
   GP%njglobal = G%Domain%njglobal
@@ -826,9 +824,9 @@ subroutine set_grid_metrics_mercator(G, param_file)
   endif
 
   y_q = GP%south_lat*PI/180.0
-  if ((0 >= JsdB+Y1off) .and. (0 <= JedB+Y1off)) then
-    do I=IsdB,IedB ; yq(I, -Y1off) = y_q ; enddo
-    do i=isd,ied ; yv(i, -Y1off) = y_q ; enddo
+  if ((0 >= JsdB+j_off) .and. (0 <= JedB+j_off)) then
+    do I=IsdB,IedB ; yq(I, -j_off) = y_q ; enddo
+    do i=isd,ied ; yv(i, -j_off) = y_q ; enddo
   endif
   do j=G%jsg-G%Domain%njhalo,G%jeg+G%Domain%njhalo
     jd = fnRef + (j - jRef) - 0.5
@@ -840,13 +838,13 @@ subroutine set_grid_metrics_mercator(G, param_file)
     if (j>=G%JsgB .and. j<=G%JegB) G%gridLatB(j) = y_q*180.0/PI
     if (j>=G%jsg .and. j<=G%jeg)   G%gridLatT(j) = y_h*180.0/PI
 
-    if ((j >= jsd+Y1off) .and. (j <= jed+Y1off)) then
-      do i=isd,ied ; yh(i,j-Y1off) = y_h ; enddo
-      do I=IsdB,IedB ; yu(I,j-Y1off) = y_h ; enddo
+    if ((j >= jsd+j_off) .and. (j <= jed+j_off)) then
+      do i=isd,ied ; yh(i,j-j_off) = y_h ; enddo
+      do I=IsdB,IedB ; yu(I,j-j_off) = y_h ; enddo
     endif
-    if ((J >= JsdB+Y1off) .and. (J <= JedB+Y1off)) then
-      do I=IsdB,IedB ; yq(I,J-Y1off) = y_q ; enddo
-      do i=isd,ied ; yv(i,J-Y1off) = y_q ; enddo
+    if ((J >= JsdB+j_off) .and. (J <= JedB+j_off)) then
+      do I=IsdB,IedB ; yq(I,J-j_off) = y_q ; enddo
+      do i=isd,ied ; yv(i,J-j_off) = y_q ; enddo
     endif
   enddo
 
@@ -860,9 +858,9 @@ subroutine set_grid_metrics_mercator(G, param_file)
   x_q_west = x_q
 ! If the model is in parallel in the X-direction, do the same set of
 ! calculations which would occur on a single processor.
-  if ((0 >= IsdB+X1off) .and. (0 <= IedB+X1off)) then
-    do J=JsdB,JedB ; xq(-X1off,j) = x_q ; enddo
-    do j=jsd,jed ; xu(-X1off,j) = x_q ; enddo
+  if ((0 >= IsdB+i_off) .and. (0 <= IedB+i_off)) then
+    do J=JsdB,JedB ; xq(-i_off,j) = x_q ; enddo
+    do j=jsd,jed ; xu(-i_off,j) = x_q ; enddo
   endif
   do i=G%isg-G%Domain%nihalo,G%ieg+G%Domain%nihalo
     id = fnRef + (i - iRef) - 0.5
@@ -875,13 +873,13 @@ subroutine set_grid_metrics_mercator(G, param_file)
     if (i>=G%IsgB .and. i<=G%IegB) G%gridLonB(i) = x_q*180.0/PI
     if (i>=G%isg .and. i<=G%ieg)   G%gridLonT(i) = x_h*180.0/PI
 
-    if ((i >= isd+X1off) .and. (i <= ied+X1off)) then
-      do j=jsd,jed ; xh(i-X1off,j) = x_h ; enddo
-      do J=JsdB,JedB ; xv(i-X1off,J) = x_h ; enddo
+    if ((i >= isd+i_off) .and. (i <= ied+i_off)) then
+      do j=jsd,jed ; xh(i-i_off,j) = x_h ; enddo
+      do J=JsdB,JedB ; xv(i-i_off,J) = x_h ; enddo
     endif
-    if ((I >= IsdB+X1off) .and. (I <= IedB+X1off)) then
-      do J=JsdB,JedB ; xq(I-X1off,J) = x_q ; enddo
-      do j=jsd,jed ; xu(I-X1off,j) = x_q ; enddo
+    if ((I >= IsdB+i_off) .and. (I <= IedB+i_off)) then
+      do J=JsdB,JedB ; xq(I-i_off,J) = x_q ; enddo
+      do j=jsd,jed ; xu(I-i_off,j) = x_q ; enddo
     endif
   enddo
 
