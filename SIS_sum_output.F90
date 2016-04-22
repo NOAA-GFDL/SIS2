@@ -47,8 +47,6 @@ use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 
-use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
-
 use netcdf
 
 implicit none ; private
@@ -704,14 +702,14 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
   real,                    intent(in)    :: dt
   type(SIS_sum_out_CS),    pointer       :: CS
 
-  real :: Flux_SW, enth_units
+  real :: Flux_SW, enth_units, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
   if (CS%dt < 0.0) then
     if (IST%dt_ice_dyn > 0.0) then ; CS%dt = IST%dt_ice_dyn
@@ -821,7 +819,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
   type(SIS_sum_out_CS),    pointer    :: CS
 
   real :: area_pt, Flux_SW, pen_frac
-  real :: enth_units
+  real :: enth_units, LI
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   integer :: i2, j2, k2, i_off, j_off
@@ -834,9 +832,9 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
   ! not include the enthalpy changes due to net mass changes in the ice,
   ! as these are not yet known.
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,i_off,j_off,CS,dt,Ice,IST,&
-!$OMP                                  enth_units) &
+!$OMP                                  enth_units, LI) &
 !$OMP                          private(i2,j2,area_pt)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     ! Runoff and calving are passed directly on to the ocean.

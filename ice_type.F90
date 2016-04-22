@@ -22,7 +22,6 @@ use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-use constants_mod,    only: radius, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -1292,6 +1291,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
+  real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
 
   value = 0.0
@@ -1303,6 +1303,7 @@ subroutine ice_stock_pe(Ice, index, value)
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce
   kg_H = IG%H_to_kg_m2 ; kg_H_Nk = IG%H_to_kg_m2 / IG%NkIce
+  call get_SIS2_thermo_coefs(Ice%Ice_State%ITV, Latent_fusion=LI)
 
   select case (index)
 

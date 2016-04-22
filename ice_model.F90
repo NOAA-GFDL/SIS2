@@ -73,7 +73,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use astronomy_mod, only: astronomy_init, astronomy_end
 use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod,only: coupler_3d_bc_type
-use constants_mod,    only: hlv, hlf, T_0degC=>Tfreeze, STEFAN
+use constants_mod,    only: T_0degC=>Tfreeze, STEFAN
 use data_override_mod, only : data_override
 use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
@@ -1167,6 +1167,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
                         ! the ocean, in deg C.
   real :: T_freeze_ice_top ! The freezing temperature at the salinity of the
                         ! upper layer of the ice, in deg C.
+  real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
+  real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   type(time_type) :: Dt_ice
@@ -1272,16 +1274,17 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     enddo ; enddo ; enddo
   endif
 
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
+
   do j=jsc,jec ; do i=isc,iec
-    flux_lh(i,j,0) = hlv * flux_q(i,j,0)
+    flux_lh(i,j,0) = LatHtVap * flux_q(i,j,0)
   enddo ; enddo
 
   !
   ! implicit update of ice surface temperature
   !
   dt_fast = time_type_to_real(IST%Time_step_fast)
-
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units)
 
   if (IST%SIS1_5L_thermo) then
     if (NkIce /= 4) call SIS_error(FATAL, "SIS1_5L_thermodynamics requires that NK_ICE=4.")
@@ -1291,7 +1294,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,S_col,dhdt,dedt,  &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,drdt,flux_t,flux_q,flux_lw,      &
-!$OMP                                  H_to_m_snow,H_to_m_ice,dt_fast,flux_lh) &
+!$OMP                                  H_to_m_snow,H_to_m_ice,dt_fast,flux_lh,LatHtFus,LatHtVap) &
 !$OMP                          private(T_Freeze_surf,latent,T_col,flux_sw,hfd,hf, &
 !$OMP                                  ts_new,dts)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -1301,11 +1304,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         do m=1,NkIce ; T_col(m) = Temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV) ; enddo
 
         if (IST%slab_ice) then
-          latent         = hlv+hlf
+          latent         = LatHtVap+LatHtFus
         elseif (IST%mH_snow(i,j,k)>0.0) then
-          latent         = hlv + (hlf-CI*T_col(0))
+          latent         = LatHtVap + (LatHtFus-CI*T_col(0))
         else
-          latent         = hlv + hlf*(1-TFI/T_col(1))
+          latent         = LatHtVap + LatHtFus*(1-TFI/T_col(1))
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
@@ -1336,7 +1339,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         IST%enth_snow(i,j,k,1) = enth_from_TS(T_col(0), 0.0, IST%ITV)
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_from_TS(T_col(m), S_col(m), IST%ITV) ; enddo
       else ! IST%mH_ice <= 0
-        flux_lh(i,j,k) = hlv * flux_q(i,j,k)
+        flux_lh(i,j,k) = LatHtVap * flux_q(i,j,k)
       endif
     enddo ; enddo ; enddo
   else
@@ -1347,7 +1350,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,IG)                                   &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG)                 &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
@@ -1361,11 +1364,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         ! If the vapor should be at a different temperature, a correction would be
         ! made here.
         if (IST%slab_ice) then
-          latent = hlv + hlf
+          latent = LatHtVap + LatHtFus
         elseif (IST%mH_snow(i,j,k)>0.0) then
-          latent = hlv + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
+          latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
         else
-          latent = hlv + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
+          latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
         endif
         flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                   (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
@@ -1419,7 +1422,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         endif
 
       else ! IST%mH_ice <= 0
-        flux_lh(i,j,k) = hlv * flux_q(i,j,k)
+        flux_lh(i,j,k) = LatHtVap * flux_q(i,j,k)
       endif
     enddo ; enddo ; enddo
 
@@ -2496,7 +2499,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real :: T_Freeze_surf
   real :: H_to_m_ice, H_to_m_snow  ! The specific volumes of ice and snow times the
                                ! conversion factor from thickness units, in m H-1.
-  real, parameter :: LI = hlf
+  real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
+  real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
@@ -2511,7 +2515,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   snow_to_ice(:,:,:) = 0.0
   bsnk(:,:) = 0.0
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col)
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_fusion=LatHtFus, &
+                             Latent_vapor=LatHtVap)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,mi_change,h2o_change, &
 !$OMP                                  h_ice,h_snow,H_to_m_Ice,H_to_m_Snow,IG)
   do j=jsc,jec
@@ -2558,7 +2563,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,G,IST,h_snow,h_ice, &
-!$OMP                                  dt_slow,snow_to_ice,Idt_slow,bsnk,S_col,Ice) &
+!$OMP                                  dt_slow,snow_to_ice,Idt_slow,bsnk,S_col,Ice, &
+!$OMP                                  LatHtFus,LatHtVap) &
 !$OMP                          private(T_col,T_Freeze_surf,evap_from_ocn,h2o_to_ocn, &
 !$OMP                                  heat_to_ocn,bablt,sn2ic)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -2582,9 +2588,9 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                 ((hlv*evap_from_ocn)*Idt_slow)
+                                 ((LatHtVap*evap_from_ocn)*Idt_slow)
       IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-            (IST%bheat(i,j) - (heat_to_ocn - hlf*evap_from_ocn)*Idt_slow)
+            (IST%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
@@ -2653,7 +2659,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     qflx_res_ice(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,NkIce,qflx_lim_ice,qflx_res_ice, &
 !$OMP                                  IST,S_col,h_ice,ncat,h_snow,Obs_h_ice,dt_slow,   &
-!$OMP                                  Obs_cn_ice,snow_to_ice)  &
+!$OMP                                  Obs_cn_ice,snow_to_ice,LatHtFus)  &
 !$OMP                          private(T_col,heat_res_ice,heat_limit_ice,T_Freeze_surf, &
 !$OMP                                  e2m,tot_heat,heating,evap_from_ocn,h2o_to_ocn,   &
 !$OMP                                  heat_to_ocn,bablt,sn2ic)
@@ -2668,7 +2674,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       ! calculate enthalpy
       !
       if (IST%slab_ice) then
-        e2m(1) = h_ice(i,j,1)*IST%Rho_ice*LI
+        e2m(1) = h_ice(i,j,1)*IST%Rho_ice*LatHtFus
       else
         do k=1,ncat
           if ((IST%part_size(i,j,k)>0.0 .and. h_ice(i,j,k)>0.0)) then
@@ -2686,16 +2692,16 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
         ! Restore to observed enthalpy, implying restoring toward
         ! thickness * concentration.
         if (IST%slab_ice) then
-          heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)-sum(e2m)) &
+          heat_res_ice = -(LatHtFus*IST%Rho_ice*Obs_h_ice(i,j)-sum(e2m)) &
                          *dt_slow/(86400*IST%ice_restore_timescale)
         else
-          heat_res_ice = -(LI*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m)) &
+          heat_res_ice = -(LatHtFus*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-sum(e2m)) &
                          *dt_slow/(86400*IST%ice_restore_timescale)
         endif
       endif
 
-      if (IST%do_ice_limit .and. (sum(e2m) > IST%max_ice_limit*IST%Rho_ice*LI)) then
-        heat_limit_ice = sum(e2m)-LI*IST%Rho_ice*IST%max_ice_limit
+      if (IST%do_ice_limit .and. (sum(e2m) > IST%max_ice_limit*IST%Rho_ice*LatHtFus)) then
+        heat_limit_ice = sum(e2m)-LatHtFus*IST%Rho_ice*IST%max_ice_limit
         ! should we "heat_ice_res = 0.0" ?
       endif
 
@@ -2703,7 +2709,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       ! apply constraining heat to ice
       !
       tot_heat = heat_res_ice+heat_limit_ice
-      if (IST%slab_ice) h_ice(i,j,1) = h_ice(i,j,1) - tot_heat/(IST%Rho_ice*LI)
+      if (IST%slab_ice) h_ice(i,j,1) = h_ice(i,j,1) - tot_heat/(IST%Rho_ice*LatHtFus)
 
       if (.not. IST%slab_ice .and. (tot_heat>0.0)) then  ! add like ocean-ice heat
         do k=0,ncat-1
@@ -2756,7 +2762,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       ! Check for energy conservation
       !
       if (IST%slab_ice) then
-        e2m(1) = e2m(1) - h_ice(i,j,1)*IST%Rho_ice*LI
+        e2m(1) = e2m(1) - h_ice(i,j,1)*IST%Rho_ice*LatHtFus
       else
         do k=1,ncat
           if (IST%part_size(i,j,k)>0.0 .and. h_ice(i,j,k)>0.0) &
@@ -2927,6 +2933,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   integer :: i2, j2, k2, i_off, j_off
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
+  real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
@@ -2936,7 +2943,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             specified_thermo_salinity=spec_thermo_sal)
+                             specified_thermo_salinity=spec_thermo_sal, &
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
   S_col0(0) = 0.0 ; do m=1,NkIce ; S_col0(m) = S_col(m) ; enddo
   call calculate_T_Freeze(S_col0(0:NkIce), Tfr_col0(0:NkIce), IST%ITV)
   I_enth_units = 1.0 / enth_units
@@ -3114,7 +3122,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt,kg_H_nk,IG)               &
+!$OMP                                  salt_change,net_melt,kg_H_nk,LatHtFus,LatHtVap,IG) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -3197,9 +3205,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 
       if (IST%column_check) then
         heat_in(i,j,k) = heat_in(i,j,k) + IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - &
-                     (heat_to_ocn - (hlv+hlf)*evap_from_ocn)
+                     (heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
 
-        heat_input = IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - (heat_to_ocn - (hlv+hlf)*evap_from_ocn)
+        heat_input = IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - (heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
         heat_mass_in = enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap
         mass_in = dt_slow*IST%fprec_top(i,j,k) + h2o_ocn_to_ice - h2o_ice_to_ocn - &
                  (dt_slow*IST%flux_q_top(i,j,k)-evap_from_ocn)
@@ -3227,9 +3235,9 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                 ((hlv*evap_from_ocn)*Idt_slow)
+                                 ((LatHtVap*evap_from_ocn)*Idt_slow)
       IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
-             (IST%bheat(i,j) - (heat_to_ocn - hlf*evap_from_ocn)*Idt_slow)
+             (IST%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
@@ -3240,8 +3248,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
-
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IG,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
