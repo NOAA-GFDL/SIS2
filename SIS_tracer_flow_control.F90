@@ -22,7 +22,7 @@ module SIS_tracer_flow_control
     !********+*********+*********+*********+*********+*********+*********+**
     !*                                                                     *
     !*  By Andrew Shao, April 2016                                         *
-    !*      Adapter from MOM6 code MOM_tracer_flow_control.F90             *
+    !*      Adapted from MOM6 code MOM_tracer_flow_control.F90             *
     !*                                                                     *
     !*    This module contains two subroutines into which calls to other   *
     !*  tracer initialization (call_tracer_init_fns) and column physics    *
@@ -32,10 +32,10 @@ module SIS_tracer_flow_control
 
     use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
     use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
-    use ice_grid, only : ice_grid_type
+    use ice_grid_mod, only : ice_grid_type
     use SIS_tracer_registry, only : SIS_tracer_registry_type
     use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
-    use SIS_hor_grid, only : SIS_hor_grid_type
+    use SIS_hor_grid_mod, only : SIS_hor_grid_type
 
     use fms_io_mod,      only : restart_file_type
     use MOM_file_parser, only : get_param, log_version, param_file_type
@@ -46,7 +46,7 @@ module SIS_tracer_flow_control
     use ice_age_tracer, only : register_ice_age_tracer, initialize_ice_age_tracer
     use ice_age_tracer, only : ice_age_tracer_column_physics
     use ice_age_tracer, only : ice_age_stock, ice_age_end
-    use ice_age_tracer_type, only : ice_age_tracer_CS
+    use ice_age_tracer, only : ice_age_tracer_CS
 
     implicit none ; private
 
@@ -71,9 +71,9 @@ contains
         type(SIS_hor_grid_type),        intent(in) :: G
         type(ice_grid_type),            intent(in) :: IG
         type(param_file_type),          intent(in) :: param_file
-        type(SIS_tracer_flow_control_CS), pointer, intent(inout) :: CS
-        type(SIS_diag_ctrl), target,      intent(in) :: diag
-        type(SIS_tracer_registry_type),   pointer, intent(inout) :: TrReg
+        type(SIS_tracer_flow_control_CS), pointer  :: CS
+        type(SIS_diag_ctrl), target                :: diag
+        type(SIS_tracer_registry_type),   pointer  :: TrReg
         type(restart_file_type),        intent(inout) :: Ice_restart
         character(len=*),               intent(in) :: restart_file
 
@@ -109,6 +109,7 @@ contains
             !    Add other user-provided calls to register tracers for restarting here. Each
             !  tracer package registration call returns a logical false if it cannot be run
             !  for some reason.  This then overrides the run-time selection from above.
+
             if (CS%use_ice_age) CS%use_ice_age = &
                 register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
                 diag, TrReg, Ice_restart, restart_file)
@@ -116,8 +117,7 @@ contains
 
         end subroutine SIS_call_tracer_register
 
-        subroutine SIS_tracer_flow_control_init(restart, day, G, IG, param_file, CS)
-            logical,                               intent(in) :: restart
+        subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS)
             type(time_type), target,               intent(in) :: day
             type(SIS_hor_grid_type),               intent(inout) :: G
             type(ice_grid_type),                   intent(in) :: IG
@@ -137,15 +137,18 @@ contains
                 "Module must be initialized via call_tracer_register before it is used.")
 
             !  Add other user-provided calls here.
-!            if (CS%use_ice_age) &
-!                call initialize_ice_age_tracer(restart, day, G, IG, CS%ice_age_tracer_CSp)
+            if (CS%use_ice_age) &
+                call initialize_ice_age_tracer(day, G, IG, CS%ice_age_tracer_CSp)
         end subroutine SIS_tracer_flow_control_init
 
-        subroutine SIS_call_tracer_column_fns(dt, G, IG, CS)
+        subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
             real,                                       intent(in) :: dt
             type(SIS_hor_grid_type),                    intent(inout) :: G
             type(ice_grid_type),                        intent(in) :: IG
             type(SIS_tracer_flow_control_CS), pointer,  intent(in) :: CS
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: &
+                mi, mi_old
+
             !   This subroutine calls all registered tracer column physics
             ! subroutines.
 
@@ -157,26 +160,18 @@ contains
             if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_column_fns: "// &
                 "Module must be initialized via call_tracer_register before it is used.")
             ! Add calls to tracer column functions here.
-!             if (CS%use_ice_age) &
-!                call ice_age_tracer_column_physics(dt, G, IG, &
-!                    SIS_tracer_flow_CSp%ice_age_tracer_CSp)
+             if (CS%use_ice_age) &
+                call ice_age_tracer_column_physics(dt, G, IG,  CS%ice_age_tracer_CSp, mi, mi_old)
 
         end subroutine SIS_call_tracer_column_fns
 
-        subroutine SIS_call_tracer_stocks(stock_values, G, IG, CS, stock_names, stock_units, &
-            num_stocks, stock_index, got_min_max, global_min, global_max,xgmin, ygmin, zgmin, xgmax, ygmax, zgmax)
+        subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
 
             type(SIS_hor_grid_type),                  intent(in)  :: G
-            real, dimension(:),                       intent(out) :: stock_values
             type(ice_grid_type),                      intent(in)  :: IG
             type(SIS_tracer_flow_control_CS),         pointer     :: CS
-            character(len=*), dimension(:), optional, intent(out) :: stock_names
-            character(len=*), dimension(:), optional, intent(out) :: stock_units
-            integer,                        optional, intent(out) :: num_stocks
-            integer,                        optional, intent(in)  :: stock_index
-            logical,  dimension(:),         optional, intent(inout) :: got_min_max
-            real, dimension(:),             optional, intent(out) :: global_min,  global_max
-            real, dimension(:),             optional, intent(out) :: xgmin, ygmin, zgmin, xgmax, ygmax, zgmax
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: mi
+
             !   This subroutine calls all registered tracer packages to enable them to
             ! add to the surface state returned to the coupler. These routines are optional.
 
@@ -187,92 +182,36 @@ contains
             !  (in)      IG - The ocean's vertical grid structure.
             !  (in)      CS - The control structure returned by a previous call to
             !                 call_tracer_register.
-            !  (out,opt) stock_names - Diagnostic names to use for each stock.
-            !  (out,opt) stock_units - Units to use in the metadata for each stock.
-            !  (out,opt) num_stocks - The number of tracer stocks being returned.
-            !  (in,opt)  stock_index - The integer stock index from stocks_constans_mod of
-            !                          the stock to be returned.  If this is present and
-            !                          greater than 0, only a single stock can be returned.
+
             character(len=200), dimension(MAX_FIELDS_) :: names, units
             character(len=200) :: set_pkg_name
-            real, dimension(MAX_FIELDS_) :: values
-            integer :: max_ns, ns_tot, ns, index, pkg, max_pkgs, nn
+            real, dimension(MAX_FIELDS_) :: stocks
+            integer :: nstocks, m
 
             if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_stocks: "// &
                 "Module must be initialized via call_tracer_register before it is used.")
 
-            index = -1 ; if (present(stock_index)) index = stock_index
-            ns_tot = 0
-            max_ns = size(stock_values)
-            if (present(stock_names)) max_ns = min(max_ns,size(stock_names))
-            if (present(stock_units)) max_ns = min(max_ns,size(stock_units))
-
+            nstocks = 0
+            stocks = 0.0
             !  Add other user-provided calls here.
-!            if (CS%use_ice_age) then
-!                ns = ice_age_stock(h, values, G, IG, CS%ice_age_tracer_CSp, &
-!                    names, units, stock_index)
-!                call store_stocks("ice_age", ns, names, units, values, index, &
-!                    stock_values, set_pkg_name, max_ns, ns_tot, stock_names, stock_units)
-!            endif
+            if (CS%use_ice_age) then
+                call ice_age_stock(nstocks, stocks, names, units, G, IG, &
+                    CS%ice_age_tracer_CSp, mi)
+            endif
 
-            if (ns_tot == 0) stock_values(1) = 0.0
-
-            if (present(num_stocks)) num_stocks = ns_tot
+            if(nstocks>0) then
+                do m=1,nstocks
+                    write(*,'(A,"Total ",A,A,ES24.16)') &
+                        achar(9),trim(names(m)),achar(9),stocks(m)
+                enddo
+            endif
 
         end subroutine SIS_call_tracer_stocks
-  
-        subroutine SIS_store_stocks(pkg_name, ns, names, units, values, index, stock_values, &
-            set_pkg_name, max_ns, ns_tot, stock_names, stock_units)
-            character(len=*),                         intent(in)    :: pkg_name
-            integer,                                  intent(in)    :: ns
-            character(len=*), dimension(:),           intent(in)    :: names, units
-            real, dimension(:),                       intent(in)    :: values
-            integer,                                  intent(in)    :: index
-            real, dimension(:),                       intent(inout) :: stock_values
-            character(len=*),                         intent(inout) :: set_pkg_name
-            integer,                                  intent(in)    :: max_ns
-            integer,                                  intent(inout) :: ns_tot
-            character(len=*), dimension(:), optional, intent(inout) :: stock_names, stock_units
-
-            ! This routine stores the stocks and does error handling for call_tracer_stocks.
-            character(len=16) :: ind_text, ns_text, max_text
-            integer :: n
-
-            if ((index > 0) .and. (ns > 0)) then
-                write(ind_text,'(i8)') index
-                if (ns > 1) then
-                    call SIS_error(FATAL,"Tracer package "//trim(pkg_name)//&
-                        " is not permitted to return more than one value when queried"//&
-                        " for specific stock index "//trim(adjustl(ind_text))//".")
-                elseif (ns+ns_tot > 1) then
-                    call SIS_error(FATAL,"Tracer packages "//trim(pkg_name)//" and "//&
-                        trim(set_pkg_name)//" both attempted to set values for"//&
-                        " specific stock index "//trim(adjustl(ind_text))//".")
-                else
-                    set_pkg_name = pkg_name
-                endif
-            endif
-
-            if (ns_tot+ns > max_ns) then
-                write(ns_text,'(i8)') ns_tot+ns ; write(max_text,'(i8)') max_ns
-                call SIS_error(FATAL,"Attempted to return more tracer stock values (at least "//&
-                    trim(adjustl(ns_text))//") than the size "//trim(adjustl(max_text))//&
-                    "of the smallest value, name, or units array.")
-            endif
-
-            do n=1,ns
-                stock_values(ns_tot+n) = values(n)
-                if (present(stock_names)) stock_names(ns_tot+n) = names(n)
-                if (present(stock_units)) stock_units(ns_tot+n) = units(n)
-            enddo
-            ns_tot = ns_tot + ns
-
-        end subroutine SIS_store_stocks
 
         subroutine SIS_tracer_flow_control_end(CS)
             type(SIS_tracer_flow_control_CS), pointer :: CS
 
-!            if (CS%use_ice_age) call ice_age_example_end(CS%ice_age_tracer_CSp)
+            if (CS%use_ice_age) call ice_age_end(CS%ice_age_tracer_CSp)
 
             if (associated(CS)) deallocate(CS)
         end subroutine SIS_tracer_flow_control_end

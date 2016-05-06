@@ -47,6 +47,8 @@ use ice_grid_mod, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 
+use SIS_tracer_flow_control, only : SIS_call_tracer_stocks
+
 use constants_mod, only : LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 
 use netcdf
@@ -601,6 +603,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
         write(*,'(A," Ice Heat: ",ES24.16,", Change: ",ES12.5," Error: ",ES12.5," (",ES8.1,")")') &
             trim(msg_start), Heat, Heat_chg, Heat_anom, Heat_anom/Heat
       endif
+
+      call SIS_call_tracer_stocks(G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice)
 
 !     do m=1,nTr_stocks
 

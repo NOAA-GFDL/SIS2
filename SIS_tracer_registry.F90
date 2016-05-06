@@ -70,6 +70,8 @@ type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), pointer :: ad4d_x => NULL(), ad4d_y => NULL()
              ! The arrays in which x- & y- advective fluxes by ice category and
              ! layer are stored in units of CONC m3 s-1.
+
+  ! @ashao: OBC NOT IMPLEMENTED YET
   real :: OBC_inflow_conc = 0.0  ! A tracer concentration for generic inflows.
   real, dimension(:,:,:), pointer :: OBC_in_u => NULL(), OBC_in_v => NULL()
              ! These arrays contain structured values for flow into the domain

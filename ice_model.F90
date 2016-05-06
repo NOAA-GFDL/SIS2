@@ -94,6 +94,10 @@ use ice_grid_mod, only : set_ice_grid, ice_grid_end, ice_grid_type
 use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
+use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
+use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns, SIS_call_tracer_stocks
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
+
 
 use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
 use ice_thm_mod,      only: MU_TS, TFI, CI, e_to_melt, get_thermo_coefs
@@ -1807,6 +1811,8 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
     if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here
+    call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
+
 
     ! Set up the thermodynamic fluxes in the externally visible structure Ice.
     call set_ocean_top_fluxes(Ice, IST, G, IG)
@@ -4128,6 +4134,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
                            IST%sum_output_CSp, IST%ntrunc)
 
+! Register and initialize tracer flow control and tracer register
+  call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, IST%diag, IST%TrReg, &
+     Ice%Ice_restart, restart_file)
+  call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp)
+
   call close_param_file(param_file)
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
@@ -4218,6 +4229,9 @@ subroutine ice_model_end (Ice)
   call SIS_hor_grid_end(Ice%G)
   call ice_grid_end(Ice%IG)
   call dealloc_Ice_arrays(Ice)
+
+  call SIS_tracer_flow_control_end(IST%SIS_tracer_flow_CSp)
+
   call dealloc_IST_arrays(IST)
   deallocate(Ice%Ice_restart)
 
