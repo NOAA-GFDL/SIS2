@@ -1,42 +1,28 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_hor_grid_mod - sets up grid and processor domains and a wide variety of  !
+! SIS_hor_grid - sets up grid and processor domains and a wide variety of  !
 !   metric terms in a way that is very similar to MOM6. - Robert Hallberg      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_hor_grid_mod
+module SIS_hor_grid
 
-  use constants_mod, only : omega, pi, grav
-
-use mpp_domains_mod, only : mpp_define_domains, FOLD_NORTH_EDGE
-use mpp_domains_mod, only : domain2D, mpp_global_field, YUPDATE, XUPDATE, CORNER
-use mpp_domains_mod, only : CENTER, NORTH_FACE=>NORTH, EAST_FACE=>EAST
 use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
-use mpp_domains_mod, only : mpp_define_io_domain, mpp_copy_domain, mpp_get_global_domain
-use mpp_domains_mod, only : mpp_deallocate_domain, mpp_get_pelist, mpp_get_compute_domains
-use mpp_domains_mod, only : domain1D, mpp_get_domain_components
+use mpp_domains_mod, only : mpp_get_global_domain
 
-use MOM_domains, only : SIS_domain_type=>MOM_domain_type, pass_var, pass_vector
-use MOM_domains, only : PE_here, root_PE, broadcast, MOM_domains_init, clone_MOM_domain
-use MOM_domains, only : num_PEs, SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
+use MOM_hor_index, only : hor_index_type, hor_index_init
+use MOM_domains, only : MOM_domain_type, get_domain_extent, compute_block_extent
+use MOM_domains, only : MOM_domains_init, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_obsolete_params, only : obsolete_logical
-use MOM_string_functions, only : slasher
-
-use fms_io_mod, only : file_exist
-use fms_mod,    only : field_exist, field_size, read_data
-use mosaic_mod, only : get_mosaic_ntiles, get_mosaic_ncontacts, get_mosaic_contact
 
 implicit none ; private
 
-include 'netcdf.inc'
 #include <SIS2_memory.h>
 
 public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
 
 type, public :: SIS_hor_grid_type
-  type(SIS_domain_type), pointer :: Domain => NULL()
-  type(SIS_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
+  type(MOM_domain_type), pointer :: Domain => NULL()
+  type(MOM_domain_type), pointer :: Domain_aux => NULL() ! A non-symmetric auxiliary domain type.
+  type(hor_index_type) :: HI
   integer :: isc, iec, jsc, jec ! The range of the computational domain indices
   integer :: isd, ied, jsd, jed ! and data domain indices at tracer cell centers.
   integer :: isg, ieg, jsg, jeg ! The range of the global domain tracer cell indices.
@@ -45,6 +31,8 @@ type, public :: SIS_hor_grid_type
   integer :: IsgB, IegB, JsgB, JegB ! The range of the global domain vertex indices.
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
+  integer :: idg_offset         ! The offset between the corresponding global
+  integer :: jdg_offset         ! and local array indices.
 
   logical :: symmetric          ! True if symmetric memory is used.
   logical :: nonblocking_updates  ! If true, non-blocking halo updates are
@@ -107,74 +95,57 @@ type, public :: SIS_hor_grid_type
                         ! On many grids these are the same as geoLonT & geoLonBu.
   character(len=40) :: &
     x_axis_units, &     !   The units that are used in labeling the coordinate
-    y_axis_units        ! axes.
+    y_axis_units        ! axes.  Except on a Cartesian grid, these are usually
+                        ! some variant of "degrees".
 
-!  character(len=40) :: axis_units = ' '! Units for the horizontal coordinates.
-
-  real :: g_Earth !   The gravitational acceleration in m s-2.
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     bathyT        ! Ocean bottom depth at tracer points, in m.
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    ! The Coriolis parameter at corner points, in s-1.
+  real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
+    dF_dx, dF_dy  ! Derivatives of f (Coriolis parameter) at h-points, in s-1 m-1.
+  real :: g_Earth !   The gravitational acceleration in m s-2.
 
+  ! These variables are for block structures.
+  integer                   :: nblocks
+  type(hor_index_type), pointer :: Block(:) => NULL() ! store indices for each block
+
+  ! These parameters are run-time parameters that are used during some
+  ! initialization routines (but not all)
+  real :: south_lat     ! The latitude (or y-coordinate) of the first v-line
+  real :: west_lon      ! The longitude (or x-coordinate) of the first u-line
+  real :: len_lat = 0.  ! The latitudinal (or y-coord) extent of physical domain
+  real :: len_lon = 0.  ! The longitudinal (or x-coord) extent of physical domain
+  real :: Rad_Earth = 6.378e6 ! The radius of the planet in meters.
+  real :: max_depth     ! The maximum depth of the ocean in meters.
 end type SIS_hor_grid_type
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_hor_grid initializes the sea ice grid parameters.
-subroutine set_hor_grid(G, param_file, ice_domain)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type)  , intent(in)    :: param_file
-  type(domain2D),          intent(inout) :: ice_domain
+!> set_hor_grid initializes the sea ice grid array sizes and grid memory.
+subroutine set_hor_grid(G, param_file)
+  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid type
+  type(param_file_type)  , intent(in)    :: param_file !< Parameter file handle
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
 ! Arguments: G - The sea-ice's horizontal grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (inout)   ice_domain - A domain with no halos that can be shared publicly.
-!  (in)      NCat_dflt - The default number of ice categories.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-
-  real, allocatable, dimension(:,:)   :: depth, tmpx, tmpy, tmp_2d
-  real, allocatable, dimension(:) :: xb1d, yb1d ! 1d global grid for diag_mgr
-  real    :: angle, lon_scale
-
-  integer, allocatable, dimension(:)  :: pelist, islist, ielist, jslist, jelist
-  integer :: i, j, m, pe, ntiles, ncontacts
-  integer :: isg, ieg, jsg, jeg
-  integer :: is, ie, js, je, i_off, j_off
-  integer :: ni, nj, dims(4)
-  integer :: isca, ieca, jsca, jeca, isda, ieda, jsda, jeda
-  integer :: npes
-
+  integer :: isd, ied, jsd, jed, nk
+  integer :: IsdB, IedB, JsdB, JedB
+  integer :: ied_max, jed_max
+  integer :: niblock, njblock, nihalo, njhalo, nblocks, n, i, j
   logical :: symmetric       ! If true, use symmetric memory allocation.
-  logical :: global_indexing
-  character(len=256) :: grid_file, ocean_topog
-  character(len=256) :: ocean_hgrid, ocean_mosaic
-  character(len=200) :: mesg
-  character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
-  character(len=200) :: topo_varname                  ! Variable name in file
+  logical :: global_indexing ! If true use global index values instead of having
+                             ! the data domain on each processor start at 1.
+  integer, allocatable, dimension(:) :: ibegin, iend, jbegin, jend
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
-  type(domain2d)     :: domain2
-  type(domain2d), pointer :: Domain => NULL()
 
-  grid_file = 'INPUT/grid_spec.nc'
-
-  ! Set up the SIS_domain_type.  This will later occur via a call to MOM_domains_init.
-  ! call MOM_domains_init(G%Domain, param_file, 1, dynamic=.true.)
-  if (.not.associated(G%Domain)) then
-    allocate(G%Domain)
-    allocate(G%Domain%mpp_domain)
-    allocate(G%Domain_aux)
-    allocate(G%Domain_aux%mpp_domain)
-  endif
-
-!  pe = PE_here()
-  npes = num_PEs()
-
+  ! Set up the MOM_domain_type structures.
 #ifdef SYMMETRIC_MEMORY_
   symmetric = .true.
 #else
@@ -191,16 +162,18 @@ subroutine set_hor_grid(G, param_file, ice_domain)
 #endif
   call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
                         domain_name="ice model aux")
-  call clone_MOM_domain(G%domain, ice_domain, halo_size=0, symmetric=.false., &
-                        domain_name="ice_nohalo")
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod_nm, version)
+  call log_version(param_file, mod_nm, version, &
+                   "Parameters providing information about the lateral grid.")
+  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
+                 "The gravitational acceleration of the Earth.", &
+                 units="m s-2", default = 9.80)
   call get_param(param_file, mod_nm, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
                  "that corresponding points on different processors have \n"//&
                  "the same index. This does not work with static memory.", &
-                 default=.false.)
+                 default=.false., layoutParam=.true.)
 #ifdef STATIC_MEMORY_
   if (global_indexing) cal SIS_error(FATAL, "set_hor_grid : "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
@@ -212,92 +185,29 @@ subroutine set_hor_grid(G, param_file, ice_domain)
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  !--- first determine the if the grid file is using the correct format
-  if (.not.(field_exist(grid_file, 'ocn_mosaic_file') .or. &
-            field_exist(grid_file, 'gridfiles')) ) call SIS_error(FATAL, &
-    'Error from ice_grid_mod(set_hor_grid): '//&
-    'ocn_mosaic_file or gridfiles does not exist in file ' //trim(grid_file)//&
-    '\nSIS2 only works with a mosaic format grid file.')
 
-  call SIS_mesg("   Note from ice_grid_mod(set_hor_grid): "//&
-                 "read grid from mosaic version grid", 5)
+  call get_param(param_file, mod_nm, "NIBLOCK", niblock, "The number of blocks "// &
+                 "in the x-direction on each processor (for openmp).", default=1, &
+                 layoutParam=.true.)
+  call get_param(param_file, mod_nm, "NJBLOCK", njblock, "The number of blocks "// &
+                 "in the y-direction on each processor (for openmp).", default=1, &
+                 layoutParam=.true.)
 
-  if( field_exist(grid_file, "ocn_mosaic_file") ) then ! coupler mosaic
-    call read_data(grid_file, "ocn_mosaic_file", ocean_mosaic)
-    ocean_mosaic = "INPUT/"//trim(ocean_mosaic)
-  else
-    ocean_mosaic = trim(grid_file)
-  end if
-  ntiles = get_mosaic_ntiles(ocean_mosaic)
-  if (ntiles /= 1) call SIS_error(FATAL, "Error from ice_grid_mod(set_hor_grid): "//&
-      "ntiles should be 1 for ocean mosaic.")
-  call read_data(ocean_mosaic, "gridfiles", ocean_hgrid)
-  ocean_hgrid = 'INPUT/'//trim(ocean_hgrid)
+  call hor_index_init(G%Domain, G%HI, param_file, &
+                      local_indexing=.not.global_indexing)
 
-  ! This code should be moved to MOM_domains_init once we start using a cubed-sphere grid.
-  ! if (field_exist(ocean_mosaic, "contacts") ) then
-  !   ncontacts = get_mosaic_ncontacts(ocean_mosaic)
-  !   if (ncontacts < 1) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
-  !        'number of contacts should be larger than 0 when field contacts exist in file '//&
-  !        trim(ocean_mosaic) )
-  !   if (ncontacts > 2) call SIS_error(FATAL,'==>Error from ice_grid_mod(set_hor_grid): '//&
-  !        'number of contacts should be no larger than 2')
-  !   call get_mosaic_contact( ocean_mosaic, tile1(1:ncontacts), tile2(1:ncontacts),           &
-  !        istart1(1:ncontacts), iend1(1:ncontacts), jstart1(1:ncontacts), jend1(1:ncontacts), &
-  !        istart2(1:ncontacts), iend2(1:ncontacts), jstart2(1:ncontacts), jend2(1:ncontacts)  )
-  !   do m = 1, ncontacts
-  !     if (istart1(m) == iend1(m) ) then  ! x-direction contact, only cyclic condition
-  !       if (istart2(m) /= iend2(m) ) call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_hor_grid): only cyclic condition is allowed for x-boundary")
-  !       x_cyclic = .true.
-  !     elseif ( jstart1(m) == jend1(m) ) then  ! y-direction contact, cyclic or folded-north
-  !       if ( jstart1(m) == jstart2(m) ) then ! folded north
-  !          tripolar_grid=.true.
-  !       else
-  !          call SIS_error(FATAL, "==>Error from ice_grid_mod(set_hor_grid): "//&
-  !            "only folded-north condition is allowed for y-boundary")
-  !       endif
-  !     else
-  !       call SIS_error(FATAL,  &
-  !            "==>Error from ice_grid_mod(set_hor_grid): invalid boundary contact")
-  !     endif
-  !   enddo
-  ! endif
+  ! get_domain_extent ensures that domains start at 1 for compatibility between
+  ! static and dynamically allocated arrays, unless global_indexing is true.
+  call get_domain_extent(G%Domain, G%isc, G%iec, G%jsc, G%jec, &
+                         G%isd, G%ied, G%jsd, G%jed, &
+                         G%isg, G%ieg, G%jsg, G%jeg, &
+                         G%idg_offset, G%jdg_offset, G%symmetric, &
+                         local_indexing=.not.global_indexing)
+  G%isd_global = G%isd+G%idg_offset ; G%jsd_global = G%jsd+G%jdg_offset
 
-  !--- get grid size from the input file hgrid file.
-  call field_size(ocean_hgrid, 'x', dims)
-  if(mod(dims(1),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
-      'x-size of x in file '//trim(ocean_hgrid)//' should be 2*niglobal+1')
-  if(mod(dims(2),2) /= 1) call SIS_error(FATAL, '==>Error from ice_grid_mod(set_hor_grid): '//&
-      'y-size of x in file '//trim(ocean_hgrid)//' should be 2*njglobal+1')
-  ni = dims(1)/2
-  nj = dims(2)/2
-
-  if (ni /= G%Domain%niglobal) call SIS_error(FATAL, "set_hor_grid: "//&
-    "The total i-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-  if (nj /= G%Domain%njglobal) call SIS_error(FATAL, "set_hor_grid: "//&
-    "The total j-grid size from file "//trim(ocean_hgrid)//" is inconsistent with SIS_input.")
-
-  call mpp_get_compute_domain(G%Domain%mpp_domain, isca, ieca, jsca, jeca )
-  call mpp_get_data_domain(G%Domain%mpp_domain, isda, ieda, jsda, jeda )
-  call mpp_get_global_domain(G%Domain%mpp_domain, isg, ieg, jsg, jeg )
-
-  ! Allocate and fill in default values for elements of the sea ice grid type.
-  if (global_indexing) then
-    i_off = 0 ; j_off = 0
-  else
-    i_off = isda-1 ; j_off = jsda-1
-    ! i_off = 1000 ; j_off = 1000 ! Use this for debugging.
-  endif
-
-  G%isc = isca-i_off ; G%iec = ieca-i_off ; G%jsc = jsca-j_off ; G%jec = jeca-j_off
-  G%isd = isda-i_off ; G%ied = ieda-i_off ; G%jsd = jsda-j_off ; G%jed = jeda-j_off
-  G%isg = isg ; G%ieg = ieg ; G%jsg = jsg ; G%jeg = jeg
-!  G%ks = 0 ; G%ke = 0  ! Change this for shared ocean / ice grids.
-
-  G%symmetric = G%Domain%symmetric
   G%nonblocking_updates = G%Domain%nonblocking_updates
 
+  ! Set array sizes for fields that are discretized at tracer cell boundaries.
   G%IscB = G%isc ; G%JscB = G%jsc
   G%IsdB = G%isd ; G%JsdB = G%jsd
   G%IsgB = G%isg ; G%JsgB = G%jsg
@@ -310,44 +220,83 @@ subroutine set_hor_grid(G, param_file, ice_domain)
   G%IedB = G%ied ; G%JedB = G%jed
   G%IegB = G%ieg ; G%JegB = G%jeg
 
-  i_off = isca - G%isc ; j_off = jsca - G%jsc
-
   call allocate_metrics(G)
 
-  G%g_Earth = grav
+! setup block indices.
+  nihalo = G%Domain%nihalo
+  njhalo = G%Domain%njhalo
+  nblocks = niblock * njblock
+  if (nblocks < 1) call SIS_error(FATAL, "SIS: set_hor_grid: " // &
+       "nblocks(=NI_BLOCK*NJ_BLOCK) must be no less than 1")
 
-  !--- z1l: loop through the pelist to find the symmetry processor.
-  !--- This is needed to address the possibility that some of the all-land processor
-  !--- regions are masked out. This is only needed for tripolar grid.
-  if (G%Domain%Y_flags == FOLD_NORTH_EDGE) then
-    allocate(pelist(npes), islist(npes), ielist(npes), jslist(npes), jelist(npes))
-    call mpp_get_pelist(G%Domain%mpp_domain, pelist)
-    call mpp_get_compute_domains(G%Domain%mpp_domain, &
-             xbegin=islist, xend=ielist, ybegin=jslist, yend=jelist)
+  allocate(ibegin(niblock), iend(niblock), jbegin(njblock), jend(njblock))
+  call compute_block_extent(G%HI%isc,G%HI%iec,niblock,ibegin,iend)
+  call compute_block_extent(G%HI%jsc,G%HI%jec,njblock,jbegin,jend)
+  !-- make sure the last block is the largest.
+  do i = 1, niblock-1
+    if (iend(i)-ibegin(i) > iend(niblock)-ibegin(niblock) ) call SIS_error(FATAL, &
+       "SIS: set_hor_grid: the last block size in x-direction is not the largest")
+  enddo
+  do j = 1, njblock-1
+    if (jend(j)-jbegin(j) > jend(njblock)-jbegin(njblock) ) call SIS_error(FATAL, &
+       "SIS: set_hor_grid: the last block size in y-direction is not the largest")
+  enddo
 
-    do pe=1,npes ; if ( jslist(pe) == jsca .and. islist(pe) + ieca == ni+1 ) then
-      if ( jelist(pe) /= jeca ) call SIS_error(FATAL, &
-              "ice_model: jelist(p) /= jec but jslist(p) == jsc")
-      if ( ielist(pe) + isca /= ni+1) call SIS_error(FATAL, &
-              "ice_model: ielist(p) + isc /= ni+1 but islist(p) + iec == ni+1")
-      exit
-    endif ; enddo
-    deallocate(pelist, islist, ielist, jslist, jelist)
-  endif
+  G%nblocks = nblocks
+  allocate(G%Block(nblocks))
+  ied_max = 1 ; jed_max = 1
+  do n = 1,nblocks
+    ! Copy all information from the array index type describing the local grid.
+    G%Block(n) = G%HI
+
+    i = mod((n-1), niblock) + 1
+    j = (n-1)/niblock + 1
+    !--- isd and jsd are always 1 for each block to permit array reuse.
+    G%Block(n)%isd = 1 ; G%Block(n)%jsd = 1
+    G%Block(n)%isc = G%Block(n)%isd+nihalo
+    G%Block(n)%jsc = G%Block(n)%jsd+njhalo
+    G%Block(n)%iec = G%Block(n)%isc + iend(i) - ibegin(i)
+    G%Block(n)%jec = G%Block(n)%jsc + jend(j) - jbegin(j)
+    G%Block(n)%ied = G%Block(n)%iec + nihalo
+    G%Block(n)%jed = G%Block(n)%jec + njhalo
+    G%Block(n)%IscB = G%Block(n)%isc; G%Block(n)%IecB = G%Block(n)%iec
+    G%Block(n)%JscB = G%Block(n)%jsc; G%Block(n)%JecB = G%Block(n)%jec
+    !   For symmetric memory domains, the first block will have the extra point
+    ! at the lower boundary of its computational domain.
+    if (G%symmetric) then
+      if (i==1) G%Block(n)%IscB = G%Block(n)%IscB-1
+      if (j==1) G%Block(n)%JscB = G%Block(n)%JscB-1
+    endif
+    G%Block(n)%IsdB = G%Block(n)%isd; G%Block(n)%IedB = G%Block(n)%ied
+    G%Block(n)%JsdB = G%Block(n)%jsd; G%Block(n)%JedB = G%Block(n)%jed
+    !--- For symmetric memory domain, every block will have an extra point
+    !--- at the lower boundary of its data domain.
+    if (G%symmetric) then
+      G%Block(n)%IsdB = G%Block(n)%IsdB-1
+      G%Block(n)%JsdB = G%Block(n)%JsdB-1
+    endif
+    G%Block(n)%idg_offset = (ibegin(i) - G%Block(n)%isc) + G%HI%idg_offset
+    G%Block(n)%jdg_offset = (jbegin(j) - G%Block(n)%jsc) + G%HI%jdg_offset
+    ! Find the largest values of ied and jed so that all blocks will have the
+    ! same size in memory.
+    ied_max = max(ied_max, G%Block(n)%ied)
+    jed_max = max(jed_max, G%Block(n)%jed)
+  enddo
+
+  ! Reset all of the data domain sizes to match the largest for array reuse,
+  ! recalling that all block have isd=jed=1 for array reuse.
+  do n = 1,nblocks
+    G%Block(n)%ied = ied_max ; G%Block(n)%IedB = ied_max
+    G%Block(n)%jed = jed_max ; G%Block(n)%JedB = jed_max
+  enddo
+
+  !-- do some bounds error checking
+  if ( G%block(nblocks)%ied+G%block(nblocks)%idg_offset > G%HI%ied + G%HI%idg_offset ) &
+        call SIS_error(FATAL, "SIS: set_hor_grid: G%ied_bk > G%ied")
+  if ( G%block(nblocks)%jed+G%block(nblocks)%jdg_offset > G%HI%jed + G%HI%jdg_offset ) &
+        call SIS_error(FATAL, "SIS: set_hor_grid: G%jed_bk > G%jed")
 
 end subroutine set_hor_grid
-
-
-function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val
-  real :: I_val
-  ! This function implements Adcroft's rule for division by 0.
-
-  I_val = 0.0
-  if (val /= 0.0) I_val = 1.0/val
-end function Adcroft_reciprocal
-
-!---------------------------------------------------------------------
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
 logical function isPointInCell(G, i, j, x, y)
@@ -389,9 +338,9 @@ subroutine set_first_direction(G, y_first)
 end subroutine set_first_direction
 
 !---------------------------------------------------------------------
-
+!> Allocate memory used by the SIS_hor_grid_type and related structures.
 subroutine allocate_metrics(G)
-  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G !< The horizontal grid type
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
   ! This subroutine allocates the lateral elements of the SIS_hor_grid_type that
@@ -449,9 +398,11 @@ subroutine allocate_metrics(G)
 
   ALLOC_(G%bathyT(isd:ied, jsd:jed)) ; G%bathyT(:,:) = 0.0
   ALLOC_(G%CoriolisBu(IsdB:IedB, JsdB:JedB)) ; G%CoriolisBu(:,:) = 0.0
+  ALLOC_(G%dF_dx(isd:ied, jsd:jed)) ; G%dF_dx(:,:) = 0.0
+  ALLOC_(G%dF_dy(isd:ied, jsd:jed)) ; G%dF_dy(:,:) = 0.0
 
-  allocate(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
-  allocate(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
+  ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
+  ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
   allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
   allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
@@ -463,7 +414,7 @@ end subroutine allocate_metrics
 !---------------------------------------------------------------------
 !> Release memory used by the SIS_hor_grid_type and related structures.
 subroutine SIS_hor_grid_end(G)
-  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(inout) :: G !< The horizontal grid type
 
   DEALLOC_(G%dxT)  ; DEALLOC_(G%dxCu)  ; DEALLOC_(G%dxCv)  ; DEALLOC_(G%dxBu)
   DEALLOC_(G%IdxT) ; DEALLOC_(G%IdxCu) ; DEALLOC_(G%IdxCv) ; DEALLOC_(G%IdxBu)
@@ -488,6 +439,7 @@ subroutine SIS_hor_grid_end(G)
   DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
 
   DEALLOC_(G%bathyT)  ; DEALLOC_(G%CoriolisBu)
+  DEALLOC_(G%dF_dx)  ; DEALLOC_(G%dF_dy)
   DEALLOC_(G%sin_rot) ; DEALLOC_(G%cos_rot)
 
   deallocate(G%gridLonT) ; deallocate(G%gridLatT)
@@ -498,4 +450,4 @@ subroutine SIS_hor_grid_end(G)
 
 end subroutine SIS_hor_grid_end
 
-end module SIS_hor_grid_mod
+end module SIS_hor_grid

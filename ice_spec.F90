@@ -9,7 +9,6 @@ use mpp_mod, only: input_nml_file
 
 use time_manager_mod, only: time_type, get_date, set_date
 use data_override_mod,only: data_override
-use constants_mod,    only: Tfreeze
 
 implicit none
 include 'netcdf.inc'
@@ -52,6 +51,7 @@ real, dimension(size(ts,1),size(ts,2))                :: sst, icec
 
 real ::  t_sw_freeze0 = -1.8
 real ::  t_sw_freeze
+real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 integer :: ierr, io, unit
 type(time_type) :: Spec_Time
 integer :: tod(3),dum
@@ -87,7 +87,7 @@ endif
 
   t_sw_freeze = t_sw_freeze0
   if (sst_degk) then
-     t_sw_freeze = t_sw_freeze0 + Tfreeze ! convert sea water freeze point to degK
+     t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
   endif
   icec = 0.0; iceh = 0.0; sst = t_sw_freeze;
   call data_override('ICE', 'sic_obs', icec, Spec_Time)
@@ -138,7 +138,7 @@ endif
   if (sst_degk) then
      ts = sst
   else
-     ts = sst+Tfreeze
+     ts = sst+T_0degC
   endif
 
   return

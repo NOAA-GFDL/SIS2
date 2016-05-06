@@ -40,7 +40,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
 use time_manager_mod, only : set_date, get_time, get_date
