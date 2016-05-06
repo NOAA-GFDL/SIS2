@@ -32,10 +32,10 @@ module SIS_tracer_flow_control
 
     use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
     use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
-    use ice_grid_mod, only : ice_grid_type
+    use ice_grid, only : ice_grid_type
     use SIS_tracer_registry, only : SIS_tracer_registry_type
     use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
-    use SIS_hor_grid_mod, only : SIS_hor_grid_type
+    use SIS_hor_grid, only : SIS_hor_grid_type
 
     use fms_io_mod,      only : restart_file_type
     use MOM_file_parser, only : get_param, log_version, param_file_type

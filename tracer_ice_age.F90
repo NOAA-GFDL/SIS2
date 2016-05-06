@@ -68,7 +68,7 @@ module ice_age_tracer
         safe_alloc_ptr
     use SIS_diag_mediator, only: SIS_diag_ctrl, post_data=>post_SIS_data
     use SIS_tracer_registry, only : register_SIS_tracer, SIS_tracer_registry_type
-    use SIS_hor_grid_mod, only : sis_hor_grid_type
+    use SIS_hor_grid, only : sis_hor_grid_type
 
     use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
     use MOM_restart, only : query_initialized, MOM_restart_CS
@@ -83,7 +83,7 @@ module ice_age_tracer
     use fms_io_mod, only : register_restart_field
     use fms_io_mod, only : restart_file_type
 
-    use ice_grid_mod, only : ice_grid_type
+    use ice_grid, only : ice_grid_type
 
     implicit none ; private
 #include "SIS2_memory.h"
