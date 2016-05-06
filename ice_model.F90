@@ -95,7 +95,7 @@ use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
-use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns, SIS_call_tracer_stocks
+use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 
