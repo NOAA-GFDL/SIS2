@@ -55,8 +55,6 @@ module SIS_tracer_flow_control
 
     type, public :: SIS_tracer_flow_control_CS ; private
         logical :: use_ice_age = .false.
-        logical :: conc_age = .false.
-        logical :: mass_age = .false.
         type(ice_age_tracer_CS), pointer :: ice_age_tracer_CSp => NULL()
     end type SIS_tracer_flow_control_CS
 
@@ -146,9 +144,8 @@ contains
             type(SIS_hor_grid_type),                    intent(inout) :: G
             type(ice_grid_type),                        intent(in) :: IG
             type(SIS_tracer_flow_control_CS), pointer,  intent(in) :: CS
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: &
-                mi, mi_old
-
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi_old
             !   This subroutine calls all registered tracer column physics
             ! subroutines.
 
@@ -160,17 +157,17 @@ contains
             if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_column_fns: "// &
                 "Module must be initialized via call_tracer_register before it is used.")
             ! Add calls to tracer column functions here.
-             if (CS%use_ice_age) &
+            if (CS%use_ice_age) &
                 call ice_age_tracer_column_physics(dt, G, IG,  CS%ice_age_tracer_CSp, mi, mi_old)
 
         end subroutine SIS_call_tracer_column_fns
 
         subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
 
-            type(SIS_hor_grid_type),                  intent(in)  :: G
-            type(ice_grid_type),                      intent(in)  :: IG
-            type(SIS_tracer_flow_control_CS),         pointer     :: CS
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: mi
+            type(SIS_hor_grid_type),                    intent(in)  :: G
+            type(ice_grid_type),                        intent(in)  :: IG
+            type(SIS_tracer_flow_control_CS),           pointer     :: CS
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
 
             !   This subroutine calls all registered tracer packages to enable them to
             ! add to the surface state returned to the coupler. These routines are optional.

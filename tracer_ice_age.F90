@@ -320,7 +320,6 @@ contains
 
             call query_vardesc(CS%tr_desc(m), name, units=units, longname=longname, &
                 caller="initialize_ice_age_tracer")
-
             CS%id_tracer(m) = register_SIS_diag_field("ice_model", trim(name), CS%diag%axesTC, &
                 CS%Time, trim(longname) , trim(units),missing_value = missing)
             CS%id_tr_adx(m) = register_SIS_diag_field("ice_model", trim(name)//"_adx", &
@@ -338,12 +337,13 @@ contains
     end subroutine initialize_ice_age_tracer
 
     subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
-        real,                               intent(in) :: dt
+        real,                               	intent(in) :: dt
         type(sis_hor_grid_type),                intent(in) :: G
-        type(ice_grid_type),                intent(in) :: IG
-        type(ice_age_tracer_CS),          pointer    :: CS
-        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), optional :: mi, mi_old
-
+        type(ice_grid_type),                	intent(in) :: IG
+        type(ice_age_tracer_CS),          	pointer    :: CS
+        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
+        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi_old
+        
         ! Arguments:
         !  (in)      dt - The amount of time covered by this call, in s.
         !  (in)      mi_old - Mass of ice at the beginning of the ice model timestep
@@ -371,7 +371,8 @@ contains
 
         Isecs_per_year = 1.0 / (365.0*86400.0)
         dt_year = dt * Isecs_per_year
-        min_age = dt_year * 0.1
+
+        min_age = dt_year * 0.01
 
         call get_time(CS%Time, secs, days)
         year = (86400.0*days + real(secs)) * Isecs_per_year
@@ -401,7 +402,6 @@ contains
                 endif
 
             enddo ; enddo ; enddo
-
         endif ; enddo
 
         ! If newly formed ice reduces the age, then apply the net sink term
@@ -429,7 +429,6 @@ contains
                     enddo
 
                 endif
-                print *, "Max ice age ", max_age
             enddo ; enddo
         endif ; enddo
 
@@ -452,7 +451,7 @@ contains
         type(sis_hor_grid_type),               intent(in) :: G
         type(ice_grid_type),                   intent(in) :: IG
         type(ice_age_tracer_CS),               pointer    :: CS
-        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: mi
+        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
 
         ! This function calculates the mass-weighted integral of all tracer stocks,
         ! returning the number of stocks it has calculated.  If the stock_index

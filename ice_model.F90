@@ -1604,7 +1604,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     rdg_rate, & ! Niki: Where should this come from?
     snow2ocn
   real    :: tmp3
-
+  mi_old(:,:,:) = 0.0
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
@@ -1754,11 +1754,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   ! Thermodynamics
   !
   if (.not.IST%interspersed_thermo) then
-    !TOM> Store old ice mass per unit area for calculating partial ice growth.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      mi_old(i,j,k) = IST%mH_ice(i,j,k)
-    enddo ; enddo ; enddo
+    !TOM> Store old ice mass per unit area for calculating partial ice growth.  
+    mi_old = IST%mH_ice
+    
     !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
     !     in order to subtract ice melt proportionally from ridged ice volume (see below)
     if (IST%do_ridging) then
@@ -1800,8 +1798,10 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
     if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here
-    call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
 
+
+    ! Do tracer column physics
+    call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
 
     ! Set up the thermodynamic fluxes in the externally visible structure Ice.
     call set_ocean_top_fluxes(Ice, IST, G, IG)
@@ -2145,9 +2145,10 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     if (IST%interspersed_thermo .and. nds==1) then
 
       !TOM> Store old ice mass per unit area for calculating partial ice growth.
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
         mi_old(i,j,k) = IST%mH_ice(i,j,k)
-      enddo ; enddo ; enddo
+    enddo ; enddo ; enddo
       !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
       !     in order to subtract ice melt proportionally from ridged ice volume (see below)
       if (IST%do_ridging) then
@@ -2169,6 +2170,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
         call SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
       else
         call SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
+
       endif
 
       !TOM> calculate partial ice growth for ridging and aging.
@@ -2187,6 +2189,8 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
       if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
       !  Other routines that do thermodynamic vertical processes should be added here.
+      !  Do tracer column physics
+      call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
 
       call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
                                  IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
@@ -2201,6 +2205,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     endif  ! Interspersed thermo
 
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
+
 
     !
     ! Do ice transport ... all ocean fluxes have been calculated by now.
@@ -2427,6 +2432,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 !    if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time)
 !    if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*Ice%area(:,:), &
   endif
+
 
   !   Copy the surface properties, fractional areas and other variables to the
   ! externally visible structure Ice.
