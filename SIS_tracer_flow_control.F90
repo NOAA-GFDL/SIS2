@@ -66,14 +66,14 @@ contains
 
     subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
         Ice_restart, restart_file)
-        type(SIS_hor_grid_type),        intent(in) :: G
-        type(ice_grid_type),            intent(in) :: IG
-        type(param_file_type),          intent(in) :: param_file
-        type(SIS_tracer_flow_control_CS), pointer  :: CS
-        type(SIS_diag_ctrl), target                :: diag
-        type(SIS_tracer_registry_type),   pointer  :: TrReg
-        type(restart_file_type),        intent(inout) :: Ice_restart
-        character(len=*),               intent(in) :: restart_file
+        type(SIS_hor_grid_type),                intent(in) :: G
+        type(ice_grid_type),                    intent(in) :: IG
+        type(param_file_type),                  intent(in) :: param_file
+        type(SIS_tracer_flow_control_CS),       pointer    :: CS
+        type(SIS_diag_ctrl), target                        :: diag
+        type(SIS_tracer_registry_type),         pointer    :: TrReg
+        type(restart_file_type),                intent(inout) :: Ice_restart
+        character(len=*),                       intent(in) :: restart_file
 
         ! Argument:  G - The ice model's horizontal grid structure.
         !  (in)      IG - The ice model's grid structure.
@@ -116,11 +116,11 @@ contains
         end subroutine SIS_call_tracer_register
 
         subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS)
-            type(time_type), target,               intent(in) :: day
-            type(SIS_hor_grid_type),               intent(inout) :: G
-            type(ice_grid_type),                   intent(in) :: IG
-            type(param_file_type),                 intent(in) :: param_file
-            type(SIS_tracer_flow_control_CS),      pointer    :: CS
+            type(time_type), target,                    intent(in) :: day
+            type(SIS_hor_grid_type),                    intent(inout) :: G
+            type(ice_grid_type),                        intent(in) :: IG
+            type(param_file_type),                      intent(in) :: param_file
+            type(SIS_tracer_flow_control_CS),           pointer    :: CS
             !   This subroutine calls all registered tracer initialization
             ! subroutines.
 
@@ -137,15 +137,16 @@ contains
             !  Add other user-provided calls here.
             if (CS%use_ice_age) &
                 call initialize_ice_age_tracer(day, G, IG, CS%ice_age_tracer_CSp)
+
         end subroutine SIS_tracer_flow_control_init
 
         subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
-            real,                                       intent(in) :: dt
-            type(SIS_hor_grid_type),                    intent(in) :: G
-            type(ice_grid_type),                        intent(in) :: IG
-            type(SIS_tracer_flow_control_CS), pointer,  intent(inout) :: CS
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi_old
+            real,                                           intent(in) :: dt
+            type(SIS_hor_grid_type),                        intent(in) :: G
+            type(ice_grid_type),                            intent(in) :: IG
+            type(SIS_tracer_flow_control_CS), pointer                  :: CS
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi_old
             !   This subroutine calls all registered tracer column physics
             ! subroutines.
 
@@ -164,10 +165,10 @@ contains
 
         subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
 
-            type(SIS_hor_grid_type),                    intent(in)  :: G
-            type(ice_grid_type),                        intent(in)  :: IG
-            type(SIS_tracer_flow_control_CS),           pointer     :: CS
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
+            type(SIS_hor_grid_type),                        intent(in)  :: G
+            type(ice_grid_type),                            intent(in)  :: IG
+            type(SIS_tracer_flow_control_CS),               pointer     :: CS
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in)  :: mi
 
             !   This subroutine calls all registered tracer packages to enable them to
             ! add to the surface state returned to the coupler. These routines are optional.

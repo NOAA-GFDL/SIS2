@@ -151,12 +151,12 @@ contains
 
     logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
         Ice_restart, restart_file)
-        type(sis_hor_grid_type),  intent(in) :: G
-        type(ice_grid_type),      intent(in) :: IG
-        type(param_file_type),    intent(in) :: param_file
-        type(ice_age_tracer_CS), pointer     :: CS
-        type(SIS_diag_ctrl), target,   intent(inout) :: diag
-        type(SIS_tracer_registry_type),    pointer    :: TrReg
+        type(sis_hor_grid_type),                intent(in) :: G
+        type(ice_grid_type),                    intent(in) :: IG
+        type(param_file_type),                  intent(in) :: param_file
+        type(ice_age_tracer_CS),                pointer    :: CS
+        type(SIS_diag_ctrl), target,            intent(inout) :: diag
+        type(SIS_tracer_registry_type),         pointer    :: TrReg
         type(restart_file_type), intent(inout) :: Ice_restart
         character(len=*)       :: restart_file
         ! This subroutine is used to age register tracer fields and subroutines
@@ -270,11 +270,11 @@ contains
 
 
     subroutine initialize_ice_age_tracer( day, G, IG, CS )
-        type(time_type), target,               intent(in) :: day
-        type(sis_hor_grid_type),              intent(in) :: G
-        type(ice_grid_type),              intent(in) :: IG
-        type(ice_age_tracer_CS),          pointer    :: CS
-        real, parameter                              :: missing = -1.0e34
+        type(time_type), target,                intent(in) :: day
+        type(sis_hor_grid_type),                intent(in) :: G
+        type(ice_grid_type),                    intent(in) :: IG
+        type(ice_age_tracer_CS),                pointer    :: CS
+        real,                                   parameter :: missing = -1.0e34
         !   This subroutine initializes the CS%ntr tracer fields in tr(:,:,:,:)
         ! and it sets up the tracer output.
 
@@ -337,12 +337,12 @@ contains
     end subroutine initialize_ice_age_tracer
 
     subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
-        real,                               	intent(in) :: dt
-        type(sis_hor_grid_type),                intent(in) :: G
-        type(ice_grid_type),                	intent(in) :: IG
-        type(ice_age_tracer_CS),          	pointer    :: CS
-        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
-        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi_old
+        real,                               	    intent(in) :: dt
+        type(sis_hor_grid_type),                    intent(in) :: G
+        type(ice_grid_type),                	    intent(in) :: IG
+        type(ice_age_tracer_CS)                    	           :: CS
+        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: mi
+        real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),intent(in) :: mi_old
         
         ! Arguments:
         !  (in)      dt - The amount of time covered by this call, in s.
@@ -366,7 +366,6 @@ contains
 
         isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ;
 
-        if (.not.associated(CS)) return
         if (CS%ntr < 1) return
 
         mi_min = 1.0e-7*IG%kg_m2_to_H
@@ -453,7 +452,7 @@ contains
         character(len=*), dimension(:)                    :: units
         type(sis_hor_grid_type),               intent(in) :: G
         type(ice_grid_type),                   intent(in) :: IG
-        type(ice_age_tracer_CS),               pointer    :: CS
+        type(ice_age_tracer_CS)                           :: CS
         real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
 
         ! This function calculates the mass-weighted integral of all tracer stocks,
@@ -474,7 +473,6 @@ contains
         integer :: isc, iec, jsc, jec
         isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-        if (.not.associated(CS)) return
         if (CS%ntr < 1) return
 
         do m=1,CS%ntr
