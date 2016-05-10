@@ -602,7 +602,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
             trim(msg_start), Heat, Heat_chg, Heat_anom, Heat_anom/Heat
       endif
 
-!      call SIS_call_tracer_stocks(G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice)
+      call SIS_call_tracer_stocks(G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice)
 
 !     do m=1,nTr_stocks
 

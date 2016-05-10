@@ -104,9 +104,9 @@ module ice_age_tracer
                           ! can be found, or an empty string for internal initialization.
         type(time_type), pointer  :: Time ! A pointer to the ocean model's clock.
         type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
-        real, pointer :: tr(:,:,:,:) => NULL()   ! The array of tracers used in this
+        real, pointer :: tr(:,:,:,:,:) => NULL()   ! The array of tracers used in this
                                                  ! subroutine, in g m-3?
-        real, pointer :: tr_aux(:,:,:,:) => NULL() ! The masked tracer concentration
+        real, pointer :: tr_aux(:,:,:,:,:) => NULL() ! The masked tracer concentration
                                                    ! for output, in g m-3.
         type(p3d), dimension(NTR_MAX) :: &
             tr_adx, &! Tracer zonal advective fluxes in g m-3 m3 s-1.
@@ -155,8 +155,8 @@ contains
         type(ice_grid_type),                    intent(in) :: IG
         type(param_file_type),                  intent(in) :: param_file
         type(ice_age_tracer_CS),                pointer    :: CS
-        type(SIS_diag_ctrl), target,            intent(inout) :: diag
-        type(SIS_tracer_registry_type),         pointer    :: TrReg
+        type(SIS_diag_ctrl),                    target     :: diag
+        type(SIS_tracer_registry_type),         pointer     :: TrReg
         type(restart_file_type), intent(inout) :: Ice_restart
         character(len=*)       :: restart_file
         ! This subroutine is used to age register tracer fields and subroutines
@@ -243,9 +243,11 @@ contains
             CS%nlevels(m) = IG%CatIce
         endif
 
-        allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,CS%ntr)) ; CS%tr(:,:,:,:) = 0.0
+        allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,1,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
 
+        ! Make sure that diag manager is assigned
         CS%diag => diag
+
         do m=1,CS%ntr
 
             call query_vardesc(CS%tr_desc(m), name=var_name, &
@@ -253,11 +255,11 @@ contains
 
             ! Register the tracer for the restart file.
             CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
-                CS%tr(:,:,:,m), domain=G%domain%mpp_domain, &
+                CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
                 mandatory=.false.)
 
             ! Register the tracer for horizontal advection & diffusion.
-            call register_SIS_tracer(CS%tr(:,:,:,m), G, IG, 1, var_name, param_file, &
+            call register_SIS_tracer(CS%tr(:,:,:,1,m), G, IG, 1, var_name, param_file, &
                 TrReg, snow_tracer=.false.)
                              
 
@@ -302,13 +304,13 @@ contains
         IscB = G%IscB ; IecB = G%IecB ; JscB = G%JscB ; JecB = G%JecB
 
         CS%Time => day
-        CS%tr(:,:,:,:) = 0.0
+        CS%tr(:,:,:,:,:) = 0.0
         do m=1,CS%ntr
             do k=1,CS%nlevels(m) ; do j=jsc,jec ; do i=isc,iec
                 if (G%mask2dT(i,j) < 0.5) then
-                    CS%tr(i,j,k,m) = CS%land_val(m)
+                    CS%tr(i,j,k,1,m) = CS%land_val(m)
                 else
-                    CS%tr(i,j,k,m) = CS%IC_val(m)
+                    CS%tr(i,j,k,1,m) = CS%IC_val(m)
                 endif
             enddo ; enddo ; enddo
         enddo ! Tracer loop
@@ -320,7 +322,7 @@ contains
 
             call query_vardesc(CS%tr_desc(m), name, units=units, longname=longname, &
                 caller="initialize_ice_age_tracer")
-            CS%id_tracer(m) = register_SIS_diag_field("ice_model", trim(name), CS%diag%axesTC, &
+            CS%id_tracer(m) = register_SIS_diag_field("ice_model", trim(name), CS%diag%axesTc, &
                 CS%Time, trim(longname) , trim(units),missing_value = missing)
             CS%id_tr_adx(m) = register_SIS_diag_field("ice_model", trim(name)//"_adx", &
                 CS%diag%axesCuc, CS%Time, trim(longname)//" advective zonal flux" , &
@@ -362,7 +364,6 @@ contains
         integer :: secs, days   ! Integer components of the time type.
         integer :: i, j, k, m
         integer :: isc, iec, jsc, jec
-        real, dimension(:,:,:),                 pointer :: tr_ptr        
 
         isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ;
 
@@ -394,12 +395,12 @@ contains
             (year>=CS%tracer_start_year(m))) then
             do k=1,CS%nlevels(m) ; do j=jsc,jec ; do i=isc,iec
 
-                if(CS%tr(i,j,k,m)<min_age) CS%tr(i,j,k,m) = 0.0
+                if(CS%tr(i,j,k,1,m)<min_age) CS%tr(i,j,k,1,m) = 0.0
 
                 if(mi(i,j,k)>mi_min) then
-                    CS%tr(i,j,k,m) = CS%tr(i,j,k,m) + dt_year
+                    CS%tr(i,j,k,1,m) = CS%tr(i,j,k,1,m) + dt_year
                 else
-                    CS%tr(i,j,k,m) = 0.0
+                    CS%tr(i,j,k,1,m) = 0.0
                 endif
 
             enddo ; enddo ; enddo
@@ -414,7 +415,7 @@ contains
                 ! on every ice thickness category
 
                 if(mi(i,j,k)>mi_old(i,j,k)) then
-                    CS%tr(i,j,k,m) = CS%tr(i,j,k,m) * (mi_old(i,j,k) / mi(i,j,k))
+                    CS%tr(i,j,k,1,m) = CS%tr(i,j,k,1,m) * (mi_old(i,j,k) / mi(i,j,k))
                 endif
 
             enddo ; enddo ; enddo
@@ -424,9 +425,9 @@ contains
         do m=1,CS%ntr ; if (CS%uniform_vertical(m)) then
             do j=jsc,jec ; do i=isc,iec
                 if(vertsum_mi(i,j) > 0.0) then
-                    max_age = maxval(CS%tr(i,j,:,m))
+                    max_age = maxval(CS%tr(i,j,:,1,m))
                     do k=1,CS%nlevels(m)
-                        CS%tr(i,j,k,m) = max_age
+                        CS%tr(i,j,k,1,m) = max_age
                     enddo
 
                 endif
@@ -434,9 +435,8 @@ contains
         endif ; enddo
 
         do m=1,CS%ntr
-            tr_ptr=>CS%tr(:,:,:,m)
             if (CS%id_tracer(m)>0) &
-                call post_data(CS%id_tracer(m),tr_ptr,CS%diag)
+                call post_data(CS%id_tracer(m),CS%tr(:,:,:,1,m),CS%diag)
             if (CS%id_tr_adx(m)>0) &
                 call post_data(CS%id_tr_adx(m),CS%tr_adx(m)%p(:,:,:),CS%diag)
             if (CS%id_tr_ady(m)>0) &
@@ -481,7 +481,7 @@ contains
             units(nstocks) = trim(units(m))//" kg"
             stocks(nstocks) = 0.0
             do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-                stocks(nstocks) = stocks(nstocks) + CS%tr(i,j,k,m) * &
+                stocks(nstocks) = stocks(nstocks) + CS%tr(i,j,k,1,m) * &
                     (G%mask2dT(i,j) * G%areaT(i,j) * mi(i,j,k))
             enddo ; enddo ; enddo
 !            stocks(nstocks) = IG%H_to_kg_m2 * stocks(nstocks)
