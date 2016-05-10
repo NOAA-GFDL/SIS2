@@ -141,9 +141,9 @@ contains
 
         subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
             real,                                       intent(in) :: dt
-            type(SIS_hor_grid_type),                    intent(inout) :: G
+            type(SIS_hor_grid_type),                    intent(in) :: G
             type(ice_grid_type),                        intent(in) :: IG
-            type(SIS_tracer_flow_control_CS), pointer,  intent(in) :: CS
+            type(SIS_tracer_flow_control_CS), pointer,  intent(inout) :: CS
             real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
             real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi_old
             !   This subroutine calls all registered tracer column physics

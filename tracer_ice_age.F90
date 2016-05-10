@@ -362,6 +362,8 @@ contains
         integer :: secs, days   ! Integer components of the time type.
         integer :: i, j, k, m
         integer :: isc, iec, jsc, jec
+        real, dimension(:,:,:),                 pointer :: tr_ptr        
+
         isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ;
 
         if (.not.associated(CS)) return
@@ -433,8 +435,9 @@ contains
         endif ; enddo
 
         do m=1,CS%ntr
+            tr_ptr=>CS%tr(:,:,:,m)
             if (CS%id_tracer(m)>0) &
-                call post_data(CS%id_tracer(m),CS%tr(:,:,:,m),CS%diag)
+                call post_data(CS%id_tracer(m),tr_ptr,CS%diag)
             if (CS%id_tr_adx(m)>0) &
                 call post_data(CS%id_tr_adx(m),CS%tr_adx(m)%p(:,:,:),CS%diag)
             if (CS%id_tr_ady(m)>0) &
