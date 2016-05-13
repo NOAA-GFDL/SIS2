@@ -1801,7 +1801,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
 
     ! Do tracer column physics
+    call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
     call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
+    call disable_SIS_averaging(IST%diag)
 
     ! Set up the thermodynamic fluxes in the externally visible structure Ice.
     call set_ocean_top_fluxes(Ice, IST, G, IG)
@@ -2190,7 +2192,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
       !  Other routines that do thermodynamic vertical processes should be added here.
       !  Do tracer column physics
+      call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
       call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
+      call disable_SIS_averaging(IST%diag)
 
       call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
                                  IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?

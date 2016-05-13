@@ -412,10 +412,14 @@ contains
                 ! @ashao: Need to think about how and where the sink associated
                 ! with newly formed sea ice gets applied. For now, apply to
                 ! the entire ice pack assuming that new ice is formed equally
-                ! on every ice thickness category
+                ! on every ice thickness category. New ice has an age equal 
+		! to the length of the timestep 
 
                 if(mi(i,j,k)>mi_old(i,j,k)) then
-                    CS%tr(i,j,k,1,m) = CS%tr(i,j,k,1,m) * (mi_old(i,j,k) / mi(i,j,k))
+		! case for when new ice has age zero
+!                    CS%tr(i,j,k,1,m) = CS%tr(i,j,k,1,m) * (mi_old(i,j,k) / mi(i,j,k))
+			CS%tr(i,j,k,1,m) = ((mi(i,j,k) - mi_old(i,j,k))*dt_year &
+				+ mi_old(i,j,k)*CS%tr(i,j,k,1,m))/mi(i,j,k)
                 endif
 
             enddo ; enddo ; enddo
