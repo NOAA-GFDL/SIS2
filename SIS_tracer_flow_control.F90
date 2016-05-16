@@ -24,9 +24,40 @@ module SIS_tracer_flow_control
     !*  By Andrew Shao, April 2016                                         *
     !*      Adapted from MOM6 code MOM_tracer_flow_control.F90             *
     !*                                                                     *
-    !*    This module contains two subroutines into which calls to other   *
-    !*  tracer initialization (call_tracer_init_fns) and column physics    *
-    !*  routines (call_tracer_column_fns) can be inserted.                 *
+    !*    This module contains subroutines into which calls to the tracer  *
+    !*    specific functions should be called. To add a new tracer the     *
+    !*    calls should be added to each of the following subroutines.      *
+    !*    Use ice_age_tracer.F90 as a model on which to base new types of  *
+    !*    ice tracers. Generally, most tracer packages will want to        *
+    !*    define their own tracer control structures which will get        *
+    !*    pointed to by the main tracer registry in                        *
+    !*    SIS_tracer_registry.F90.                                         *
+    !*                                                                     *
+    !*    SIS_call_tracer_register:                                        *
+    !*      Allocates the tracer flow control structure and reads the      *
+    !*      parameter file SIS_input to identify which tracers will be     *
+    !*      included in the current run. Tracer packages should allocate   *
+    !*      their tracer arrays here, establish whether the tracer will    *
+    !*      be initialized from a restart file, and register the tracer    *
+    !*      for the advection module.                                      *
+    !*                                                                     *
+    !*    SIS_tracer_flow_control_init:                                    *
+    !*      Sets the initial conditions for the tracer. Also, register     *
+    !*      tracer fields for output with the diag_manager.                *
+    !*                                                                     *
+    !*    SIS_call_tracer_column_fns:                                      *
+    !*      Apply any special treatment of the tracer that may occur in    *
+    !*      a vertical column. For example, source and sink terms should   *
+    !*      be calculated and applied here                                 *
+    !*                                                                     *
+    !*    SIS_call_tracer_stocks:                                          *
+    !*      NOTE: CURRENTLY NOT CALLED. This subroutine is intended to     *
+    !*      at some point calculate the inventory of each tracer and       *
+    !*      ready it for either output to a file or STDOUT                 *
+    !*                                                                     *
+    !*    SIS_tracer_flow_control_end:                                     *
+    !*      Deallocate arrays and prepare for model finalization           *
+    !*                                                                     *
     !*                                                                     *
     !********+*********+*********+*********+*********+*********+*********+**
 
@@ -65,15 +96,16 @@ contains
     ! tracers and apply vertical column processes to tracers.
 
     subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-        Ice_restart, restart_file)
+        Ice_restart, restart_file, is_restart)
         type(SIS_hor_grid_type),                intent(in) :: G
         type(ice_grid_type),                    intent(in) :: IG
         type(param_file_type),                  intent(in) :: param_file
         type(SIS_tracer_flow_control_CS),       pointer    :: CS
-        type(SIS_diag_ctrl), target                        :: diag
+        type(SIS_diag_ctrl),                    target     :: diag
         type(SIS_tracer_registry_type),         pointer    :: TrReg
         type(restart_file_type),                intent(inout) :: Ice_restart
         character(len=*),                       intent(in) :: restart_file
+        logical,                                intent(in) :: is_restart
 
         ! Argument:  G - The ice model's horizontal grid structure.
         !  (in)      IG - The ice model's grid structure.
@@ -110,33 +142,34 @@ contains
 
             if (CS%use_ice_age) CS%use_ice_age = &
                 register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-                diag, TrReg, Ice_restart, restart_file)
+                diag, TrReg, Ice_restart, restart_file, is_restart)
 
 
         end subroutine SIS_call_tracer_register
 
-        subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS)
+        subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS, is_restart)
             type(time_type), target,                    intent(in) :: day
             type(SIS_hor_grid_type),                    intent(inout) :: G
             type(ice_grid_type),                        intent(in) :: IG
             type(param_file_type),                      intent(in) :: param_file
             type(SIS_tracer_flow_control_CS),           pointer    :: CS
+            logical,                                    intent(in) :: is_restart
             !   This subroutine calls all registered tracer initialization
             ! subroutines.
 
-            ! Arguments: restart - 1 if the fields have already been read from
-            !                     a restart file.
+            ! Arguments:
             !  (in)      day - Time of the start of the run.
             !  (in)      G - The ice model's horizontal grid structure.
             !  (in)      IG - The ice model's vertical grid structure.
             !  (in)      CS - The control structure returned by a previous call to
             !                 call_tracer_register.
+            !  (in)      is_restart - flag for whether tracer should be initialized from restart
             if (.not. associated(CS)) call SIS_error(FATAL, "tracer_flow_control_init: "// &
                 "Module must be initialized via call_tracer_register before it is used.")
 
             !  Add other user-provided calls here.
             if (CS%use_ice_age) &
-                call initialize_ice_age_tracer(day, G, IG, CS%ice_age_tracer_CSp)
+                call initialize_ice_age_tracer(day, G, IG, CS%ice_age_tracer_CSp, is_restart)
 
         end subroutine SIS_tracer_flow_control_init
 
@@ -144,7 +177,7 @@ contains
             real,                                           intent(in) :: dt
             type(SIS_hor_grid_type),                        intent(in) :: G
             type(ice_grid_type),                            intent(in) :: IG
-            type(SIS_tracer_flow_control_CS), pointer                  :: CS
+            type(SIS_tracer_flow_control_CS),               pointer    :: CS
             real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
             real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi_old
             !   This subroutine calls all registered tracer column physics
@@ -165,10 +198,10 @@ contains
 
         subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
 
-            type(SIS_hor_grid_type),                        intent(in)  :: G
-            type(ice_grid_type),                            intent(in)  :: IG
-            type(SIS_tracer_flow_control_CS),               pointer     :: CS
-            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in)  :: mi
+            type(SIS_hor_grid_type),                        intent(in) :: G
+            type(ice_grid_type),                            intent(in) :: IG
+            type(SIS_tracer_flow_control_CS),               pointer    :: CS
+            real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
 
             !   This subroutine calls all registered tracer packages to enable them to
             ! add to the surface state returned to the coupler. These routines are optional.

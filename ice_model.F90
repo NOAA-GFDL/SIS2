@@ -1795,8 +1795,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       enddo ; enddo ; enddo
     endif
 
-    !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
-    if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
     !  Other routines that do thermodynamic vertical processes should be added here
 
 
@@ -2188,8 +2186,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
         enddo ; enddo ; enddo
       endif
 
-      !  Sea-ice age ... changes due to growth and melt of ice volume and aging (time stepping)
-      if (IST%id_age>0) call ice_aging(G, IG, IST%mH_ice, IST%age_ice, mi_old, dt_slow)
       !  Other routines that do thermodynamic vertical processes should be added here.
       !  Do tracer column physics
       call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
@@ -2231,7 +2227,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     if (IST%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%u_ice_C, IST%v_ice_C, &
                          IST%TrReg, IST%sea_lev, dt_slow_dyn, G, IG, IST%ice_transport_CSp, &
-                         IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
+                         IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
       ! B-grid transport
@@ -2246,7 +2242,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, uc, vc, &
                          IST%TrReg, IST%sea_lev, dt_slow_dyn, G, IG, IST%ice_transport_CSp, &
-                         IST%rdg_mice, IST%age_ice(:,:,:,1), snow2ocn, rdg_rate, &
+                         IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     endif
     if (IST%column_check) &
@@ -2381,8 +2377,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
                                     IST%diag, G=G, wtd=.true.)
   if (IST%id_S_iceav>0) call post_avg(IST%id_S_iceav, IST%sal_ice, IST%part_size(:,:,1:), &
                                     IST%diag, G=G, wtd=.true.)
-  if (IST%id_age>0) call post_avg(IST%id_age, IST%age_ice, IST%part_size(:,:,1:), &
-                                  IST%diag, G=G, wtd=.true.)
 
 
   if (IST%id_xprt>0) then
@@ -3639,6 +3633,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: idr, id_sal
   logical :: read_aux_restart
+  logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
 
   if (associated(Ice%Ice_state)) then
@@ -3950,6 +3945,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     ! be corrected for.
     H_to_kg_m2_tmp = IG%H_to_kg_m2
     IG%H_to_kg_m2 = -1.0
+    is_restart = .true.
 
     call restore_state(Ice%Ice_restart)
 
@@ -4091,6 +4087,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     else
       call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
     endif
+
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
     IST%part_size(:,:,0) = 1.0
@@ -4142,17 +4139,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                              IST%TrReg, snow_tracer=.false., &
                              massless_val=massless_ice_salin)
   endif
-  if (IST%id_age>0) &
-    call register_SIS_tracer(IST%age_ice, G, IG, 1, "age_ice", param_file, &
-                             IST%TrReg, snow_tracer=.false.)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
                            IST%sum_output_CSp, IST%ntrunc)
 
 ! Register and initialize tracer flow control and tracer register
   call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, IST%diag, IST%TrReg, &
-     Ice%Ice_restart, restart_file)
-  call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp)
+     Ice%Ice_restart, restart_file, is_restart)
+  call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp, is_restart)
 
   call close_param_file(param_file)
 
@@ -4251,46 +4245,5 @@ subroutine ice_model_end (Ice)
 
 end subroutine ice_model_end
 
-
-!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_aging - step the age of sea ice with time step                           !
-!             based on Harder, M. (1997) Roughness, age and drift trajectories !
-!             of sea ice in large-scale simulations and their use in model     !
-!             verifications, Annals of Glaciology 25, p. 237-240.              !
-!           - adding a tracer for the oldest ice per category                  !
-!             T. Martin, April/June 2008                                       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_aging(G, IG, mi, age, mi_old, dt)
-  type(SIS_hor_grid_type), intent(in) :: G
-  type(ice_grid_type),     intent(in) :: IG
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi, mi_old
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),1), intent(inout) :: age
-  real, intent(in) :: dt   ! has unit seconds
-
-  integer :: i, j, k
-  integer :: isc, iec, jsc, jec
-  real    :: dt_day
-  real    :: mi_min  ! A zero-age mass per unit area, in units of H (often kg m-2).
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  dt_day = dt / 86400.0
-  mi_min = 1.0e-7*IG%kg_m2_to_H
-
-  do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    ! age the ice by one time step, age has units of days.
-    age(i,j,k,1) = age(i,j,k,1) + dt_day
-
-    ! Ice age decreases when new ice is formed (mi>mi_old), but is not changed
-    ! by ice melt (growth<0) because melt is assumed to occur uniformly to all
-    ! ages of ice.
-    if (mi(i,j,k) > mi_old(i,j,k)) &
-      age(i,j,k,1) = age(i,j,k,1) * (mi_old(i,j,k) / mi(i,j,k))
-
-    ! Ice age is at least 0.01 time step, and excessively thin is set to age 0.
-    if ((mi(i,j,k) <= mi_min) .or. (age(i,j,k,1) < 0.01*dt_day)) age(i,j,k,1) = 0.0
-
-  enddo ; enddo ; enddo
-
-end subroutine ice_aging
 
 end module ice_model_mod

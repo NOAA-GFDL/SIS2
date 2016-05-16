@@ -89,7 +89,7 @@ contains
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
-                         dt_slow, G, IG, CS, rdg_hice, age_ice, snow2ocn, &
+                         dt_slow, G, IG, CS, rdg_hice, snow2ocn, &
                          rdg_rate, rdg_open, rdg_vosh)
   type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
@@ -102,7 +102,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, uc, vc, TrReg, sea_lev, &
   real,                                         intent(in)    :: dt_slow
   type(ice_transport_CS),                       pointer       :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: rdg_hice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: age_ice
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_rate
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_open ! formation rate of open water due to ridging
