@@ -47,7 +47,6 @@
 !*  Macros written all in capital letters are defined in SIS2_memory.h *
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
-
 module ice_age_tracer
     ! ashao: Get all the dependencies from other modules (check against
     !   ideal_age_example.F90)
@@ -57,6 +56,7 @@ module ice_age_tracer
     use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
     use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
     use SIS_hor_grid, only          : sis_hor_grid_type
+    use ice_utils_mod, only         : post_avg
 
     use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
     use MOM_restart, only           : query_initialized, MOM_restart_CS
@@ -123,17 +123,18 @@ module ice_age_tracer
         real :: min_thick_age, min_conc_age
 
         integer, dimension(NTR_MAX) :: &
-            id_tracer = -1, id_tr_adx = -1, id_tr_ady = -1 ! Indices used for the diagnostic
-                                                         ! mediator
+            id_tracer = -1, id_tr_adx = -1, id_tr_ady = -1, id_avg =-1 ! Indices used for the diagnostic
+                                                                       ! mediator
         integer, dimension(NTR_MAX) :: nlevels
 
         type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
 
+        real :: min_mass                            ! Minimum mass of ice in thickness category for it
+                                                    ! to 'exist'
+
         type(vardesc) :: tr_desc(NTR_MAX)
     end type ice_age_tracer_CS
-
-
 
 contains
 
@@ -217,6 +218,7 @@ contains
             CS%land_val(m) = 0.0
             CS%nlevels(m) = IG%CatIce
         endif
+        CS%min_mass = 1.0e-7*IG%kg_m2_to_H
 
         ! Allocate the main tracer arrays, note that this creates a singleton dimension
         ! along the ice layer (not thickness), but is necessary because the tracer
@@ -244,7 +246,7 @@ contains
             ! Register the tracer for horizontal advection & diffusion. Note that the argument
             ! of nLTr is 1 because age is uniform within an ice thickness category
             call register_SIS_tracer(CS%tr(:,:,:,1,m), G, IG, 1, var_name, param_file, &
-                TrReg, snow_tracer=.false.)
+                TrReg, snow_tracer=.false.,ad_3d_x=CS%tr_adx(m)%p, ad_3d_y=CS%tr_ady(m)%p)
                              
 
         enddo ! do m=1, CS%ntr
@@ -315,6 +317,10 @@ contains
             CS%id_tr_ady(m) = register_SIS_diag_field("ice_model", trim(name)//"_ady", &
                 CS%diag%axesCvc, CS%Time, trim(longname)//" advective meridional flux" , &
                 trim(flux_units))
+            CS%id_avg(m) = register_SIS_diag_field("ice_model", trim(name)//"_avg", &
+                CS%diag%axesT1, CS%Time, trim(longname)//" mass-averaged over all thickness categories" , &
+                trim(units))
+
 
             if (CS%id_tr_adx(m) > 0) call safe_alloc_ptr(CS%tr_adx(m)%p,IscB,IecB,jsc,jec,CS%nlevels(m))
             if (CS%id_tr_ady(m) > 0) call safe_alloc_ptr(CS%tr_ady(m)%p,isc,iec,JscB,JecB,CS%nlevels(m))
@@ -354,8 +360,6 @@ contains
 
         if (CS%ntr < 1) return
 
-        mi_min = 1.0e-7*IG%kg_m2_to_H
-
         Isecs_per_year = 1.0 / (365.0*86400.0)
         dt_year = dt * Isecs_per_year
 
@@ -371,7 +375,7 @@ contains
         do j=jsc,jec; do i=isc,iec
             do k=1,IG%CatIce
                 vertsum_mi(i,j) = vertsum_mi(i,j) + mi(i,j,k)
-                vertsum_mi_old(i,j) = vertsum_mi_old(i,j) + mi_old(i,j,k)
+!                vertsum_mi_old(i,j) = vertsum_mi_old(i,j) + mi_old(i,j,k)
             enddo
         enddo; enddo
 
@@ -382,7 +386,7 @@ contains
 
                 if(CS%tr(i,j,k,1,m)<min_age) CS%tr(i,j,k,1,m) = 0.0
 
-                if(mi(i,j,k)>mi_min) then
+                if(mi(i,j,k)>CS%min_mass) then
                     CS%tr(i,j,k,1,m) = CS%tr(i,j,k,1,m) + dt_year
                 else
                     CS%tr(i,j,k,1,m) = 0.0
@@ -431,6 +435,9 @@ contains
                 call post_data(CS%id_tr_adx(m),CS%tr_adx(m)%p(:,:,:),CS%diag)
             if (CS%id_tr_ady(m)>0) &
                 call post_data(CS%id_tr_ady(m),CS%tr_ady(m)%p(:,:,:),CS%diag)
+            if (CS%id_avg(m)>0) &
+                call post_avg(CS%id_avg(m), CS%tr(:,:,:,1,m), mi, &
+                     CS%diag, G=G, wtd=.true.)
         enddo
 
     end subroutine ice_age_tracer_column_physics
