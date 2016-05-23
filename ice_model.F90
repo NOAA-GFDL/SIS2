@@ -1607,11 +1607,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
-  ndyn_steps = 1
-  if ((IST%dt_ice_dyn > 0.0) .and. (IST%dt_ice_dyn < dt_slow)) &
-    ndyn_steps = max(CEILING(dt_slow/IST%dt_ice_dyn - 0.000001), 1)
-
-  dt_slow_dyn = dt_slow / ndyn_steps
+  if (IST%specified_ice) then
+    ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
+  else
+    ndyn_steps = 1
+    if ((IST%dt_ice_dyn > 0.0) .and. (IST%dt_ice_dyn < dt_slow)) &
+      ndyn_steps = max(CEILING(dt_slow/IST%dt_ice_dyn - 0.000001), 1)
+    dt_slow_dyn = dt_slow / ndyn_steps
+  endif
 
   IST%n_calls = IST%n_calls + 1
   IST%stress_count = 0
