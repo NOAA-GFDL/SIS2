@@ -29,6 +29,12 @@ module SIS_tracer_registry
 !* the tracers that will be advected around with the sea-ice.  This    *
 !* code was derived from its MOM6 counterpart, MOM_tracer_registry.F90 *
 !*                                                                     *
+!* Note by ashao (2016): This is a relatively low level module which   *
+!* may not need to be modified for those seeking to add a tracer to    *
+!* SIS2. Most users should look at SIS_tracer_flow_control.F90 and     *
+!* ice_age_tracer.F90 for examples on which to model their own         *
+!* tracer implementation.                                              *
+!*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
 use SIS_diag_mediator, only : SIS_diag_ctrl
@@ -70,6 +76,8 @@ type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), pointer :: ad4d_x => NULL(), ad4d_y => NULL()
              ! The arrays in which x- & y- advective fluxes by ice category and
              ! layer are stored in units of CONC m3 s-1.
+
+  ! @ashao: OBC NOT IMPLEMENTED YET
   real :: OBC_inflow_conc = 0.0  ! A tracer concentration for generic inflows.
   real, dimension(:,:,:), pointer :: OBC_in_u => NULL(), OBC_in_v => NULL()
              ! These arrays contain structured values for flow into the domain
@@ -198,15 +206,15 @@ end subroutine register_SIS_tracer
 subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, &
                                     name_snow, G, IG, param_file, Reg, &
                                     massless_iceval, massless_snowval)
-  integer,                         intent(in) :: nL_ice, nL_snow
-  type(SIS_hor_grid_type),         intent(in) :: G
-  type(ice_grid_type),             intent(in) :: IG
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_ice),  target :: ice_tr
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow), target :: snow_tr
-  character(len=*), intent(in)                :: name_ice, name_snow
-  type(param_file_type), intent(in)           :: param_file
-  type(SIS_tracer_registry_type), pointer     :: Reg
-  real,                  intent(in), optional :: massless_iceval, massless_snowval
+  integer,                                          intent(in) :: nL_ice, nL_snow
+  type(SIS_hor_grid_type),                          intent(in) :: G
+  type(ice_grid_type),                              intent(in) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_ice),   target :: ice_tr
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow),  target :: snow_tr
+  character(len=*),                                 intent(in) :: name_ice, name_snow
+  type(param_file_type),                            intent(in) :: param_file
+  type(SIS_tracer_registry_type),                   pointer    :: Reg
+  real,                                   intent(in), optional :: massless_iceval, massless_snowval
 ! This subroutine registers a pair of ice and snow tracers to be advected.
 
 ! Arguments: ice_tr - The pointer to the ice tracer, in arbitrary concentration
@@ -252,10 +260,10 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
 end subroutine register_SIS_tracer_pair
 
 subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
-  character(len=*),          intent(in)      :: name
-  type(SIS_tracer_registry_type), intent(in) :: Reg
-  real, dimension(:,:,:,:),       pointer    :: Tr_ptr
-  integer,                    intent(out)    :: nLayer
+  character(len=*),                      intent(in) :: name
+  type(SIS_tracer_registry_type),        intent(in) :: Reg
+  real, dimension(:,:,:,:),              pointer    :: Tr_ptr
+  integer,                               intent(out):: nLayer
 
   integer :: m
 
@@ -307,11 +315,11 @@ end subroutine update_SIS_tracer_halos
 
 
 subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, do_ice)
-  type(SIS_hor_grid_type),                  intent(inout) :: G
-  type(ice_grid_type),                      intent(inout) :: IG
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mass
-  type(SIS_tracer_registry_type),           intent(inout) :: Reg
-  logical,                        optional, intent(in)    :: compute_domain, do_snow, do_ice
+  type(SIS_hor_grid_type),                      intent(inout) :: G
+  type(ice_grid_type),                          intent(inout) :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: mass
+  type(SIS_tracer_registry_type),               intent(inout) :: Reg
+  logical,                               optional, intent(in) :: compute_domain, do_snow, do_ice
 
   integer :: i, j, k, m, n, is, ie, js, je, nCat
   logical :: do_snow_tr, do_ice_tr
@@ -343,10 +351,10 @@ subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, d
 end subroutine set_massless_SIS_tracers
 
 subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
-  character(len=*), intent(in)               :: name
-  type(SIS_tracer_registry_type), pointer    :: Reg
-  real, intent(in), optional                 :: OBC_inflow
-  real, pointer, dimension(:,:,:), optional  :: OBC_in_u, OBC_in_v
+  character(len=*), intent(in)                  :: name
+  type(SIS_tracer_registry_type), pointer       :: Reg
+  real, intent(in), optional                    :: OBC_inflow
+  real, pointer, dimension(:,:,:), optional     :: OBC_in_u, OBC_in_v
 ! This subroutine adds open boundary condition concentrations for a tracer that
 ! has previously been registered by a call to register_SIS_tracer.
 
