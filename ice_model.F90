@@ -119,6 +119,7 @@ implicit none ; private
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
+public :: update_ice_atm_deposition_flux
 public :: update_ice_model_slow_up, update_ice_model_slow_dn
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
@@ -229,7 +230,9 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
-  do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+  do n=1,Atmos_boundary_fluxes%num_bcs 
+   if(Atmos_boundary_fluxes%bc(n)%flux_type  .ne. 'air_sea_deposition') then
+   do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
     ind = IST%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -237,7 +240,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
       IST%tr_flux_top(i,j,k,ind) = IST%tr_flux_top(i,j,k,ind) + &
             Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
-  enddo ; enddo
+  enddo ; endif ; enddo
 
   if (IST%id_lwdn > 0) then
     Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
@@ -1135,6 +1138,46 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
 end subroutine update_ice_model_fast
 
+subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
+
+  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+
+  call do_update_ice_atm_deposition_flux( Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+
+end subroutine update_ice_atm_deposition_flux
+
+subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, Ice, IST, G, IG )
+
+  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+  type(ice_state_type),          intent(inout) :: IST
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(inout) :: IG
+
+  integer :: i, j, k, m, n , i_off, j_off, i2, j2, k2, isc, iec, jsc, jec, ncat, ind
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
+  j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
+
+  do n=1,Atmos_boundary%fluxes%num_bcs  
+   if(Atmos_boundary%fluxes%bc(n)%flux_type  .eq. 'air_sea_deposition') then
+    do m=1,Atmos_boundary%fluxes%bc(n)%num_fields
+     ind = IST%tr_flux_index(m,n)
+     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+      IST%tr_flux_top(i,j,k,ind) = IST%tr_flux_top(i,j,k,ind) + &
+            Atmos_boundary%fluxes%bc(n)%field(m)%values(i2,j2,k2)
+     enddo ; enddo ; enddo
+    enddo
+   endif 
+  enddo
+  
+end subroutine do_update_ice_atm_deposition_flux
+
 subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 
   type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
@@ -2001,7 +2044,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       !
       ! Dynamics diagnostics
       !
-      call mpp_clock_begin(iceClockc)
       if (IST%id_fax>0) call post_data(IST%id_fax, WindStr_x_Cu, IST%diag)
       if (IST%id_fay>0) call post_data(IST%id_fay, WindStr_y_Cv, IST%diag)
 
