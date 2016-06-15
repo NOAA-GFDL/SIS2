@@ -2001,6 +2001,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       !
       ! Dynamics diagnostics
       !
+      call mpp_clock_begin(iceClockc)
       if (IST%id_fax>0) call post_data(IST%id_fax, WindStr_x_Cu, IST%diag)
       if (IST%id_fay>0) call post_data(IST%id_fay, WindStr_y_Cv, IST%diag)
 
