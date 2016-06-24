@@ -1061,18 +1061,20 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
-  CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
-              'channel transport velocity - x component', 'm/s', missing_value=missing)
-  CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
-              'channel transport velocity - y component', 'm/s', missing_value=missing)
-  CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', diag%axesCu1, Time, &
-              'ocean component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', diag%axesCv1, Time, &
-              'ocean component of channel transport - y', 'm/s', missing_value=missing)
-  CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', diag%axesCu1, Time, &
-              'viscous component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', diag%axesCv1, Time, &
-              'viscous component of channel transport - y', 'm/s', missing_value=missing)
+  if (CS%chan_visc>0. .and. CS%adv_sub_steps) then
+    CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
+                'channel transport velocity - x component', 'm/s', missing_value=missing)
+    CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
+                'channel transport velocity - y component', 'm/s', missing_value=missing)
+    CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', diag%axesCu1, Time, &
+                'ocean component of channel transport - x', 'm/s', missing_value=missing)
+    CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', diag%axesCv1, Time, &
+                  'ocean component of channel transport - y', 'm/s', missing_value=missing)
+    CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', diag%axesCu1, Time, &
+                'viscous component of channel transport - x', 'm/s', missing_value=missing)
+    CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', diag%axesCv1, Time, &
+                'viscous component of channel transport - y', 'm/s', missing_value=missing)
+  endif
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
                'x-direction ice transport', 'kg/s', missing_value=missing)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
