@@ -1061,7 +1061,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
-  if (CS%chan_visc>0. .and. CS%adv_sub_steps) then
+  if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
     CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
                 'channel transport velocity - x component', 'm/s', missing_value=missing)
     CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
