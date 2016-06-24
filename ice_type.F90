@@ -1174,10 +1174,14 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'frozen water local sink', 'kg/(m^2*yr)', missing_value=missing)
   IST%id_bsnk     = register_SIS_diag_field('ice_model','BSNK',diag%axesT1, Time, &
                'frozen water local bottom sink', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_qfres    = register_SIS_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
-               'Ice Restoring heat flux', 'W/m^2', missing_value=missing)
-  IST%id_qflim    = register_SIS_diag_field('ice_model', 'QFLX_LIMIT_ICE', diag%axesT1, Time, &
-               'Ice Limit heat flux', 'W/m^2', missing_value=missing)
+  if (IST%do_ice_restore) then
+    IST%id_qfres    = register_SIS_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
+                 'Ice Restoring heat flux', 'W/m^2', missing_value=missing)
+  endif
+  if (IST%do_ice_limit) then
+    IST%id_qflim    = register_SIS_diag_field('ice_model', 'QFLX_LIMIT_ICE', diag%axesT1, Time, &
+                 'Ice Limit heat flux', 'W/m^2', missing_value=missing)
+  endif
   IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
                'strain angle', 'none', missing_value=missing)
   if (IST%Cgrid_dyn) then
