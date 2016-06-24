@@ -1112,8 +1112,10 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'rate of rain fall', 'kg/(m^2*s)', missing_value=missing)
   IST%id_runoff   = register_SIS_diag_field('ice_model','RUNOFF' ,diag%axesT1, Time, &
                'liquid runoff', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_fwnudge    = register_SIS_diag_field('ice_model','FW_NUDGE' ,diag%axesT1, Time, &
+  if (IST%nudge_sea_ice) then
+    IST%id_fwnudge  = register_SIS_diag_field('ice_model','FW_NUDGE' ,diag%axesT1, Time, &
                'nudging freshwater flux', 'kg/(m^2*s)', missing_value=missing)
+  endif
   IST%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
   IST%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &

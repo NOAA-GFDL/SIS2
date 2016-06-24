@@ -1652,8 +1652,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
 
-  if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) &
+  if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) then
     call post_data(IST%id_fwnudge, IST%melt_nudge, IST%diag)
+  endif
 
   call avg_top_quantities(Ice, IST, G, IG) ! average fluxes from update_ice_model_fast
 
