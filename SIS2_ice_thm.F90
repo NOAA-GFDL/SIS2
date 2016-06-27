@@ -108,8 +108,6 @@ use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 
-  use constants_mod, only : hlv, hlf ! latent heats of vaporization and fusion.
-
 implicit none ; private
 
 public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
@@ -131,6 +129,7 @@ type, public :: ice_thermo_type ; private
                             ! set equal to Cp_ice.
   real :: rho_ice, rho_snow, rho_water  ! The nominal densities of ice and water in kg m-3.
   real :: LI                ! The latent heat of fusion, in J kg-1.
+  real :: Lat_Vapor         ! The latent heat of vaporization, in J kg-1.
   real :: dTf_dS            ! The derivative of the freezing point with salinity,
                             ! in degC per PSU.  (dTf_dS is negative.)
   real :: mu_TS             ! Negative the derivative of the freezing point with
@@ -202,8 +201,6 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
 
-  use constants_mod, only : hlf ! latent heat of fusion - 334e3 J/(kg-ice)
-
   type(param_file_type), intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
@@ -226,11 +223,12 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
   if (.not.associated(CS)) allocate(CS)
   if (.not.associated(ITV)) allocate(ITV)
 
-
-  ! LI must be taken from the constants mod for internal consistency in the
-  ! coupled climate model.
-  ITV%LI = hlf
-
+  call get_param(param_file, mod, "LATENT_HEAT_FUSION", ITV%LI, &
+                 "The latent heat of fusion as used by SIS.", &
+                 units="J kg-1", default=3.34e5)
+  call get_param(param_file, mod, "LATENT_HEAT_VAPOR", ITV%Lat_Vapor, &
+                 "The latent heat of vaporization of water at 0C as used by SIS.", &
+                 units="J kg-1", default=2.500e6)
   call get_param(param_file, mod, "RHO_OCEAN", ITV%Rho_water, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
@@ -1739,11 +1737,13 @@ end function energy_melt_enthS
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
-                                 Cp_SeaWater, Latent_fusion, EOS, specified_thermo_salinity)
+                                 Cp_SeaWater, Latent_fusion, Latent_vapor, &
+                                 EOS, specified_thermo_salinity)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, dimension(:), optional, intent(out) :: ice_salinity
   real,           optional, intent(out) :: Cp_Ice, enthalpy_units, Cp_SeaWater
   real,           optional, intent(out) :: Latent_fusion
+  real,           optional, intent(out) :: Latent_vapor
   type(EOS_type), optional, pointer     :: EOS
   logical,        optional, intent(out) :: specified_thermo_salinity
 ! Arguments: ITV - The ice_thermo_type that contains all sea-ice thermodynamic
@@ -1754,6 +1754,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
 !            Cp_Ice - The heat capacity of ice in J kg-1 K-1.
 !            Cp_SeaWater - The heat capacity of seawater in J kg-1 K-1.
 !            Latent_fusion - The latent heat of fusion, in J kg-1.
+!            Latent_vapor - The latent heat of vaporization, in J kg-1.
 !            EOS - A pointer to the MOM6/SIS2 ocean equation-of-state type.
 !            specified_thermo_salinity - If true, all thermodynamic calculations
 !                  are done with a specified salinity profile that may be
@@ -1766,6 +1767,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
   if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
   if (present(Latent_fusion)) Latent_fusion = ITV%LI
+  if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
   if (present(EOS)) then
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
       "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
@@ -1953,7 +1955,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     !   The energy required to evaporate was already taken into account in
     ! ice_thm, but there is excess energy that has not been used here that needs
     ! to be passed on to the ocean.
-    heat_to_ocn = heat_to_ocn + evap_left*(hlv+hlf)
+    heat_to_ocn = heat_to_ocn + evap_left*(ITV%Lat_Vapor+ITV%LI)
   endif
 
   if (top_melt > 0.0 ) then ! apply top melt heat flux

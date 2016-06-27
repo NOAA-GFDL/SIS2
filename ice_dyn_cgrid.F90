@@ -40,7 +40,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
 use time_manager_mod, only : set_date, get_time, get_date
@@ -1238,7 +1238,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
         endif
       enddo ; enddo
     endif
-    if (len_trim(CS%u_trunc_file) > 0) then
+    if (len_trim(CS%v_trunc_file) > 0) then
       do J=jsc-1,jec ; do i=isc,iec
         if ((vi(i,J) < vi_min_trunc(i,J)) .or. (vi(i,J) > vi_max_trunc(i,J))) then
           if (mi_v(i,J) > m_neglect) then

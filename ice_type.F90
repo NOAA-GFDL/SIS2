@@ -12,17 +12,15 @@ use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
-use constants_mod,    only: T_0degC=>Tfreeze
 
-use SIS_hor_grid_mod, only : SIS_hor_grid_type, cell_area
-use ice_grid_mod, only : ice_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
+use ice_grid, only : ice_grid_type
 
 use ice_dyn_bgrid,    only: ice_B_dyn_CS
 use ice_dyn_cgrid,    only: ice_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-use constants_mod,    only: radius, pi, LI => hlf ! latent heat of fusion - 334e3 J/(kg-ice)
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -34,6 +32,7 @@ use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : archaic_nml_check
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
@@ -48,12 +47,8 @@ public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
 
-public  :: earth_area
-
-  real, parameter :: earth_area = 4*PI*RADIUS*RADIUS !5.10064471909788E+14 m^2
-  real, parameter :: missing = -1e34
-  integer, parameter :: miss_int = -9999
-
+real, parameter :: missing = -1e34
+integer, parameter :: miss_int = -9999
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -101,8 +96,6 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: &
     rdg_mice =>NULL()   ! A diagnostic of the ice load that was formed by
                         ! ridging, in H (usually kg m-2).
-  real, pointer, dimension(:,:,:,:) :: &
-    age_ice  =>NULL()      ! The average age of ice in a category, in days.
 
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
@@ -311,7 +304,7 @@ type ice_state_type
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
   integer :: id_saltf=-1, id_tmelt=-1, id_bmelt=-1, id_bheat=-1, id_e2m=-1
-  integer :: id_rdgr=-1, id_rdgf=-1, id_rdgo=-1, id_rdgv=-1, id_age=-1, id_fwnudge=-1
+  integer :: id_rdgr=-1, id_rdgf=-1, id_rdgo=-1, id_rdgv=-1, id_fwnudge=-1
   integer :: id_frazil=-1, id_alb=-1, id_xprt=-1, id_lsrc=-1, id_lsnk=-1, id_bsnk=-1
   integer :: id_strna=-1, id_fax=-1, id_fay=-1, id_swdn=-1, id_lwdn=-1, id_sn2ic=-1
   integer :: id_slp=-1, id_ext=-1, id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1
@@ -324,6 +317,7 @@ type ice_state_type
   integer :: id_sw_pen=-1, id_sw_abs_ocn=-1
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
+  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
   type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
   type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
@@ -344,8 +338,7 @@ type ice_data_type !  ice_public_type
   type(time_type)                    :: Time
   logical                            :: pe
   integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
-     logical, pointer, dimension(:,:) :: mask     =>NULL() ! where ice can be
-  logical, pointer, dimension(:,:,:) :: ice_mask =>NULL() ! where ice actually is (Used for k-size only?)
+  logical, pointer, dimension(:,:)   :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
@@ -397,8 +390,10 @@ type ice_data_type !  ice_public_type
                               ! reference temperature, in ???.
     flux_salt  => NULL()  ! The flux of salt out of the ocean in kg m-2.
 
-  real, pointer, dimension(:,:) :: area => NULL()
-  real, pointer, dimension(:,:) :: mi   => NULL() ! The total ice+snow mass, in kg m-2.
+  real, pointer, dimension(:,:) :: &
+    area => NULL() , &    ! The area of ocean cells, in m2.  Land cells have
+                          ! a value of 0, so this could also be used as a mask.
+    mi   => NULL()        ! The total ice+snow mass, in kg m-2.
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
@@ -525,8 +520,7 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  allocate(Ice%mask(isc:iec, jsc:jec)) ; Ice%mask(:,:) = .false. !derived
-  allocate(Ice%ice_mask(isc:iec, jsc:jec, km)) ; Ice%ice_mask(:,:,:) = .false. !NI
+  allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
   allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
   allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
@@ -681,7 +675,6 @@ subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, rest
 
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
-  allocate(IST%age_ice(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%age_ice(:,:,:,:) = 0.0
 
   if (IST%Cgrid_dyn) then
     allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
@@ -736,7 +729,7 @@ end subroutine ice_state_register_restarts
 subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice
 
-  deallocate(Ice%mask, Ice%ice_mask, Ice%t_surf, Ice%s_surf)
+  deallocate(Ice%ocean_pt, Ice%t_surf, Ice%s_surf)
   deallocate(Ice%u_surf, Ice%v_surf, Ice%part_size)
   deallocate(Ice%rough_mom, Ice%rough_heat, Ice%rough_moist)
   deallocate(Ice%albedo, Ice%albedo_vis_dir, Ice%albedo_nir_dir)
@@ -880,6 +873,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
   real    :: t_min, t_max
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -928,6 +922,7 @@ subroutine IST_bounds_check(IST, G, IG, msg)
   real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
@@ -1124,8 +1119,10 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'rate of rain fall', 'kg/(m^2*s)', missing_value=missing)
   IST%id_runoff   = register_SIS_diag_field('ice_model','RUNOFF' ,diag%axesT1, Time, &
                'liquid runoff', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_fwnudge    = register_SIS_diag_field('ice_model','FW_NUDGE' ,diag%axesT1, Time, &
+  if (IST%nudge_sea_ice) then
+    IST%id_fwnudge  = register_SIS_diag_field('ice_model','FW_NUDGE' ,diag%axesT1, Time, &
                'nudging freshwater flux', 'kg/(m^2*s)', missing_value=missing)
+  endif
   IST%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
   IST%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
@@ -1186,10 +1183,14 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'frozen water local sink', 'kg/(m^2*yr)', missing_value=missing)
   IST%id_bsnk     = register_SIS_diag_field('ice_model','BSNK',diag%axesT1, Time, &
                'frozen water local bottom sink', 'kg/(m^2*yr)', missing_value=missing)
-  IST%id_qfres    = register_SIS_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
-               'Ice Restoring heat flux', 'W/m^2', missing_value=missing)
-  IST%id_qflim    = register_SIS_diag_field('ice_model', 'QFLX_LIMIT_ICE', diag%axesT1, Time, &
-               'Ice Limit heat flux', 'W/m^2', missing_value=missing)
+  if (IST%do_ice_restore) then
+    IST%id_qfres    = register_SIS_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
+                 'Ice Restoring heat flux', 'W/m^2', missing_value=missing)
+  endif
+  if (IST%do_ice_limit) then
+    IST%id_qflim    = register_SIS_diag_field('ice_model', 'QFLX_LIMIT_ICE', diag%axesT1, Time, &
+                 'Ice Limit heat flux', 'W/m^2', missing_value=missing)
+  endif
   IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
                'strain angle', 'none', missing_value=missing)
   if (IST%Cgrid_dyn) then
@@ -1262,20 +1263,13 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_rdgv    = register_SIS_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
                'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
 
-  IST%id_age     = register_SIS_diag_field('ice_model', 'AGE', diag%axesT1, Time, &
-               'ice age', 'days', missing_value=missing)
-
   if (id_sin_rot>0) call post_data(id_sin_rot, G%sin_rot, diag, is_static=.true.)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
   if (id_geo_lon>0) call post_data(id_geo_lon, G%geoLonT, diag, is_static=.true.)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
-  if (id_cell_area>0) call post_data(id_cell_area, cell_area, diag, is_static=.true.)
+  if (id_cell_area>0) call post_data(id_cell_area, &
+            Ice%area / (16.0*atan(1.0)*G%Rad_Earth**2), diag, is_static=.true.)
 
-
-!### This doesn't work here!  age_ice needs to go into its own module!
-  ! Register for restarts any of the diagnostics set here that must evolve in time.
-!  if (IST%id_age>0) idr = register_restart_field(Ice_restart, restart_file, 'age_ice', &
-!        IST%age_ice(:,:,:,1), domain=G%domain%mpp_domain, mandatory=.false.)
 
 end subroutine ice_diagnostics_init
 
@@ -1303,6 +1297,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   real :: icebergs_value
+  real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
 
   value = 0.0
@@ -1314,6 +1309,7 @@ subroutine ice_stock_pe(Ice, index, value)
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce
   kg_H = IG%H_to_kg_m2 ; kg_H_Nk = IG%H_to_kg_m2 / IG%NkIce
+  call get_SIS2_thermo_coefs(Ice%Ice_State%ITV, Latent_fusion=LI)
 
   select case (index)
 

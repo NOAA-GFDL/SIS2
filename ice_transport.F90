@@ -40,8 +40,8 @@ use SIS_tracer_advect, only : advect_scalar
 use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
 
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
-use ice_grid_mod, only : ice_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
+use ice_grid, only : ice_grid_type
 use ice_ridging_mod, only : ice_ridging
 
 implicit none ; private
@@ -89,7 +89,7 @@ contains
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_lev, &
-                         dt_slow, G, IG, CS, rdg_hice, age_ice, snow2ocn, &
+                         dt_slow, G, IG, CS, rdg_hice, snow2ocn, &
                          rdg_rate, rdg_open, rdg_vosh)
   type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
@@ -102,7 +102,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
   real,                                         intent(in)    :: dt_slow
   type(ice_transport_CS),                       pointer       :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: rdg_hice
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: age_ice
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_rate
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_open ! formation rate of open water due to ridging
@@ -265,7 +264,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0; mca_pond(:,:,:) = 0.0
   ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,mH_ice,mca_ice,part_sz, &
-!$OMP                                  mca_snow,mH_snow,ice_cover,mHi_avg)
+!$OMP                                  mca_snow,mH_snow,ice_cover,mHi_avg,nCat)
   do j=jsc,jec
     do k=1,nCat ; do i=isc,iec
       if (mH_ice(i,j,k)>0.0) then
@@ -355,7 +354,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
   ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,CS,mca_ice,mH_ice,part_sz, &
-!$OMP                                  mH_snow,ice_cover,mca_snow)
+!$OMP                                  mH_snow,ice_cover,mca_snow,nCat)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
       if (CS%roll_factor * (mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
@@ -760,7 +759,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
-!$OMP                                  mca_ice,mca_snow,mH_ice,mH_snow,CS,TrReg) &
+!$OMP                                  mca_ice,mca_snow,mH_ice,mH_snow,CS,TrReg,nCat) &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
 !$OMP                                  compression_ratio,Icompress_here, &
 !$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old)
@@ -1127,18 +1126,20 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
-  CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
-              'channel transport velocity - x component', 'm/s', missing_value=missing)
-  CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
-              'channel transport velocity - y component', 'm/s', missing_value=missing)
-  CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', diag%axesCu1, Time, &
-              'ocean component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', diag%axesCv1, Time, &
-              'ocean component of channel transport - y', 'm/s', missing_value=missing)
-  CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', diag%axesCu1, Time, &
-              'viscous component of channel transport - x', 'm/s', missing_value=missing)
-  CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', diag%axesCv1, Time, &
-              'viscous component of channel transport - y', 'm/s', missing_value=missing)
+  if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
+    CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
+                'channel transport velocity - x component', 'm/s', missing_value=missing)
+    CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
+                'channel transport velocity - y component', 'm/s', missing_value=missing)
+    CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', diag%axesCu1, Time, &
+                'ocean component of channel transport - x', 'm/s', missing_value=missing)
+    CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', diag%axesCv1, Time, &
+                  'ocean component of channel transport - y', 'm/s', missing_value=missing)
+    CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', diag%axesCu1, Time, &
+                'viscous component of channel transport - x', 'm/s', missing_value=missing)
+    CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', diag%axesCv1, Time, &
+                'viscous component of channel transport - y', 'm/s', missing_value=missing)
+  endif
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
                'x-direction ice transport', 'kg/s', missing_value=missing)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &

@@ -32,8 +32,7 @@ use SIS_error_checking, only : chksum, Bchksum, hchksum, check_redundant_B
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
-use constants_mod,    only : pi
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
+use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use ice_ridging_mod,  only : ridge_rate
 
@@ -331,6 +330,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   real :: I_sub_steps
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
   complex                             :: newuv
+  real :: pi
 
   logical :: sent
   integer :: l
@@ -340,6 +340,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   if (.not.associated(CS)) call SIS_error(FATAL, &
        "ice_dynamics: Module must be initialized before it is used.")
 
+  pi = 4.0*atan(1.0)
   EC2I = 1.0/(CS%EC*CS%EC)
 
   !TOM> derive 2D fields of ice concentration, and snow & ice thicknesses

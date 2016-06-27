@@ -35,7 +35,7 @@ use MOM_error_handler, only : is_root_pe
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_error_checking, only : hchksum, Bchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B
-use SIS_hor_grid_mod,   only : SIS_hor_grid_type
+use SIS_hor_grid,   only : SIS_hor_grid_type
 
 implicit none ; private
 

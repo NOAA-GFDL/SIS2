@@ -48,8 +48,8 @@ use MOM_obsolete_params, only : obsolete_logical
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
-use ice_grid_mod, only : ice_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
+use ice_grid, only : ice_grid_type
 ! use MOM_variables, only : ocean_OBC_type, OBC_SIMPLE
 ! use MOM_variables, only : OBC_FLATHER_E, OBC_FLATHER_W, OBC_FLATHER_N, OBC_FLATHER_S
 
@@ -134,7 +134,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
-!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt) &
+!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt,nCat) &
 !$OMP                       private(h_up)
 !$OMP do
     do j=js,je ; do k=1,nCat ; do I=is-1,ie

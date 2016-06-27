@@ -1,8 +1,8 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_grid_mod - sets up sea-ice specific grid information, including the      !
+! ice_grid - sets up sea-ice specific grid information, including the          !
 !   category thicknesses and vertical structure of the ice. -Robert Hallberg   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_grid_mod
+module ice_grid
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
@@ -127,4 +127,4 @@ subroutine ice_grid_end(IG)
 
 end subroutine ice_grid_end
 
-end module ice_grid_mod
+end module ice_grid

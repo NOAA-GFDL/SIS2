@@ -59,11 +59,9 @@ use SIS_diag_mediator, only : register_SIS_diag_field, safe_alloc_ptr, time_type
 use MOM_domains, only : pass_var, pass_vector, sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
-use SIS_hor_grid_mod, only : SIS_hor_grid_type
-use ice_grid_mod, only : ice_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type
+use ice_grid, only : ice_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, SIS_tracer_chksum
-use MOM_variables, only : ocean_OBC_type, OBC_FLATHER_E
-use MOM_variables, only : OBC_FLATHER_W, OBC_FLATHER_N, OBC_FLATHER_S
 
 implicit none ; private
 
@@ -223,14 +221,15 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
   uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
   hprev(:,:,:) = landvolfill
   h_neglect = IG%H_subroundoff
+! Initialize domore_u and domore_v to .false.; they will be reevaluated later.
+  domore_u(:,:) = .false. ; domore_v(:,:) = .false.
+
 !$OMP parallel default(none) shared(ncat,is,ie,js,je,domore_k,uhr,vhr,uhtr,vhtr,dt, &
 !$OMP                               hprev,G,h_prev,h_end,isd,ied,jsd,jed,uh_neglect, &
 !$OMP                               h_neglect,vh_neglect,ntr,Tr,domore_u,domore_v)
 !$OMP do
   do k=1,ncat
     domore_k(k)=1
-    do j=js,je; domore_u(j,k) = .false.; enddo
-    do j=js-1,je; domore_v(j,k) = .false.; enddo
 !  Put the remaining (total) thickness fluxes into uhr and vhr.
     do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
     do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
@@ -340,7 +339,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
     jsv = jsv + stensil ; jev = jev - stensil
 !$OMP parallel do default(none) shared(ncat,domore_k,x_first,Tr,hprev,uhr,uh_neglect, &
 !$OMP                                  domore_u,ntr,nL_max,Idt,isv,iev,jsv,jev,       &
-!$OMP                                  stensil,G,CS,vhr,vh_neglect,domore_v)
+!$OMP                                  stensil,G,CS,vhr,vh_neglect,domore_v,IG)
     do k=1,ncat ; if (domore_k(k) > 0) then
 !    To ensure positive definiteness of the thickness at each iteration, the
 !  mass fluxes out of each layer are checked each step, and limited to keep
@@ -491,11 +490,20 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
     max_iter = 3
     if (CS%dt > 0.0) max_iter = 2*INT(CEILING(dt/CS%dt)) + 1
 
-  ! This initializes the halos of uhr and vhr because pass_vector might do
-  ! calculations on them, even though they are never used.
+    ! This initializes the halos of uhr and vhr because pass_vector might do
+    ! calculations on them, even though they are never used.
     uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
     hprev(:,:,:) = landvolfill
     h_neglect = IG%H_subroundoff
+    
+    ! Initialize domore_u and domore_v.  Curiously, the value used for
+    ! initialization does not matter to the solutions, because if .false.
+    ! they are reevaluated after the first halo update (and always on the first
+    ! iteration, and if .true. a number of fluxes are exactly 0 anyway.  Of the
+    ! two choices, .false. is more efficient in that it avoids extra
+    ! calculations of 0 fluxes.
+    domore_u(:,:) = .false. ; domore_v(:,:) = .false.
+    
 !$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
 !$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
 !$OMP                               h_neglect,vh_neglect,domore_u,domore_v)
@@ -504,19 +512,8 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
       domore_k(k)=1
 
       ! Put the remaining (total) thickness fluxes into uhr and vhr.
-      ! Initialise domore_u, domore_v
-      do j=js,je
-        domore_u(j, k) = .false.
-        do I=is-1,ie
-          uhr(I,j,k) = dt*uhtr(I,j,k)
-        enddo
-      enddo
-      do J=js-1,je
-        domore_v(j, k) = .false.
-        do i=is,ie
-          vhr(i,J,k) = dt*vhtr(i,J,k)
-        enddo
-      enddo
+      do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
+      do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
       ! Find the previous total mass (or volume) of ice, but in the case that this
       ! category is now dramatically thinner than it was previously, add a tiny
       ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
@@ -591,7 +588,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
       jsv = jsv + stensil ; jev = jev - stensil
 !$OMP parallel do default(none) shared(ncat,isv,iev,jsv,jev,x_first,domore_k,scalar, &
 !$OMP                                  hprev,uhr,uh_neglect,domore_u,Idt,stensil,G,  &
-!$OMP                                  CS,vhr,vh_neglect,domore_v)
+!$OMP                                  CS,vhr,vh_neglect,domore_v,IG)
       do k=1,ncat ; if (domore_k(k) > 0) then
   !    To ensure positive definiteness of the thickness at each iteration, the
   !  mass fluxes out of each layer are checked each step, and limited to keep
