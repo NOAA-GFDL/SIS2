@@ -1757,7 +1757,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   !
   ! Thermodynamics
   !
-  if (.not.IST%interspersed_thermo) then
+  if (.not.IST%interspersed_thermo .and. .not. IST%specified_ice) then
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
     mi_old = IST%mH_ice
     
