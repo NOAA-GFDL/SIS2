@@ -83,6 +83,8 @@ type ice_state_type
                       ! All thickness categories are assumed to have the same
                       ! velocity.
   real, pointer, dimension(:,:,:) :: &
+    mH_pond =>NULL(), & ! The mass per unit area of the pond in each category,
+                        ! in units of H (usually kg m-2). mw/new
     mH_snow =>NULL(), & ! The mass per unit area of the snow in each category,
                         ! in units of H (usually kg m-2).
     mH_ice =>NULL(), &  ! The mass per unit area of the ice in each category,
@@ -304,7 +306,7 @@ type ice_state_type
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
+  integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1 ! id_hp mw/new
   integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_mi=-1, id_sh=-1
   integer :: id_lh=-1, id_sw=-1, id_lw=-1, id_snofl=-1, id_rain=-1, id_runoff=-1
   integer :: id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1, id_evap=-1
@@ -667,6 +669,7 @@ subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, rest
   allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
+  allocate(IST%mH_pond(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_pond(:,:,:) = 0.0 !  mw/new
   allocate(IST%mH_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%mH_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
@@ -697,6 +700,8 @@ subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, rest
   idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
                                domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
+                               domain=domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
                                domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
@@ -776,6 +781,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
 
+  deallocate(IST%mH_pond) ! mw/new
   deallocate(IST%mH_snow, IST%mH_ice)
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
 
@@ -1078,6 +1084,8 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'ice + bergs mass', 'kg/m^2', missing_value=missing)
   IST%id_cn       = register_SIS_diag_field('ice_model', 'CN', diag%axesTc, Time, &
                'ice concentration', '0-1', missing_value=missing)
+  IST%id_hp       = register_SIS_diag_field('ice_model', 'HP', diag%axesT1, Time, &
+               'pond thickness', 'm-pond', missing_value=missing) ! mw/new
   IST%id_hs       = register_SIS_diag_field('ice_model', 'HS', diag%axesT1, Time, &
                'snow thickness', 'm-snow', missing_value=missing)
   IST%id_tsn      = register_SIS_diag_field('ice_model', 'TSN', diag%axesT1, Time, &
