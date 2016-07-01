@@ -3639,7 +3639,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: idr, id_sal
-  logical :: test_grid_copy = .false.
+  logical :: test_grid_copy = .true. ! .false.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
                                ! of having the data domain on each processor start at 1.
@@ -3924,7 +3924,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! publicly for use by the exchange grid.
   call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
                         domain_name="ice_nohalo")
-  call set_first_direction(G, first_direction)
 
   ! Set the basic (bathymetry and mask independent) grid metrics.
   call SIS_set_grid_metrics(G, param_file)
@@ -3932,7 +3931,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
   call SIS_initialize_fixed(G, param_file)
 
-!  call set_domain(G%Domain%mpp_domain)
   CatIce = IG%CatIce
 
   ! Allocate and register fields for restarts.
@@ -4189,6 +4187,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     ! call clone_MOM_domain(Ice%G%Domain, Ice%G%Domain_aux, symmetric=.false.)
   endif
 
+  call set_first_direction(G, first_direction)
   call set_domain(G%Domain%mpp_domain)
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
