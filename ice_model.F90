@@ -3932,7 +3932,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
   call SIS_initialize_fixed(G, param_file)
 
-  call set_domain(G%Domain%mpp_domain)
+!  call set_domain(G%Domain%mpp_domain)
   CatIce = IG%CatIce
 
   ! Allocate and register fields for restarts.
@@ -4183,12 +4183,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%G%g_Earth = G%g_Earth
 
     call destroy_dyn_horgrid(dG)
-    call MOM_grid_end(G) ; deallocate(G)
+    call SIS_hor_grid_end(G) ; deallocate(G)
 
     G => Ice%G
-    call clone_MOM_domain(Ice%G%Domain, Ice%G%Domain_aux, symmetric=.false.)
+    ! call clone_MOM_domain(Ice%G%Domain, Ice%G%Domain_aux, symmetric=.false.)
   endif
 
+  call set_domain(G%Domain%mpp_domain)
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
@@ -4268,7 +4269,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! Do any error checking here.
   if (IST%debug) then
-    call ice_grid_chksum(G)
+    call ice_grid_chksum(G, haloshift=2)
   endif
 
   call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp)

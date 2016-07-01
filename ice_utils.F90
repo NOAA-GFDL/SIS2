@@ -351,6 +351,11 @@ subroutine ice_grid_chksum(G, haloshift)
   call uchksum(G%areaCu, "G%areaCv", G, haloshift=hs)
   call uchksum(G%IareaCu, "G%IareaCv", G, haloshift=hs)
 
+  call hchksum(G%bathyT, "G%bathyT", G, haloshift=hs)
+  call Bchksum(G%CoriolisBu, "G%CoriolisBu", G, haloshift=hs)
+  call hchksum(G%dF_dx, "G%dF_dx", G, haloshift=hs)
+  call hchksum(G%dF_dy, "G%dF_dy", G, haloshift=hs)
+
 end subroutine ice_grid_chksum
 
 
