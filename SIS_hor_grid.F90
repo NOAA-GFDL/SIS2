@@ -145,16 +145,9 @@ subroutine set_hor_grid(G, param_file, HI, global_indexing)
   integer, allocatable, dimension(:) :: ibegin, iend, jbegin, jend
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
 
-  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
-                        domain_name="ice model aux")
-
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version, &
                    "Parameters providing information about the lateral grid.")
-  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
-                 "The gravitational acceleration of the Earth.", &
-                 units="m s-2", default = 9.80)
-
 
   call get_param(param_file, mod_nm, "NIBLOCK", niblock, "The number of blocks "// &
                  "in the x-direction on each processor (for openmp).", default=1, &

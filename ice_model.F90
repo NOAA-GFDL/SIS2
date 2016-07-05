@@ -3638,6 +3638,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real :: g_Earth !   The gravitational acceleration in m s-2.
   integer :: idr, id_sal
   logical :: test_grid_copy = .true. ! .false.
   logical :: symmetric         ! If true, use symmetric memory allocation.
@@ -3724,6 +3725,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "RHO_SNOW", IST%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
+
+  call get_param(param_file, mod, "G_EARTH", g_Earth, &
+                 "The gravitational acceleration of the Earth.", &
+                 units="m s-2", default = 9.80)
 
   call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
@@ -4178,17 +4183,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     call copy_SIS_horgrid_to_dyngrid(G, dg)
     call copy_dyngrid_to_SIS_horgrid(dg, Ice%G)
-    Ice%G%g_Earth = G%g_Earth
 
     call destroy_dyn_horgrid(dG)
     call SIS_hor_grid_end(G) ; deallocate(G)
 
     G => Ice%G
-    ! call clone_MOM_domain(Ice%G%Domain, Ice%G%Domain_aux, symmetric=.false.)
   endif
 
+  ! Set a few final things to complete the  setup of the grid. 
+  Ice%G%g_Earth = g_Earth
   call set_first_direction(G, first_direction)
-  call set_domain(G%Domain%mpp_domain)
+  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
+                        domain_name="ice model aux")
+
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
@@ -4262,9 +4269,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
      endif
   endif
 
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
-
-  call nullify_domain()
+  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
+    call set_domain(G%Domain%mpp_domain)
+    call astronomy_init
+    call nullify_domain()
+  endif
 
   ! Do any error checking here.
   if (IST%debug) then
