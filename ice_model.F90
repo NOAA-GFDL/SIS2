@@ -44,6 +44,7 @@ use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
+use SIS_error_checking, only : h_chksum, u_chksum, v_chksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : Get_SIS_input, directories
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
@@ -1970,14 +1971,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       if (IST%debug) then
         call IST_chksum("Before ice_C_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G)
-        call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G)
-        call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G)
-        call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G, haloshift=1)
-        call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G)
-        call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G)
-        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G)
-        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G)
+        call h_chksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G%HI)
+        call h_chksum(ms_sum, "ms_sum before ice_C_dynamics", G%HI)
+        call h_chksum(mi_sum, "mi_sum before ice_C_dynamics", G%HI)
+        call h_chksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G%HI, haloshift=1)
+        call u_chksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G%HI)
+        call v_chksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G%HI)
+        call u_chksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G%HI)
+        call v_chksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G%HI)
         call check_redundant_C("WindStr before ice_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
       endif
 
@@ -2084,14 +2085,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       if (IST%debug) then
         call IST_chksum("Before ice_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
-        call hchksum(ms_sum, "ms_sum before ice_dynamics", G)
-        call hchksum(mi_sum, "mi_sum before ice_dynamics", G)
-        call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
-        call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G, symmetric=.true.)
+        call h_chksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G%HI)
+        call h_chksum(ms_sum, "ms_sum before ice_dynamics", G%HI)
+        call h_chksum(mi_sum, "mi_sum before ice_dynamics", G%HI)
+        call h_chksum(IST%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
+        call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G%HI, symmetric=.true.)
         call check_redundant_B("WindStr before ice_dynamics",WindStr_x_B, WindStr_y_B, G)
       endif
 

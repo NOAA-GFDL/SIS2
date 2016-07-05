@@ -32,24 +32,41 @@ use MOM_hor_index, only : hor_index_type
 implicit none ; private
 
 public :: hchksum, Bchksum, uchksum, vchksum, chksum, is_NaN
+public :: h_chksum, B_chksum, u_chksum, v_chksum
 public :: check_redundant_C, check_redundant_B, check_redundant_T
 ! public :: totalStuff, totalTandS
 public :: SIS_error_checking_init
 
 interface hchksum
-  module procedure chksum_h_2d, chksum_h_3d, chksum_h_2d_G, chksum_h_3d_G
+  module procedure chksum_h_2d, chksum_h_3d !, chksum_h_2d_G, chksum_h_3d_G
 end interface
 
 interface Bchksum
-  module procedure chksum_B_2d, chksum_B_3d, chksum_B_2d_G, chksum_B_3d_G
+  module procedure chksum_B_2d, chksum_B_3d !, chksum_B_2d_G, chksum_B_3d_G
 end interface
 
 interface uchksum
-  module procedure chksum_u_2d, chksum_u_3d, chksum_u_2d_G, chksum_u_3d_G
+  module procedure chksum_u_2d, chksum_u_3d !, chksum_u_2d_G, chksum_u_3d_G
 end interface
 
 interface vchksum
-  module procedure chksum_v_2d, chksum_v_3d, chksum_v_2d_G, chksum_v_3d_G
+  module procedure chksum_v_2d, chksum_v_3d !, chksum_v_2d_G, chksum_v_3d_G
+end interface
+
+interface h_chksum
+  module procedure chksum_h_2d, chksum_h_3d !, chksum_h_2d_G, chksum_h_3d_G
+end interface
+
+interface B_chksum
+  module procedure chksum_B_2d, chksum_B_3d !, chksum_B_2d_G, chksum_B_3d_G
+end interface
+
+interface u_chksum
+  module procedure chksum_u_2d, chksum_u_3d !, chksum_u_2d_G, chksum_u_3d_G
+end interface
+
+interface v_chksum
+  module procedure chksum_v_2d, chksum_v_3d !, chksum_v_2d_G, chksum_v_3d_G
 end interface
 
 interface chksum

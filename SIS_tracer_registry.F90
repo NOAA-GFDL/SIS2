@@ -469,12 +469,12 @@ subroutine SIS_tracer_chksum(mesg, Reg, G)
   do m=1,Reg%ntr ; do l=1,Reg%Tr_ice(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_ice(m)%t(:,:,:,l), mesg//trim(Reg%Tr_ice(m)%name)//" "//&
-                                 trim(adjustl(mesg_l)), G)
+                                 trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
   do m=1,Reg%ntr ; do l=1,Reg%Tr_snow(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_snow(m)%t(:,:,:,l), mesg//trim(Reg%Tr_snow(m)%name)//" "//&
-                                 trim(adjustl(mesg_l)), G)
+                                 trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
 end subroutine SIS_tracer_chksum
 

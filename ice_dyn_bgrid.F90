@@ -436,11 +436,11 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   enddo ; enddo
 
   if (CS%debug) then
-     call Bchksum(sldx, "sldx in ice_dynamics", G, symmetric=.true.)
-     call Bchksum(sldy, "sldy in ice_dynamics", G, symmetric=.true.)
+     call Bchksum(sldx, "sldx in ice_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(sldy, "sldy in ice_dynamics", G%HI, symmetric=.true.)
 
-     call Bchksum(ui, "ui pre-steps ice_dynamics", G, symmetric=.true.)
-     call Bchksum(vi, "vi pre-steps ice_dynamics", G, symmetric=.true.)
+     call Bchksum(ui, "ui pre-steps ice_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(vi, "vi pre-steps ice_dynamics", G%HI, symmetric=.true.)
   endif
   if (CS%debug_redundant) then
      call check_redundant_B("sldx/sldy in ice_dynamics", sldx, sldy, G)
@@ -594,18 +594,18 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     enddo ; enddo
 
     if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in ice_dynamics", G, haloshift=1)
-      call hchksum(CS%sig22, "sig22 in ice_dynamics", G, haloshift=1)
-      call hchksum(CS%sig12, "sig12 in ice_dynamics", G, haloshift=1)
+      call hchksum(CS%sig11, "sig11 in ice_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig22, "sig22 in ice_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig12, "sig12 in ice_dynamics", G%HI, haloshift=1)
 
-      call Bchksum(fxic, "fxic in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(fyic, "fyic in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(fxoc, "fxoc in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(fyoc, "fyoc in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(fxco, "fxco in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(fyco, "fyco in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(ui, "ui in ice_dynamics", G, symmetric=.true.)
-      call Bchksum(vi, "vi in ice_dynamics", G, symmetric=.true.)
+      call Bchksum(fxic, "fxic in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyic, "fyic in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxoc, "fxoc in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyoc, "fyoc in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxco, "fxco in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyco, "fyco in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(ui, "ui in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(vi, "vi in ice_dynamics", G%HI, symmetric=.true.)
     endif
     if (CS%debug_redundant) then
       call check_redundant_B("fxic/fyic in ice_dynamics steps",fxic, fyic, G)
@@ -617,8 +617,8 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call Bchksum(ui, "ui end ice_dynamics", G, symmetric=.true.)
-    call Bchksum(vi, "vi end ice_dynamics", G, symmetric=.true.)
+    call Bchksum(ui, "ui end ice_dynamics", G%HI, symmetric=.true.)
+    call Bchksum(vi, "vi end ice_dynamics", G%HI, symmetric=.true.)
   endif
   if (CS%debug_redundant) &
     call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
