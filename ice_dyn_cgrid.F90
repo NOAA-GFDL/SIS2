@@ -33,7 +33,7 @@ module ice_dyn_cgrid
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_error_checking, only : chksum, Bchksum, uchksum, vchksum, hchksum
+use MOM_checksums,      only : chksum, Bchksum, uchksum, vchksum, hchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
