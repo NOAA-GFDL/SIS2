@@ -52,12 +52,14 @@ use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
+use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
+use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_string_functions, only : uppercase
 use MOM_EOS, only : EOS_type, calculate_density_derivs
-use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
@@ -3613,6 +3615,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
 
   type(param_file_type) :: param_file
+  type(hor_index_type)  :: HI  !  A hor_index_type for array extents
   type(ice_state_type),    pointer :: IST => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL()
   type(ice_grid_type),     pointer :: IG => NULL()
@@ -3917,26 +3920,25 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
            domain_name="ice model", include_name="SIS2_memory.h")
 #endif
 
-!  call callTree_waypoint("domains initialized (initialize_MOM)")
-!  call hor_index_init(G%Domain, HI, param_file, &
-!                      local_indexing=.not.global_indexing)
+  call callTree_waypoint("domains initialized (initialize_MOM)")
+  call hor_index_init(G%Domain, HI, param_file, &
+                      local_indexing=.not.global_indexing)
 
-!  call create_dyn_horgrid(dG, HI, bathymetry_at_vel=bathy_at_vel)
-!  call clone_MOM_domain(G%Domain, dG%Domain)
-
-  call set_hor_grid(G, param_file, global_indexing=global_indexing)
-  ! Copy the ice model's domain into one with no halos that can be shared
-  ! publicly for use by the exchange grid.
-  call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
-                        domain_name="ice_nohalo")
+  call create_dyn_horgrid(dG, HI) !, bathymetry_at_vel=bathy_at_vel)
+  call clone_MOM_domain(G%Domain, dG%Domain)
 
   ! Set the basic (bathymetry and mask independent) grid metrics.
-  call SIS_set_grid_metrics(G, param_file)
+  call SIS_set_grid_metrics(dG, param_file)
+
+  call set_hor_grid(G, param_file, global_indexing=global_indexing)
+  call copy_dyngrid_to_SIS_horgrid(dG, G)
+  call destroy_dyn_horgrid(dG)
 
   ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
   call SIS_initialize_fixed(G, param_file)
 
   CatIce = IG%CatIce
+
 
   ! Allocate and register fields for restarts.
   call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &
@@ -4181,8 +4183,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call clone_MOM_domain(G%Domain, Ice%G%Domain)
     call set_hor_grid(Ice%G, param_file)
 
-    call copy_SIS_horgrid_to_dyngrid(G, dg)
-    call copy_dyngrid_to_SIS_horgrid(dg, Ice%G)
+    call copy_SIS_horgrid_to_dyngrid(G, dG)
+    call copy_dyngrid_to_SIS_horgrid(dG, Ice%G)
 
     call destroy_dyn_horgrid(dG)
     call SIS_hor_grid_end(G) ; deallocate(G)
@@ -4195,6 +4197,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call set_first_direction(G, first_direction)
   call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
                         domain_name="ice model aux")
+
+  ! Copy the ice model's domain into one with no halos that can be shared
+  ! publicly for use by the exchange grid.
+  call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
+                        domain_name="ice_nohalo")
 
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)

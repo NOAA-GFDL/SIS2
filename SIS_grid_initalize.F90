@@ -4,16 +4,17 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_grid_initialize
 
-use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
-use SIS_hor_grid, only : set_derived_SIS_metrics
-use SIS_hor_grid, only : ocean_grid_type => SIS_hor_grid_type
+use SIS_hor_grid, only : SIS_hor_grid_type !, set_derived_SIS_metrics
 
+use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum
 use MOM_domains, only : pass_var, pass_vector, pe_here, root_PE, broadcast
 use MOM_domains, only : AGRID, BGRID_NE, CGRID_NE, To_All, Scalar_Pair
 use MOM_domains, only : To_North, To_South, To_East, To_West
 use MOM_domains, only : MOM_define_domain, MOM_define_IO_domain
 use MOM_domains, only : MOM_domain_type
+use MOM_dyn_horgrid, only : dyn_horgrid_type, set_derived_dyn_horgrid
 use MOM_error_handler, only : MOM_error, MOM_mesg, FATAL, is_root_pe
+use MOM_error_handler, only : callTree_enter, callTree_leave
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_io, only : read_data, slasher, file_exists
 use MOM_io, only : CORNER, NORTH_FACE, EAST_FACE
@@ -22,11 +23,9 @@ use mpp_domains_mod, only : mpp_get_domain_extents, mpp_deallocate_domain
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: SIS_set_grid_metrics, initialize_SIS_masks, Adcroft_reciprocal
 
-type :: GPS ; private
+type, public :: GPS ; private
   real :: len_lon
   real :: len_lat
   real :: west_lon
@@ -46,8 +45,8 @@ contains
 !!   grid.  The bathymetry, land-sea mask and any restricted channel widths are
 !!   not known yet, so these are set later.
 subroutine SIS_set_grid_metrics(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid structure
-  type(param_file_type),   intent(in)    :: param_file !< Parameter file structure
+  type(dyn_horgrid_type), intent(inout) :: G          !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)    :: param_file  !< Parameter file structure
 
 !    Calculate the values of the metric terms that might be used
 !  and save them in arrays.
@@ -92,7 +91,8 @@ subroutine SIS_set_grid_metrics(G, param_file)
   end select
 
 ! Calculate derived metrics (i.e. reciprocals and products)
-  call set_derived_SIS_metrics(G)
+  ! call set_derived_SIS_metrics(G)
+  call set_derived_dyn_horgrid(G)
 
 ! This has not been written yet for SIS2 grids. -RWH
 !  if (debug) call grid_metrics_chksum('SIS_grid_initialize/set_grid_metrics',G)
@@ -101,9 +101,10 @@ end subroutine SIS_set_grid_metrics
 
 ! ------------------------------------------------------------------------------
 
-subroutine set_grid_metrics_from_mosaic(G,param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
+!>  et_grid_metrics_from_mosaic sets the grid metrics from a mosaic file.
+subroutine set_grid_metrics_from_mosaic(G, param_file)
+  type(dyn_horgrid_type), intent(inout) :: G           !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)     :: param_file  !< Parameter file structure
 !   This subroutine sets the grid metrics from a mosaic file.  This should be
 ! identical to the corresponding subroutine in MOM_grid_initialize.F90.
 !
@@ -136,8 +137,8 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   integer :: npei,npej
   integer, dimension(:), allocatable :: exni,exnj
   integer        :: start(4), nread(4)
-
-  call MOM_mesg("   SIS_grid_initialize.F90, set_grid_metrics_from_mosaic: reading grid", 5)
+ 
+  call callTree_enter("set_grid_metrics_from_mosaic(), SIS_grid_initialize.F90")
 
   call get_param(param_file, mod, "GRID_FILE", grid_file, &
                  "Name of the file from which to read horizontal grid data.", &
@@ -336,14 +337,16 @@ subroutine set_grid_metrics_from_mosaic(G,param_file)
   enddo
   deallocate( tmpGlbl )
 
+  call callTree_leave("set_grid_metrics_from_mosaic()")
 end subroutine set_grid_metrics_from_mosaic
 
 
 ! ------------------------------------------------------------------------------
 
 subroutine set_grid_metrics_cartesian(G, param_file)
-  type(ocean_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
+  type(dyn_horgrid_type), intent(inout) :: G           !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)     :: param_file  !< Parameter file structure
+
 ! Arguments:
 !  (inout)   G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -370,7 +373,7 @@ subroutine set_grid_metrics_cartesian(G, param_file)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
   I1off = G%idg_offset ; J1off = G%jdg_offset
 
-!  call callTree_enter("set_grid_metrics_cartesian(), MOM_grid_initialize.F90")
+  call callTree_enter("set_grid_metrics_cartesian(), SIS_grid_initialize.F90")
  
   PI = 4.0*atan(1.0) ;
 
@@ -471,14 +474,15 @@ subroutine set_grid_metrics_cartesian(G, param_file)
     G%dyCv(i,J) = dy_everywhere ; G%IdyCv(i,J) = I_dy
   enddo ; enddo
 
-!  call callTree_leave("set_grid_metrics_cartesian()")
+  call callTree_leave("set_grid_metrics_cartesian()")
 end subroutine set_grid_metrics_cartesian
 
 ! ------------------------------------------------------------------------------
 
 subroutine set_grid_metrics_spherical(G, param_file)
-  type(ocean_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
+  type(dyn_horgrid_type), intent(inout) :: G           !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)     :: param_file  !< Parameter file structure
+
 ! Arguments:
 !  (inout)   G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -493,17 +497,19 @@ subroutine set_grid_metrics_spherical(G, param_file)
   real :: PI, PI_180! PI = 3.1415926... as 4*atan(1)
   integer :: i, j, isd, ied, jsd, jed
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
+  integer :: i_offset, j_offset
   real :: grid_latT(G%jsd:G%jed), grid_latB(G%JsdB:G%JedB)
   real :: grid_lonT(G%isd:G%ied), grid_lonB(G%IsdB:G%IedB)
   real :: dLon,dLat,latitude,longitude,dL_di
-  character(len=48)  :: mod  = "SIS_grid_initialize set_grid_metrics_spherical"
+  character(len=48)  :: mod  = "SIS_grid_init set_grid_metrics_spherical"
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+  i_offset = G%idg_offset ; j_offset = G%jdg_offset
 
-!  call callTree_enter("set_grid_metrics_spherical(), MOM_grid_initialize.F90")
+  call callTree_enter("set_grid_metrics_spherical(), SIS_grid_initialize.F90")
  
 !    Calculate the values of the metric terms that might be used
 !  and save them in arrays.
@@ -543,18 +549,18 @@ subroutine set_grid_metrics_spherical(G, param_file)
   enddo
 
   do J=JsdB,JedB
-    latitude = G%south_lat + dLat* REAL(J+G%jdg_offset-(G%jsg-1))
+    latitude = G%south_lat + dLat* REAL(J+J_offset-(G%jsg-1))
     grid_LatB(J) = MIN(MAX(latitude,-90.),90.)
   enddo
   do j=jsd,jed
-    latitude = G%south_lat + dLat*(REAL(j+G%jdg_offset-G%jsg)+0.5)
+    latitude = G%south_lat + dLat*(REAL(j+J_offset-G%jsg)+0.5)
     grid_LatT(j) = MIN(MAX(latitude,-90.),90.)
   enddo
   do I=IsdB,IedB
-    grid_LonB(I) = G%west_lon + dLon*REAL(I+G%idg_offset-(G%isg-1))
+    grid_LonB(I) = G%west_lon + dLon*REAL(I+I_offset-(G%isg-1))
   enddo
   do i=isd,ied
-    grid_LonT(i) = G%west_lon + dLon*(REAL(i+G%idg_offset-G%isg)+0.5)
+    grid_LonT(i) = G%west_lon + dLon*(REAL(i+I_offset-G%isg)+0.5)
   enddo
 
   dL_di = (G%len_lon * 4.0*atan(1.0)) / (180.0 * G%Domain%niglobal)
@@ -608,14 +614,15 @@ subroutine set_grid_metrics_spherical(G, param_file)
     G%areaT(i,j) = G%dxT(i,j) * G%dyT(i,j)
   enddo; enddo
 
-!  call callTree_leave("set_grid_metrics_spherical()")
+  call callTree_leave("set_grid_metrics_spherical()")
 end subroutine set_grid_metrics_spherical
 
 ! ------------------------------------------------------------------------------
 
 subroutine set_grid_metrics_mercator(G, param_file)
-  type(ocean_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
+  type(dyn_horgrid_type), intent(inout) :: G           !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)     :: param_file  !< Parameter file structure
+
 ! Arguments:
 !  (inout)   G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -628,7 +635,7 @@ subroutine set_grid_metrics_mercator(G, param_file)
 !  calculated, as are the geographic locations of each of these 4
 !  sets of points.
   integer :: i, j, isd, ied, jsd, jed
-  integer :: i_off, j_off
+  integer :: I_off, J_off
   type(GPS) :: GP
   character(len=128) :: warnmesg
   character(len=48)  :: mod = "SIS_grid_initialize set_grid_metrics_mercator"
@@ -663,12 +670,12 @@ subroutine set_grid_metrics_mercator(G, param_file)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-  i_off = G%idg_offset ; j_off = G%jdg_offset
+  I_off = G%idg_offset ; J_off = G%jdg_offset
 
   GP%niglobal = G%Domain%niglobal
   GP%njglobal = G%Domain%njglobal
 
-!  call callTree_enter("set_grid_metrics_mercator(), MOM_grid_initialize.F90")
+  call callTree_enter("set_grid_metrics_mercator(), SIS_grid_initialize.F90")
  
 !    Calculate the values of the metric terms that might be used
 !  and save them in arrays.
@@ -853,7 +860,7 @@ subroutine set_grid_metrics_mercator(G, param_file)
     enddo ; enddo
   endif
 
-!  call callTree_leave("set_grid_metrics_mercator()")
+  call callTree_leave("set_grid_metrics_mercator()")
 end subroutine set_grid_metrics_mercator
 
 
@@ -1148,8 +1155,10 @@ end function Adcroft_reciprocal
 !> initialize_SIS_masks initializes the grid masks and any metrics that come
 !!    with masks already applied.
 subroutine initialize_SIS_masks(G, PF)
-  type(SIS_hor_grid_type), intent(inout) :: G  !< The horizontal grid structure
-  type(param_file_type),   intent(in)    :: PF !< The param_file handle
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The dynamic horizontal grid type
+!###  type(dyn_horgrid_type), intent(inout) :: G   !< The dynamic horizontal grid type
+  type(param_file_type), intent(in)     :: PF  !< Parameter file structure
+
 
 !    Initialize_masks sets mask2dT, mask2dCu, mask2dCv, and mask2dBu to mask out
 ! flow over any points which are shallower than Dmin and permit an
@@ -1162,7 +1171,7 @@ subroutine initialize_SIS_masks(G, PF)
   character(len=40)  :: mod = "initialize_SIS_masks"
   integer :: i, j
 
-
+  call callTree_enter("initialize_masks(), SIS_grid_initialize.F90")
   call get_param(PF, mod, "MINIMUM_DEPTH", min_depth, &
                  "If MASKING_DEPTH is unspecified, then anything shallower than\n"//&
                  "MINIMUM_DEPTH is assumed to be land and all fluxes are masked out.\n"//&
@@ -1173,12 +1182,14 @@ subroutine initialize_SIS_masks(G, PF)
                  "The depth below which to mask points as land points, for which all\n"//&
                  "fluxes are zeroed out. MASKING_DEPTH is ignored if negative.", &
                  units="m", default=-9999.0)
+
   Dmin = min_depth
   if (mask_depth>=0.) Dmin = mask_depth
 
   call pass_var(G%bathyT, G%Domain)
   G%mask2dCu(:,:) = 0.0 ; G%mask2dCv(:,:) = 0.0 ; G%mask2dBu(:,:) = 0.0
 
+  ! Construct the h-point or T-point mask
   do j=G%jsd,G%jed ; do i=G%isd,G%ied
     if (G%bathyT(i,j) <= Dmin) then
       G%mask2dT(i,j) = 0.0
@@ -1227,6 +1238,7 @@ subroutine initialize_SIS_masks(G, PF)
     G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
   enddo ; enddo
 
+  call callTree_leave("initialize_masks()")
 
 end subroutine initialize_SIS_masks
 
