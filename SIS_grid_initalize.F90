@@ -4,8 +4,6 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_grid_initialize
 
-! use SIS_hor_grid, only : SIS_hor_grid_type !, set_derived_SIS_metrics
-
 use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum
 use MOM_domains, only : pass_var, pass_vector, pe_here, root_PE, broadcast
 use MOM_domains, only : AGRID, BGRID_NE, CGRID_NE, To_All, Scalar_Pair
@@ -58,10 +56,6 @@ subroutine SIS_set_grid_metrics(G, param_file)
 #include "version_variable.h"
   logical :: debug
   character(len=256) :: config
-  character(len=40)  :: mod_nm  = "SIS_grid_initialize" ! This module's name.
-
-  ! Read all relevant parameters and write them to the model log.
-!  call log_version(param_file, mod_nm, version)
 
   call log_version(param_file, "SIS_grid_initialize", version, "")
   call get_param(param_file, "SIS_grid_initialize", "GRID_CONFIG", config, &
@@ -91,13 +85,117 @@ subroutine SIS_set_grid_metrics(G, param_file)
   end select
 
 ! Calculate derived metrics (i.e. reciprocals and products)
-  ! call set_derived_SIS_metrics(G)
   call set_derived_dyn_horgrid(G)
 
-! This has not been written yet for SIS2 grids. -RWH
-!  if (debug) call grid_metrics_chksum('SIS_grid_initialize/set_grid_metrics',G)
+  if (debug) call grid_metrics_chksum('SIS_grid_initialize/set_grid_metrics',G)
 
 end subroutine SIS_set_grid_metrics
+
+! ------------------------------------------------------------------------------
+
+!> grid_metrics_chksum performs a set of checksums on metrics on the grid for
+!!   debugging.
+subroutine grid_metrics_chksum(parent, G)
+  character(len=*),      intent(in) :: parent  !< A string identifying the caller
+  type(dyn_horgrid_type), intent(in) :: G      !< The dynamic horizontal grid type
+
+  real, dimension(G%isd :G%ied ,G%jsd :G%jed ) :: tempH
+  real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB) :: tempQ
+  real, dimension(G%IsdB:G%IedB,G%jsd :G%jed ) :: tempE
+  real, dimension(G%isd :G%ied ,G%JsdB:G%JedB) :: tempN
+  integer :: i, j, isd, ied, jsd, jed, halo
+  integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
+
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+  halo = min(ied-ie, jed-je)
+halo=1 ! AJA
+
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%dxT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': dxT',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,j) = G%dxCu(I,j) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': dxCu',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(i,J) = G%dxCv(i,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': dxCv',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%dxBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': dxBu',G%HI, haloshift=halo)
+ 
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%dyT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': dyT',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,j) = G%dyCu(I,j) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': dyCu',G%HI, haloshift=halo)
+ 
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(i,J) = G%dyCv(i,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': dyCv',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%dyBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': dyBu',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%IdxT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': IdxT',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,j) = G%IdxCu(I,j) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': IdxCu',G%HI, haloshift=halo)
+ 
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(i,J) = G%IdxCv(i,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': IdxCv',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%IdxBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': IdxBu',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%IdyT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': IdyT',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,j) = G%IdyCu(I,j) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': IdyCu',G%HI, haloshift=halo)
+ 
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(i,J) = G%IdyCv(i,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': IdyCv',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%IdyBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': IdyBu',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%areaT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': areaT',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%areaBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': areaBu',G%HI, haloshift=halo)
+ 
+  do i=isd,ied ; do j=jsd,jed ; tempH(i,j) = G%IareaT(i,j) ; enddo ; enddo
+  call hchksum(tempH,trim(parent)//': IareaT',G%HI, haloshift=halo)
+ 
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%IareaBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': IareaBu',G%HI, haloshift=halo)
+
+  call hchksum(G%geoLonT,trim(parent)//': geoLonT',G%HI, haloshift=halo)
+
+  call hchksum(G%geoLatT,trim(parent)//': geoLatT',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%geoLonBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': geoLonBu',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do J=JsdB,JedB ; tempQ(I,J) = G%geoLatBu(I,J) ; enddo ; enddo
+  call qchksum(tempQ,trim(parent)//': geoLatBu',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,J) = G%geoLonCu(I,J) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': geoLonCu',G%HI, haloshift=halo)
+
+  do I=IsdB,IedB ; do j=jsd,jed ; tempE(I,J) = G%geoLatCu(I,J) ; enddo ; enddo
+  call uchksum(tempE,trim(parent)//': geoLatCu',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(I,J) = G%geoLonCv(I,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': geoLonCv',G%HI, haloshift=halo)
+
+  do i=isd,ied ; do J=JsdB,JedB ; tempN(I,J) = G%geoLatCv(I,J) ; enddo ; enddo
+  call vchksum(tempN,trim(parent)//': geoLatCv',G%HI, haloshift=halo)
+
+end subroutine grid_metrics_chksum
 
 ! ------------------------------------------------------------------------------
 
@@ -659,11 +757,8 @@ subroutine set_grid_metrics_mercator(G, param_file)
   real :: fnRef           ! fnRef is the value of Int_dj_dy or
                           ! Int_dj_dy at a latitude or longitude that is
   real :: jRef, iRef      ! being set to be at grid index jRef or iRef.
-  real :: dx_q, x_q_west
   integer :: itt1, itt2
-  integer :: err
   logical :: debug = .FALSE., simple_area = .true.
-  real    :: temp(G%isdB:G%iedB,G%jsdB:G%jedB)
   integer :: is, ie, js, je, Isq, Ieq, Jsq, Jeq, IsdB, IedB, JsdB, JedB
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
@@ -730,35 +825,42 @@ subroutine set_grid_metrics_mercator(G, param_file)
 ! on either h or q points, in a position consistent with the ratio
 ! GP%south_lat to GP%len_lat.
     jRef =  (G%jsg-1) + 0.5*FLOOR(GP%njglobal*((-1.0*GP%south_lat*2.0)/GP%len_lat)+0.5)
-    fnRef = Int_dj_dy(0.0,GP)
+    fnRef = Int_dj_dy(0.0, GP)
   else
 !  The following line sets the reference latitude GP%south_lat at j=js-1 (or -2?)
     jRef = (G%jsg-1)
-    fnRef = Int_dj_dy((GP%south_lat*PI/180.0),GP)
+    fnRef = Int_dj_dy((GP%south_lat*PI/180.0), GP)
   endif
 
-  y_q = GP%south_lat*PI/180.0
-  if ((0 >= JsdB+j_off) .and. (0 <= JedB+j_off)) then
-    do I=IsdB,IedB ; yq(I, -j_off) = y_q ; enddo
-    do i=isd,ied ; yv(i, -j_off) = y_q ; enddo
-  endif
-  do j=G%jsg-G%Domain%njhalo,G%jeg+G%Domain%njhalo
+  ! These calculations no longer depend on the the order in which they
+  ! are performed because they all use the same (poor) starting guess and
+  ! iterate to convergence.
+  do J=G%JsgB,G%JegB
+    jd = fnRef + (J - jRef)
+    y_q = find_root(Int_dj_dy, dy_dj, GP, jd, 0.0, -1.0*PI_2, PI_2, itt2)
+    G%gridLatB(J) = y_q*180.0/PI
+    ! if (is_root_pe()) &
+    !   write(*, '("J, y_q = ",I4,ES14.4," itts = ",I4)')  j, y_q, itt2
+  enddo
+  do j=G%jsg,G%jeg
     jd = fnRef + (j - jRef) - 0.5
-    y_h = find_root(Int_dj_dy,dy_dj,GP,jd,y_q,-1.0*PI_2,PI_2,itt1)
-
-    jd = fnRef + (j - jRef)
-    y_q = find_root(Int_dj_dy,dy_dj,GP,jd,y_h,-1.0*PI_2,PI_2,itt2)
-
-    if (j>=G%JsgB .and. j<=G%JegB) G%gridLatB(j) = y_q*180.0/PI
-    if (j>=G%jsg .and. j<=G%jeg)   G%gridLatT(j) = y_h*180.0/PI
-
-    if ((j >= jsd+j_off) .and. (j <= jed+j_off)) then
-      do i=isd,ied ; yh(i,j-j_off) = y_h ; enddo
-      do I=IsdB,IedB ; yu(I,j-j_off) = y_h ; enddo
-    endif
-    if ((J >= JsdB+j_off) .and. (J <= JedB+j_off)) then
-      do I=IsdB,IedB ; yq(I,J-j_off) = y_q ; enddo
-      do i=isd,ied ; yv(i,J-j_off) = y_q ; enddo
+    y_h = find_root(Int_dj_dy, dy_dj, GP, jd, 0.0, -1.0*PI_2, PI_2, itt1)
+    G%gridLatT(j) = y_h*180.0/PI
+    ! if (is_root_pe()) &
+    !   write(*, '("j, y_h = ",I4,ES14.4," itts = ",I4)')  j, y_h, itt1
+  enddo
+  do J=JsdB+J_off,JedB+J_off
+    jd = fnRef + (J - jRef)
+    y_q = find_root(Int_dj_dy, dy_dj, GP, jd, 0.0, -1.0*PI_2, PI_2, itt2)
+    do I=IsdB,IedB ; yq(I,J-J_off) = y_q ; enddo
+    do i=isd,ied ; yv(i,J-J_off) = y_q ; enddo
+  enddo
+  do j=jsd+J_off,jed+J_off
+    jd = fnRef + (j - jRef) - 0.5
+    y_h = find_root(Int_dj_dy, dy_dj, GP, jd, 0.0, -1.0*PI_2, PI_2, itt1)
+    if ((j >= jsd+J_off) .and. (j <= jed+J_off)) then
+      do i=isd,ied ; yh(i,j-J_off) = y_h ; enddo
+      do I=IsdB,IedB ; yu(I,j-J_off) = y_h ; enddo
     endif
   enddo
 
@@ -766,35 +868,32 @@ subroutine set_grid_metrics_mercator(G, param_file)
 
 ! These two lines place the western edge of the domain at GP%west_lon.
   iRef = (G%isg-1) + GP%niglobal
-  fnRef = Int_di_dx(((GP%west_lon+GP%len_lon)*PI/180.0),GP)
+  fnRef = Int_di_dx(((GP%west_lon+GP%len_lon)*PI/180.0), GP)
 
-  x_q = GP%west_lon*PI/180.0
-  x_q_west = x_q
-! If the model is in parallel in the X-direction, do the same set of
-! calculations which would occur on a single processor.
-  if ((0 >= IsdB+i_off) .and. (0 <= IedB+i_off)) then
-    do J=JsdB,JedB ; xq(-i_off,j) = x_q ; enddo
-    do j=jsd,jed ; xu(-i_off,j) = x_q ; enddo
-  endif
-  do i=G%isg-G%Domain%nihalo,G%ieg+G%Domain%nihalo
+  ! These calculations no longer depend on the the order in which they
+  ! are performed because they all use the same (poor) starting guess and
+  ! iterate to convergence.
+  do I=G%IsgB,G%IegB
+    id = fnRef + (I - iRef)
+    x_q = find_root(Int_di_dx, dx_di, GP, id, 0.0, -4.0*PI, 4.0*PI, itt2)
+    G%gridLonB(I) = x_q*180.0/PI
+  enddo
+  do i=G%isg,G%ieg
     id = fnRef + (i - iRef) - 0.5
-    x_h = find_root(Int_di_dx,dx_di,GP,id,x_q,-4.0*PI,4.0*PI,itt1)
-
-    id = fnRef + (i - iRef)
-    x_q = find_root(Int_di_dx,dx_di,GP,id,x_h,-4.0*PI,4.0*PI,itt2)
-    if(i == G%isc) dx_q = x_q - x_q_west
-
-    if (i>=G%IsgB .and. i<=G%IegB) G%gridLonB(i) = x_q*180.0/PI
-    if (i>=G%isg .and. i<=G%ieg)   G%gridLonT(i) = x_h*180.0/PI
-
-    if ((i >= isd+i_off) .and. (i <= ied+i_off)) then
-      do j=jsd,jed ; xh(i-i_off,j) = x_h ; enddo
-      do J=JsdB,JedB ; xv(i-i_off,J) = x_h ; enddo
-    endif
-    if ((I >= IsdB+i_off) .and. (I <= IedB+i_off)) then
-      do J=JsdB,JedB ; xq(I-i_off,J) = x_q ; enddo
-      do j=jsd,jed ; xu(I-i_off,j) = x_q ; enddo
-    endif
+    x_h = find_root(Int_di_dx, dx_di, GP, id, 0.0, -4.0*PI, 4.0*PI, itt1)
+    G%gridLonT(i) = x_h*180.0/PI
+  enddo
+  do I=IsdB+I_off,IedB+I_off
+    id = fnRef + (I - iRef)
+    x_q = find_root(Int_di_dx, dx_di, GP, id, 0.0, -4.0*PI, 4.0*PI, itt2)
+    do J=JsdB,JedB ; xq(I-I_off,J) = x_q ; enddo
+    do j=jsd,jed ; xu(I-I_off,j) = x_q ; enddo
+  enddo
+  do i=isd+I_off,ied+I_off
+    id = fnRef + (i - iRef) - 0.5
+    x_h = find_root(Int_di_dx, dx_di, GP, id, 0.0, -4.0*PI, 4.0*PI, itt1)
+    do j=jsd,jed ; xh(i-I_off,j) = x_h ; enddo
+    do J=JsdB,JedB ; xv(i-I_off,J) = x_h ; enddo
   enddo
 
   do J=JsdB,JedB ; do I=IsdB,IedB
@@ -833,29 +932,23 @@ subroutine set_grid_metrics_mercator(G, param_file)
 
   if (.not.simple_area) then
     do j=JsdB+1,jed ; do i=IsdB+1,ied
-  !         The following test is to ensure parallel reproducibility.
-      if (size(G%areaT(:,:),1) == 1) then !{
-        temp(i,j) = GP%Rad_Earth**2 * &
-            (dL(0.0,0.0,yq(I-1,J-1),yq(I-1,J)) + &
-            (dL(0.0,dx_q,yq(I-1,J),yq(I,J)) +   &
-            (dL(0.0,0.0,yq(I,J),yq(I,J-1)) +      &
-             dL(dx_q,0.0,yq(I,J-1),yq(I-1,J-1)))))
-      else
-        temp(I,J) = GP%Rad_Earth**2 * &
-            (dL(xq(I-1,J-1),xq(I-1,J),yq(I-1,J-1),yq(I-1,J)) + &
-            (dL(xq(I-1,J),xq(I,J),yq(I-1,J),yq(I,J)) +          &
-            (dL(xq(I,J),xq(I,J-1),yq(I,J),yq(I,J-1)) +          &
-             dL(xq(I,J-1),xq(I-1,J-1),yq(I,J-1),yq(I-1,J-1)))))
-      endif
+      G%areaT(I,J) = GP%Rad_Earth**2 * &
+          (dL(xq(I-1,J-1),xq(I-1,J),yq(I-1,J-1),yq(I-1,J)) + &
+          (dL(xq(I-1,J),xq(I,J),yq(I-1,J),yq(I,J)) +          &
+          (dL(xq(I,J),xq(I,J-1),yq(I,J),yq(I,J-1)) +          &
+           dL(xq(I,J-1),xq(I-1,J-1),yq(I,J-1),yq(I-1,J-1)))))
     enddo ;enddo
-  ! Fill in row and column one.
     if ((IsdB == isd) .or. (JsdB == jsq)) then
-      temp(isd,:) = temp(isd+1,jsd+1) ; temp(:,jsd) = temp(isd+1,jsd+1)
-      temp(isd,:) = temp(isd+1,:)     ; temp(:,jsd) = temp(:,jsd+1)
-      call pass_var(temp,G%Domain)
+      ! Fill in row and column 1 to calculate the area in the southernmost
+      ! and westernmost land cells when we are not using symmetric memory.
+      ! The pass_var call updates these values if they are not land cells.
+      G%areaT(isd+1,jsd) = G%areaT(isd+1,jsd+1)
+      do j=jsd,jed ; G%areaT(isd,j) = G%areaT(isd+1,j) ; enddo
+      do i=isd,ied ; G%areaT(i,jsd) = G%areaT(i,jsd+1) ; enddo
+      ! Now replace the data in the halos, if value values exist.
+      call pass_var(G%areaT,G%Domain)
     endif
     do j=jsd,jed ; do i=isd,ied
-      G%areaT(i,j) = temp(i,j)
       G%IareaT(i,j) = 1.0 / G%areaT(i,j)
     enddo ; enddo
   endif
@@ -921,30 +1014,27 @@ function find_root( fn, dy_df, GP, fnval, y1, ymin, ymax, ittmax)
   type(GPS), intent(in) :: GP
   real, intent(in) :: fnval, y1, ymin, ymax
   integer, intent(out) :: ittmax
-  real :: y
+  real :: y, y_next
 ! This subroutine finds and returns the value of y at which the
-! monotonic function fn takes the value fnval, also returning
+! monotonically increasing function fn takes the value fnval, also returning
 ! in ittmax the number of iterations of Newton's method that were
 ! used to polish the root.
   real :: ybot, ytop, fnbot, fntop
   integer :: itt
-  character(len =256) :: warnmesg
+  character(len=256) :: warnmesg
 
   real :: dy_dfn, dy, fny
 
-! For Fortran we need to copy the input y1 to y.
-! Otherwise the value of y gets changed globally.
-! i.e. y_h = find_root(fn,dy_df,fnval, y_q, ...) modifies y_q in
-! the code above
-
-!  Bracket the root.
-  y = y1 ; ybot = y1
-  fnbot = fn(ybot,GP) - fnval
-  itt = 0
+!  Bracket the root.  Do not use the bounding values because the value at the
+! function at the bounds could be infinite, as is the case for the Mercator
+! grid recursion relation. (I.e., this is a search on an open interval.)
+  ybot = y1
+  fnbot = fn(ybot,GP) - fnval ; itt = 0
   do while (fnbot > 0.0)
     if ((ybot - 2.0*dy_df(ybot,GP)) < (0.5*(ybot+ymin))) then
+      ! Go twice as far as the secant method would normally go.
       ybot = ybot - 2.0*dy_df(ybot,GP)
-    else
+    else  ! But stay within the open interval!
       ybot = 0.5*(ybot+ymin) ; itt = itt + 1
     endif
     fnbot = fn(ybot,GP) - fnval
@@ -954,21 +1044,17 @@ function find_root( fn, dy_df, GP, fnval, y1, ymin, ymax, ittmax)
         &x = ",ES10.4,", xmax = ",ES10.4,", fn = ",ES10.4,", dfn_dx = ",ES10.4,&
         &", seeking fn = ",ES10.4," - fn = ",ES10.4,".")') &
           pe_here(),ybot,ymin,fn(ybot,GP),dy_df(ybot,GP),fnval, fnbot
-
       call MOM_error(FATAL,warnmesg)
     endif
   enddo
 
-  if ((y + 2.0*dy_df(y,GP)) < (0.5*(y+ymax))) then
-    ytop = y + 2.0*dy_df(y,GP)
-  else
-    ytop = 0.5*(y+ymax)
-  endif
+  ytop = y1
   fntop = fn(ytop,GP) - fnval ; itt = 0
   do while (fntop < 0.0)
     if ((ytop + 2.0*dy_df(ytop,GP)) < (0.5*(ytop+ymax))) then
+      ! Go twice as far as the secant method would normally go.
       ytop = ytop + 2.0*dy_df(ytop,GP)
-    else
+    else ! But stay within the open interval!
       ytop = 0.5*(ytop+ymax) ; itt = itt + 1
     endif
     fntop = fn(ytop,GP) - fnval
@@ -978,32 +1064,52 @@ function find_root( fn, dy_df, GP, fnval, y1, ymin, ymax, ittmax)
         &x = ",ES10.4,", xmax = ",ES10.4,", fn = ",ES10.4,", dfn_dx = ",ES10.4, &
         &", seeking fn = ",ES10.4," - fn = ",ES10.4,".")') &
           pe_here(),ytop,ymax,fn(ytop,GP),dy_df(ytop,GP),fnval,fntop
-
       call MOM_error(FATAL,warnmesg)
     endif
   enddo
-!  Bisect several times to insure that the root is within the radius
-!  of convergence in the Newton's method polisher.
-  do itt=1,10
-    y = 0.5*(ybot + ytop)
-    fny = fn(y,GP) - fnval
-    if (fny < 0.0) then
-      fnbot = fny ; ybot = y
-    else
-      fntop = fny ; ytop = y
-    endif
-  enddo
 
-!    Polish the root using Newton's method.
-  do itt=1,10
-    dy_dfn = dy_df(y,GP)
+  ! Find the root using a bracketed variant of Newton's method, starting
+  ! with a false-positon method first guess.
+  if ((fntop < 0.0) .or. (fnbot > 0.0) .or. (ytop < ybot)) then
+    write(warnmesg, '("PE ",I2," find_root failed to bracket function. y = ",&
+              &2ES10.4,", fn = ",2ES10.4,".")') pe_here(),ybot,ytop,fnbot,fntop
+    call MOM_error(FATAL, warnmesg)
+  endif
+
+  if (fntop == 0.0) then ; y = ytop ; fny = fntop
+  elseif (fnbot == 0.0) then ; y = ybot ; fny = fnbot
+  else
+    y = (ybot*fntop - ytop*fnbot) / (fntop - fnbot)
     fny = fn(y,GP) - fnval
+    if (fny < 0.0) then ; fnbot = fny ; ybot = y
+    else ; fntop = fny ; ytop = y ; endif
+  endif
+
+  do itt=1,50
+    dy_dfn = dy_df(y,GP)
 
     dy = -1.0* fny * dy_dfn
-    y = y + dy
-    if (y > ytop) y = ytop
-    if (y < ybot) y = ybot
-    if (ABS(dy) < (8.0e-15*ABS(y)+1.e-20)) exit
+    y_next = y + dy
+    if ((y_next >= ytop) .or. (y_next <= ybot)) then
+      ! The Newton's method estimate has escaped bracketing, so use the
+      ! false-position method instead.  The complicated test is to properly
+      ! handle the case where the iteration is down to roundoff level differences.
+      y_next = y
+      if (abs(fntop - fnbot) > EPSILON(y) * (abs(fntop) + abs(fnbot))) &
+        y_next = (ybot*fntop - ytop*fnbot) / (fntop - fnbot)
+    endif
+
+    dy = y_next - y
+    if (ABS(dy) < (2.0*EPSILON(y)*(ABS(y) + ABS(y_next)) + 1.0e-20)) then
+      y = y_next ; exit
+    endif
+    y = y_next
+
+    fny = fn(y,GP) - fnval
+    if (fny > 0.0) then ; ytop = y ; fntop = fny
+    elseif (fny < 0.0) then ; ybot = y ; fnbot = fny
+    else ; exit ; endif
+
   enddo
   if (ABS(y) < 1e-12) y = 0.0
 
