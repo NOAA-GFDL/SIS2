@@ -3607,7 +3607,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable :: S_col(:)
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
-  integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
+  integer :: isc, iec, jsc, jec, nCat_dflt
   logical :: spec_thermo_sal
   character(len=128) :: restart_file, restart_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
@@ -3769,7 +3769,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "the same index. This does not work with static memory.", &
                  default=.false., layoutParam=.true.)
 #ifdef STATIC_MEMORY_
-  if (global_indexing) call MOM_error(FATAL, "initialize_MOM: "//&
+  if (global_indexing) call MOM_error(FATAL, "ice_model_init: "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #endif
   call get_param(param_file, mod, "FIRST_DIRECTION", first_direction, &
@@ -3920,7 +3920,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
            domain_name="ice model", include_name="SIS2_memory.h")
 #endif
 
-  call callTree_waypoint("domains initialized (initialize_MOM)")
+  call callTree_waypoint("domains initialized (ice_model_init)")
   call hor_index_init(G%Domain, HI, param_file, &
                       local_indexing=.not.global_indexing)
 
@@ -3930,15 +3930,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Set the basic (bathymetry and mask independent) grid metrics.
   call SIS_set_grid_metrics(dG, param_file)
 
+  ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
+  call SIS_initialize_fixed(dG, param_file)
+
   call set_hor_grid(G, param_file, global_indexing=global_indexing)
   call copy_dyngrid_to_SIS_horgrid(dG, G)
   call destroy_dyn_horgrid(dG)
-
-  ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-  call SIS_initialize_fixed(G, param_file)
-
-  CatIce = IG%CatIce
-
 
   ! Allocate and register fields for restarts.
   call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &

@@ -2,13 +2,16 @@
 !! topography and Coriolis, in a way that is very similar to MOM6.
 module SIS_fixed_initialization
 
-use SIS_hor_grid, only : SIS_hor_grid_type, ocean_grid_type=>SIS_hor_grid_type
+! This file is part of MOM6. See LICENSE.md for the license.
 use SIS_grid_initialize, only : initialize_SIS_masks
 
+use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum, chksum
 use MOM_coms, only : max_across_PEs
 use MOM_domains, only : pass_var, pass_vector, sum_across_PEs, broadcast
 use MOM_domains, only : root_PE, To_All, SCALAR_PAIR, CGRID_NE, AGRID
+use MOM_dyn_horgrid, only : dyn_horgrid_type
 use MOM_error_handler, only : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
+use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
 use MOM_io, only : read_data, slasher, file_exists
 use MOM_io, only : CORNER, NORTH_FACE, EAST_FACE
@@ -18,8 +21,6 @@ use netcdf
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: SIS_initialize_fixed
 
 contains
@@ -28,7 +29,7 @@ contains
 !> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
 !!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
 subroutine SIS_initialize_fixed(G, PF)
-  type(SIS_hor_grid_type), intent(inout) :: G   !< The model's horizontal grid structure.
+  type(dyn_horgrid_type),  intent(inout) :: G    !< The ocean's grid structure.
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
 
@@ -67,7 +68,7 @@ subroutine SIS_initialize_fixed(G, PF)
     case ("list") ; call reset_face_lengths_list(G, PF)
     case ("file") ; call reset_face_lengths_file(G, PF)
     case ("global_1deg") ; call reset_face_lengths_named(G, PF, trim(config))
-    case default ; call MOM_error(FATAL, "MOM_initialize_fixed: "// &
+    case default ; call MOM_error(FATAL, "SIS_initialize_fixed: "// &
       "Unrecognized channel configuration "//trim(config))
   end select
 
@@ -77,6 +78,11 @@ subroutine SIS_initialize_fixed(G, PF)
   call MOM_initialize_rotation(G%CoriolisBu, G, PF)
 !   Calculate the components of grad f (beta)
   call MOM_calculate_grad_Coriolis(G%dF_dx, G%dF_dy, G)
+  if (debug) then
+    call qchksum(G%CoriolisBu, "SIS_initialize_fixed: f ", G%HI)
+    call hchksum(G%dF_dx, "SIS_initialize_fixed: dF_dx ", G%HI)
+    call hchksum(G%dF_dy, "SIS_initialize_fixed: dF_dy ", G%HI)
+  endif
 
   call initialize_grid_rotation_angle(G, PF)
 
@@ -85,9 +91,9 @@ end subroutine SIS_initialize_fixed
 !> initialize_grid_rotation_angle initializes the arrays with the sine and
 !!   cosine of the angle between logical north on the grid and true north.
 subroutine initialize_grid_rotation_angle(G, PF)
-  type(SIS_hor_grid_type), intent(inout) :: G   !< The model's horizontal grid structure.
-  type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
-                                                !! to parse for model parameter values.
+  type(dyn_horgrid_type), intent(inout) :: G   !< The model's horizontal grid structure.
+  type(param_file_type),  intent(in)    :: PF  !< A structure indicating the open file
+                                               !! to parse for model parameter values.
 
   real    :: angle, lon_scale
   integer :: i, j
@@ -110,14 +116,11 @@ subroutine initialize_grid_rotation_angle(G, PF)
 end subroutine initialize_grid_rotation_angle
 
 
+!> MOM_initialize_rotation makes the appropriate call to set up the Coriolis parameter.
 subroutine MOM_initialize_rotation(f, G, PF)
-  type(ocean_grid_type),                        intent(in)  :: G
-  real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB), intent(out) :: f
-  type(param_file_type),                        intent(in)  :: PF
-! Arguments: f  - the Coriolis parameter in s-1. Intent out.
-!  (in)      G  - The ocean's grid structure.
-!  (in)      PF - A structure indicating the open file to parse for
-!                         model parameter values.
+  type(dyn_horgrid_type),                       intent(in)  :: G  !< The dynamic horizontal grid type
+  real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB), intent(out) :: f  !< The Coriolis parameter in s-1
+  type(param_file_type),                        intent(in)  :: PF !< Parameter file structure
 
 !   This subroutine makes the appropriate call to set up the Coriolis parameter.
 ! This is a separate subroutine so that it can be made public and shared with
@@ -126,7 +129,7 @@ subroutine MOM_initialize_rotation(f, G, PF)
   character(len=40)  :: mod = "MOM_initialize_rotation" ! This subroutine's name.
   character(len=200) :: config
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
   call get_param(PF, mod, "ROTATION", config, &
                  "This specifies how the Coriolis parameter is specified: \n"//&
                  " \t 2omegasinlat - Use twice the planetary rotation rate \n"//&
@@ -139,17 +142,19 @@ subroutine MOM_initialize_rotation(f, G, PF)
     case ("beta"); call set_rotation_beta_plane(f, G, PF)
     case ("betaplane"); call set_rotation_beta_plane(f, G, PF)
    !case ("nonrotating") ! Note from AJA: Missing case?
-    case default ; call MOM_error(FATAL,"MOM_initialize: "// &
+    case default ; call MOM_error(FATAL,"SIS_initialize: "// &
       "Unrecognized rotation setup "//trim(config))
   end select
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine MOM_initialize_rotation
 
 !> Calculates the components of grad f (Coriolis parameter)
 subroutine MOM_calculate_grad_Coriolis(dF_dx, dF_dy, G)
-  type(ocean_grid_type),            intent(inout) :: G !< Grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(out)   :: dF_dx !< x-component of grad f
-  real, dimension(SZI_(G),SZJ_(G)), intent(out)   :: dF_dy !< y-component of grad f
+  type(dyn_horgrid_type),             intent(inout) :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                      intent(out)   :: dF_dx !< x-component of grad f
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                      intent(out)   :: dF_dy !< y-component of grad f
   ! Local variables
   integer :: i,j
   real :: f1, f2
@@ -165,14 +170,11 @@ subroutine MOM_calculate_grad_Coriolis(dF_dx, dF_dy, G)
 end subroutine MOM_calculate_grad_Coriolis
 
 subroutine SIS_initialize_topography(D, max_depth, G, PF)
-  type(ocean_grid_type),            intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: D
-  real,                             intent(out) :: max_depth
-  type(param_file_type),            intent(in)  :: PF
-! Arguments: D  - the bottom depth in m. Intent out.
-!  (in)      G  - The ocean's grid structure.
-!  (in)      PF - A structure indicating the open file to parse for
-!                         model parameter values.
+  type(dyn_horgrid_type),           intent(in)  :: G  !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                    intent(out) :: D  !< Ocean bottom depth in m
+  type(param_file_type),            intent(in)  :: PF !< Parameter file structure
+  real,                             intent(out) :: max_depth !< Maximum depth of model in m
 
 !  This subroutine makes the appropriate call to set up the bottom depth.
 !  This is a separate subroutine so that it can be made public and shared with
@@ -234,10 +236,13 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
 end subroutine SIS_initialize_topography
 
 ! -----------------------------------------------------------------------------
+
+!> Return the global maximum ocean bottom depth in m.
 function diagnoseMaximumDepth(D,G)
-  type(ocean_grid_type),            intent(in) :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: D
-  real :: diagnoseMaximumDepth
+  type(dyn_horgrid_type),  intent(in) :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                           intent(in) :: D !< Ocean bottom depth in m
+  real :: diagnoseMaximumDepth             !< The global maximum ocean bottom depth in m
   ! Local variables
   integer :: i,j
   diagnoseMaximumDepth=D(G%isc,G%jsc)
@@ -252,15 +257,16 @@ end function diagnoseMaximumDepth
 
 !> Read gridded depths from file
 subroutine initialize_topography_from_file(D, G, param_file)
-  type(ocean_grid_type),            intent(in)  :: G !< Grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: D !< Bottom depth (positive, in m)
+  type(dyn_horgrid_type),           intent(in)  :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                    intent(out) :: D !< Ocean bottom depth in m
   type(param_file_type),            intent(in)  :: param_file !< Parameter file structure
   ! Local variables
   character(len=200) :: filename, topo_file, inputdir ! Strings for file/path
   character(len=200) :: topo_varname                  ! Variable name in file
   character(len=40)  :: mod = "initialize_topography_from_file" ! This subroutine's name.
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, mod, "INPUTDIR", inputdir, default=".")
   inputdir = slasher(inputdir)
@@ -288,14 +294,16 @@ subroutine initialize_topography_from_file(D, G, param_file)
 
   call apply_topography_edits_from_file(D, G, param_file)
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine initialize_topography_from_file
 
 !> Applies a list of topography overrides read from a netcdf file
 subroutine apply_topography_edits_from_file(D, G, param_file)
-  type(ocean_grid_type),            intent(in)    :: G !< Grid structure
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: D !< Bottom depth (positive, in m)
+  type(dyn_horgrid_type),           intent(in)    :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                    intent(inout) :: D !< Ocean bottom depth in m
   type(param_file_type),            intent(in)    :: param_file !< Parameter file structure
+
   ! Local variables
   character(len=200) :: topo_edits_file, inputdir ! Strings for file/path
   character(len=40)  :: mod = "apply_topography_edits_from_file" ! This subroutine's name.
@@ -303,7 +311,7 @@ subroutine apply_topography_edits_from_file(D, G, param_file)
   integer, dimension(:), allocatable :: ig, jg
   real, dimension(:), allocatable :: new_depth
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, mod, "INPUTDIR", inputdir, default=".")
   inputdir = slasher(inputdir)
@@ -397,16 +405,20 @@ subroutine apply_topography_edits_from_file(D, G, param_file)
 
   deallocate( ig, jg, new_depth )
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine apply_topography_edits_from_file
 
 ! -----------------------------------------------------------------------------
+!> initialized the bathymetry based on one of several named idealized configurations
 subroutine initialize_topography_named(D, G, param_file, topog_config, max_depth)
-  type(ocean_grid_type),            intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: D
-  type(param_file_type),            intent(in)  :: param_file
-  character(len=*),                 intent(in)  :: topog_config
-  real,                             intent(in)  :: max_depth
+  type(dyn_horgrid_type),           intent(in)  :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                                    intent(out) :: D !< Ocean bottom depth in m
+  type(param_file_type),            intent(in)  :: param_file !< Parameter file structure
+  character(len=*),                 intent(in)  :: topog_config !< The name of an idealized
+                                                              !! topographic configuration
+  real,                             intent(in)  :: max_depth  !< Maximum depth of model in m
+
 ! Arguments: D          - the bottom depth in m. Intent out.
 !  (in)      G          - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -428,8 +440,8 @@ subroutine initialize_topography_named(D, G, param_file, topog_config, max_depth
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
-  call MOM_mesg("  MOM_fixed_initialization.F90, initialize_topography_named: "//&
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
+  call MOM_mesg("  SIS_fixed_initialization.F90, initialize_topography_named: "//&
                  "TOPO_CONFIG = "//trim(topog_config), 5)
 
   call get_param(param_file, mod, "MINIMUM_DEPTH", min_depth, &
@@ -508,16 +520,18 @@ subroutine initialize_topography_named(D, G, param_file, topog_config, max_depth
     if (D(i,j) < min_depth) D(i,j) = 0.5*min_depth
   enddo ; enddo
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine initialize_topography_named
 ! -----------------------------------------------------------------------------
 
 ! -----------------------------------------------------------------------------
+!> limit_topography ensures that  min_depth < D(x,y) < max_depth
 subroutine limit_topography(D, G, param_file, max_depth)
-  type(ocean_grid_type),            intent(in)    :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: D
-  type(param_file_type),            intent(in)    :: param_file
-  real,                             intent(in)    :: max_depth
+  type(dyn_horgrid_type), intent(in)    :: G !< The dynamic horizontal grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                          intent(inout) :: D !< Ocean bottom depth in m
+  type(param_file_type),  intent(in)    :: param_file !< Parameter file structure
+  real,                   intent(in)    :: max_depth  !< Maximum depth of model in m
 ! Arguments: D          - the bottom depth in m. Intent in/out.
 !  (in)      G          - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -529,7 +543,7 @@ subroutine limit_topography(D, G, param_file, max_depth)
   character(len=40)  :: mod = "limit_topography" ! This subroutine's name.
   real :: min_depth, mask_depth
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, "MOM_grid_init initialize_masks", "MINIMUM_DEPTH", min_depth, &
                  "If MASKING_DEPTH is unspecified, then anything shallower than\n"//&
@@ -556,13 +570,13 @@ subroutine limit_topography(D, G, param_file, max_depth)
     enddo ; enddo
   endif
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine limit_topography
 ! -----------------------------------------------------------------------------
 
 ! -----------------------------------------------------------------------------
 subroutine set_rotation_planetary(f, G, param_file)
-  type(ocean_grid_type),                        intent(in)  :: G
+  type(dyn_horgrid_type),                        intent(in)  :: G
   real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB), intent(out) :: f
   type(param_file_type),                        intent(in)  :: param_file
 ! Arguments: f          - Coriolis parameter (vertical component) in s^-1
@@ -574,7 +588,7 @@ subroutine set_rotation_planetary(f, G, param_file)
   integer :: I, J
   real    :: PI, omega
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, "set_rotation_planetary", "OMEGA", omega, &
                  "The rotation rate of the earth.", units="s-1", &
@@ -585,13 +599,13 @@ subroutine set_rotation_planetary(f, G, param_file)
     f(I,J) = ( 2.0 * omega ) * sin( ( PI * G%geoLatBu(I,J) ) / 180.)
   enddo ; enddo
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine set_rotation_planetary
 ! -----------------------------------------------------------------------------
 
 ! -----------------------------------------------------------------------------
 subroutine set_rotation_beta_plane(f, G, param_file)
-  type(ocean_grid_type),                        intent(in)  :: G
+  type(dyn_horgrid_type),                        intent(in)  :: G
   real, dimension(G%IsdB:G%IedB,G%JsdB:G%JedB), intent(out) :: f
   type(param_file_type),                        intent(in)  :: param_file
 ! Arguments: f          - Coriolis parameter (vertical component) in s^-1
@@ -604,7 +618,7 @@ subroutine set_rotation_beta_plane(f, G, param_file)
   character(len=40)  :: mod = "set_rotation_beta_plane" ! This subroutine's name.
   character(len=200) :: axis_units
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, mod, "F_0", f_0, &
                  "The reference value of the Coriolis parameter with the \n"//&
@@ -631,13 +645,13 @@ subroutine set_rotation_beta_plane(f, G, param_file)
     f(I,J) = f_0 + beta * ( G%geoLatBu(I,J) * y_scl )
   enddo ; enddo
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine set_rotation_beta_plane
 ! -----------------------------------------------------------------------------
 
 ! -----------------------------------------------------------------------------
 subroutine reset_face_lengths_named(G, param_file, name)
-  type(ocean_grid_type), intent(inout) :: G
+  type(dyn_horgrid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
   character(len=*),      intent(in)    :: name
 !   This subroutine sets the open face lengths at selected points to restrict
@@ -762,7 +776,7 @@ end subroutine reset_face_lengths_named
 
 ! -----------------------------------------------------------------------------
 subroutine reset_face_lengths_file(G, param_file)
-  type(ocean_grid_type), intent(inout) :: G
+  type(dyn_horgrid_type), intent(inout) :: G
   type(param_file_type), intent(in)    :: param_file
 !   This subroutine sets the open face lengths at selected points to restrict
 ! passages to their observed widths.
@@ -778,7 +792,7 @@ subroutine reset_face_lengths_file(G, param_file)
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
   ! These checks apply regardless of the chosen option.
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, mod, "CHANNEL_WIDTH_FILE", chan_file, &
                  "The file from which the list of narrowed channels is read.", &
@@ -824,14 +838,14 @@ subroutine reset_face_lengths_file(G, param_file)
     if (G%areaCv(i,J) > 0.0) G%IareaCv(i,J) = G%mask2dCv(i,J) / G%areaCv(i,J)
   enddo ; enddo
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine reset_face_lengths_file
 ! -----------------------------------------------------------------------------
 
 ! -----------------------------------------------------------------------------
 subroutine reset_face_lengths_list(G, param_file)
-  type(ocean_grid_type), intent(inout) :: G
-  type(param_file_type), intent(in)    :: param_file
+  type(dyn_horgrid_type), intent(inout) :: G
+  type(param_file_type),  intent(in)    :: param_file
 !   This subroutine sets the open face lengths at selected points to restrict
 ! passages to their observed widths.
 
@@ -858,7 +872,7 @@ subroutine reset_face_lengths_list(G, param_file)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
- ! call callTree_enter(trim(mod)//"(), MOM_fixed_initialization.F90")
+  call callTree_enter(trim(mod)//"(), SIS_fixed_initialization.F90")
 
   call get_param(param_file, mod, "CHANNEL_LIST_FILE", chan_file, &
                  "The file from which the list of narrowed channels is read.", &
@@ -1031,7 +1045,7 @@ subroutine reset_face_lengths_list(G, param_file)
     deallocate(v_lat) ; deallocate(v_lon) ; deallocate(v_width)
   endif
 
- ! call callTree_leave(trim(mod)//'()')
+  call callTree_leave(trim(mod)//'()')
 end subroutine reset_face_lengths_list
 ! -----------------------------------------------------------------------------
 

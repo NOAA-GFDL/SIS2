@@ -4,7 +4,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_grid_initialize
 
-use SIS_hor_grid, only : SIS_hor_grid_type !, set_derived_SIS_metrics
+! use SIS_hor_grid, only : SIS_hor_grid_type !, set_derived_SIS_metrics
 
 use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum
 use MOM_domains, only : pass_var, pass_vector, pe_here, root_PE, broadcast
@@ -101,7 +101,7 @@ end subroutine SIS_set_grid_metrics
 
 ! ------------------------------------------------------------------------------
 
-!>  et_grid_metrics_from_mosaic sets the grid metrics from a mosaic file.
+!>  set_grid_metrics_from_mosaic sets the grid metrics from a mosaic file.
 subroutine set_grid_metrics_from_mosaic(G, param_file)
   type(dyn_horgrid_type), intent(inout) :: G           !< The dynamic horizontal grid type
   type(param_file_type), intent(in)     :: param_file  !< Parameter file structure
@@ -1155,8 +1155,7 @@ end function Adcroft_reciprocal
 !> initialize_SIS_masks initializes the grid masks and any metrics that come
 !!    with masks already applied.
 subroutine initialize_SIS_masks(G, PF)
-  type(SIS_hor_grid_type), intent(inout) :: G   !< The dynamic horizontal grid type
-!###  type(dyn_horgrid_type), intent(inout) :: G   !< The dynamic horizontal grid type
+  type(dyn_horgrid_type), intent(inout) :: G   !< The dynamic horizontal grid type
   type(param_file_type), intent(in)     :: PF  !< Parameter file structure
 
 
