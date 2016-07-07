@@ -3642,7 +3642,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   real :: g_Earth !   The gravitational acceleration in m s-2.
   integer :: idr, id_sal
-  logical :: test_grid_copy = .true. ! .false.
+  integer :: write_geom
+  logical :: test_grid_copy = .false.
+  logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
                                ! of having the data domain on each processor start at 1.
@@ -3668,6 +3670,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
+
+  call callTree_enter("ice_model_init(), ice_model.F90")
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, "")
@@ -3768,7 +3772,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "the same index. This does not work with static memory.", &
                  default=.false., layoutParam=.true.)
 #ifdef STATIC_MEMORY_
-  if (global_indexing) call MOM_error(FATAL, "ice_model_init: "//&
+  if (global_indexing) call SIS_error(FATAL, "ice_model_init: "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #endif
   call get_param(param_file, mod, "FIRST_DIRECTION", first_direction, &
@@ -3879,6 +3883,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "MASSLESS_ICE_SALIN", massless_ice_salin, &
                  "The ice salinity fill value for massless categories.", &
                  units="g kg-1", default=0.0, do_not_log=.true.)
+  call get_param(param_file, "MOM", "WRITE_GEOM", write_geom, &
+                 "If =0, never write the geometry and vertical grid files.\n"//&
+                 "If =1, write the geometry and vertical grid files only for\n"//&
+                 "a new simulation. If =2, always write the geometry and\n"//&
+                 "vertical grid files. Other values are invalid.", default=1)
+  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
+         "WRITE_GEOM must be equal to 0, 1 or 2.")
+  write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
+     ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
   call check_ice_model_nml(param_file)
 
@@ -3927,7 +3940,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call clone_MOM_domain(G%Domain, dG%Domain)
 
   ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-  call SIS_initialize_fixed(dG, param_file)
+  call SIS_initialize_fixed(dG, param_file, write_geom_files, dirs%output_directory)
 
   call set_hor_grid(G, param_file, global_indexing=global_indexing)
   call copy_dyngrid_to_SIS_horgrid(dG, G)
@@ -3951,8 +3964,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 !                                       Ice%Ice_restart, restart_file)
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
+  i_off = LBOUND(Ice%t_surf,1) - HI%isc ; j_off = LBOUND(Ice%t_surf,2) - HI%jsc
 
   ! This will likely be replaced later with information provided along
   ! with the shortwave fluxes.
@@ -4283,6 +4296,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp)
   IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
       (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
+
+  call callTree_leave("ice_model_init()")
 
 end subroutine ice_model_init
 

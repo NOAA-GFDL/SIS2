@@ -32,10 +32,12 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
 !!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
-subroutine SIS_initialize_fixed(G, PF)
+subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   type(dyn_horgrid_type),  intent(inout) :: G    !< The ocean's grid structure.
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
+  logical,                 intent(in)    :: write_geom !< If true, write grid geometry files.
+  character(len=*),        intent(in)    :: output_dir !< The directory into which to write files.
 
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
 
@@ -109,6 +111,10 @@ subroutine SIS_initialize_fixed(G, PF)
   endif
 
   call initialize_grid_rotation_angle(G, PF)
+
+! Write out all of the grid data used by this run.
+  if (write_geom) call write_ocean_geometry_file(G, PF, output_dir, &
+                                                 geom_file="sea_ice_geometry")
 
   call callTree_leave('SIS_initialize_fixed()')
 
