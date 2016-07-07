@@ -2,8 +2,7 @@
 !! topography and Coriolis, in a way that is very similar to MOM6.
 module SIS_fixed_initialization
 
-! This file is part of MOM6. See LICENSE.md for the license.
-use SIS_grid_initialize, only : initialize_SIS_masks, SIS_set_grid_metrics
+! This file is part of SIS2. See LICENSE.md for the license.
 
 use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum, chksum
 use MOM_coms, only : max_across_PEs
@@ -13,6 +12,7 @@ use MOM_dyn_horgrid, only : dyn_horgrid_type
 use MOM_error_handler, only : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_grid_initialize, only : initialize_masks, set_grid_metrics
 use MOM_io, only : read_data, slasher, file_exists
 use MOM_io, only : CORNER, NORTH_FACE, EAST_FACE
 use MOM_string_functions, only : uppercase
@@ -51,7 +51,7 @@ subroutine SIS_initialize_fixed(G, PF)
   inputdir = slasher(inputdir)
 
 ! Set up the parameters of the physical domain (i.e. the grid), G
-  call SIS_set_grid_metrics(G, PF)
+  call set_grid_metrics(G, PF)
 
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
@@ -60,7 +60,7 @@ subroutine SIS_initialize_fixed(G, PF)
   call pass_var(G%bathyT, G%Domain)
 
 ! Initialize the various masks and any masked metrics.
-  call initialize_SIS_masks(G, PF)
+  call initialize_masks(G, PF)
 
   if (debug) then
     call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, haloshift=1)
