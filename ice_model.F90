@@ -88,7 +88,6 @@ use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
-use SIS_grid_initialize, only : SIS_set_grid_metrics
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 
 use ice_grid, only : set_ice_grid, ice_grid_end, ice_grid_type
@@ -3926,9 +3925,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call create_dyn_horgrid(dG, HI) !, bathymetry_at_vel=bathy_at_vel)
   call clone_MOM_domain(G%Domain, dG%Domain)
-
-  ! Set the basic (bathymetry and mask independent) grid metrics.
-  call SIS_set_grid_metrics(dG, param_file)
 
   ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
   call SIS_initialize_fixed(dG, param_file)

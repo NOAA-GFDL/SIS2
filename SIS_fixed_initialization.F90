@@ -3,7 +3,7 @@
 module SIS_fixed_initialization
 
 ! This file is part of MOM6. See LICENSE.md for the license.
-use SIS_grid_initialize, only : initialize_SIS_masks
+use SIS_grid_initialize, only : initialize_SIS_masks, SIS_set_grid_metrics
 
 use MOM_checksums, only : hchksum, qchksum, uchksum, vchksum, chksum
 use MOM_coms, only : max_across_PEs
@@ -35,14 +35,23 @@ subroutine SIS_initialize_fixed(G, PF)
 
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
 
+  character(len=200) :: inputdir   ! The directory where NetCDF input files are.
   character(len=200) :: config
-  character(len=40)  :: mod  = "SIS_initialize_fixed" ! This module's name.
+  character(len=40)  :: mod = "SIS_initialize_fixed" ! This module's name.
   logical :: debug
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
 
-  call log_version(PF, mod, version)
+  call callTree_enter("SIS_initialize_fixed(), SIS_fixed_initialization.F90")
+  call log_version(PF, mod, version, "")
   call get_param(PF, mod, "DEBUG", debug, default=.false.)
+
+  call get_param(PF, mod, "INPUTDIR", inputdir, &
+         "The directory in which input files are found.", default=".")
+  inputdir = slasher(inputdir)
+
+! Set up the parameters of the physical domain (i.e. the grid), G
+  call SIS_set_grid_metrics(G, PF)
 
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
@@ -52,6 +61,14 @@ subroutine SIS_initialize_fixed(G, PF)
 
 ! Initialize the various masks and any masked metrics.
   call initialize_SIS_masks(G, PF)
+
+  if (debug) then
+    call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, haloshift=1)
+    call hchksum(G%mask2dT, 'SIS_initialize_fixed: mask2dT ', G%HI)
+    call uchksum(G%mask2dCu, 'SIS_initialize_fixed: mask2dCu ', G%HI)
+    call vchksum(G%mask2dCv, 'SIS_initialize_fixed: mask2dCv ', G%HI)
+    call qchksum(G%mask2dBu, 'SIS_initialize_fixed: mask2dBu ', G%HI)
+  endif
 
 ! Modulate geometric scales according to geography.
   call get_param(PF, mod, "CHANNEL_CONFIG", config, &
@@ -89,35 +106,9 @@ subroutine SIS_initialize_fixed(G, PF)
 
   call initialize_grid_rotation_angle(G, PF)
 
+  call callTree_leave('SIS_initialize_fixed()')
+
 end subroutine SIS_initialize_fixed
-
-!> initialize_grid_rotation_angle initializes the arrays with the sine and
-!!   cosine of the angle between logical north on the grid and true north.
-subroutine initialize_grid_rotation_angle(G, PF)
-  type(dyn_horgrid_type), intent(inout) :: G   !< The model's horizontal grid structure.
-  type(param_file_type),  intent(in)    :: PF  !< A structure indicating the open file
-                                               !! to parse for model parameter values.
-
-  real    :: angle, lon_scale
-  integer :: i, j
-
-  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
-                        G%geoLatBu(I-1,J) + G%geoLatBu(I,J)) * atan(1.0)/180)
-    angle        = atan2((G%geoLonBu(I-1,J) + G%geoLonBu(I,J) - &
-                          G%geoLonBu(I-1,J-1) - G%geoLonBu(I,J-1))*lon_scale, &
-                          G%geoLatBu(I-1,J) + G%geoLatBu(I,J) - &
-                          G%geoLatBu(I-1,J-1) - G%geoLatBu(I,J-1) )
-    G%sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
-    G%cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
-  enddo ; enddo
-
-  ! ### THIS DOESN'T SEEM RIGHT AT A CUBED-SPHERE FOLD -RWH
-  call pass_var(G%cos_rot, G%Domain)
-  call pass_var(G%sin_rot, G%Domain)
-
-end subroutine initialize_grid_rotation_angle
-
 
 !> MOM_initialize_rotation makes the appropriate call to set up the Coriolis parameter.
 subroutine MOM_initialize_rotation(f, G, PF)
@@ -172,6 +163,35 @@ subroutine MOM_calculate_grad_Coriolis(dF_dx, dF_dy, G)
   call pass_vector(dF_dx, dF_dy, G%Domain, stagger=AGRID)
 end subroutine MOM_calculate_grad_Coriolis
 
+!> initialize_grid_rotation_angle initializes the arrays with the sine and
+!!   cosine of the angle between logical north on the grid and true north.
+subroutine initialize_grid_rotation_angle(G, PF)
+  type(dyn_horgrid_type), intent(inout) :: G   !< The model's horizontal grid structure.
+  type(param_file_type),  intent(in)    :: PF  !< A structure indicating the open file
+                                               !! to parse for model parameter values.
+
+  real    :: angle, lon_scale
+  integer :: i, j
+
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    lon_scale    = cos((G%geoLatBu(I-1,J-1) + G%geoLatBu(I,J-1  ) + &
+                        G%geoLatBu(I-1,J) + G%geoLatBu(I,J)) * atan(1.0)/180)
+    angle        = atan2((G%geoLonBu(I-1,J) + G%geoLonBu(I,J) - &
+                          G%geoLonBu(I-1,J-1) - G%geoLonBu(I,J-1))*lon_scale, &
+                          G%geoLatBu(I-1,J) + G%geoLatBu(I,J) - &
+                          G%geoLatBu(I-1,J-1) - G%geoLatBu(I,J-1) )
+    G%sin_rot(i,j) = sin(angle) ! angle is the clockwise angle from lat/lon to ocean
+    G%cos_rot(i,j) = cos(angle) ! grid (e.g. angle of ocean "north" from true north)
+  enddo ; enddo
+
+  ! ### THIS DOESN'T SEEM RIGHT AT A CUBED-SPHERE FOLD -RWH
+  call pass_var(G%cos_rot, G%Domain)
+  call pass_var(G%sin_rot, G%Domain)
+
+end subroutine initialize_grid_rotation_angle
+
+!> SIS_initialize_topography makes the appropriate call to set up the bathymetry.
+!! It is very similar to MOM_initialize_topography, but with fewer options.
 subroutine SIS_initialize_topography(D, max_depth, G, PF)
   type(dyn_horgrid_type),           intent(in)  :: G  !< The dynamic horizontal grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
@@ -198,6 +218,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
                  " \t halfpipe - a zonally uniform channel with a half-sine \n"//&
                  " \t\t profile in the meridional direction.", &
                  default="file")
+! The following are options that are available with MOM6 but not SIS2.
 !                 " \t benchmark - use the benchmark test case topography. \n"//&
 !                 " \t DOME - use a slope and channel configuration for the \n"//&
 !                 " \t\t DOME sill-overflow test case. \n"//&
@@ -214,13 +235,6 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
     case ("spoon");     call initialize_topography_named(D, G, PF, config, max_depth)
     case ("bowl");      call initialize_topography_named(D, G, PF, config, max_depth)
     case ("halfpipe");  call initialize_topography_named(D, G, PF, config, max_depth)
-!    case ("DOME");      call DOME_initialize_topography(D, G, PF, max_depth)
-!    case ("benchmark"); call benchmark_initialize_topography(D, G, PF, max_depth)
-!    case ("DOME2D");    call DOME2d_initialize_topography(D, G, PF, max_depth)
-!    case ("sloshing");  call sloshing_initialize_topography(D, G, PF, max_depth)
-!    case ("seamount");  call seamount_initialize_topography(D, G, PF, max_depth)
-!    case ("Phillips");  call Phillips_initialize_topography(D, G, PF)
-!    case ("USER");      call user_initialize_topography(D, G, PF)
     case default ;      call MOM_error(FATAL,"SIS_initialize_topography: "// &
       "Unrecognized topography setup '"//trim(config)//"'")
   end select
