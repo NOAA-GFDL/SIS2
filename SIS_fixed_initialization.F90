@@ -47,6 +47,9 @@ subroutine SIS_initialize_fixed(G, PF)
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
 
+  ! To initialize masks, the bathymetry in halo regions must be filled in
+  call pass_var(G%bathyT, G%Domain)
+
 ! Initialize the various masks and any masked metrics.
   call initialize_SIS_masks(G, PF)
 

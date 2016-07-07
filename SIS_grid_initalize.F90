@@ -1264,7 +1264,6 @@ subroutine initialize_SIS_masks(G, PF)
   type(dyn_horgrid_type), intent(inout) :: G   !< The dynamic horizontal grid type
   type(param_file_type), intent(in)     :: PF  !< Parameter file structure
 
-
 !    Initialize_masks sets mask2dT, mask2dCu, mask2dCv, and mask2dBu to mask out
 ! flow over any points which are shallower than Dmin and permit an
 ! appropriate treatment of the boundary conditions.  mask2dCu and mask2dCv
@@ -1291,7 +1290,6 @@ subroutine initialize_SIS_masks(G, PF)
   Dmin = min_depth
   if (mask_depth>=0.) Dmin = mask_depth
 
-  call pass_var(G%bathyT, G%Domain)
   G%mask2dCu(:,:) = 0.0 ; G%mask2dCv(:,:) = 0.0 ; G%mask2dBu(:,:) = 0.0
 
   ! Construct the h-point or T-point mask
@@ -1333,12 +1331,14 @@ subroutine initialize_SIS_masks(G, PF)
 
   do j=G%jsd,G%jed ; do I=G%IsdB,G%IedB
     G%dy_Cu(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
+    G%dy_Cu_obc(I,j) = G%mask2dCu(I,j) * G%dyCu(I,j)
     G%areaCu(I,j) = G%dxCu(I,j) * G%dy_Cu(I,j)
     G%IareaCu(I,j) = G%mask2dCu(I,j) * Adcroft_reciprocal(G%areaCu(I,j))
   enddo ; enddo
 
   do J=G%JsdB,G%JedB ; do i=G%isd,G%ied
     G%dx_Cv(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
+    G%dx_Cv_obc(i,J) = G%mask2dCv(i,J) * G%dxCv(i,J)
     G%areaCv(i,J) = G%dyCv(i,J) * G%dx_Cv(i,J)
     G%IareaCv(i,J) = G%mask2dCv(i,J) * Adcroft_reciprocal(G%areaCv(i,J))
   enddo ; enddo
