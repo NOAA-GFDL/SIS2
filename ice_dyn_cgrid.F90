@@ -1151,7 +1151,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (CS%debug) then
       call hchksum(CS%str_d, "str_d in ice_C_dynamics", G%HI, haloshift=1)
       call hchksum(CS%str_t, "str_t in ice_C_dynamics", G%HI, haloshift=1)
-      call Bchksum(CS%str_s, "str_s in ice_C_dynamics", G%HI, haloshift=1)
+      call Bchksum(CS%str_s, "str_s in ice_C_dynamics", G%HI, &
+                   haloshift=0, symmetric=.true.)
 
       call uchksum(fxic, "fxic in ice_C_dynamics", G%HI)
       call vchksum(fyic, "fyic in ice_C_dynamics", G%HI)
