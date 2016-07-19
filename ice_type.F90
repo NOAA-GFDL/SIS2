@@ -165,8 +165,18 @@ type ice_state_type
                                   ! the ocean surface, in kg m-2 s-1.
     coszen       => NULL(), &     ! Cosine of the solar zenith angle, nondim.
     lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
-    swdn         => NULL()        ! and short-wave radiation at the top of the
+    swdn         => NULL(), &     ! and short-wave radiation at the top of the
                                   ! snow, averaged across categories, in W m-2.
+    runoff => NULL(), &           ! Liquid runoff into the ocean, in kg m-2.
+    calving => NULL(), &          ! Calving of ice or runoff of frozen fresh
+                                  ! water into the ocean, in kg m-2.
+    runoff_hflx => NULL(), &      ! The heat flux associated with runoff, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    calving_hflx => NULL(), &     ! The heat flux associated with calving, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
 
   real, pointer, dimension(:,:,:) :: &
     sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
@@ -633,6 +643,11 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IST%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
   allocate(IST%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
   allocate(IST%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%runoff(SZI_(HI), SZJ_(HI))) ; IST%runoff(:,:) = 0.0 !NI
+  allocate(IST%calving(SZI_(HI), SZJ_(HI))) ; IST%calving(:,:) = 0.0 !NI
+  allocate(IST%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IST%runoff_hflx(:,:) = 0.0 !NI
+  allocate(IST%calving_hflx(SZI_(HI), SZJ_(HI))) ; IST%calving_hflx(:,:) = 0.0 !NI
+  allocate(IST%flux_salt(SZI_(HI), SZJ_(HI))) ; IST%flux_salt(:,:) = 0.0 !NI
 
   allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
@@ -776,15 +791,15 @@ subroutine dealloc_IST_arrays(IST)
 end subroutine dealloc_IST_arrays
 
 subroutine IST_chksum(mesg, IST, G, IG, haloshift)
-  character(len=*),        intent(in)    :: mesg
-  type(ice_state_type),    intent(inout) :: IST
+  character(len=*),        intent(in) :: mesg
+  type(ice_state_type),    intent(in) :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  integer, optional,       intent(in)    :: haloshift
+  type(ice_grid_type),     intent(in) :: IG
+  integer, optional,       intent(in) :: haloshift
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      IST - The ice state type variable to be checked.
-!  (in)      G - The ocean's grid structure.
+!  (in)      G - The ocean's grid structure.  (Inout due to halo updates.)
 !  (in,opt)  haloshift - If present, check halo points out this far.
   character(len=20) :: k_str1, k_str
   integer :: hs, k
@@ -816,8 +831,8 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
 end subroutine IST_chksum
 
 subroutine Ice_public_type_chksum(mesg, Ice)
-  character(len=*),        intent(in)    :: mesg
-  type(ice_data_type),     intent(inout) :: Ice
+  character(len=*),    intent(in) :: mesg
+  type(ice_data_type), intent(in) :: Ice
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      Ice - An ice_data_type structure whose elements are to be

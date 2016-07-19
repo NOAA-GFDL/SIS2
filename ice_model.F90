@@ -139,6 +139,9 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call mpp_clock_begin(iceClock)
   call mpp_clock_begin(iceClock2)
+  ! average fluxes from update_ice_model_fast
+  call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
+
   call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Ice%IG, &
                              Land_boundary%runoff, Land_boundary%calving, &
                              Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
@@ -268,16 +271,13 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! avg_top_quantities - time average fluxes for ice and ocean slow physics      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine avg_top_quantities(Ice, IST, G, IG)
-  type(ice_data_type),     intent(inout) :: Ice
+subroutine avg_top_quantities(IST, G, IG)
   type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
+  type(SIS_hor_grid_type), intent(in)    :: G
+  type(ice_grid_type),     intent(in)    :: IG
 
   real    :: u, v, divid, sign
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
-  logical :: sent
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -325,6 +325,25 @@ subroutine avg_top_quantities(Ice, IST, G, IG)
   enddo
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
 
+  !
+  ! set count to zero and fluxes will be zeroed before the next sum
+  !
+  IST%avg_count = 0
+end subroutine avg_top_quantities
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! post_flux_diagnostics - write out any diagnostics of surface fluxes.         !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine post_flux_diagnostics(IST, G, IG)
+  type(ice_state_type),    intent(in) :: IST
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(ice_grid_type),     intent(in) :: IG
+
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
+  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
   if (IST%id_sh>0) call post_avg(IST%id_sh, IST%flux_t_top, IST%part_size, &
@@ -372,12 +391,12 @@ subroutine avg_top_quantities(Ice, IST, G, IG)
                              IST%part_size, IST%diag, G=G)
   if (IST%id_sw_vis_dif>0) call post_avg(IST%id_sw_vis_dif, IST%flux_sw_vis_dif_top, &
                              IST%part_size, IST%diag, G=G)
-  !
-  ! set count to zero and fluxes will be zeroed before the next sum
-  !
-  IST%avg_count = 0
 
-end subroutine avg_top_quantities
+  if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) then
+    call post_data(IST%id_fwnudge, IST%melt_nudge, IST%diag)
+  endif
+
+end subroutine post_flux_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ocean_top_fluxes - Translate ice-bottom fluxes of heat, mass, salt, and  !
@@ -386,9 +405,9 @@ end subroutine avg_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(inout) :: IST
+  type(ice_state_type),    intent(in)    :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
+  type(ice_grid_type),     intent(in)    :: IG
 
   real :: I_count
   integer :: i, j, isc, iec, jsc, jec, m, n, i2, j2, i_off, j_off, ind
@@ -1638,31 +1657,34 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,i_off,j_off,Ice,runoff,calving, &
 !$OMP                                  runoff_hflx,calving_hflx)                       &
 !$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    IST%runoff(i,j)  = runoff(i,j)
+    IST%calving(i,j) = calving(i,j)
+    IST%runoff_hflx(i,j)  = runoff_hflx(i,j)
+    IST%calving_hflx(i,j) = calving_hflx(i,j)
+  enddo ; enddo
+
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%runoff(i2,j2)  = runoff(i,j)
-    Ice%calving(i2,j2) = calving(i,j)
-    Ice%runoff_hflx(i2,j2)  = runoff_hflx(i,j)
-    Ice%calving_hflx(i2,j2) = calving_hflx(i,j)
+    Ice%runoff(i2,j2)  = IST%runoff(i,j)
+    Ice%calving(i2,j2) = IST%calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = IST%runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
   enddo ; enddo
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
   if (IST%id_runoff>0) &
-    call post_data(IST%id_runoff, runoff, IST%diag)
+    call post_data(IST%id_runoff, IST%runoff, IST%diag)
   if (IST%id_calving>0) &
-    call post_data(IST%id_calving, calving, IST%diag)
+    call post_data(IST%id_calving, IST%calving, IST%diag)
   if (IST%id_runoff_hflx>0) &
-    call post_data(IST%id_runoff_hflx, runoff_hflx, IST%diag)
+    call post_data(IST%id_runoff_hflx, IST%runoff_hflx, IST%diag)
   if (IST%id_calving_hflx>0) &
-    call post_data(IST%id_calving_hflx, calving_hflx, IST%diag)
+    call post_data(IST%id_calving_hflx, IST%calving_hflx, IST%diag)
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
 
-  if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) then
-    call post_data(IST%id_fwnudge, IST%melt_nudge, IST%diag)
-  endif
-
-  call avg_top_quantities(Ice, IST, G, IG) ! average fluxes from update_ice_model_fast
+  call post_flux_diagnostics(IST, G, IG) ! save out diagnostics of fluxes.
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
   do j=jsc,jec ; do i=isc,iec
@@ -4347,6 +4369,5 @@ subroutine ice_model_end (Ice)
   deallocate(Ice%Ice_state)
 
 end subroutine ice_model_end
-
 
 end module ice_model_mod
