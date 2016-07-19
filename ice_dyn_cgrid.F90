@@ -38,10 +38,12 @@ use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
+use MOM_hor_index,    only : hor_index_type
 use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use SIS_hor_grid, only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
+use mpp_domains_mod,  only : domain2D
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
 use time_manager_mod, only : set_date, get_time, get_date
 
@@ -1532,8 +1534,10 @@ end subroutine find_sigII
 ! ice_dyn_register_restarts - allocate and register any variables for this     !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
-  type(SIS_hor_grid_type), intent(in)    :: G
+subroutine ice_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
+                                       Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: mpp_domain
+  type(hor_index_type),    intent(in)    :: HI
   type(param_file_type),   intent(in)    :: param_file
   type(ice_C_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -1550,7 +1554,7 @@ subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
 ! the ice dynamics.
 
   integer :: isd, ied, jsd, jed, id
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (associated(CS)) then
     call SIS_error(WARNING, "ice_dyn_register_restarts called with an "//&
@@ -1561,13 +1565,13 @@ subroutine ice_C_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
 
   allocate(CS%str_d(isd:ied, jsd:jed)) ; CS%str_d(:,:) = 0.0
   allocate(CS%str_t(isd:ied, jsd:jed)) ; CS%str_t(:,:) = 0.0
-  allocate(CS%str_s(G%IsdB:G%IedB, G%JsdB:G%JedB)) ; CS%str_s(:,:) = 0.0
+  allocate(CS%str_s(HI%IsdB:HI%IedB, HI%JsdB:HI%JedB)) ; CS%str_s(:,:) = 0.0
   id = register_restart_field(Ice_restart, restart_file, 'str_d', CS%str_d, &
-                              domain=G%Domain%mpp_domain, mandatory=.false.)
+                              domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'str_t', CS%str_t, &
-                              domain=G%Domain%mpp_domain, mandatory=.false.)
+                              domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
-               domain=G%Domain%mpp_domain, position=CORNER, mandatory=.false.)
+                   domain=mpp_domain, position=CORNER, mandatory=.false.)
 end subroutine ice_C_dyn_register_restarts
 
 

@@ -3608,7 +3608,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, nCat_dflt
   logical :: spec_thermo_sal
-  character(len=128) :: restart_file, restart_path
+  character(len=120) :: restart_file
+  character(len=240) :: restart_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
   character(len=8)   :: nstr
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
@@ -3947,21 +3948,39 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call destroy_dyn_horgrid(dG)
 
   ! Allocate and register fields for restarts.
-  call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &
+  call ice_data_type_register_restarts(G%domain%mpp_domain, IG%CatIce, &
                          param_file, Ice, Ice%Ice_restart, restart_file)
 
-  call ice_state_register_restarts(G, IG, param_file, IST, Ice%Ice_restart, &
-                                   restart_file)
+  call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
+                                   IST, Ice%Ice_restart, restart_file)
 
   if (IST%Cgrid_dyn) then
-    call ice_C_dyn_register_restarts(G, param_file, IST%ice_C_dyn_CSp, &
-                                     Ice%Ice_restart, restart_file)
+    call ice_C_dyn_register_restarts(G%domain%mpp_domain, HI, param_file, &
+                 IST%ice_C_dyn_CSp, Ice%Ice_restart, restart_file)
   else
-    call ice_B_dyn_register_restarts(G, param_file, IST%ice_B_dyn_CSp, &
-                                     Ice%Ice_restart, restart_file)
+    call ice_B_dyn_register_restarts(G%domain%mpp_domain, HI, param_file, &
+                 IST%ice_B_dyn_CSp, Ice%Ice_restart, restart_file)
   endif
 !  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
 !                                       Ice%Ice_restart, restart_file)
+
+  ! Register tracers that will be advected around.
+  call register_SIS_tracer_pair(IST%enth_ice, IG%NkIce, "enth_ice", &
+                                IST%enth_snow, 1, "enth_snow", &
+                                G, IG, param_file, IST%TrReg, &
+                                massless_iceval=massless_ice_enth*enth_unit, &
+                                massless_snowval=massless_snow_enth*enth_unit)
+
+  if (IST%ice_rel_salin > 0.0) then
+    call register_SIS_tracer(IST%sal_ice, G, IG, IG%NkIce, "salin_ice", param_file, &
+                             IST%TrReg, snow_tracer=.false., &
+                             massless_val=massless_ice_salin)
+  endif
+
+  !   Register any tracers that will be handled via tracer flow control for 
+  ! restarts and advection.
+  call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, IST%diag, IST%TrReg, &
+     Ice%Ice_restart, restart_file)
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
@@ -4004,7 +4023,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_unit, &
                              specified_thermo_salinity=spec_thermo_sal)
 
-  restart_path = 'INPUT/'//trim(restart_file)
+!  restart_path = 'INPUT/'//trim(restart_file)
+  restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
   if (file_exist(restart_path)) then
     ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
     ! file to be detected, and its difference from the value in this run to
@@ -4013,10 +4033,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     IG%H_to_kg_m2 = -1.0
     is_restart = .true.
 
-    call restore_state(Ice%Ice_restart)
+    call restore_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
 
     ! Approximately initialize state fields that are not present
-    ! in SIS1 restart files.
+    ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
 
     ! Initialize the ice salinity.
     if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
@@ -4026,7 +4046,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
         id_sal = register_restart_field(Ice%Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
                                      sal_ice_tmp(:,:,:,n), domain=G%domain%mpp_domain, &
                                      mandatory=.false., read_only=.true.)
-        call restore_state(Ice%Ice_restart, id_sal)
+        call restore_state(Ice%Ice_restart, id_sal, directory=dirs%restart_input_dir)
       enddo
 
       if (query_initialized(Ice%Ice_restart, 'sal_ice1')) then
@@ -4058,13 +4078,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
       idr = register_restart_field(Ice%Ice_restart, restart_file, 't_snow', t_snow_tmp, &
                                    domain=G%domain%mpp_domain, mandatory=.false., read_only=.true.)
-      call restore_state(Ice%Ice_restart, idr)
+      call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
       do n=1,IG%NkIce
         write(nstr, '(I4)') n ; nstr = adjustl(nstr)
         idr = register_restart_field(Ice%Ice_restart, restart_file, 't_ice'//trim(nstr), &
                                      t_ice_tmp(:,:,:,n), domain=G%domain%mpp_domain, &
                                      mandatory=.false., read_only=.true.)
-        call restore_state(Ice%Ice_restart, idr)
+        call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
       enddo
     endif
 
@@ -4221,25 +4241,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
 
-  ! Register tracers that will be advected around.
-  call register_SIS_tracer_pair(IST%enth_ice, IG%NkIce, "enth_ice", &
-                                IST%enth_snow, 1, "enth_snow", &
-                                G, IG, param_file, IST%TrReg, &
-                                massless_iceval=massless_ice_enth*enth_unit, &
-                                massless_snowval=massless_snow_enth*enth_unit)
-
-  if (IST%ice_rel_salin > 0.0) then
-    call register_SIS_tracer(IST%sal_ice, G, IG, IG%NkIce, "salin_ice", param_file, &
-                             IST%TrReg, snow_tracer=.false., &
-                             massless_val=massless_ice_salin)
-  endif
-
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
                            IST%sum_output_CSp, IST%ntrunc)
 
-! Register and initialize tracer flow control and tracer register
-  call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, IST%diag, IST%TrReg, &
-     Ice%Ice_restart, restart_file, is_restart)
+  !   Initialize any tracers that will be handled via tracer flow control.
   call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp, is_restart)
 
   call close_param_file(param_file)

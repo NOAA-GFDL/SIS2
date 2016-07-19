@@ -29,12 +29,14 @@ module ice_dyn_bgrid
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use MOM_checksums,      only : chksum, Bchksum, hchksum
+use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
 use SIS_error_checking, only : check_redundant_B
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
+use MOM_hor_index,    only : hor_index_type
 use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
+use mpp_domains_mod,  only : domain2D
 use ice_ridging_mod,  only : ridge_rate
 
 implicit none ; private
@@ -722,8 +724,9 @@ end function sigII
 ! ice_B_dyn_register_restarts - allocate and register any variables for this   !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_file)
-  type(SIS_hor_grid_type), intent(in)    :: G
+subroutine ice_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: mpp_domain
+  type(hor_index_type),    intent(in)    :: HI
   type(param_file_type),   intent(in)    :: param_file
   type(ice_B_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -740,7 +743,7 @@ subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
 ! the ice dynamics.
 
   integer :: isd, ied, jsd, jed, id
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (associated(CS)) then
     call SIS_error(WARNING, "ice_dyn_register_restarts called with an "//&
@@ -753,11 +756,11 @@ subroutine ice_B_dyn_register_restarts(G, param_file, CS, Ice_restart, restart_f
   allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
   allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
   id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                              domain=G%Domain%mpp_domain, mandatory=.false.)
+                              domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                              domain=G%Domain%mpp_domain, mandatory=.false.)
+                              domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                              domain=G%Domain%mpp_domain, mandatory=.false.)
+                              domain=mpp_domain, mandatory=.false.)
 end subroutine ice_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
