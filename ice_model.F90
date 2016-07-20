@@ -1801,9 +1801,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     ! masses-per-unit area and enthalpies.
     call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
     if (IST%SIS1_5L_thermo) then
-      call SIS1_5L_thermodynamics(Ice, IST, G, IG)
+      call SIS1_5L_thermodynamics(IST, G, IG)
     else
-      call SIS2_thermodynamics(Ice, IST, G, IG)
+      call SIS2_thermodynamics(IST, G, IG)
     endif
 
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
@@ -2192,9 +2192,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       ! masses-per-unit area and enthalpies.
       call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
       if (IST%SIS1_5L_thermo) then
-        call SIS1_5L_thermodynamics(Ice, IST, G, IG)
+        call SIS1_5L_thermodynamics(IST, G, IG)
       else
-        call SIS2_thermodynamics(Ice, IST, G, IG)
+        call SIS2_thermodynamics(IST, G, IG)
 
       endif
 
@@ -2506,8 +2506,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
 end subroutine update_ice_model_slow
 
-subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG)
-  type(ice_data_type),                intent(inout) :: Ice
+subroutine SIS1_5L_thermodynamics(IST, G, IG)
   type(ice_state_type),               intent(inout) :: IST
   type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
@@ -2887,8 +2886,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG)
 
 end subroutine SIS1_5L_thermodynamics
 
-subroutine SIS2_thermodynamics(Ice, IST, G, IG)
-  type(ice_data_type),                intent(inout) :: Ice
+subroutine SIS2_thermodynamics(IST, G, IG)
   type(ice_state_type),               intent(inout) :: IST
   type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
@@ -2995,7 +2993,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG)
   if (IST%nudge_sea_ice) then
     IST%cool_nudge(:,:) = 0.0 ; IST%melt_nudge(:,:) = 0.0
     icec(:,:) = 0.0
-    call data_override('ICE','icec',icec_obs,Ice%Time)
+    call data_override('ICE','icec',icec_obs,IST%Time)
 
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
