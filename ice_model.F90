@@ -442,6 +442,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
     Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
+    Ice%flux_salt(i2,j2) = IST%flux_salt(i,j)
   enddo ; enddo
   if (IST%nudge_sea_ice) then
     do j=jsc,jec ; do i=isc,iec
@@ -1698,7 +1699,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-  call accumulate_input_1(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+  call accumulate_input_1(IST, dt_slow, G, IG, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
                               message="    Start of update", check_column=.true.)
@@ -1753,25 +1754,30 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
     if (IST%Cgrid_dyn) then
       call icebergs_run( Ice%icebergs, IST%Time, &
-              Ice%calving(:,:), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              Ice%calving_hflx(:,:), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     else
       call icebergs_run( Ice%icebergs, IST%Time, &
-              Ice%calving(:,:), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
+              IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               Ice%flux_u(:,:), Ice%flux_v(:,:), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              Ice%calving_hflx(:,:), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     endif
+    ! This is only here temporarily.  I am not quite sure why it is needed. -RWH
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      Ice%calving(i2,j2) = IST%calving(i,j)
+      Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
+    enddo ; enddo
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
   endif
 
@@ -1798,7 +1804,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
     ! The thermodynamics routines return updated values of the ice and snow
     ! masses-per-unit area and enthalpies.
-    call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
+    call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
     if (IST%SIS1_5L_thermo) then
       call SIS1_5L_thermodynamics(Ice, IST, G, IG)
     else
@@ -1830,7 +1836,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
     ! Set up the thermodynamic fluxes in the externally visible structure Ice.
     call set_ocean_top_fluxes(Ice, IST, G, IG)
-    call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+    call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
 
     if (IST%column_check) &
       call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
@@ -2191,7 +2197,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       ! The thermodynamics routines return updated values of the ice and snow
       ! masses-per-unit area and enthalpies.
-      call accumulate_input_2(IST, Ice, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
+      call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
       if (IST%SIS1_5L_thermo) then
         call SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
       else
@@ -2223,7 +2229,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       ! Set up the thermodynamic fluxes in the externally visible structure Ice.
       call set_ocean_top_fluxes(Ice, IST, G, IG)
-      call accumulate_bottom_input(IST, Ice, dt_slow, G, IST%sum_output_CSp)
+      call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
 
       if (IST%column_check) &
         call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
@@ -2853,9 +2859,8 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                         (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
     enddo ; enddo
     do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
       ! Note the conversion here from g m-2 to kg m-2 s-1.
-      Ice%flux_salt(i2,j2) = (0.001*IST%ice_bulk_salin) * &
+      IST%flux_salt(i,j) = (0.001*IST%ice_bulk_salin) * &
                              (mi_change(i,j) * Idt_slow)
     enddo
   enddo
@@ -2875,7 +2880,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     enddo ; enddo
     call post_data(IST%id_lsrc, tmp2d(isc:iec,jsc:jec), IST%diag)
   endif
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt, IST%diag)
+  if (IST%id_saltf>0) call post_data(IST%id_saltf, IST%flux_salt, IST%diag)
   if (IST%id_bsnk>0)  call post_data(IST%id_bsnk, bsnk(isc:iec,jsc:jec)*yr_dtslow, &
                                      IST%diag )
   if (IST%id_tmelt>0) call post_avg(IST%id_tmelt, IST%tmelt, IST%part_size(:,:,1:), IST%diag, G=G, &
@@ -3563,9 +3568,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                         IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
     enddo ; enddo
     do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
       ! Note the conversion here from g m-2 to kg m-2 s-1.
-      Ice%flux_salt(i2,j2) = salt_change(i,j) * (0.001*Idt_slow)
+      IST%flux_salt(i,j) = salt_change(i,j) * (0.001*Idt_slow)
     enddo
   enddo
 
@@ -3588,7 +3592,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     enddo ; enddo
     call post_data(IST%id_lsrc, tmp2d(isc:iec,jsc:jec), IST%diag)
   endif
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, Ice%flux_salt, IST%diag)
+  if (IST%id_saltf>0) call post_data(IST%id_saltf, IST%flux_salt, IST%diag)
   if (IST%id_bsnk>0)  call post_data(IST%id_bsnk, bsnk(isc:iec,jsc:jec)*yr_dtslow, &
                                      IST%diag)
   if (IST%id_tmelt>0) call post_avg(IST%id_tmelt, IST%tmelt, IST%part_size(:,:,1:), IST%diag, G=G, &
