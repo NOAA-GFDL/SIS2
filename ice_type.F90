@@ -114,7 +114,7 @@ type ice_state_type
   real,    pointer, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
-    flux_u_top          =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_u_top          =>NULL(), & ! The downward flux of zonal and meridional
     flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
     flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
                                     ! in W m-2.
@@ -176,6 +176,12 @@ type ice_state_type
     calving_hflx => NULL(), &     ! The heat flux associated with calving, based
                                   ! on the temperature difference relative to a
                                   ! reference temperature, in ???.
+    flux_u_ocn => NULL(), &       ! The flux of x-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
+    flux_v_ocn => NULL(), &       ! The flux of y-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
     flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
 
   real, pointer, dimension(:,:,:) :: &
@@ -209,6 +215,15 @@ type ice_state_type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
+  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
+                    ! points of the two wind stress components. Valid entries
+                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
+                    ! corresponding to the community-standard Arakawa notation.
+                    ! (These are named integers taken from mpp_parameter_mod.)
+                    ! Following SIS, this is BGRID_NE by default when the sea
+                    ! ice is initialized, but here it is set to -999 so that a
+                    ! global max across ice and non-ice processors can be used
+                    ! to determine its value.
   logical :: SIS1_5L_thermo ! If true, the thermodynamic calculations inhereted
                        ! from the 5-layer version of SIS1. Otherwise, use the
                        ! newer SIS2 version.
@@ -663,6 +678,8 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IST%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
   allocate(IST%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
   allocate(IST%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_u_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_v_ocn(:,:) = 0.0 !NI
 
   allocate(IST%lwdn(SZI_(HI), SZJ_(HI))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(HI), SZJ_(HI))) ; IST%swdn(:,:) = 0.0 !NR
@@ -779,6 +796,8 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_sw_vis_dir_ocn, IST%flux_sw_vis_dif_ocn)
   deallocate(IST%flux_sw_nir_dir_ocn, IST%flux_sw_nir_dif_ocn)
   deallocate(IST%lprec_ocn_top, IST%fprec_ocn_top)
+  deallocate(IST%runoff, IST%calving, IST%runoff_hflx, IST%calving_hflx)
+  deallocate(IST%flux_u_ocn, IST%flux_v_ocn, IST%flux_salt)
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
   deallocate(IST%bheat, IST%tmelt, IST%bmelt)
