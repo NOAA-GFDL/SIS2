@@ -442,6 +442,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
     Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
+    Ice%runoff(i2,j2)  = IST%runoff(i,j)
+    Ice%calving(i2,j2) = IST%calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = IST%runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IST%flux_salt(i,j)
   enddo ; enddo
   if (IST%nudge_sea_ice) then
@@ -1655,21 +1659,13 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   !
 
   ! save liquid runoff for ocean
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,i_off,j_off,Ice,runoff,calving, &
-!$OMP                                  runoff_hflx,calving_hflx)                       &
-!$OMP                          private(i2,j2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,runoff,calving, &
+!$OMP                                  runoff_hflx,calving_hflx)
   do j=jsc,jec ; do i=isc,iec
     IST%runoff(i,j)  = runoff(i,j)
     IST%calving(i,j) = calving(i,j)
     IST%runoff_hflx(i,j)  = runoff_hflx(i,j)
     IST%calving_hflx(i,j) = calving_hflx(i,j)
-  enddo ; enddo
-
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%runoff(i2,j2)  = IST%runoff(i,j)
-    Ice%calving(i2,j2) = IST%calving(i,j)
-    Ice%runoff_hflx(i2,j2)  = IST%runoff_hflx(i,j)
-    Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
   enddo ; enddo
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
@@ -1773,11 +1769,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     endif
-    ! This is only here temporarily.  I am not quite sure why it is needed. -RWH
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%calving(i2,j2) = IST%calving(i,j)
-      Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
-    enddo ; enddo
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
   endif
 
@@ -1815,8 +1806,8 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
     !TOM> calculate partial ice growth for ridging and aging.
     if (IST%do_ridging) then
-      !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
-      !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
+      !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
+      !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
         if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
@@ -2207,8 +2198,8 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       !TOM> calculate partial ice growth for ridging and aging.
       if (IST%do_ridging) then
-        !     ice growth (Ice%mH_ice > mi_old) does not affect ridged ice volume
-        !     ice melt   (ice%mH_ice < mi_old) reduces ridged ice volume proportionally
+        !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
+        !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac,mi_old)
         do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
           if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
@@ -2441,7 +2432,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   ! Ridging diagnostics
   !
   !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
-  !     in each category; Ice%rdg_mice is ridged ice mass per unit total
+  !     in each category; IST%rdg_mice is ridged ice mass per unit total
   !     area throughout the code.
   if (IST%do_ridging) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,rdg_frac,IG) &
@@ -2458,9 +2449,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
     if (IST%id_rdgr>0) call post_data(IST%id_rdgr, rdg_rate(isc:iec,jsc:jec), IST%diag)
-!    if (id_rdgf>0) sent = send_data(id_rdgf,     rdg_frac(isc:iec,jsc:jec,2:km), Ice%Time)
-!    if (id_rdgo>0) sent = send_data(id_rdgo,     rdg_open(isc:iec,jsc:jec),      Ice%Time)
-!    if (id_rdgv>0) sent = send_data(id_rdgv,     rdg_vosh(isc:iec,jsc:jec)*Ice%area(:,:), &
+!    if (IST%id_rdgf>0) call post_data(IST%id_rdgf, rdg_frac(isc:iec,jsc:jec), IST%diag)
+!    if (IST%id_rdgo>0) call post_data(IST%id_rdgo, rdg_open(isc:iec,jsc:jec), IST%diag)
+!    if (IST%id_rdgv>0) then
+!      do j=jsc,jec ; do i=isc,iec
+!        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
+!      enddo ; enddo
+!      call post_data(IST%id_rdgv, tmp2d, IST%diag)
+!    endif
   endif
 
 
