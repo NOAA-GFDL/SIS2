@@ -145,6 +145,10 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Ice%IG, &
                              Land_boundary%runoff, Land_boundary%calving, &
                              Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
+
+  ! Set up the thermodynamic fluxes in the externally visible structure Ice.
+  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%G, Ice%IG)
+
   call mpp_clock_end(iceClock2)
   call mpp_clock_end(iceClock)
 
@@ -1825,8 +1829,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
     call disable_SIS_averaging(IST%diag)
 
-    ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-    call set_ocean_top_fluxes(Ice, IST, G, IG)
     call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
 
     if (IST%column_check) &
@@ -2190,9 +2192,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       ! masses-per-unit area and enthalpies.
       call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
       if (IST%SIS1_5L_thermo) then
-        call SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
+        call SIS1_5L_thermodynamics(Ice, IST, G, IG)
       else
-        call SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, runoff_hflx, calving_hflx)
+        call SIS2_thermodynamics(Ice, IST, G, IG)
 
       endif
 
@@ -2218,8 +2220,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
       call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
                                  IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
 
-      ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-      call set_ocean_top_fluxes(Ice, IST, G, IG)
       call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
 
       if (IST%column_check) &
@@ -2506,14 +2506,11 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
 end subroutine update_ice_model_slow
 
-subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
-                               ! runoff_hflx, calving_hflx)
+subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG)
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
-!  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
-!  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
 
   ! This subroutine does the thermodynamic calculations following SIS1.
 
@@ -2533,7 +2530,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
   real :: dt_slow, Idt_slow, yr_dtslow
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
-  integer :: i2, j2, k2, i_off, j_off
+
   real :: heat_to_ocn, h2o_to_ocn, evap_from_ocn, sn2ic, bablt
   real            :: heat_limit_ice, heat_res_ice
   real            :: tot_heat, heating, tot_frazil
@@ -2545,7 +2542,6 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   NkIce = IG%NkIce
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
   H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_Ice ; H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_Snow
@@ -2846,8 +2842,7 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   ! Determine the salt fluxes to ocean
   ! Note that at this point mi_change and h2o_change are the negative of the masses.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,mi_change,h2o_change, &
-!$OMP                                  i_off,j_off,Ice,Idt_slow,IG) &
-!$OMP                          private(i2,j2)
+!$OMP                                  Idt_slow,IG)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
       mi_change(i,j) = mi_change(i,J) + (IG%H_to_kg_m2*IST%mH_ice(i,j,k))*IST%part_size(i,j,k)
@@ -2892,14 +2887,11 @@ subroutine SIS1_5L_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 
 end subroutine SIS1_5L_thermodynamics
 
-subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
-                               ! runoff_hflx, calving_hflx)
+subroutine SIS2_thermodynamics(Ice, IST, G, IG)
   type(ice_data_type),                intent(inout) :: Ice
   type(ice_state_type),               intent(inout) :: IST
   type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
-!  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
-!  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
 
   ! This subroutine does the thermodynamic calculations in the same order as SIS1,
   ! but with a greater emphasis on enthalpy as the dominant state variable.
@@ -2973,7 +2965,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce
-  integer :: i2, j2, k2, i_off, j_off
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
@@ -2982,7 +2973,6 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
@@ -3555,9 +3545,8 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
          (IST%sal_ice(i,j,k,m)*(IST%mH_ice(i,j,k)*kg_H_Nk)) * IST%part_size(i,j,k)
     enddo ; enddo ; enddo ; enddo
   endif
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,h2o_change,Ice, &
-!$OMP                                  i_off,j_off,salt_change,Idt_slow,IG) &
-!$OMP                          private(i2,j2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,h2o_change, &
+!$OMP                                  salt_change,Idt_slow,IG) &
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
       h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
