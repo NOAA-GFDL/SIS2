@@ -414,8 +414,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   type(ice_grid_type),     intent(in)    :: IG
 
   real :: I_count
-  integer :: i, j, isc, iec, jsc, jec, m, n, i2, j2, i_off, j_off, ind
+  integer :: i, j, k, isc, iec, jsc, jec, m, n
+  integer :: i2, j2, i_off, j_off, ind, ncat, NkIce
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
@@ -432,6 +434,27 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
     Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
   enddo ; enddo
+
+  ! Sum the concentration weighted mass.
+  Ice%mi(:,:) = 0.0
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,G,IST,IG) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
+        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
+  enddo ; enddo ; enddo
+  if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, Ice%mi(:,:)) ! Add icebergs mass in kg/m^2
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,G,IST,IG) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
+
+  if (IST%id_slp>0) call post_data(IST%id_slp, Ice%p_surf, IST%diag)
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,i_off,j_off) &
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
@@ -451,6 +474,13 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
     Ice%runoff_hflx(i2,j2)  = IST%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IST%flux_salt(i,j)
+
+    if (IST%slp2ocean) then
+      Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+    else
+      Ice%p_surf(i2,j2) = 0.0
+    endif
+    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
   enddo ; enddo
   if (IST%nudge_sea_ice) then
     do j=jsc,jec ; do i=isc,iec
@@ -1610,7 +1640,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   real :: I_Nk
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
   integer :: isd, ied, jsd, jed
-  integer :: i2, j2, k2, i_off, j_off
   integer ::iyr, imon, iday, ihr, imin, isec
 
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
@@ -1635,7 +1664,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   if (IST%specified_ice) then
@@ -2304,21 +2332,21 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   if (IST%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport")
   if (IST%debug) call IST_chksum("After ice_transport", IST, G, IG)
 
-  ! Sum the concentration weighted mass.
-  mass(:,:) = 0.0
+  ! Sum the concentration weighted mass for diagnostics.
+  if (IST%id_mi>0 .or. IST%id_mib>0) then
+    mass(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,mass,G,IST,IG)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    mass(i,j) = mass(i,j) + (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))) * &
-                IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      mass(i,j) = mass(i,j) + (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))) * &
+                  IST%part_size(i,j,k)
+    enddo ; enddo ; enddo
+    if (IST%id_mi>0) call post_data(IST%id_mi, mass(isc:iec,jsc:jec), IST%diag)
 
-  if (IST%id_mi>0) call post_data(IST%id_mi, mass(isc:iec,jsc:jec), IST%diag)
-
-  if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
-
-  if (IST%id_mib>0) call post_data(IST%id_mib, mass(isc:iec,jsc:jec), IST%diag)
-  if (IST%id_slp>0) call post_data(IST%id_slp, Ice%p_surf, IST%diag)
-
+    if (IST%id_mib>0) then
+      if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
+      call post_data(IST%id_mib, mass(isc:iec,jsc:jec), IST%diag)
+    endif
+  endif
 
   if (IST%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
@@ -2458,25 +2486,6 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 !      call post_data(IST%id_rdgv, tmp2d, IST%diag)
 !    endif
   endif
-
-
-  !   Copy the surface properties, fractional areas and other variables to the
-  ! externally visible structure Ice.
-  !   Ice and IST may use different indexing conventions.
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    if (IST%slp2ocean) then
-      Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
-    else
-      Ice%p_surf(i2,j2) = 0.0
-    endif
-    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*mass(i,j)
-
-    Ice%mi(i2,j2) = mass(i,j)
-  enddo ; enddo
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
 
   if (IST%verbose) then
     call get_date(IST%Time, iyr, imon, iday, ihr, imin, isec)
