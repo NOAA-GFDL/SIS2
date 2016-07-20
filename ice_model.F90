@@ -110,7 +110,7 @@ use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_rest
 use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : adjust_ice_categories
-use ice_bergs,        only: icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
+use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
 implicit none ; private
 
@@ -142,9 +142,9 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
 
-  call update_ice_model_slow(Ice, Ice%Ice_state, Ice%G, Ice%IG, &
-                             Land_boundary%runoff, Land_boundary%calving, &
-                             Land_boundary%runoff_hflx, Land_boundary%calving_hflx )
+  call set_ice_state_fluxes(Ice%Ice_state, Ice, Land_boundary, Ice%G, Ice%IG)
+
+  call update_ice_model_slow(Ice, Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
   call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%G, Ice%IG)
@@ -335,14 +335,41 @@ subroutine avg_top_quantities(IST, G, IG)
   IST%avg_count = 0
 end subroutine avg_top_quantities
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ice_state_fluxes copies the ice surface fluxes and any other fields into
+!! the ice_state_type.
+subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
+  type(ice_state_type),    intent(inout) :: IST
+  type(ice_data_type),          intent(in) :: Ice
+  type(land_ice_boundary_type), intent(in) :: LIB
+  type(SIS_hor_grid_type), intent(in)    :: G
+  type(ice_grid_type),     intent(in) :: IG
+
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  ! Store liquid runoff and other fluxes from the land to the ice or ocean.
+  i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,LIB,i_off,j_off) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    IST%runoff(i,j)  = LIB%runoff(i2,j2)
+    IST%calving(i,j) = LIB%calving(i2,j2)
+    IST%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
+    IST%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+  enddo ; enddo
+
+end subroutine set_ice_state_fluxes
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! post_flux_diagnostics - write out any diagnostics of surface fluxes.         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine post_flux_diagnostics(IST, G, IG)
+subroutine post_flux_diagnostics(IST, G, IG, Idt_slow)
   type(ice_state_type),    intent(in) :: IST
   type(SIS_hor_grid_type), intent(in) :: G
   type(ice_grid_type),     intent(in) :: IG
+  real,                    intent(in) :: Idt_slow
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
@@ -350,6 +377,16 @@ subroutine post_flux_diagnostics(IST, G, IG)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
+  if (IST%id_runoff>0) &
+    call post_data(IST%id_runoff, IST%runoff, IST%diag)
+  if (IST%id_calving>0) &
+    call post_data(IST%id_calving, IST%calving, IST%diag)
+  if (IST%id_runoff_hflx>0) &
+    call post_data(IST%id_runoff_hflx, IST%runoff_hflx, IST%diag)
+  if (IST%id_calving_hflx>0) &
+    call post_data(IST%id_calving_hflx, IST%calving_hflx, IST%diag)
+  if (IST%id_frazil>0) &
+    call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
   if (IST%id_sh>0) call post_avg(IST%id_sh, IST%flux_t_top, IST%part_size, &
                                  IST%diag, G=G)
   if (IST%id_lh>0) call post_avg(IST%id_lh, IST%flux_lh_top, IST%part_size, &
@@ -1560,15 +1597,13 @@ end subroutine do_update_ice_model_fast
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_slow - do ice dynamics, transport, and mass changes         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
-                                 runoff_hflx, calving_hflx)
+subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
 
-  type(ice_data_type),                   intent(inout) :: Ice
-  type(ice_state_type),                  intent(inout) :: IST
-  type(SIS_hor_grid_type),               intent(inout) :: G
-  type(ice_grid_type),                   intent(inout) :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff, calving
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: runoff_hflx, calving_hflx
+  type(ice_data_type),     intent(inout) :: Ice
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
+  type(icebergs),          pointer       :: icebergs_CS
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -1674,34 +1709,9 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of update_ice_model_slow")
 
-  !
-  ! Set up fluxes
-  !
-
-  ! save liquid runoff for ocean
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,runoff,calving, &
-!$OMP                                  runoff_hflx,calving_hflx)
-  do j=jsc,jec ; do i=isc,iec
-    IST%runoff(i,j)  = runoff(i,j)
-    IST%calving(i,j) = calving(i,j)
-    IST%runoff_hflx(i,j)  = runoff_hflx(i,j)
-    IST%calving_hflx(i,j) = calving_hflx(i,j)
-  enddo ; enddo
-
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
-  if (IST%id_runoff>0) &
-    call post_data(IST%id_runoff, IST%runoff, IST%diag)
-  if (IST%id_calving>0) &
-    call post_data(IST%id_calving, IST%calving, IST%diag)
-  if (IST%id_runoff_hflx>0) &
-    call post_data(IST%id_runoff_hflx, IST%runoff_hflx, IST%diag)
-  if (IST%id_calving_hflx>0) &
-    call post_data(IST%id_calving_hflx, IST%calving_hflx, IST%diag)
-  if (IST%id_frazil>0) &
-    call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
-
-  call post_flux_diagnostics(IST, G, IG) ! save out diagnostics of fluxes.
+  call post_flux_diagnostics(IST, G, IG, Idt_slow) ! save out diagnostics of fluxes.
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
   do j=jsc,jec ; do i=isc,iec
@@ -1769,7 +1779,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
     if (IST%Cgrid_dyn) then
-      call icebergs_run( Ice%icebergs, IST%Time, &
+      call icebergs_run( icebergs_CS, IST%Time, &
               IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
@@ -1779,7 +1789,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
               stress_stagger=Ice%flux_uv_stagger)
     else
-      call icebergs_run( Ice%icebergs, IST%Time, &
+      call icebergs_run( icebergs_CS, IST%Time, &
               IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
@@ -2331,7 +2341,7 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
     if (IST%id_mi>0) call post_data(IST%id_mi, mass(isc:iec,jsc:jec), IST%diag)
 
     if (IST%id_mib>0) then
-      if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
+      if (IST%do_icebergs) call icebergs_incr_mass(icebergs_CS, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
       call post_data(IST%id_mib, mass(isc:iec,jsc:jec), IST%diag)
     endif
   endif
