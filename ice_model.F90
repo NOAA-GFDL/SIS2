@@ -218,7 +218,7 @@ end subroutine set_ice_state_fluxes
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
   type(ice_data_type),       intent(inout) :: Ice
-  type(ice_state_type),      intent(in)    :: IST
+  type(ice_state_type),      intent(inout) :: IST
   type(ice_ocean_flux_type), intent(in)    :: IOF
   type(SIS_hor_grid_type),   intent(inout) :: G
   type(ice_grid_type),       intent(in)    :: IG
@@ -262,7 +262,11 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-  if (IST%id_slp>0) call post_data(IST%id_slp, Ice%p_surf, IST%diag)
+  if (IST%id_slp>0) then
+      call enable_SIS_averaging(real(time_type_to_real(IST%Time_step_slow)), IST%Time, IST%diag)
+      call post_data(IST%id_slp, Ice%p_surf, IST%diag)
+      call disable_SIS_averaging(IST%diag)
+  endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,i_off,j_off) &
 !$OMP                           private(i2,j2)
