@@ -151,7 +151,6 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call update_ice_model_slow(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call finish_ocean_top_stresses(Ice, Ice%Ice_state, Ice%G)
   call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) then
@@ -495,8 +494,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
 
   ! Sum the concentration weighted mass.
   Ice%mi(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,G,IST,IG) &
-!$OMP                          private(i2,j2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,IG,i_off,j_off) &
+!$OMP                           private(i2,j2)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
@@ -504,8 +503,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   enddo ; enddo ; enddo
   if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, Ice%mi(:,:)) ! Add icebergs mass in kg/m^2
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,G,IST,IG) &
-!$OMP                          private(i2,j2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
+!$OMP                           private(i2,j2)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
@@ -514,9 +513,11 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   if (IST%id_slp>0) call post_data(IST%id_slp, Ice%p_surf, IST%diag)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,i_off,j_off) &
-!$OMP                          private(i2,j2)
+!$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%flux_u(i2,j2) = IST%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = IST%flux_v_ocn(i,j)
     Ice%flux_t(i2,j2) = IST%flux_t_ocn_top(i,j)
     Ice%flux_q(i2,j2) = IST%flux_q_ocn_top(i,j)
     Ice%flux_sw_vis_dir(i2,j2) = IST%flux_sw_vis_dir_ocn(i,j)
@@ -567,29 +568,20 @@ end subroutine set_ocean_top_fluxes
 ! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
 !   them through the stresses by the number of times they have been augmented. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine finish_ocean_top_stresses(Ice, IST, G)
-  type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
+subroutine finish_ocean_top_stresses(IST, HI)
+  type(hor_index_type), intent(in)    :: HI
+  type(ice_state_type), intent(inout) :: IST
 
   real :: I_count
-  integer :: i, j, k, isc, iec, jsc, jec, i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
+  integer :: i, j, isc, iec, jsc, jec
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
 
   if (IST%stress_count > 1) then
     I_count = 1.0 / IST%stress_count
     do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off ! Use these to correct for indexing differences.
       IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) * I_count
       IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) * I_count
-      Ice%flux_u(i2,j2) = IST%flux_u_ocn(i,j)
-      Ice%flux_v(i2,j2) = IST%flux_v_ocn(i,j)
     enddo ; enddo
-  endif
-
-  if (IST%debug) then
-    call Ice_public_type_chksum("finish_ocean_top_stresses", Ice)
   endif
 
 end subroutine finish_ocean_top_stresses
@@ -2330,6 +2322,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
     call mpp_clock_end(iceClock8)
 
   enddo ! nds=1,ndyn_steps
+  call finish_ocean_top_stresses(IST, G%HI)
 
   ! Add snow volume dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
