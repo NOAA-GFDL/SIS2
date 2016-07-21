@@ -142,12 +142,24 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
 
+  if (Ice%Ice_state%debug) then
+    call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
+  endif
+
   call set_ice_state_fluxes(Ice%Ice_state, Ice, Land_boundary, Ice%G, Ice%IG)
 
-  call update_ice_model_slow(Ice, Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  call update_ice_model_slow(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
+  call finish_ocean_top_stresses(Ice, Ice%Ice_state, Ice%G)
   call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%G, Ice%IG)
+
+  if (Ice%Ice_state%debug) then
+    call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
+  endif
+  if (Ice%Ice_state%bounds_check) then
+    call Ice_public_type_bounds_check(Ice, Ice%G, "End update_ice_slow")
+  endif
 
   call mpp_clock_end(iceClock2)
   call mpp_clock_end(iceClock)
@@ -339,11 +351,11 @@ end subroutine avg_top_quantities
 !> set_ice_state_fluxes copies the ice surface fluxes and any other fields into
 !! the ice_state_type.
 subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
-  type(ice_data_type),          intent(in) :: Ice
-  type(land_ice_boundary_type), intent(in) :: LIB
-  type(SIS_hor_grid_type), intent(in)    :: G
-  type(ice_grid_type),     intent(in) :: IG
+  type(ice_state_type),         intent(inout) :: IST
+  type(ice_data_type),          intent(in)    :: Ice
+  type(land_ice_boundary_type), intent(in)    :: LIB
+  type(SIS_hor_grid_type),      intent(in)    :: G
+  type(ice_grid_type),          intent(in)    :: IG
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -358,6 +370,15 @@ subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
     IST%calving(i,j) = LIB%calving(i2,j2)
     IST%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     IST%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+  enddo ; enddo
+
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,i_off,j_off) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    IST%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
+    IST%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
   enddo ; enddo
 
 end subroutine set_ice_state_fluxes
@@ -1597,9 +1618,8 @@ end subroutine do_update_ice_model_fast
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_slow - do ice dynamics, transport, and mass changes         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
+subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
-  type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
@@ -1703,7 +1723,6 @@ subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
 
   if (IST%debug) then
     call IST_chksum("Start update_ice_model_slow", IST, G, IG)
-    call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
   endif
 
   if (IST%bounds_check) &
@@ -1778,26 +1797,29 @@ subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
     H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
     call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
+    
+    !### I think that there is long-standing bug here, in that the old ice-ocean
+    !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
     if (IST%Cgrid_dyn) then
       call icebergs_run( icebergs_CS, IST%Time, &
               IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-              Ice%flux_u(:,:), Ice%flux_v(:,:), &
+              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-              stress_stagger=Ice%flux_uv_stagger)
+              stress_stagger=IST%flux_uv_stagger)
     else
       call icebergs_run( icebergs_CS, IST%Time, &
               IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              Ice%flux_u(:,:), Ice%flux_v(:,:), &
+              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-              stress_stagger=Ice%flux_uv_stagger)
+              stress_stagger=IST%flux_uv_stagger)
     endif
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
   endif
@@ -2319,8 +2341,6 @@ subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
-  call finish_ocean_top_stresses(Ice, IST, G)
-
   ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
@@ -2496,12 +2516,10 @@ subroutine update_ice_model_slow(Ice, IST, icebergs_CS, G, IG)
 
   if (IST%debug) then
     call IST_chksum("End UIMS", IST, G, IG)
-    call Ice_public_type_chksum("End UIMS", Ice)
   endif
 
   if (IST%bounds_check) then
     call IST_bounds_check(IST, G, IG, "End of update_ice_slow")
-    call Ice_public_type_bounds_check(Ice, G, "End update_ice_slow")
   endif
 
   if (IST%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
