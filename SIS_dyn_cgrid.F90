@@ -1,4 +1,4 @@
-module ice_dyn_cgrid
+module SIS_dyn_cgrid
 !***********************************************************************
 !*                   GNU General Public License                        *
 !* This file is a part of SIS2.                                        *
@@ -51,9 +51,9 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_C_dyn_init, ice_C_dynamics, ice_C_dyn_end, ice_C_dyn_register_restarts
+public :: SIS_C_dyn_init, SIS_C_dynamics, SIS_C_dyn_end, SIS_C_dyn_register_restarts
 
-type, public :: ice_C_dyn_CS ; private
+type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
     str_t, &  ! The tension stress tensor component, in Pa m.
     str_d, &  ! The divergence stress tensor component, in Pa m.
@@ -133,19 +133,19 @@ type, public :: ice_C_dyn_CS ; private
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
   integer :: id_sigi_hifreq = -1, id_sigii_hifreq = -1
   integer :: id_stren_hifreq = -1, id_ci_hifreq = -1
-end type ice_C_dyn_CS
+end type SIS_C_dyn_CS
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_C_dyn_init - initialize the ice dynamics and set parameters.             !
+! SIS_C_dyn_init - initialize the ice dynamics and set parameters.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
+subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   type(time_type),     target, intent(in)    :: Time
   type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_C_dyn_CS),          pointer       :: CS
+  type(SIS_C_dyn_CS),          pointer       :: CS
   integer, target, optional,   intent(inout) :: ntrunc
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
@@ -162,13 +162,13 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "ice_C_dyn" ! This module's name.
+  character(len=40)  :: mod = "SIS_C_dyn" ! This module's name.
 
   real, parameter       :: missing = -1e34
 
   if (.not.associated(CS)) then
-    call SIS_error(FATAL, "ice_dyn_init called with an unassociated control structure. \n"//&
-                    "ice_dyn_register_restarts must be called before ice_dyn_init.")
+    call SIS_error(FATAL, "SIS_C_dyn_init called with an unassociated control structure. \n"//&
+                    "SIS_C_dyn_register_restarts must be called before SIS_C_dyn_init.")
     return
   endif
 
@@ -392,7 +392,7 @@ subroutine ice_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time,     &
             'ice strength', 'Pa*m', missing_value=missing)
 
-end subroutine ice_C_dyn_init
+end subroutine SIS_C_dyn_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -402,7 +402,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
   type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
-  type(ice_C_dyn_CS),               pointer     :: CS
+  type(SIS_C_dyn_CS),               pointer     :: CS
   integer,                optional, intent(in)  :: halo_sz
 
   integer :: i, j, isc, iec, jsc, jec, halo
@@ -416,9 +416,9 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
 end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_C_dynamics - take a single dynamics timestep with EVP subcycles          !
+! SIS_C_dynamics - take a single dynamics timestep with EVP subcycles          !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
+subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                           fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(SIS_hor_grid_type),           intent(inout) :: G
@@ -433,7 +433,7 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  ! ice stress on ocean
   real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  ! ice stress on ocean
   real,                              intent(in   ) :: dt_slow
-  type(ice_C_dyn_CS),                pointer       :: CS
+  type(SIS_C_dyn_CS),                pointer       :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      msnow - The mass per unit total area (ice covered and ice free)
 !                    of the snow, in kg m-2.
@@ -576,10 +576,10 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
-         "ice_C_dynamics: Module must be initialized before it is used.")
+         "SIS_C_dynamics: Module must be initialized before it is used.")
 
   if ((isc - G%isdB < 2) .or. (jsc - G%jsdB < 2)) call SIS_error(FATAL, &
-         "ice_C_dynamics is written to require a 2-point halo or 1-point and symmetric memory.")
+         "SIS_C_dynamics is written to require a 2-point halo or 1-point and symmetric memory.")
 
   halo_sh_Ds = min(isc-G%isd, jsc-G%jsd, 2)
 
@@ -826,17 +826,17 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP end parallel
 
   if (CS%debug) then
-    call uchksum(PFu, "PFu in ice_C_dynamics", G%HI)
-    call vchksum(PFv, "PFv in ice_C_dynamics", G%HI)
+    call uchksum(PFu, "PFu in SIS_C_dynamics", G%HI)
+    call vchksum(PFv, "PFv in SIS_C_dynamics", G%HI)
 
-    call uchksum(ui, "ui pre-steps ice_C_dynamics", G%HI)
-    call vchksum(vi, "vi pre-steps ice_C_dynamics", G%HI)
+    call uchksum(ui, "ui pre-steps SIS_C_dynamics", G%HI)
+    call vchksum(vi, "vi pre-steps SIS_C_dynamics", G%HI)
   endif
   if (CS%debug_redundant) then
-    call check_redundant_C("PFu/PFv in ice_C_dynamics", PFu, PFv, G)
-    call check_redundant_C("fxat/fyat in ice_C_dynamics", fxat, fyat, G)
-    call check_redundant_C("uo/vo in ice_C_dynamics",uo, vo, G)
-    call check_redundant_C("ui/vi pre-steps ice_C_dynamics",ui, vi, G)
+    call check_redundant_C("PFu/PFv in SIS_C_dynamics", PFu, PFv, G)
+    call check_redundant_C("fxat/fyat in SIS_C_dynamics", fxat, fyat, G)
+    call check_redundant_C("uo/vo in SIS_C_dynamics",uo, vo, G)
+    call check_redundant_C("ui/vi pre-steps SIS_C_dynamics",ui, vi, G)
   endif
 
   dt_cumulative = 0.0
@@ -1151,35 +1151,35 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     endif
 
     if (CS%debug) then
-      call hchksum(CS%str_d, "str_d in ice_C_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%str_t, "str_t in ice_C_dynamics", G%HI, haloshift=1)
-      call Bchksum(CS%str_s, "str_s in ice_C_dynamics", G%HI, &
+      call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1)
+      call Bchksum(CS%str_s, "str_s in SIS_C_dynamics", G%HI, &
                    haloshift=0, symmetric=.true.)
 
-      call uchksum(fxic, "fxic in ice_C_dynamics", G%HI)
-      call vchksum(fyic, "fyic in ice_C_dynamics", G%HI)
-      call uchksum(fxoc, "fxoc in ice_C_dynamics", G%HI)
-      call vchksum(fyoc, "fyoc in ice_C_dynamics", G%HI)
-      call uchksum(Cor_u, "Cor_u in ice_C_dynamics", G%HI)
-      call vchksum(Cor_v, "Cor_v in ice_C_dynamics", G%HI)
-      call uchksum(ui, "ui in ice_C_dynamics", G%HI)
-      call vchksum(vi, "vi in ice_C_dynamics", G%HI)
+      call uchksum(fxic, "fxic in SIS_C_dynamics", G%HI)
+      call vchksum(fyic, "fyic in SIS_C_dynamics", G%HI)
+      call uchksum(fxoc, "fxoc in SIS_C_dynamics", G%HI)
+      call vchksum(fyoc, "fyoc in SIS_C_dynamics", G%HI)
+      call uchksum(Cor_u, "Cor_u in SIS_C_dynamics", G%HI)
+      call vchksum(Cor_v, "Cor_v in SIS_C_dynamics", G%HI)
+      call uchksum(ui, "ui in SIS_C_dynamics", G%HI)
+      call vchksum(vi, "vi in SIS_C_dynamics", G%HI)
     endif
     if (CS%debug_redundant) then
-      call check_redundant_C("fxic/fyic in ice_C_dynamics steps",fxic, fyic, G)
-      call check_redundant_C("Cor_u/Cor_v in ice_C_dynamics steps", Cor_u, Cor_v, G)
-      call check_redundant_C("fxoc in ice_C_dynamics steps", fxoc, fyoc, G)
-      call check_redundant_C("ui/vi in ice_C_dynamics steps", ui, vi, G)
+      call check_redundant_C("fxic/fyic in SIS_C_dynamics steps",fxic, fyic, G)
+      call check_redundant_C("Cor_u/Cor_v in SIS_C_dynamics steps", Cor_u, Cor_v, G)
+      call check_redundant_C("fxoc in SIS_C_dynamics steps", fxoc, fyoc, G)
+      call check_redundant_C("ui/vi in SIS_C_dynamics steps", ui, vi, G)
     endif
 
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call uchksum(ui, "ui end ice_C_dynamics", G%HI)
-    call vchksum(vi, "vi end ice_C_dynamics", G%HI)
+    call uchksum(ui, "ui end SIS_C_dynamics", G%HI)
+    call vchksum(vi, "vi end SIS_C_dynamics", G%HI)
   endif
   if (CS%debug_redundant) &
-    call check_redundant_C("ui/vi end ice_C_dynamics", ui, vi, G)
+    call check_redundant_C("ui/vi end SIS_C_dynamics", ui, vi, G)
 
   ! Reset the time information in the diag type.
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
@@ -1336,14 +1336,14 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
   endif
 
-end subroutine ice_C_dynamics
+end subroutine SIS_C_dynamics
 
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   type(SIS_hor_grid_type),            intent(in)    :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice, mice
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s
-  type(ice_C_dyn_CS),                 pointer       :: CS
+  type(SIS_C_dyn_CS),                 pointer       :: CS
   real, optional,                     intent(in)    :: limit
 ! Arguments: pres_mice - The ice internal pressure per unit column mass, in N m / kg.
 !  (in)      mice - The mass per unit total area (ice covered and ice free)
@@ -1468,7 +1468,7 @@ subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
   type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci, str_d
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI
-  type(ice_C_dyn_CS),               pointer     :: CS
+  type(SIS_C_dyn_CS),               pointer     :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     strength ! The ice strength, in Pa.
@@ -1492,7 +1492,7 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi, ci, str_t
   real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII
-  type(ice_C_dyn_CS),                 pointer     :: CS
+  type(SIS_C_dyn_CS),                 pointer     :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     strength ! The ice strength, in Pa.
@@ -1531,15 +1531,15 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
 end subroutine find_sigII
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_register_restarts - allocate and register any variables for this     !
+! SIS_C_dyn_register_restarts - allocate and register any variables for this   !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
+subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                                        Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
   type(hor_index_type),    intent(in)    :: HI
   type(param_file_type),   intent(in)    :: param_file
-  type(ice_C_dyn_CS),      pointer       :: CS
+  type(SIS_C_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
@@ -1557,7 +1557,7 @@ subroutine ice_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (associated(CS)) then
-    call SIS_error(WARNING, "ice_dyn_register_restarts called with an "//&
+    call SIS_error(WARNING, "SIS_C_dyn_register_restarts called with an "//&
                             "associated control structure.")
     return
   endif
@@ -1572,7 +1572,7 @@ subroutine ice_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                               domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
                    domain=mpp_domain, position=CORNER, mandatory=.false.)
-end subroutine ice_C_dyn_register_restarts
+end subroutine SIS_C_dyn_register_restarts
 
 
 ! The following two subroutines are used to record the location of velocity
@@ -1586,7 +1586,7 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc, fxic, Cor_u, PFu, fxat
   real,                              intent(in) :: dt_slow
-  type(ice_C_dyn_CS),                pointer    :: CS
+  type(SIS_C_dyn_CS),                pointer    :: CS
 
   real :: dt_mi, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
@@ -1646,7 +1646,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc, fyic, Cor_v, PFv, fyat
   real,                              intent(in) :: dt_slow
-  type(ice_C_dyn_CS),                pointer    :: CS
+  type(SIS_C_dyn_CS),                pointer    :: CS
 
   real :: dt_mi, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
@@ -1699,14 +1699,14 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
 end subroutine write_v_trunc
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_end - deallocate the memory associated with this module.             !
+! SIS_C_dyn_end - deallocate the memory associated with this module.           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_C_dyn_end(CS)
-  type(ice_C_dyn_CS), pointer :: CS
+subroutine SIS_C_dyn_end(CS)
+  type(SIS_C_dyn_CS), pointer :: CS
 
   deallocate(CS%str_d) ; deallocate(CS%str_t) ; deallocate(CS%str_s)
 
   deallocate(CS)
-end subroutine ice_C_dyn_end
+end subroutine SIS_C_dyn_end
 
-end module ice_dyn_cgrid
+end module SIS_dyn_cgrid

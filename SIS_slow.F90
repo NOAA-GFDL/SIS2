@@ -93,8 +93,8 @@ use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 ! use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S! , Temp_from_Enth_S
 use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze !, e_to_melt_TS
-use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
-use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
+use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : adjust_ice_categories
 use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
@@ -611,24 +611,24 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       endif
 
       if (IST%debug) then
-        call IST_chksum("Before ice_C_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G%HI)
-        call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G%HI)
-        call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G%HI)
-        call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G%HI, haloshift=1)
-        call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G%HI)
-        call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G%HI)
-        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G%HI)
-        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G%HI)
-        call check_redundant_C("WindStr before ice_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
+        call IST_chksum("Before SIS_C_dynamics", IST, G, IG)
+        call hchksum(IST%part_size(:,:,0), "ps(0) before SIS_C_dynamics", G%HI)
+        call hchksum(ms_sum, "ms_sum before SIS_C_dynamics", G%HI)
+        call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
+        call hchksum(IST%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
+        call uchksum(IST%u_ocn_C, "u_ocn_C before SIS_C_dynamics", G%HI)
+        call vchksum(IST%v_ocn_C, "v_ocn_C before SIS_C_dynamics", G%HI)
+        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before SIS_C_dynamics", G%HI)
+        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before SIS_C_dynamics", G%HI)
+        call check_redundant_C("WindStr before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
       endif
 
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
-      call ice_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
+      call SIS_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                         IST%u_ocn_C, IST%v_ocn_C, &
                         WindStr_x_Cu, WindStr_y_Cv, IST%sea_lev, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
-                        dt_slow_dyn, G, IST%ice_C_dyn_CSp)
+                        dt_slow_dyn, G, IST%SIS_C_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
@@ -739,10 +739,10 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
+      call SIS_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                         IST%u_ocn, IST%v_ocn, WindStr_x_B, WindStr_y_B, IST%sea_lev, &
                         str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
-                        rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, IST%ice_B_dyn_CSp)
+                        rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, IST%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
@@ -2471,11 +2471,11 @@ subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 !  endif
 !  allocate(IST)
   if (IST%Cgrid_dyn) then
-    call ice_C_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 IST%ice_C_dyn_CSp, Ice_restart, restart_file)
+    call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%SIS_C_dyn_CSp, Ice_restart, restart_file)
   else
-    call ice_B_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 IST%ice_B_dyn_CSp, Ice_restart, restart_file)
+    call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%SIS_B_dyn_CSp, Ice_restart, restart_file)
   endif
 !  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
 !                                       Ice_restart, restart_file)
@@ -2503,9 +2503,9 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
 !   call log_version(param_file, mod, version, "")
 
   if (IST%Cgrid_dyn) then
-    call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp, IST%ntrunc)
+    call SIS_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%SIS_C_dyn_CSp, IST%ntrunc)
   else
-    call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
+    call SIS_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%SIS_B_dyn_CSp)
   endif
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
 
@@ -2533,9 +2533,9 @@ subroutine SIS_slow_end (IST)
   type(ice_state_type), pointer :: IST
 
   if (IST%Cgrid_dyn) then
-    call ice_C_dyn_end(IST%ice_C_dyn_CSp)
+    call SIS_C_dyn_end(IST%SIS_C_dyn_CSp)
   else
-    call ice_B_dyn_end(IST%ice_B_dyn_CSp)
+    call SIS_B_dyn_end(IST%SIS_B_dyn_CSp)
   endif
   call ice_transport_end(IST%ice_transport_CSp)
 

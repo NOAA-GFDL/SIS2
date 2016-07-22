@@ -16,8 +16,8 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use ice_dyn_bgrid,    only: ice_B_dyn_CS
-use ice_dyn_cgrid,    only: ice_C_dyn_CS
+use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
+use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
@@ -343,8 +343,8 @@ type ice_state_type
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
-  type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
-  type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
+  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
