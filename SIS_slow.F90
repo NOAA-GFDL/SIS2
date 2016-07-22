@@ -57,7 +57,7 @@ use MOM_hor_index, only : hor_index_type ! , hor_index_init
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use fms_mod, only : clock_flag_default !, file_exist
-! use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
+! use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
@@ -67,10 +67,9 @@ use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use data_override_mod, only : data_override
 
-use ice_type_mod, only : ice_state_type !, ice_data_type
-! use ice_type_mod, only : dealloc_IST_arrays
-! use ice_type_mod, only : ice_state_register_restarts
-! use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
+use ice_type_mod, only : ice_state_type
+! use ice_type_mod, only : dealloc_IST_arrays, ice_state_register_restarts
+! use ice_type_mod, only : ice_diagnostics_init
 use ice_type_mod, only : IST_chksum,  IST_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -84,15 +83,11 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 ! use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 
-! use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-! use ice_thm_mod,      only: TFI, CI, e_to_melt
-use ice_thm_mod,      only: e_to_melt, ice5lay_resize
-! use SIS2_ice_thm,  only: ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use ice_thm_mod,   only: e_to_melt, ice5lay_resize
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-! use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S! , Temp_from_Enth_S
-use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze !, e_to_melt_TS
+use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
 use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end

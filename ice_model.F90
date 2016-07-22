@@ -78,7 +78,7 @@ use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over w
 use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
-use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
+use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
 use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
@@ -1655,8 +1655,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
          "WRITE_GEOM must be equal to 0, 1 or 2.")
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
-
-  call check_ice_model_nml(param_file)
 
   if (IST%specified_ice) IST%slab_ice = .true.
 
