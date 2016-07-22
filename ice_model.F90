@@ -56,6 +56,7 @@ use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
+use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
@@ -1455,12 +1456,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "from the SIS1 5 layer. Otherwise, use the newer SIS2 version.", &
                  default=.false.)
   
-  call get_param(param_file, mod, "INTERSPERSED_ICE_THERMO", IST%interspersed_thermo, &
-                 "If true, the sea ice thermodynamic updates are applied \n"//&
-                 "after the new velocities are determined, but before the \n"//&
-                 "transport occurs.  Otherwise, the ice thermodynamic \n"//&
-                 "updates occur at the start of the slow ice update and \n"//&
-                 "dynamics and continuity can occur together.", default=.false.)
+  call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
   call get_param(param_file, mod, "AREA_WEIGHTED_STRESSES", IST%area_wtd_stress, &
                  "If true, use wind stresses that are weighted by the ice \n"//&
                  "areas in the neighboring cells.  The default (true) is \n"//&

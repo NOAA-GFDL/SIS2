@@ -399,7 +399,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   !
   ! Thermodynamics
   !
-  if (.not.IST%interspersed_thermo .and. .not. IST%specified_ice) then
+  if (.not.IST%specified_ice) then
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
     mi_old = IST%mH_ice
     
@@ -474,34 +474,32 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
 
-    if (.not.IST%interspersed_thermo .or. nds>1) then
-      ! Correct the wind stresses for changes in the fractional ice-coverage.
-      ice_cover(:,:) = 0.0
+    ! Correct the wind stresses for changes in the fractional ice-coverage.
+    ice_cover(:,:) = 0.0
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,ice_cover,IST,ice_free, &
 !$OMP                                  ice_cover_in,WindStr_x_A,WindStr_x_A_in,     &
 !$OMP                                  WindStr_y_A,WindStr_y_A_in,ice_free_in,      &
 !$OMP                                  WindStr_x_ocn_A,WindStr_y_ocn_A)
-      do j=jsd,jed
-        do k=1,ncat ; do i=isd,ied
-          ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-        enddo ; enddo
-        do i=isd,ied
-          ice_free(i,j) = IST%part_size(i,j,0)
+    do j=jsd,jed
+      do k=1,ncat ; do i=isd,ied
+        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+      enddo ; enddo
+      do i=isd,ied
+        ice_free(i,j) = IST%part_size(i,j,0)
 
-          if (ice_cover(i,j) > ice_cover_in(i,j)) then
-            WindStr_x_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_u_top(i,j,0) + &
-                                ice_cover_in(i,j)*WindStr_x_A_in(i,j)) / ice_cover(i,j)
-            WindStr_y_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_v_top(i,j,0) + &
-                                ice_cover_in(i,j)*WindStr_y_A_in(i,j)) / ice_cover(i,j)
-          elseif (ice_free(i,j) > ice_free_in(i,j)) then
-            WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_x_A_in(i,j) + &
-                                ice_free_in(i,j)*IST%flux_u_top(i,j,0)) / ice_free(i,j)
-            WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_y_A_in(i,j) + &
-                                ice_free_in(i,j)*IST%flux_v_top(i,j,0)) / ice_free(i,j)
-          endif
-        enddo
+        if (ice_cover(i,j) > ice_cover_in(i,j)) then
+          WindStr_x_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_u_top(i,j,0) + &
+                              ice_cover_in(i,j)*WindStr_x_A_in(i,j)) / ice_cover(i,j)
+          WindStr_y_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_v_top(i,j,0) + &
+                              ice_cover_in(i,j)*WindStr_y_A_in(i,j)) / ice_cover(i,j)
+        elseif (ice_free(i,j) > ice_free_in(i,j)) then
+          WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_x_A_in(i,j) + &
+                              ice_free_in(i,j)*IST%flux_u_top(i,j,0)) / ice_free(i,j)
+          WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_y_A_in(i,j) + &
+                              ice_free_in(i,j)*IST%flux_v_top(i,j,0)) / ice_free(i,j)
+        endif
       enddo
-    endif
+    enddo
 
     !
     ! Dynamics - update ice velocities.
@@ -784,72 +782,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     call mpp_clock_end(iceClock4)
 
-    !
-    ! Thermodynamics (The thermodynamic changes might have been applied above.)
-    !
-    if (IST%interspersed_thermo .and. nds==1) then
-
-      !TOM> Store old ice mass per unit area for calculating partial ice growth.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        mi_old(i,j,k) = IST%mH_ice(i,j,k)
-    enddo ; enddo ; enddo
-      !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
-      !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-      if (IST%do_ridging) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
-!$OMP                          private(tmp3)
-        do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-          tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-          rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-              rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-        enddo ; enddo ; enddo
-      endif
-
-      call disable_SIS_averaging(IST%diag)
-
-      ! The thermodynamics routines return updated values of the ice and snow
-      ! masses-per-unit area and enthalpies.
-      call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
-      if (IST%SIS1_5L_thermo) then
-        call SIS1_5L_thermodynamics(IST, G, IG)
-      else
-        call SIS2_thermodynamics(IST, G, IG)
-
-      endif
-
-      !TOM> calculate partial ice growth for ridging and aging.
-      if (IST%do_ridging) then
-        !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
-        !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac,mi_old)
-        do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-          if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-            IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
-               (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
-          IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
-        enddo ; enddo ; enddo
-      endif
-
-      !  Other routines that do thermodynamic vertical processes should be added here.
-      !  Do tracer column physics
-      call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-      call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
-      call disable_SIS_averaging(IST%diag)
-
-      call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
-                                 IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
-
-      call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
-
-      if (IST%column_check) &
-        call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
-                                  message="        Post_thermo", check_column=.true.)
-    endif  ! Interspersed thermo
-
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
-
-
     !
     ! Do ice transport ... all ocean fluxes have been calculated by now.
     !
