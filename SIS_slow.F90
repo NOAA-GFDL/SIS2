@@ -2441,10 +2441,11 @@ end subroutine SIS2_thermodynamics
 ! SIS_slow_register_restarts - allocate and register any variables for this    !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_register_restarts(mpp_domain, HI, param_file, IST, &
+subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, IST, &
                                       Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
   type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    pointer       :: IST
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -2469,11 +2470,20 @@ subroutine SIS_slow_register_restarts(mpp_domain, HI, param_file, IST, &
 !    return
 !  endif
 !  allocate(IST)
+  if (IST%Cgrid_dyn) then
+    call ice_C_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%ice_C_dyn_CSp, Ice_restart, restart_file)
+  else
+    call ice_B_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%ice_B_dyn_CSp, Ice_restart, restart_file)
+  endif
+!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
+!                                       Ice_restart, restart_file)
 
 end subroutine SIS_slow_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_slow_init - initializes ice model data, parameters and diagnostics      !
+! SIS_slow_init - initializes ice model data, parameters and diagnostics       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
   type(time_type),     target, intent(in)    :: Time   ! current time
@@ -2491,6 +2501,14 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
 
   ! Read all relevant parameters and write them to the model log.
 !   call log_version(param_file, mod, version, "")
+
+  if (IST%Cgrid_dyn) then
+    call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp, IST%ntrunc)
+  else
+    call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
+  endif
+  call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
+
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
@@ -2513,6 +2531,13 @@ end subroutine SIS_slow_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_slow_end (IST)
   type(ice_state_type), pointer :: IST
+
+  if (IST%Cgrid_dyn) then
+    call ice_C_dyn_end(IST%ice_C_dyn_CSp)
+  else
+    call ice_B_dyn_end(IST%ice_B_dyn_CSp)
+  endif
+  call ice_transport_end(IST%ice_transport_CSp)
 
 end subroutine SIS_slow_end
 
