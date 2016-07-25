@@ -82,8 +82,6 @@ use ice_spec_mod, only : get_sea_surface
 use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 ! use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-
-use ice_thm_mod,   only: e_to_melt ! , ice5lay_resize
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S

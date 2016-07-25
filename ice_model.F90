@@ -95,7 +95,7 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-use ice_thm_mod,   only : slab_ice_optics, ice_thm_param ! , ice5lay_temp, TFI, CI
+use ice_thm_mod,   only : slab_ice_optics
 use SIS_slow_mod,  only : update_ice_model_slow, SIS_slow_register_restarts
 use SIS_slow_mod,  only : SIS_slow_init, SIS_slow_end
 use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
@@ -1922,8 +1922,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                         domain_name="ice_nohalo")
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
-
-  call ice_thm_param(IST%slab_ice, k_snow, h_lo_lim)
 
   call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
