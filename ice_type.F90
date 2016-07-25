@@ -223,9 +223,6 @@ type ice_state_type
                     ! ice is initialized, but here it is set to -999 so that a
                     ! global max across ice and non-ice processors can be used
                     ! to determine its value.
-  logical :: SIS1_5L_thermo ! If true, the thermodynamic calculations inhereted
-                       ! from the 5-layer version of SIS1. Otherwise, use the
-                       ! newer SIS2 version.
   logical :: interspersed_thermo ! If true, the sea ice thermodynamic updates
                        ! are applied after the new velocities are determined,
                        ! but before the transport occurs.  Otherwise, the ice
