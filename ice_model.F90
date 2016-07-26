@@ -520,13 +520,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   logical :: sent
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  real :: dt_slow        ! The ice thermodynamics time step
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   I_Nk = 1.0 / IG%NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
-  dt_slow = time_type_to_real(IST%Time_step_slow)
 
   H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
 

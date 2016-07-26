@@ -274,17 +274,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   I_Nk = 1.0 / NkIce
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
-  if (IST%specified_ice) then
-    ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
-  else
-    ndyn_steps = 1
-    if ((IST%dt_ice_dyn > 0.0) .and. (IST%dt_ice_dyn < dt_slow)) &
-      ndyn_steps = max(CEILING(dt_slow/IST%dt_ice_dyn - 0.000001), 1)
-    dt_slow_dyn = dt_slow / ndyn_steps
-  endif
-
   IST%n_calls = IST%n_calls + 1
-  IST%stress_count = 0
 
   if (IST%debug) then
     call IST_chksum("Start update_ice_model_slow", IST, G, IG)
@@ -295,15 +285,48 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
-  call post_flux_diagnostics(IST, G, IG, Idt_slow) ! save out diagnostics of fluxes.
+  ! Save out diagnostics of fluxes.  This must go before the icebergs_run call.
+  call post_flux_diagnostics(IST, G, IG, Idt_slow)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
-  do j=jsc,jec ; do i=isc,iec
-    IST%frazil_input(i,j) = IST%frazil(i,j)
-
-    IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
-    IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
-  enddo ; enddo
+  ! Calve off icebergs and integrate forward iceberg trajectories
+  if (IST%do_icebergs) then
+    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
+    H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
+    ice_cover(:,:) = 0.0
+    do j=jsd,jed
+      do k=1,ncat ; do i=isd,ied
+        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+      enddo ; enddo
+      do i=isd,ied ; ice_cover(i,j) = min(max(ice_cover(i,j), 0.0), 1.0) ; enddo 
+    enddo
+    call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
+    hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
+    
+    !### I think that there is long-standing bug here, in that the old ice-ocean
+    !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
+    if (IST%Cgrid_dyn) then
+      call icebergs_run( icebergs_CS, IST%Time, &
+              IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
+              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
+              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
+              stress_stagger=IST%flux_uv_stagger)
+    else
+      call icebergs_run( icebergs_CS, IST%Time, &
+              IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+              IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
+              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
+              stress_stagger=IST%flux_uv_stagger)
+    endif
+    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
+  endif
 
   !
   ! conservation checks: top fluxes
@@ -353,46 +376,21 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       ice_cover_in(i,j) = ice_cover(i,j) ; ice_free_in(i,j) = ice_free(i,j)
       WindStr_x_A_in(i,j) = WindStr_x_A(i,j) ; WindStr_y_A_in(i,j) = WindStr_y_A(i,j)
     enddo
-   enddo
-
-
-  ! Calve off icebergs and integrate forward iceberg trajectories
-  if (IST%do_icebergs) then
-    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
-    H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
-    call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
-    hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
-    
-    !### I think that there is long-standing bug here, in that the old ice-ocean
-    !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
-    if (IST%Cgrid_dyn) then
-      call icebergs_run( icebergs_CS, IST%Time, &
-              IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-              IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-              IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
-              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
-              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-              stress_stagger=IST%flux_uv_stagger)
-    else
-      call icebergs_run( icebergs_CS, IST%Time, &
-              IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
-              IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
-              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-              stress_stagger=IST%flux_uv_stagger)
-    endif
-    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
-  endif
+  enddo
 
   !
   ! Thermodynamics
   !
-  if (.not.IST%specified_ice) then
+  if (IST%specified_ice) then   ! over-write changes with specifications.
+    h_ice_input(:,:) = 0.0
+    call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,:), &
+                         h_ice_input(isc:iec,jsc:jec))
+    do j=jsc,jec ; do i=isc,iec
+      IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * IST%Rho_ice)
+    enddo ; enddo
+    call pass_var(IST%part_size, G%Domain)
+
+  else ! Do not use specified ice.
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
     mi_old = IST%mH_ice
     
@@ -410,9 +408,16 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     call disable_SIS_averaging(IST%diag)
 
+    call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
+    do j=jsc,jec ; do i=isc,iec
+      IST%frazil_input(i,j) = IST%frazil(i,j)
+      IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
+      IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
+    enddo ; enddo
+
     ! The thermodynamics routines return updated values of the ice and snow
     ! masses-per-unit area and enthalpies.
-    call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
     call SIS2_thermodynamics(IST, G, IG)
 
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
@@ -454,11 +459,24 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
                                 message="      Post_thermo B ", check_column=.true.)
   endif
 
+  ! This is the end of the thermodynamics.  This subroutine could probably be split
+  ! at this point.
+
+
+  if (IST%specified_ice) then
+    ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
+  else
+    ndyn_steps = 1
+    if ((IST%dt_ice_dyn > 0.0) .and. (IST%dt_ice_dyn < dt_slow)) &
+      ndyn_steps = max(CEILING(dt_slow/IST%dt_ice_dyn - 0.000001), 1)
+    dt_slow_dyn = dt_slow / ndyn_steps
+  endif
+  IST%stress_count = 0
+
   if (IST%id_xprt>0) then
     ! Store values to determine the ice and snow mass change due to transport.
     h2o_chg_xprt(:,:) = 0.0
   endif
-
   do nds=1,ndyn_steps
 
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
@@ -859,16 +877,6 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       if (IST%do_icebergs) call icebergs_incr_mass(icebergs_CS, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
       call post_data(IST%id_mib, mass(isc:iec,jsc:jec), IST%diag)
     endif
-  endif
-
-  if (IST%specified_ice) then   ! over-write changes with specifications.
-    h_ice_input(:,:) = 0.0
-    call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,:), &
-                         h_ice_input(isc:iec,jsc:jec))
-    do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * IST%Rho_ice)
-    enddo ; enddo
-    call pass_var(IST%part_size, G%Domain)
   endif
 
   call mpp_clock_end(iceClock8)

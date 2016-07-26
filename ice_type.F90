@@ -62,12 +62,12 @@ type ice_state_type
                         ! have been incremented.
   integer :: stress_count ! The number of times that the stresses from the ice
                         ! to the ocean have been incremented.
+
+  ! The 8 of the following 10 variables constitute the sea-ice state.
   real, pointer, dimension(:,:,:) :: &
     part_size =>NULL()     ! The fractional coverage of a grid cell by each ice
                            ! thickness category, nondim, 0 to 1.  Category 0 is
                            ! open ocean.  The sum of part_size is 1.
-
-  ! The following are the 6 variables that constitute the sea-ice state.
   real, pointer, dimension(:,:) :: &
     u_ice_B =>NULL(), & ! The pseudo-zonal and pseudo-meridional ice velocities
     v_ice_B =>NULL(), & ! along the model's grid directions on a B-grid, in m s-1.
@@ -95,6 +95,7 @@ type ice_state_type
     rdg_mice =>NULL()   ! A diagnostic of the ice load that was formed by
                         ! ridging, in H (usually kg m-2).
 
+  ! 5 of the following 7 variables describe the ocean state as seen by the sea ice.
   real,    pointer, dimension(:,:) :: &
     s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
     t_ocn   =>NULL(), &    ! The ocean's bulk surface temperature in degC.
@@ -108,8 +109,13 @@ type ice_state_type
                            ! applying pressure to the ocean that is then
                            ! (partially) converted back to its equivalent by the
                            ! ocean.
+
+  ! These two arrarys are used with column_check when evaluating the enthalpy
+  ! conservation with the fast thermodynamics code. 
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
+
+  
   real,    pointer, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
@@ -143,9 +149,11 @@ type ice_state_type
                                   ! ice by water fluxes to the atmosphere, in J m-2.
     Enth_Mass_in_ocn  =>NULL(), & ! The enthalpy introduced to the ice by water
                                   ! fluxes from the ocean, in J m-2.
-    Enth_Mass_out_ocn =>NULL(), & ! Negative of the enthalpy extracted from the
+    Enth_Mass_out_ocn =>NULL()    ! Negative of the enthalpy extracted from the
                                   ! ice by water fluxes to the ocean, in J m-2.
 
+  ! These variables describe the fluxes between ice or atmosphere and the ocean.
+  real, pointer, dimension(:,:)   :: &
     flux_t_ocn_top => NULL(), &   ! The upward sensible heat flux from the ocean
                                   ! to the ice or atmosphere, in W m-2.
     flux_q_ocn_top => NULL(), &   ! The upward evaporative moisture flux at
@@ -211,6 +219,8 @@ type ice_state_type
     bheat => NULL(), &        ! The upward diffusive heat flux from the ocean
                               ! to the ice at the base of the ice, in W m-2.
     mi => NULL()              !  The total ice+snow mass, in kg m-2.
+
+
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
@@ -223,12 +233,6 @@ type ice_state_type
                     ! ice is initialized, but here it is set to -999 so that a
                     ! global max across ice and non-ice processors can be used
                     ! to determine its value.
-  logical :: interspersed_thermo ! If true, the sea ice thermodynamic updates
-                       ! are applied after the new velocities are determined,
-                       ! but before the transport occurs.  Otherwise, the ice
-                       ! thermodynamic updates occur at the start of the slow
-                       ! ice update and dynamics and continuity can occur
-                       ! together.
   logical :: area_wtd_stress  ! If true, use wind stresses that are weighted
                        ! by the ice areas in the neighboring cells.  The default
                        ! (true) is probably the right behavior, and this option
