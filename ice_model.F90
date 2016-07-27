@@ -75,7 +75,7 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ice_data_type, ice_state_type, ice_ocean_flux_type
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
@@ -135,12 +135,14 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
   endif
 
-  call set_ice_state_fluxes(Ice%Ice_state, Ice, Land_boundary, Ice%G, Ice%IG)
+  call set_ice_state_fluxes(Ice%Ice_state%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
 
   call update_ice_model_slow(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
+  if (Ice%Ice_state%debug) &
+    call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%G, Ice%IG)
+  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%Ice_state%IOF, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
@@ -191,10 +193,12 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
         IST%num_tr_fluxes = IST%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
         max_num_fields = max(max_num_fields, Atmos_boundary_fluxes%bc(n)%num_fields)
       enddo
+
+      IST%IOF%num_tr_fluxes = IST%num_tr_fluxes
       if (IST%num_tr_fluxes > 0) then
         allocate(IST%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, IST%num_tr_fluxes))
-        allocate(IST%tr_flux_ocn_top(SZI_(G), SZJ_(G), IST%num_tr_fluxes))
-        IST%tr_flux_top(:,:,:,:) = 0.0 ; IST%tr_flux_ocn_top(:,:,:) = 0.0
+        allocate(IST%IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IST%num_tr_fluxes))
+        IST%tr_flux_top(:,:,:,:) = 0.0 ; IST%IOF%tr_flux_ocn_top(:,:,:) = 0.0
         allocate(IST%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
         IST%tr_flux_index(:,:) = -1 ; next_index = 1
         do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
@@ -207,13 +211,15 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
   if (IST%avg_count == 0) then
     ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
     IST%flux_u_top(:,:,:) = 0.0 ; IST%flux_v_top(:,:,:) = 0.0
-    IST%lwdn(:,:) = 0.0 ; IST%swdn(:,:) = 0.0
     IST%flux_t_top(:,:,:) = 0.0 ; IST%flux_q_top(:,:,:) = 0.0
     IST%flux_lw_top(:,:,:) = 0.0 ; IST%flux_lh_top(:,:,:) = 0.0
     IST%flux_sw_nir_dir_top(:,:,:) = 0.0 ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0
     IST%flux_sw_vis_dir_top(:,:,:) = 0.0 ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0
     IST%lprec_top(:,:,:) = 0.0 ; IST%fprec_top(:,:,:) = 0.0
     if (IST%num_tr_fluxes > 0) IST%tr_flux_top(:,:,:,:) = 0.0
+
+    ! Diagnostics of sums of the above arrays.
+    IST%lwdn(:,:) = 0.0 ; IST%swdn(:,:) = 0.0
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,flux_u,flux_v,flux_t, &
@@ -323,8 +329,8 @@ subroutine avg_top_quantities(IST, G, IG)
       enddo
     enddo ; enddo
     do i=isc,iec
-      IST%lwdn(i,j) = IST%lwdn(i,j)* divid
-      IST%swdn(i,j) = IST%swdn(i,j)* divid
+      IST%lwdn(i,j) = IST%lwdn(i,j) * divid
+      IST%swdn(i,j) = IST%swdn(i,j) * divid
     enddo
   enddo
   call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
@@ -338,8 +344,8 @@ end subroutine avg_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_state_fluxes copies the ice surface fluxes and any other fields into
 !! the ice_state_type.
-subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
-  type(ice_state_type),         intent(inout) :: IST
+subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
+  type(ice_ocean_flux_type),    intent(inout) :: IOF
   type(ice_data_type),          intent(in)    :: Ice
   type(land_ice_boundary_type), intent(in)    :: LIB
   type(SIS_hor_grid_type),      intent(in)    :: G
@@ -354,10 +360,10 @@ subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    IST%runoff(i,j)  = LIB%runoff(i2,j2)
-    IST%calving(i,j) = LIB%calving(i2,j2)
-    IST%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
-    IST%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+    IOF%runoff(i,j)  = LIB%runoff(i2,j2)
+    IOF%calving(i,j) = LIB%calving(i2,j2)
+    IOF%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
+    IOF%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
   enddo ; enddo
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
@@ -365,8 +371,8 @@ subroutine set_ice_state_fluxes(IST, Ice, LIB, G, IG)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    IST%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
-    IST%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
+    IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
+    IOF%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
   enddo ; enddo
 
 end subroutine set_ice_state_fluxes
@@ -376,11 +382,12 @@ end subroutine set_ice_state_fluxes
 !   tracers from the ice model's internal state to the public ice data type    !
 !   for use by the ocean model.                                                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
-  type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(in)    :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(in)    :: IG
+subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
+  type(ice_data_type),       intent(inout) :: Ice
+  type(ice_state_type),      intent(in)    :: IST
+  type(ice_ocean_flux_type), intent(in)    :: IOF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(in)    :: IG
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
@@ -390,7 +397,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_fluxes", IST, G, IG)
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
   endif
 
@@ -428,23 +434,23 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = IST%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = IST%flux_v_ocn(i,j)
-    Ice%flux_t(i2,j2) = IST%flux_t_ocn_top(i,j)
-    Ice%flux_q(i2,j2) = IST%flux_q_ocn_top(i,j)
-    Ice%flux_sw_vis_dir(i2,j2) = IST%flux_sw_vis_dir_ocn(i,j)
-    Ice%flux_sw_vis_dif(i2,j2) = IST%flux_sw_vis_dif_ocn(i,j)
-    Ice%flux_sw_nir_dir(i2,j2) = IST%flux_sw_nir_dir_ocn(i,j)
-    Ice%flux_sw_nir_dif(i2,j2) = IST%flux_sw_nir_dif_ocn(i,j)
-    Ice%flux_lw(i2,j2) = IST%flux_lw_ocn_top(i,j)
-    Ice%flux_lh(i2,j2) = IST%flux_lh_ocn_top(i,j)
-    Ice%fprec(i2,j2) = IST%fprec_ocn_top(i,j)
-    Ice%lprec(i2,j2) = IST%lprec_ocn_top(i,j)
-    Ice%runoff(i2,j2)  = IST%runoff(i,j)
-    Ice%calving(i2,j2) = IST%calving(i,j)
-    Ice%runoff_hflx(i2,j2)  = IST%runoff_hflx(i,j)
-    Ice%calving_hflx(i2,j2) = IST%calving_hflx(i,j)
-    Ice%flux_salt(i2,j2) = IST%flux_salt(i,j)
+    Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
+    Ice%flux_t(i2,j2) = IOF%flux_t_ocn_top(i,j)
+    Ice%flux_q(i2,j2) = IOF%flux_q_ocn_top(i,j)
+    Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_vis_dir_ocn(i,j)
+    Ice%flux_sw_vis_dif(i2,j2) = IOF%flux_sw_vis_dif_ocn(i,j)
+    Ice%flux_sw_nir_dir(i2,j2) = IOF%flux_sw_nir_dir_ocn(i,j)
+    Ice%flux_sw_nir_dif(i2,j2) = IOF%flux_sw_nir_dif_ocn(i,j)
+    Ice%flux_lw(i2,j2) = IOF%flux_lw_ocn_top(i,j)
+    Ice%flux_lh(i2,j2) = IOF%flux_lh_ocn_top(i,j)
+    Ice%fprec(i2,j2) = IOF%fprec_ocn_top(i,j)
+    Ice%lprec(i2,j2) = IOF%lprec_ocn_top(i,j)
+    Ice%runoff(i2,j2)  = IOF%runoff(i,j)
+    Ice%calving(i2,j2) = IOF%calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = IOF%runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = IOF%calving_hflx(i,j)
+    Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
 
     if (IST%slp2ocean) then
       Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
@@ -465,12 +471,11 @@ subroutine set_ocean_top_fluxes(Ice, IST, G, IG)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
-        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IST%tr_flux_ocn_top(i,j,ind)
+        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
     enddo ; enddo
   enddo ; enddo
 
   if (IST%debug) then
-    call IST_chksum("End set_ocean_top_fluxes", IST, G, IG)
     call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
   endif
 
@@ -1572,6 +1577,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                    IST, Ice%Ice_restart, restart_file)
+
+  ! IST%IOF has now been set and can be used.
+  IST%IOF%flux_uv_stagger = IST%flux_uv_stagger
 
   call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                   IST, Ice%Ice_restart, restart_file)

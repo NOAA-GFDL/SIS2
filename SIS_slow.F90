@@ -67,7 +67,7 @@ use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use data_override_mod, only : data_override
 
-use ice_type_mod, only : ice_state_type
+use ice_type_mod, only : ice_state_type, ice_ocean_flux_type
 ! use ice_type_mod, only : dealloc_IST_arrays, ice_state_register_restarts
 ! use ice_type_mod, only : ice_diagnostics_init
 use ice_type_mod, only : IST_chksum,  IST_bounds_check
@@ -119,13 +119,13 @@ subroutine post_flux_diagnostics(IST, G, IG, Idt_slow)
   ! Flux diagnostics
   !
   if (IST%id_runoff>0) &
-    call post_data(IST%id_runoff, IST%runoff, IST%diag)
+    call post_data(IST%id_runoff, IST%IOF%runoff, IST%diag)
   if (IST%id_calving>0) &
-    call post_data(IST%id_calving, IST%calving, IST%diag)
+    call post_data(IST%id_calving, IST%IOF%calving, IST%diag)
   if (IST%id_runoff_hflx>0) &
-    call post_data(IST%id_runoff_hflx, IST%runoff_hflx, IST%diag)
+    call post_data(IST%id_runoff_hflx, IST%IOF%runoff_hflx, IST%diag)
   if (IST%id_calving_hflx>0) &
-    call post_data(IST%id_calving_hflx, IST%calving_hflx, IST%diag)
+    call post_data(IST%id_calving_hflx, IST%IOF%calving_hflx, IST%diag)
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
   if (IST%id_sh>0) call post_avg(IST%id_sh, IST%flux_t_top, IST%part_size, &
@@ -306,22 +306,22 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
     !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
     if (IST%Cgrid_dyn) then
       call icebergs_run( icebergs_CS, IST%Time, &
-              IST%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving(isc:iec,jsc:jec), IST%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
+              IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
               stress_stagger=IST%flux_uv_stagger)
     else
       call icebergs_run( icebergs_CS, IST%Time, &
-              IST%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ocn(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%flux_u_ocn(isc:iec,jsc:jec), IST%flux_v_ocn(isc:iec,jsc:jec), &
+              IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
               stress_stagger=IST%flux_uv_stagger)
     endif
@@ -418,7 +418,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     ! The thermodynamics routines return updated values of the ice and snow
     ! masses-per-unit area and enthalpies.
-    call SIS2_thermodynamics(IST, G, IG)
+    call SIS2_thermodynamics(IST, IST%IOF, G, IG)
 
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
@@ -471,7 +471,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       ndyn_steps = max(CEILING(dt_slow/IST%dt_ice_dyn - 0.000001), 1)
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
-  IST%stress_count = 0
+  IST%IOF%stress_count = 0
 
   if (IST%id_xprt>0) then
     ! Store values to determine the ice and snow mass change due to transport.
@@ -651,8 +651,11 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       if (IST%id_fax>0) call post_data(IST%id_fax, WindStr_x_Cu, IST%diag)
       if (IST%id_fay>0) call post_data(IST%id_fay, WindStr_y_Cv, IST%diag)
 
-      call set_ocean_top_stress_Cgrid(IST, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
+      if (IST%debug) call IST_chksum("Before set_ocean_top_stress_Cgrid", IST, G, IG)
+
+      call set_ocean_top_stress_Cgrid(IST%IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
                                       str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, IG)
+      if (IST%debug) call IST_chksum("After set_ocean_top_stress_Cgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
 
     else ! B-grid dynamics.
@@ -781,8 +784,10 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
         if (IST%id_fay>0) call post_data(IST%id_fay, diagVarBy, IST%diag)
       endif
 
-      call set_ocean_top_stress_Bgrid(IST, WindStr_x_ocn_B, WindStr_y_ocn_B, &
+      if (IST%debug) call IST_chksum("Before set_ocean_top_stress_Bgrid", IST, G, IG)
+      call set_ocean_top_stress_Bgrid(IST%IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
                                       str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G, IG)
+      if (IST%debug) call IST_chksum("After set_ocean_top_stress_Bgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
     endif ! End of B-grid dynamics
 
@@ -842,7 +847,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
     call mpp_clock_end(iceClock8)
 
   enddo ! nds=1,ndyn_steps
-  call finish_ocean_top_stresses(IST, G%HI)
+  call finish_ocean_top_stresses(IST%IOF, G%HI)
 
   ! Add snow volume dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
@@ -1038,19 +1043,19 @@ end subroutine update_ice_model_slow
 ! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
 !   them through the stresses by the number of times they have been augmented. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine finish_ocean_top_stresses(IST, HI)
+subroutine finish_ocean_top_stresses(IOF, HI)
   type(hor_index_type), intent(in)    :: HI
-  type(ice_state_type), intent(inout) :: IST
+  type(ice_ocean_flux_type), intent(inout) :: IOF
 
   real :: I_count
   integer :: i, j, isc, iec, jsc, jec
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
 
-  if (IST%stress_count > 1) then
-    I_count = 1.0 / IST%stress_count
+  if (IOF%stress_count > 1) then
+    I_count = 1.0 / IOF%stress_count
     do j=jsc,jec ; do i=isc,iec
-      IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) * I_count
-      IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) * I_count
+      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) * I_count
+      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) * I_count
     enddo ; enddo
   endif
 
@@ -1062,11 +1067,11 @@ end subroutine finish_ocean_top_stresses
 !   store them in the public ice data type for use by the ocean model.  This   !
 !   version of the routine uses wind and ice-ocean stresses on a B-grid.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_stress_Bgrid(IST, windstr_x_water, windstr_y_water, &
+subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
+  type(ice_ocean_flux_type), intent(inout) :: IOF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(inout) :: IG
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
   real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
@@ -1075,12 +1080,9 @@ subroutine set_ocean_top_stress_Bgrid(IST, windstr_x_water, windstr_y_water, &
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_stress_Bgrid", IST, G, IG)
-  endif
 
-  if (IST%stress_count == 0) then
-    IST%flux_u_ocn(:,:) = 0.0 ; IST%flux_v_ocn(:,:) = 0.0
+  if (IOF%stress_count == 0) then
+    IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
   endif
 
   !   Copy and interpolate the ice-ocean stress_Bgrid.  This code is slightly
@@ -1089,66 +1091,66 @@ subroutine set_ocean_top_stress_Bgrid(IST, windstr_x_water, windstr_y_water, &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
-  if (IST%flux_uv_stagger == AGRID) then
+  if (IOF%flux_uv_stagger == AGRID) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * 0.25 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.25 * &
             ((windstr_x_water(I,J) + windstr_x_water(I-1,J-1)) + &
              (windstr_x_water(I-1,J) + windstr_x_water(I,J-1)))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * 0.25 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.25 * &
             ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
              (windstr_y_water(I-1,J) + windstr_y_water(I,J-1)))
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + part_size(i,j,k) * 0.25 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
              (str_ice_oce_x(I-1,J) + str_ice_oce_x(I,J-1)))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + part_size(i,j,k) * 0.25 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J-1)) + &
              (str_ice_oce_y(I-1,J) + str_ice_oce_y(I,J-1)))
       endif ; enddo ; enddo
     enddo
-  elseif (IST%flux_uv_stagger == BGRID_NE) then
+  elseif (IOF%flux_uv_stagger == BGRID_NE) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + windstr_x_water(I,J) * ps_vel
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + windstr_y_water(I,J) * ps_vel
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + windstr_x_water(I,J) * ps_vel
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + windstr_y_water(I,J) * ps_vel
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + str_ice_oce_x(I,J) * ps_vel
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + str_ice_oce_y(I,J) * ps_vel
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + str_ice_oce_x(I,J) * ps_vel
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + str_ice_oce_y(I,J) * ps_vel
       endif ; enddo ; enddo
     enddo
-  elseif (IST%flux_uv_stagger == CGRID_NE) then
+  elseif (IOF%flux_uv_stagger == CGRID_NE) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * &
                 0.5 * (windstr_x_water(I,J) + windstr_x_water(I,J-1))
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * &
                 0.5 * (windstr_y_water(I,J) + windstr_y_water(I-1,J))
       enddo
       do k=1,ncat ; do i=isc,iec
         if (G%mask2dCu(I,j)>0.5) then
           ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * &
+          IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * &
               0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
         endif
         if (G%mask2dCv(i,J)>0.5) then
           ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * &
+          IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * &
                   0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
         endif
       enddo ; enddo
@@ -1159,11 +1161,7 @@ subroutine set_ocean_top_stress_Bgrid(IST, windstr_x_water, windstr_y_water, &
 !$OMP end single
   endif
 !$OMP end parallel
-  IST%stress_count = IST%stress_count + 1
-
-  if (IST%debug) then
-    call IST_chksum("End set_ocean_top_stress_Bgrid", IST, G, IG)
-  endif
+  IOF%stress_count = IOF%stress_count + 1
 
 end subroutine set_ocean_top_stress_Bgrid
 
@@ -1173,11 +1171,11 @@ end subroutine set_ocean_top_stress_Bgrid
 !   store them in the public ice data type for use by the ocean model.  This   !
 !   version of the routine uses wind and ice-ocean stresses on a C-grid.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ocean_top_stress_Cgrid(IST, windstr_x_water, windstr_y_water, &
+subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
+  type(ice_ocean_flux_type), intent(inout) :: IOF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(inout) :: IG
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
   real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
@@ -1186,12 +1184,8 @@ subroutine set_ocean_top_stress_Cgrid(IST, windstr_x_water, windstr_y_water, &
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  if (IST%debug) then
-    call IST_chksum("Start set_ocean_top_stress_Cgrid", IST, G, IG)
-  endif
-
-  if (IST%stress_count == 0) then
-    IST%flux_u_ocn(:,:) = 0.0 ; IST%flux_v_ocn(:,:) = 0.0
+  if (IOF%stress_count == 0) then
+    IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
   endif
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
@@ -1200,24 +1194,24 @@ subroutine set_ocean_top_stress_Cgrid(IST, windstr_x_water, windstr_y_water, &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
-  if (IST%flux_uv_stagger == AGRID) then
+  if (IOF%flux_uv_stagger == AGRID) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * 0.5 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_x_water(I,j) + windstr_x_water(I-1,j))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * 0.5 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_y_water(I,j) + windstr_y_water(i,J-1))
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_y(I,j) + str_ice_oce_y(i,J-1))
       endif ; enddo ; enddo
     enddo
-  elseif (IST%flux_uv_stagger == BGRID_NE) then
+  elseif (IOF%flux_uv_stagger == BGRID_NE) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
@@ -1225,39 +1219,39 @@ subroutine set_ocean_top_stress_Cgrid(IST, windstr_x_water, windstr_y_water, &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         ! Consider deleting the masks here?
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_x_water(I,j) + windstr_x_water(I,j+1))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_y_water(I,j) + windstr_y_water(i+1,J))
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * 0.5 * &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I,j+1))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * 0.5 * &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
                             (str_ice_oce_y(I,j) + str_ice_oce_y(i+1,J))
       endif ; enddo ; enddo
     enddo
-  elseif (IST%flux_uv_stagger == CGRID_NE) then
+  elseif (IOF%flux_uv_stagger == CGRID_NE) then
 !$OMP do
     do j=jsc,jec
       do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * windstr_x_water(I,j)
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * windstr_x_water(I,j)
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * windstr_y_water(i,J)
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * windstr_y_water(i,J)
       enddo
       do k=1,ncat ; do i=isc,iec
         if (G%mask2dCu(I,j)>0.5) then
           ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          IST%flux_u_ocn(i,j) = IST%flux_u_ocn(i,j) + ps_vel * str_ice_oce_x(I,j)
+          IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * str_ice_oce_x(I,j)
         endif
         if (G%mask2dCv(i,J)>0.5) then
           ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          IST%flux_v_ocn(i,j) = IST%flux_v_ocn(i,j) + ps_vel * str_ice_oce_y(I,j)
+          IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * str_ice_oce_y(I,j)
         endif
       enddo ; enddo
     enddo
@@ -1268,16 +1262,13 @@ subroutine set_ocean_top_stress_Cgrid(IST, windstr_x_water, windstr_y_water, &
   endif
 !$OMP end parallel
 
-  IST%stress_count = IST%stress_count + 1
-
-  if (IST%debug) then
-    call IST_chksum("End set_ocean_top_stress_Cgrid", IST, G, IG)
-  endif
+  IOF%stress_count = IOF%stress_count + 1
 
 end subroutine set_ocean_top_stress_Cgrid
 
-subroutine SIS2_thermodynamics(IST, G, IG)
+subroutine SIS2_thermodynamics(IST, IOF, G, IG)
   type(ice_state_type),               intent(inout) :: IST
+  type(ice_ocean_flux_type),          intent(inout) :: IOF
   type(SIS_hor_grid_type),            intent(inout) :: G
   type(ice_grid_type),                intent(inout) :: IG
 
@@ -1511,30 +1502,31 @@ subroutine SIS2_thermodynamics(IST, G, IG)
   ! Start accumulating the fluxes at the ocean's surface.
 !$OMP do
   do j=jsc,jec ; do i=isc,iec
-    IST%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_t_top(i,j,0)
-    IST%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_q_top(i,j,0)
-    IST%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lw_top(i,j,0)
-    IST%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lh_top(i,j,0)
-    IST%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dir_top(i,j,0)
-    IST%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dif_top(i,j,0)
-    IST%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dir_top(i,j,0)
-    IST%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dif_top(i,j,0)
-    IST%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%lprec_top(i,j,0)
-    IST%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%fprec_top(i,j,0)
+    IOF%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_t_top(i,j,0)
+    IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_q_top(i,j,0)
+    IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lw_top(i,j,0)
+    IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * IST%flux_lh_top(i,j,0)
+    IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dir_top(i,j,0)
+    IOF%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_vis_dif_top(i,j,0)
+    IOF%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dir_top(i,j,0)
+    IOF%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * IST%flux_sw_nir_dif_top(i,j,0)
+    IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%lprec_top(i,j,0)
+    IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%fprec_top(i,j,0)
   enddo ; enddo
 !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
+    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
+                                 IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 
   if (IST%num_tr_fluxes>0) then
 !$OMP do
     do n=1,IST%num_tr_fluxes
       do j=jsc,jec ; do i=isc,iec
-        IST%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * IST%tr_flux_top(i,j,0,n)
+        IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * IST%tr_flux_top(i,j,0,n)
       enddo ; enddo
       do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        IST%tr_flux_ocn_top(i,j,n) = IST%tr_flux_ocn_top(i,j,n) + &
+        IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
                    IST%part_size(i,j,k) * IST%tr_flux_top(i,j,k,n)
       enddo ; enddo ; enddo
     enddo
@@ -1654,13 +1646,13 @@ subroutine SIS2_thermodynamics(IST, G, IG)
           (enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap)
       endif
 
-      IST%flux_q_ocn_top(i,j) = IST%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
+      IOF%flux_q_ocn_top(i,j) = IOF%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
-      IST%flux_lh_ocn_top(i,j) = IST%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
+      IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                  ((LatHtVap*evap_from_ocn)*Idt_slow)
-      IST%flux_t_ocn_top(i,j) = IST%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
+      IOF%flux_t_ocn_top(i,j) = IOF%flux_t_ocn_top(i,j) + IST%part_size(i,j,k) * &
              (IST%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
-      IST%flux_sw_vis_dif_ocn(i,j) = IST%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
+      IOF%flux_sw_vis_dif_ocn(i,j) = IOF%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
              (((IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))) * &
                IST%sw_abs_ocn(i,j,k))
@@ -1887,7 +1879,7 @@ subroutine SIS2_thermodynamics(IST, G, IG)
     ! Add back any frazil that has not been used yet.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,heat_in_col,IST,dt_slow)
     do j=jsc,jec ; do i=isc,iec
-      heat_in_col(i,j) = heat_in_col(i,j) + IST%frazil(i,j) + IST%flux_t_ocn_top(i,j)*dt_slow
+      heat_in_col(i,j) = heat_in_col(i,j) + IST%frazil(i,j) + IOF%flux_t_ocn_top(i,j)*dt_slow
     enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
@@ -1906,7 +1898,7 @@ subroutine SIS2_thermodynamics(IST, G, IG)
       enth_here = enth_col(i,j)
       tot_heat_in = enth_units*heat_in_col(i,j) + enth_mass_in_col(i,j)
       emic2 = (IST%Enth_Mass_in_ocn(i,j) + IST%Enth_Mass_in_atm(i,j) + &
-              IST%Enth_Mass_out_ocn(i,j) + IST%Enth_Mass_out_atm(i,j))
+               IST%Enth_Mass_out_ocn(i,j) + IST%Enth_Mass_out_atm(i,j))
       tot_heat_in2 = enth_units*heat_in_col(i,j) + emic2
 
       enth_imb = enth_here - (enth_prev_col(i,j) + tot_heat_in)
@@ -1942,7 +1934,7 @@ subroutine SIS2_thermodynamics(IST, G, IG)
     enddo ; enddo
     do i=isc,iec
       ! Note the conversion here from g m-2 to kg m-2 s-1.
-      IST%flux_salt(i,j) = salt_change(i,j) * (0.001*Idt_slow)
+      IOF%flux_salt(i,j) = salt_change(i,j) * (0.001*Idt_slow)
     enddo
   enddo
 
@@ -1965,7 +1957,7 @@ subroutine SIS2_thermodynamics(IST, G, IG)
     enddo ; enddo
     call post_data(IST%id_lsrc, tmp2d(isc:iec,jsc:jec), IST%diag)
   endif
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, IST%flux_salt, IST%diag)
+  if (IST%id_saltf>0) call post_data(IST%id_saltf, IOF%flux_salt, IST%diag)
   if (IST%id_bsnk>0)  call post_data(IST%id_bsnk, bsnk(isc:iec,jsc:jec)*yr_dtslow, &
                                      IST%diag)
   if (IST%id_tmelt>0) call post_avg(IST%id_tmelt, IST%tmelt, IST%part_size(:,:,1:), IST%diag, G=G, &
@@ -1982,7 +1974,7 @@ subroutine SIS2_thermodynamics(IST, G, IG)
   ! Combine the liquid precipitation with the net melt of ice and snow for
   ! passing to the ocean. These may later be kept separate.
   do j=jsc,jec ; do i=isc,iec
-    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + net_melt(i,j)
+    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + net_melt(i,j)
   enddo ; enddo
 
 end subroutine SIS2_thermodynamics

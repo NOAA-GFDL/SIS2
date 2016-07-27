@@ -39,6 +39,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ice_state_type
+public :: ice_ocean_flux_type
 public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 public :: ice_data_type_register_restarts, ice_state_register_restarts
 public :: ice_diagnostics_init, ice_stock_pe
@@ -60,8 +61,6 @@ type ice_state_type
   type(time_type) :: Time_step_fast, Time_step_slow
   integer :: avg_count  ! The number of times that surface fluxes to the ice
                         ! have been incremented.
-  integer :: stress_count ! The number of times that the stresses from the ice
-                        ! to the ocean have been incremented.
 
   ! The 8 of the following 10 variables constitute the sea-ice state.
   real, pointer, dimension(:,:,:) :: &
@@ -137,8 +136,46 @@ type ice_state_type
                                     ! at the top of the ice, in kg m-2 s-1.
     fprec_top           =>NULL()    ! The downward flux of frozen precipitation
                                     ! at the top of the ice, in kg m-2 s-1.
+  ! These two arrays are diagnostics of radiative fluxes summed across the
+  ! thickness categories.
+  real, pointer, dimension(:,:) :: &
+    lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
+    swdn         => NULL()        ! and short-wave radiation at the top of the
+                                  ! snow, averaged across categories, in W m-2.
+
+  real, pointer, dimension(:,:,:) :: &
+    sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
+    sw_abs_snow => NULL(), &  ! that are absorbed in a surface skin layer (_sfc),
+    sw_abs_ocn  => NULL(), &  ! the snow (_snow), by the ocean (_ocn), or integrated
+    sw_abs_int  => NULL()     ! across all of the ice layers (_int), all nondim
+                              ! and <=1.  sw_abs_int is only used for diagnostics.
+  real, pointer, dimension(:,:)   :: &
+    coszen       => NULL()    ! Cosine of the solar zenith angle, nondim.
+  real, pointer, dimension(:,:,:,:) :: &
+    sw_abs_ice =>NULL()       ! The fraction of the absorbed shortwave that is
+                              ! absorbed in each of the ice layers, nondim, <=1.
+  real, pointer, dimension(:,:,:) :: &
+    tmelt        =>NULL(), &  ! Ice-top melt energy into the ice/snow in J m-2.
+    bmelt        =>NULL()     ! Ice-bottom melting energy into the ice in J m-2.
 
   real, pointer, dimension(:,:)   :: &
+    frazil => NULL(), &       ! A downward heat flux from the ice into the ocean
+                              ! associated with the formation of frazil ice in
+                              ! the ocean integrated over a timestep, in J m-2.
+    cool_nudge => NULL(), &   ! A heat flux out of the sea ice that
+                              ! acts to create sea-ice, in W m-2.
+    melt_nudge => NULL(), &   ! A downward fresh water flux into the ocean that
+                              ! acts to nudge the ocean surface salinity to
+                              ! facilitate the retention of sea ice, in kg m-2 s-1.
+    bheat => NULL(), &        ! The upward diffusive heat flux from the ocean
+                              ! to the ice at the base of the ice, in W m-2.
+    mi => NULL()              !  The total ice+snow mass, in kg m-2.
+
+  ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
+  real, pointer, dimension(:,:)   :: &
+    frazil_input => NULL(), & ! The input value of frazil at the start of a
+                              ! timestep, in J m-2. This is used only for
+                              ! diagnostic purposes.
     ! These terms diagnose the enthalpy change associated with the addition or
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
@@ -151,75 +188,6 @@ type ice_state_type
                                   ! fluxes from the ocean, in J m-2.
     Enth_Mass_out_ocn =>NULL()    ! Negative of the enthalpy extracted from the
                                   ! ice by water fluxes to the ocean, in J m-2.
-
-  ! These variables describe the fluxes between ice or atmosphere and the ocean.
-  real, pointer, dimension(:,:)   :: &
-    flux_t_ocn_top => NULL(), &   ! The upward sensible heat flux from the ocean
-                                  ! to the ice or atmosphere, in W m-2.
-    flux_q_ocn_top => NULL(), &   ! The upward evaporative moisture flux at
-                                  ! the ocean surface, in kg m-2 s-1.
-    flux_lw_ocn_top =>NULL(), &   ! The downward flux of longwave radiation at
-                                  ! the ocean surface, in W m-2.
-    flux_sw_vis_dir_ocn =>NULL(), & ! The downward diffuse flux of direct (dir)
-    flux_sw_vis_dif_ocn =>NULL(), & ! and diffuse (dif) shortwave radiation in
-    flux_sw_nir_dir_ocn =>NULL(), & ! the visible (vis) and near-infrared (nir)
-    flux_sw_nir_dif_ocn =>NULL(), & ! bands at the ocean surface, in W m-2.
-    flux_lh_ocn_top =>NULL(), &   ! The upward flux of latent heat at the
-                                  ! ocean surface, in W m-2.
-    lprec_ocn_top => NULL(), &    ! The downward flux of liquid precipitation at
-                                  ! the ocean surface, in kg m-2 s-1.
-    fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
-                                  ! the ocean surface, in kg m-2 s-1.
-    coszen       => NULL(), &     ! Cosine of the solar zenith angle, nondim.
-    lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
-    swdn         => NULL(), &     ! and short-wave radiation at the top of the
-                                  ! snow, averaged across categories, in W m-2.
-    runoff => NULL(), &           ! Liquid runoff into the ocean, in kg m-2.
-    calving => NULL(), &          ! Calving of ice or runoff of frozen fresh
-                                  ! water into the ocean, in kg m-2.
-    runoff_hflx => NULL(), &      ! The heat flux associated with runoff, based
-                                  ! on the temperature difference relative to a
-                                  ! reference temperature, in ???.
-    calving_hflx => NULL(), &     ! The heat flux associated with calving, based
-                                  ! on the temperature difference relative to a
-                                  ! reference temperature, in ???.
-    flux_u_ocn => NULL(), &       ! The flux of x-momentum into the ocean, in Pa,
-                                  ! at locations determined by flux_uv_stagger,
-                                  ! but allocated as though on an A-grid.
-    flux_v_ocn => NULL(), &       ! The flux of y-momentum into the ocean, in Pa,
-                                  ! at locations determined by flux_uv_stagger,
-                                  ! but allocated as though on an A-grid.
-    flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
-
-  real, pointer, dimension(:,:,:) :: &
-    sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
-    sw_abs_snow => NULL(), &  ! that are absorbed in a surface skin layer (_sfc),
-    sw_abs_ocn  => NULL(), &  ! the snow (_snow), by the ocean (_ocn), or integrated
-    sw_abs_int  => NULL()     ! across all of the ice layers (_int), all nondim
-                              ! and <=1.  sw_abs_int is only used for diagnostics.
-  real, pointer, dimension(:,:,:,:) :: &
-    sw_abs_ice =>NULL()       ! The fraction of the absorbed shortwave that is
-                              ! absorbed in each of the ice layers, nondim, <=1.
-  real, pointer, dimension(:,:,:) :: &
-    tmelt        =>NULL(), &  ! Ice-top melt energy into the ice/snow in J m-2.
-    bmelt        =>NULL()     ! Ice-bottom melting energy into the ice in J m-2.
-
-  real, pointer, dimension(:,:)   :: &
-    frazil => NULL(), &       ! A downward heat flux from the ice into the ocean
-                              ! associated with the formation of frazil ice in
-                              ! the ocean integrated over a timestep, in J m-2.
-    frazil_input => NULL(), & ! The input value of frazil at the start of a
-                              ! timestep, in J m-2. This is used only for
-                              ! diagnostic purposes.
-    cool_nudge => NULL(), &   ! A heat flux out of the sea ice that
-                              ! acts to create sea-ice, in W m-2.
-    melt_nudge => NULL(), &   ! A downward fresh water flux into the ocean that
-                              ! acts to nudge the ocean surface salinity to
-                              ! facilitate the retention of sea ice, in kg m-2 s-1.
-    bheat => NULL(), &        ! The upward diffusive heat flux from the ocean
-                              ! to the ice at the base of the ice, in W m-2.
-    mi => NULL()              !  The total ice+snow mass, in kg m-2.
-
 
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -317,7 +285,7 @@ type ice_state_type
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   integer, allocatable, dimension(:,:) :: tr_flux_index
   real, allocatable, dimension(:,:,:,:) :: tr_flux_top
-  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
+!  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -343,6 +311,8 @@ type ice_state_type
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()
+
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -352,6 +322,58 @@ type ice_state_type
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
 !   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
+
+type ice_ocean_flux_type
+  ! These variables describe the fluxes between ice or atmosphere and the ocean.
+  real, pointer, dimension(:,:)   :: &
+    flux_t_ocn_top => NULL(), &   ! The upward sensible heat flux from the ocean
+                                  ! to the ice or atmosphere, in W m-2.
+    flux_q_ocn_top => NULL(), &   ! The upward evaporative moisture flux at
+                                  ! the ocean surface, in kg m-2 s-1.
+    flux_lw_ocn_top =>NULL(), &   ! The downward flux of longwave radiation at
+                                  ! the ocean surface, in W m-2.
+    flux_sw_vis_dir_ocn =>NULL(), & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif_ocn =>NULL(), & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir_ocn =>NULL(), & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif_ocn =>NULL(), & ! bands at the ocean surface, in W m-2.
+    flux_lh_ocn_top =>NULL(), &   ! The upward flux of latent heat at the
+                                  ! ocean surface, in W m-2.
+    lprec_ocn_top => NULL(), &    ! The downward flux of liquid precipitation at
+                                  ! the ocean surface, in kg m-2 s-1.
+    fprec_ocn_top => NULL(), &    ! The downward flux of frozen precipitation at
+                                  ! the ocean surface, in kg m-2 s-1.
+    runoff => NULL(), &           ! Liquid runoff into the ocean, in kg m-2.
+    calving => NULL(), &          ! Calving of ice or runoff of frozen fresh
+                                  ! water into the ocean, in kg m-2.
+    runoff_hflx => NULL(), &      ! The heat flux associated with runoff, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    calving_hflx => NULL(), &     ! The heat flux associated with calving, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    flux_u_ocn => NULL(), &       ! The flux of x-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
+    flux_v_ocn => NULL(), &       ! The flux of y-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
+    flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
+
+  integer :: stress_count ! The number of times that the stresses from the ice
+                        ! to the ocean have been incremented.
+  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
+                    ! points of the two wind stress components. Valid entries
+                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
+                    ! corresponding to the community-standard Arakawa notation.
+                    ! (These are named integers taken from mpp_parameter_mod.)
+                    ! Following SIS, this is BGRID_NE by default when the sea
+                    ! ice is initialized, but here it is set to -999 so that a
+                    ! global max across ice and non-ice processors can be used
+                    ! to determine its value.
+
+  integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
+  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
+end type ice_ocean_flux_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model data (some used by calling routines);  !
@@ -637,6 +659,10 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()
+
+  if (.not.associated(IST%IOF)) allocate(IST%IOF)
+  IOF => IST%IOF
 
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
@@ -644,7 +670,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IST%t_ocn(SZI_(HI), SZJ_(HI))) ; IST%t_ocn(:,:) = 0.0   !NI X
   allocate(IST%sea_lev(SZI_(HI), SZJ_(HI))) ; IST%sea_lev(:,:) = 0.0 !NR
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
 
   allocate(IST%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
   allocate(IST%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR
@@ -658,37 +683,41 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IST%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
   allocate(IST%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
   allocate(IST%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%runoff(SZI_(HI), SZJ_(HI))) ; IST%runoff(:,:) = 0.0 !NI
-  allocate(IST%calving(SZI_(HI), SZJ_(HI))) ; IST%calving(:,:) = 0.0 !NI
-  allocate(IST%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IST%runoff_hflx(:,:) = 0.0 !NI
-  allocate(IST%calving_hflx(SZI_(HI), SZJ_(HI))) ; IST%calving_hflx(:,:) = 0.0 !NI
-  allocate(IST%flux_salt(SZI_(HI), SZJ_(HI))) ; IST%flux_salt(:,:) = 0.0 !NI
-
-  allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
-  allocate(IST%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%flux_t_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%flux_q_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IST%flux_lw_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IST%flux_lh_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
-  allocate(IST%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_u_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_v_ocn(:,:) = 0.0 !NI
-
   allocate(IST%lwdn(SZI_(HI), SZJ_(HI))) ; IST%lwdn(:,:) = 0.0 !NR
   allocate(IST%swdn(SZI_(HI), SZJ_(HI))) ; IST%swdn(:,:) = 0.0 !NR
+
+  allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
+  allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
+  allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
+  allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
+  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
+
+  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
+  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
+
+
   allocate(IST%frazil(SZI_(HI), SZJ_(HI))) ; IST%frazil(:,:) = 0.0 !NR
-  allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
   allocate(IST%bheat(SZI_(HI), SZJ_(HI))) ; IST%bheat(:,:) = 0.0 !NI
   allocate(IST%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
   allocate(IST%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
+  allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+
+  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
   allocate(IST%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
@@ -774,6 +803,9 @@ end subroutine dealloc_Ice_arrays
 
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()
+
+  IOF => IST%IOF
 
   deallocate(IST%t_surf, IST%s_surf, IST%t_ocn, IST%sea_lev)
   deallocate(IST%part_size)
@@ -786,26 +818,29 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_u_top, IST%flux_v_top )
   deallocate(IST%flux_t_top, IST%flux_q_top, IST%flux_lw_top)
   deallocate(IST%flux_lh_top, IST%lprec_top, IST%fprec_top)
+  deallocate(IST%lwdn, IST%swdn)
   deallocate(IST%flux_sw_vis_dir_top, IST%flux_sw_vis_dif_top)
   deallocate(IST%flux_sw_nir_dir_top, IST%flux_sw_nir_dif_top)
 
-  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
-  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
-  deallocate(IST%flux_t_ocn_top, IST%flux_q_ocn_top)
-  deallocate(IST%flux_lw_ocn_top, IST%flux_lh_ocn_top)
-  deallocate(IST%flux_sw_vis_dir_ocn, IST%flux_sw_vis_dif_ocn)
-  deallocate(IST%flux_sw_nir_dir_ocn, IST%flux_sw_nir_dif_ocn)
-  deallocate(IST%lprec_ocn_top, IST%fprec_ocn_top)
-  deallocate(IST%runoff, IST%calving, IST%runoff_hflx, IST%calving_hflx)
-  deallocate(IST%flux_u_ocn, IST%flux_v_ocn, IST%flux_salt)
+  deallocate(IOF%flux_t_ocn_top, IOF%flux_q_ocn_top)
+  deallocate(IOF%flux_lw_ocn_top, IOF%flux_lh_ocn_top)
+  deallocate(IOF%flux_sw_vis_dir_ocn, IOF%flux_sw_vis_dif_ocn)
+  deallocate(IOF%flux_sw_nir_dir_ocn, IOF%flux_sw_nir_dif_ocn)
+  deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
+  deallocate(IOF%runoff, IOF%calving, IOF%runoff_hflx, IOF%calving_hflx)
+  deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
-  deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
-  deallocate(IST%bheat, IST%tmelt, IST%bmelt)
+  deallocate(IST%bheat, IST%tmelt, IST%bmelt, IST%frazil)
+
+  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm, IST%frazil_input)
+  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
-  deallocate(IST%sw_abs_ocn, IST%sw_abs_int)
+  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen)
 
   deallocate(IST%mH_snow, IST%mH_ice)
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
+
+  deallocate(IST%IOF)
 
 end subroutine dealloc_IST_arrays
 
