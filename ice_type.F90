@@ -59,8 +59,6 @@ integer, parameter :: miss_int = -9999
 type ice_state_type
   type(time_type) :: Time_Init, Time
   type(time_type) :: Time_step_fast, Time_step_slow
-  integer :: avg_count  ! The number of times that surface fluxes to the ice
-                        ! have been incremented.
 
   ! The 8 of the following 10 variables constitute the sea-ice state.
   real, pointer, dimension(:,:,:) :: &
@@ -81,6 +79,7 @@ type ice_state_type
                         ! in units of H (usually kg m-2).
     mH_ice =>NULL(), &  ! The mass per unit area of the ice in each category,
                         ! in units of H (usually kg m-2).
+    t_surf =>NULL(), &  ! The surface temperature, in Kelvin.
     unused_var =>NULL() ! An unused pointer that has been left here due to an
                         ! apparent bug with the gnu compiler's optimization.
   real, pointer, dimension(:,:,:,:) :: &
@@ -114,10 +113,15 @@ type ice_state_type
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
 
-  
+  ! These are the arrays that are averaged over the fast thermodynamics.  They
+  ! are either used to communicate to the slow thermodynamics or diagnostics or
+  ! both.
+  integer :: avg_count  ! The number of times that surface fluxes to the ice
+                        ! have been incremented.
+  logical :: atmos_winds ! The wind stresses come directly from the atmosphere
+                         ! model and have the wrong sign.
   real,    pointer, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
-    t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
     flux_u_top          =>NULL(), & ! The downward flux of zonal and meridional
     flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
     flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
@@ -143,17 +147,21 @@ type ice_state_type
     swdn         => NULL()        ! and short-wave radiation at the top of the
                                   ! snow, averaged across categories, in W m-2.
 
+  ! Shortwave absorption parameters that are set in ice_optics.
   real, pointer, dimension(:,:,:) :: &
     sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
     sw_abs_snow => NULL(), &  ! that are absorbed in a surface skin layer (_sfc),
     sw_abs_ocn  => NULL(), &  ! the snow (_snow), by the ocean (_ocn), or integrated
     sw_abs_int  => NULL()     ! across all of the ice layers (_int), all nondim
                               ! and <=1.  sw_abs_int is only used for diagnostics.
-  real, pointer, dimension(:,:)   :: &
-    coszen       => NULL()    ! Cosine of the solar zenith angle, nondim.
+                              ! Only sw_abs_ocn is used in the slow step.
   real, pointer, dimension(:,:,:,:) :: &
     sw_abs_ice =>NULL()       ! The fraction of the absorbed shortwave that is
                               ! absorbed in each of the ice layers, nondim, <=1.
+
+  real, pointer, dimension(:,:)   :: &
+    coszen       => NULL()    ! Cosine of the solar zenith angle, nondim.
+
   real, pointer, dimension(:,:,:) :: &
     tmelt        =>NULL(), &  ! Ice-top melt energy into the ice/snow in J m-2.
     bmelt        =>NULL()     ! Ice-bottom melting energy into the ice in J m-2.
@@ -164,11 +172,10 @@ type ice_state_type
                               ! the ocean integrated over a timestep, in J m-2.
     cool_nudge => NULL(), &   ! A heat flux out of the sea ice that
                               ! acts to create sea-ice, in W m-2.
-    melt_nudge => NULL(), &   ! A downward fresh water flux into the ocean that
-                              ! acts to nudge the ocean surface salinity to
-                              ! facilitate the retention of sea ice, in kg m-2 s-1.
     bheat => NULL(), &        ! The upward diffusive heat flux from the ocean
                               ! to the ice at the base of the ice, in W m-2.
+
+                              !  IST%mi is not used.
     mi => NULL()              !  The total ice+snow mass, in kg m-2.
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
@@ -189,18 +196,13 @@ type ice_state_type
     Enth_Mass_out_ocn =>NULL()    ! Negative of the enthalpy extracted from the
                                   ! ice by water fluxes to the ocean, in J m-2.
 
+
+  ! State type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+  ! State type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
-  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
-                    ! points of the two wind stress components. Valid entries
-                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
-                    ! corresponding to the community-standard Arakawa notation.
-                    ! (These are named integers taken from mpp_parameter_mod.)
-                    ! Following SIS, this is BGRID_NE by default when the sea
-                    ! ice is initialized, but here it is set to -999 so that a
-                    ! global max across ice and non-ice processors can be used
-                    ! to determine its value.
+  ! SLOW DYNAMICS
   logical :: area_wtd_stress  ! If true, use wind stresses that are weighted
                        ! by the ice areas in the neighboring cells.  The default
                        ! (true) is probably the right behavior, and this option
@@ -211,7 +213,9 @@ type ice_state_type
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
+  ! SLOW THERMO (mostly)
   logical :: do_ridging     ! If true, use the ridging code
+
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: column_check   ! If true, enable the heat check column by column.
@@ -220,35 +224,45 @@ type ice_state_type
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
+
+  ! SLOW DYNAMICS
   type(time_type) :: ice_stats_interval ! The interval between writes of the
                              ! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
+  ! SLOW DYNAMICS
   real    :: dt_ice_dyn  ! The time step used for the slow ice dynamics, including
                          ! stepping the continuity equation and interactions
                          ! between the ice mass field and velocities, in s. If
                          ! 0 or negative, the coupling time step will be used.
 
-  logical :: atmos_winds ! The wind stresses come directly from the atmosphere
-                         ! model and have the wrong sign.
+  ! FAST THERMO
   real :: kmelt          ! A constant that is used in the calculation of the
                          ! ocean/ice basal heat flux, in W m-2 K-1.
+  ! SLOW THERMO & init
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed, nondim.
+  ! SLOW THERMO
   logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
                             ! by applying a restorative heat flux.
   real    :: ice_restore_timescale ! The time scale for restoring ice when
                             ! do_ice_restore is true, in days.
+  ! various
   logical :: do_ice_limit   ! Limit the sea ice thickness to max_ice_limit.
+  ! SLOW THERMO
   real    :: max_ice_limit  ! The maximum sea ice thickness, in m, when
                             ! do_ice_limit is true.
+  ! Set_ocean_top
   logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
+  ! SLOW THERMO
   logical :: verbose    ! A flag to control the printing of an ice-diagnostic
                         ! message.  When true, this will slow the model down.
+  ! FAST THERMO
   logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
+  ! SLOW THERMO
   logical :: filling_frazil  ! If true, apply frazil to fill as many categories
                              ! as possible to fill in a uniform (minimum) amount
                              ! of frazil in all the thinnest categories.
@@ -259,16 +273,20 @@ type ice_state_type
                              ! or a negative number to apply the frazil flux
                              ! uniformly, in s.
 
+! SLOW DYNAMICS
   integer :: ntrunc = 0      ! The number of times the velocity has been truncated
                              ! since the last call to write_ice_statistics.
+! SLOW THERMO
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
                              ! has been called.
+  ! FAST THERMO
   integer :: n_fast = 0      ! The number of times update_ice_model_fast
                              ! has been called.
   logical :: do_init = .false. ! If true, there is still some initialization
                                ! that needs to be done.
   logical :: first_time = .true. ! If true, this is the first call to
                                ! update_ice_model_slow_up
+! SLOW THERMO
   logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
   real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
                               ! should be ice  covered in order to constrained the
@@ -357,6 +375,9 @@ type ice_ocean_flux_type
     flux_v_ocn => NULL(), &       ! The flux of y-momentum into the ocean, in Pa,
                                   ! at locations determined by flux_uv_stagger,
                                   ! but allocated as though on an A-grid.
+    melt_nudge => NULL(), &       ! A downward fresh water flux into the ocean that
+                                  ! acts to nudge the ocean surface salinity to
+                                  ! facilitate the retention of sea ice, in kg m-2 s-1.
     flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
 
   integer :: stress_count ! The number of times that the stresses from the ice

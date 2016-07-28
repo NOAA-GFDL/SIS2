@@ -175,7 +175,7 @@ subroutine post_flux_diagnostics(IST, G, IG, Idt_slow)
                              IST%part_size, IST%diag, G=G)
 
   if (IST%nudge_sea_ice .and. IST%id_fwnudge>0) then
-    call post_data(IST%id_fwnudge, IST%melt_nudge, IST%diag)
+    call post_data(IST%id_fwnudge, IST%IOF%melt_nudge, IST%diag)
   endif
 
 end subroutine post_flux_diagnostics
@@ -313,7 +313,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-              stress_stagger=IST%flux_uv_stagger)
+              stress_stagger=IST%IOF%flux_uv_stagger)
     else
       call icebergs_run( icebergs_CS, IST%Time, &
               IST%IOF%calving(isc:iec,jsc:jec), IST%u_ocn(isc-1:iec+1,jsc-1:jec+1), &
@@ -323,7 +323,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
               IST%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
               IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-              stress_stagger=IST%flux_uv_stagger)
+              stress_stagger=IST%IOF%flux_uv_stagger)
     endif
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
   endif
@@ -1372,7 +1372,7 @@ subroutine SIS2_thermodynamics(IST, IOF, G, IG)
   ! state, potentially including freshwater fluxes to avoid driving oceanic
   ! convection.
   if (IST%nudge_sea_ice) then
-    IST%cool_nudge(:,:) = 0.0 ; IST%melt_nudge(:,:) = 0.0
+    IST%cool_nudge(:,:) = 0.0 ; IOF%melt_nudge(:,:) = 0.0
     icec(:,:) = 0.0
     call data_override('ICE','icec',icec_obs,IST%Time)
 
@@ -1389,7 +1389,7 @@ subroutine SIS2_thermodynamics(IST, IOF, G, IG)
           if (IST%t_ocn(i,j) > T_Freeze(IST%s_surf(i,j), IST%ITV) ) then
             call calculate_density_derivs(IST%t_ocn(i:i,j),IST%s_surf(i:i,j),pres_0,&
                            drho_dT,drho_dS,1,1,EOS)
-            IST%melt_nudge(i,j) = IST%nudge_stab_fac * (-IST%cool_nudge(i,j)*drho_dT(1)) / &
+            IOF%melt_nudge(i,j) = IST%nudge_stab_fac * (-IST%cool_nudge(i,j)*drho_dT(1)) / &
                                   ((Cp_Water*drho_dS(1)) * max(IST%s_surf(i,j), 1.0) )
           endif
         endif

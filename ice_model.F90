@@ -459,10 +459,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
     endif
     Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
   enddo ; enddo
-  if (IST%nudge_sea_ice) then
+  if (associated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-      Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IST%melt_nudge(i,j)
+      Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IOF%melt_nudge(i,j)
     enddo ; enddo
   endif
 
@@ -1340,7 +1340,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
-  IST%flux_uv_stagger = Ice%flux_uv_stagger
 
   call get_param(param_file, mod, "DT_ICE_DYNAMICS", IST%dt_ice_dyn, &
                  "The time step used for the slow ice dynamics, including \n"//&
@@ -1579,11 +1578,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                                    IST, Ice%Ice_restart, restart_file)
 
   ! IST%IOF has now been set and can be used.
-  IST%IOF%flux_uv_stagger = IST%flux_uv_stagger
+  IST%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
   call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                   IST, Ice%Ice_restart, restart_file)
 
+  call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
+                              doc_file_dir = dirs%output_directory)
+  call set_SIS_axes_info(G, IG, param_file, IST%diag)
+
+  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
+                         init_EOS=IST%nudge_sea_ice)
+
+  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
 
   ! Register tracers that will be advected around.
   call register_SIS_tracer_pair(IST%enth_ice, IG%NkIce, "enth_ice", &
@@ -1625,16 +1632,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%avg_count = 0
   IST%n_calls = 0
 
-  call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
-                              doc_file_dir = dirs%output_directory)
-  call set_SIS_axes_info(G, IG, param_file, IST%diag)
-
-  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
-                         init_EOS=IST%nudge_sea_ice)
-
   if (IST%nudge_sea_ice) then
     allocate(IST%cool_nudge(isc:iec,jsc:jec)) ; IST%cool_nudge(:,:) = 0.0
-    allocate(IST%melt_nudge(isc:iec,jsc:jec)) ; IST%melt_nudge(:,:) = 0.0
+    allocate(IST%IOF%melt_nudge(isc:iec,jsc:jec)) ; IST%IOF%melt_nudge(:,:) = 0.0
   endif
 
   !
