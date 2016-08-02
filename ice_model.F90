@@ -76,6 +76,7 @@ use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean su
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
 use ice_type_mod, only : ice_data_type, ice_state_type, ice_ocean_flux_type
+use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
@@ -176,6 +177,8 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
                     ! strictly diagnostic purposes.
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind, max_num_fields, next_index
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -208,18 +211,18 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     endif
   endif
 
-  if (IST%avg_count == 0) then
+  if (FIA%avg_count == 0) then
     ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
-    IST%flux_u_top(:,:,:) = 0.0 ; IST%flux_v_top(:,:,:) = 0.0
-    IST%flux_t_top(:,:,:) = 0.0 ; IST%flux_q_top(:,:,:) = 0.0
-    IST%flux_lw_top(:,:,:) = 0.0 ; IST%flux_lh_top(:,:,:) = 0.0
-    IST%flux_sw_nir_dir_top(:,:,:) = 0.0 ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0
-    IST%flux_sw_vis_dir_top(:,:,:) = 0.0 ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0
-    IST%lprec_top(:,:,:) = 0.0 ; IST%fprec_top(:,:,:) = 0.0
+    FIA%flux_u_top(:,:,:) = 0.0 ; FIA%flux_v_top(:,:,:) = 0.0
+    FIA%flux_t_top(:,:,:) = 0.0 ; FIA%flux_q_top(:,:,:) = 0.0
+    FIA%flux_lw_top(:,:,:) = 0.0 ; FIA%flux_lh_top(:,:,:) = 0.0
+    FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
+    FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
+    FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
     if (IST%num_tr_fluxes > 0) IST%tr_flux_top(:,:,:,:) = 0.0
 
     ! Diagnostics of sums of the above arrays.
-    IST%lwdn(:,:) = 0.0 ; IST%swdn(:,:) = 0.0
+    FIA%lwdn(:,:) = 0.0 ; FIA%swdn(:,:) = 0.0
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,flux_u,flux_v,flux_t, &
@@ -227,18 +230,18 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_lw,       &
 !$OMP                                  lprec,fprec,flux_lh)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-    IST%flux_u_top(i,j,k)  = IST%flux_u_top(i,j,k)  + flux_u(i,j,k)
-    IST%flux_v_top(i,j,k)  = IST%flux_v_top(i,j,k)  + flux_v(i,j,k)
-    IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  + flux_t(i,j,k)
-    IST%flux_q_top(i,j,k)  = IST%flux_q_top(i,j,k)  + flux_q(i,j,k)
-    IST%flux_sw_nir_dir_top(i,j,k) = IST%flux_sw_nir_dir_top(i,j,k) + flux_sw_nir_dir(i,j,k)
-    IST%flux_sw_nir_dif_top(i,j,k) = IST%flux_sw_nir_dif_top(i,j,k) + flux_sw_nir_dif(i,j,k)
-    IST%flux_sw_vis_dir_top(i,j,k) = IST%flux_sw_vis_dir_top(i,j,k) + flux_sw_vis_dir(i,j,k)
-    IST%flux_sw_vis_dif_top(i,j,k) = IST%flux_sw_vis_dif_top(i,j,k) + flux_sw_vis_dif(i,j,k)
-    IST%flux_lw_top(i,j,k) = IST%flux_lw_top(i,j,k) + flux_lw(i,j,k)
-    IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   + lprec(i,j,k)
-    IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   + fprec(i,j,k)
-    IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) + flux_lh(i,j,k)
+    FIA%flux_u_top(i,j,k)  = FIA%flux_u_top(i,j,k)  + flux_u(i,j,k)
+    FIA%flux_v_top(i,j,k)  = FIA%flux_v_top(i,j,k)  + flux_v(i,j,k)
+    FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  + flux_t(i,j,k)
+    FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  + flux_q(i,j,k)
+    FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) + flux_sw_nir_dir(i,j,k)
+    FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) + flux_sw_nir_dif(i,j,k)
+    FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) + flux_sw_vis_dir(i,j,k)
+    FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) + flux_sw_vis_dif(i,j,k)
+    FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) + flux_lw(i,j,k)
+    FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   + lprec(i,j,k)
+    FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   + fprec(i,j,k)
+    FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
   do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
@@ -251,22 +254,22 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     enddo ; enddo ; enddo
   enddo ; enddo
 
-  if (IST%id_lwdn > 0) then
+  if (FIA%id_lwdn > 0) then
     Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      IST%lwdn(i,j) = IST%lwdn(i,j) + IST%part_size(i,j,k) * &
+      FIA%lwdn(i,j) = FIA%lwdn(i,j) + IST%part_size(i,j,k) * &
                            (flux_lw(i,j,k) + Stefan*IST%t_surf(i,j,k)**4)
     endif ; enddo ; enddo ; enddo
   endif
 
-  if (IST%id_swdn > 0) then
+  if (FIA%id_swdn > 0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
 !$OMP                          private(i2,j2,k2)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      IST%swdn(i,j) = IST%swdn(i,j) + IST%part_size(i,j,k) * ( &
+      FIA%swdn(i,j) = FIA%swdn(i,j) + IST%part_size(i,j,k) * ( &
             (flux_sw_vis_dir(i,j,k)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
              flux_sw_vis_dif(i,j,k)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (flux_sw_nir_dir(i,j,k)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
@@ -274,7 +277,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     endif ; enddo ; enddo ; enddo
   endif
 
-  IST%avg_count = IST%avg_count + 1
+  FIA%avg_count = FIA%avg_count + 1
 
 end subroutine sum_top_quantities
 
@@ -288,57 +291,59 @@ subroutine avg_top_quantities(IST, G, IG)
 
   real    :: u, v, divid, sign
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   !
   ! compute average fluxes
   !
-  if (IST%avg_count == 0) call SIS_error(FATAL,'avg_top_quantities: '//&
+  if (FIA%avg_count == 0) call SIS_error(FATAL,'avg_top_quantities: '//&
        'no ocean model fluxes have been averaged')
 
   ! Rotate the stress from lat/lon to ocean coordinates and possibly change the
   ! sign to positive for downward fluxes of positive momentum.
-  sign = 1.0 ; if (IST%atmos_winds) sign = -1.0
-  divid = 1.0/real(IST%avg_count)
+  sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
+  divid = 1.0/real(FIA%avg_count)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,sign,divid,G) private(u,v)
   do j=jsc,jec
     do k=0,ncat ;  do i=isc,iec
-      u = IST%flux_u_top(i,j,k) * (sign*divid)
-      v = IST%flux_v_top(i,j,k) * (sign*divid)
-      IST%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
-      IST%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
-      IST%flux_t_top(i,j,k)  = IST%flux_t_top(i,j,k)  * divid
-      IST%flux_q_top(i,j,k)  = IST%flux_q_top(i,j,k)  * divid
-      IST%flux_sw_nir_dir_top(i,j,k) = IST%flux_sw_nir_dir_top(i,j,k) * divid
-      IST%flux_sw_nir_dif_top(i,j,k) = IST%flux_sw_nir_dif_top(i,j,k) * divid
-      IST%flux_sw_vis_dir_top(i,j,k) = IST%flux_sw_vis_dir_top(i,j,k) * divid
-      IST%flux_sw_vis_dif_top(i,j,k) = IST%flux_sw_vis_dif_top(i,j,k) * divid
-      IST%flux_lw_top(i,j,k) = IST%flux_lw_top(i,j,k) * divid
-      IST%fprec_top(i,j,k)   = IST%fprec_top(i,j,k)   * divid
-      IST%lprec_top(i,j,k)   = IST%lprec_top(i,j,k)   * divid
-      IST%flux_lh_top(i,j,k) = IST%flux_lh_top(i,j,k) * divid
+      u = FIA%flux_u_top(i,j,k) * (sign*divid)
+      v = FIA%flux_v_top(i,j,k) * (sign*divid)
+      FIA%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
+      FIA%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
+      FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  * divid
+      FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  * divid
+      FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) * divid
+      FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) * divid
+      FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) * divid
+      FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) * divid
+      FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * divid
+      FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
+      FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
+      FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
       ! Convert frost forming atop sea ice into frozen precip.
-      if ((k>0) .and. (IST%flux_q_top(i,j,k) < 0.0)) then
-        IST%fprec_top(i,j,k) = IST%fprec_top(i,j,k) - IST%flux_q_top(i,j,k)
-        IST%flux_q_top(i,j,k) = 0.0
+      if ((k>0) .and. (FIA%flux_q_top(i,j,k) < 0.0)) then
+        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
+        FIA%flux_q_top(i,j,k) = 0.0
       endif
       do n=1,IST%num_tr_fluxes
         IST%tr_flux_top(i,j,k,n) = IST%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
     do i=isc,iec
-      IST%lwdn(i,j) = IST%lwdn(i,j) * divid
-      IST%swdn(i,j) = IST%swdn(i,j) * divid
+      FIA%lwdn(i,j) = FIA%lwdn(i,j) * divid
+      FIA%swdn(i,j) = FIA%swdn(i,j) * divid
     enddo
   enddo
-  call pass_vector(IST%flux_u_top, IST%flux_v_top, G%Domain, stagger=AGRID)
+  call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
   !
   ! set count to zero and fluxes will be zeroed before the next sum
   !
-  IST%avg_count = 0
+  FIA%avg_count = 0
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -526,6 +531,10 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  type(ocean_sfc_state_type), pointer :: OSS => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  OSS => IST%OSS
+  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -590,22 +599,22 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 !$OMP                          private(i2,j2,k2)
   do j=jsc,jec
     do i=isc,iec
-      IST%t_ocn(i,j) = t_surf_ice_bot(i,j) - T_0degC
-      IST%s_surf(i,j) = s_surf_ice_bot(i,j)
+      OSS%t_ocn(i,j) = t_surf_ice_bot(i,j) - T_0degC
+      OSS%s_surf(i,j) = s_surf_ice_bot(i,j)
       IST%frazil(i,j) = frazil_ice_bot(i,j)
-      IST%sea_lev(i,j) = sea_lev_ice_bot(i,j)
+      OSS%sea_lev(i,j) = sea_lev_ice_bot(i,j)
     enddo
 
     do k=1,ncat ; do i=isc,iec
-      IST%tmelt(i,j,k) = 0.0 ; IST%bmelt(i,j,k) = 0.0
+      FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
       m_ice_tot(i,j) = m_ice_tot(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
     enddo ; enddo
 
     do i=isc,iec
       if (m_ice_tot(i,j) > 0.0) then
-        IST%bheat(i,j) = IST%kmelt*(IST%t_ocn(i,j) - T_Freeze(IST%s_surf(i,j), IST%ITV))
+        FIA%bheat(i,j) = IST%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), IST%ITV))
       else
-        IST%bheat(i,j) = 0.0
+        FIA%bheat(i,j) = 0.0
       endif
     enddo
   enddo
@@ -620,7 +629,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), &
+               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -635,7 +644,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(IST%s_surf(i,j),IST%ITV), IG%NkIce, &
+               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
@@ -663,24 +672,24 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     enddo ; enddo
     call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=AGRID)
 
-    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
+    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
       do J=jsc-1,jec ; do I=isc-1,iec
-        IST%u_ocn(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
+        OSS%u_ocn_B(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
                                (u_nonsym(i+1,j) + u_nonsym(i,j+1)))
-        IST%v_ocn(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
+        OSS%v_ocn_B(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
                                (v_nonsym(i+1,j) + v_nonsym(i,j+1)))
       enddo ; enddo
-      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
 
-    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
+    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
       do j=jsc,jec ; do I=isc-1,iec
-        IST%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        IST%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
       enddo ; enddo
-      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     endif
 
   elseif (OIB%stagger == BGRID_NE) then
@@ -692,35 +701,35 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
         call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
 
       do j=jsc,jec ; do I=isc-1,iec
-        IST%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        IST%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
       enddo ; enddo
-      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
       do J=jsc,jec ; do I=isc,iec
-        IST%u_ocn(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
-        IST%v_ocn(I,J) = v_surf_ice_bot(I,J) ! for water drag term
+        OSS%u_ocn_B(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
+        OSS%v_ocn_B(I,J) = v_surf_ice_bot(I,J) ! for water drag term
       enddo ; enddo
       if (G%symmetric) &
-        call fill_symmetric_edges(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+        call fill_symmetric_edges(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
 
-      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
 
   elseif (OIB%stagger == CGRID_NE) then
     if (IST%Cgrid_dyn) then
       do j=jsc,jec ; do I=isc,iec
-        IST%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
+        OSS%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
       enddo ; enddo
       do J=jsc,jec ; do i=isc,iec
-        IST%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
+        OSS%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
       enddo ; enddo
       if (G%symmetric) &
-        call fill_symmetric_edges(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+        call fill_symmetric_edges(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
 
-      call pass_vector(IST%u_ocn_C, IST%v_ocn_C, G%Domain, stagger=CGRID_NE)
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec
@@ -728,25 +737,25 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       enddo ; enddo
       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
       do J=jsc-1,jec ; do I=isc-1,iec
-        IST%u_ocn(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
-        IST%v_ocn(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
+        OSS%u_ocn_B(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
+        OSS%v_ocn_B(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
       enddo ; enddo
-      call pass_vector(IST%u_ocn, IST%v_ocn, G%Domain, stagger=BGRID_NE)
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
   else
     call SIS_error(FATAL, "set_ice_surface_state: Unrecognized OIB%stagger.")
   endif
 
-  call pass_var(IST%sea_lev, G%Domain)
+  call pass_var(OSS%sea_lev, G%Domain)
 
   if (IST%debug) then
-    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
-      call chksum(IST%u_ocn(isc:iec,jsc:jec), "Post-pass IST%u_ocn(0,0)")
-      call chksum(IST%v_ocn(isc:iec,jsc:jec), "Post-pass IST%v_ocn(0,0)")
+    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
+      call chksum(OSS%u_ocn_B(isc:iec,jsc:jec), "Post-pass OSS%u_ocn_B(0,0)")
+      call chksum(OSS%v_ocn_B(isc:iec,jsc:jec), "Post-pass OSS%v_ocn_B(0,0)")
     endif
-    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
-      call chksum(IST%u_ocn_C(isc:iec,jsc:jec), "Post-pass IST%u_ocn_C(0,0)")
-      call chksum(IST%v_ocn_C(isc:iec,jsc:jec), "Post-pass IST%v_ocn_C(0,0)")
+    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
+      call chksum(OSS%u_ocn_C(isc:iec,jsc:jec), "Post-pass OSS%u_ocn_C(0,0)")
+      call chksum(OSS%v_ocn_C(isc:iec,jsc:jec), "Post-pass OSS%v_ocn_C(0,0)")
     endif
   endif
 
@@ -758,7 +767,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 !$OMP                          private(i2,j2,k2)
   do j=jsc,jec
     do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%s_surf(i2,j2) = IST%s_surf(i,j)
+      Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
     enddo
     do k=0,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -773,8 +782,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 !$OMP                          private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       if (G%mask2dT(i,j) > 0.5 ) then
-        Ice%u_surf(i2,j2,1) = 0.5*(IST%u_ocn_C(I,j) + IST%u_ocn_C(I-1,j))
-        Ice%v_surf(i2,j2,1) = 0.5*(IST%v_ocn_C(i,J) + IST%v_ocn_C(i,J-1))
+        Ice%u_surf(i2,j2,1) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
+        Ice%v_surf(i2,j2,1) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
         Ice%u_surf(i2,j2,2) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
         Ice%v_surf(i2,j2,2) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
       else
@@ -787,10 +796,10 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
 !$OMP                          private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       if (G%mask2dT(i,j) > 0.5 ) then
-        Ice%u_surf(i2,j2,1) = 0.25*((IST%u_ocn(I,J) + IST%u_ocn(I-1,J-1)) + &
-                                    (IST%u_ocn(I,J-1) + IST%u_ocn(I-1,J)) )
-        Ice%v_surf(i2,j2,1) = 0.25*((IST%v_ocn(I,J) + IST%v_ocn(I-1,J-1)) + &
-                                    (IST%v_ocn(I,J-1) + IST%v_ocn(I-1,J)) )
+        Ice%u_surf(i2,j2,1) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
+                                    (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )
+        Ice%v_surf(i2,j2,1) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
+                                    (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
         Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
                                     (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
         Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
@@ -808,19 +817,20 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
     call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
-    if (associated(IST%u_ocn_C) .and. associated(IST%v_ocn_C)) then
-      call chksum(IST%u_ocn_C(isc:iec,jsc:jec), "Intermed IST%u_ocn_C(0,0)")
-      call chksum(IST%v_ocn_C(isc:iec,jsc:jec), "Intermed IST%v_ocn_C(0,0)")
+    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
+      call chksum(OSS%u_ocn_C(isc:iec,jsc:jec), "Intermed OSS%u_ocn_C(0,0)")
+      call chksum(OSS%v_ocn_C(isc:iec,jsc:jec), "Intermed OSS%v_ocn_C(0,0)")
     endif
-    if (associated(IST%u_ocn) .and. associated(IST%v_ocn)) then
-      call chksum(IST%u_ocn(isc:iec,jsc:jec), "Intermed IST%u_ocn(0,0)")
-      call chksum(IST%u_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%u_ocn(-,0)")
-      call chksum(IST%u_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%u_ocn(0,-)")
-      call chksum(IST%u_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%u_ocn(-,-)")
-      call chksum(IST%v_ocn(isc:iec,jsc:jec), "Intermed IST%v_ocn(0,0)")
-      call chksum(IST%v_ocn(isc-1:iec-1,jsc:jec), "Intermed IST%v_ocn(-,0)")
-      call chksum(IST%v_ocn(isc:iec,jsc-1:jec-1), "Intermed IST%v_ocn(0,-)")
-      call chksum(IST%v_ocn(isc-1:iec-1,jsc-1:jec-1), "Intermed IST%v_ocn(-,-)")
+    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
+      ! Replace these with a MOM6-style chksum_q call.
+      call chksum(OSS%u_ocn_B(isc:iec,jsc:jec), "Intermed OSS%u_ocn_B(0,0)")
+      call chksum(OSS%u_ocn_B(isc-1:iec-1,jsc:jec), "Intermed OSS%u_ocn_B(-,0)")
+      call chksum(OSS%u_ocn_B(isc:iec,jsc-1:jec-1), "Intermed OSS%u_ocn_B(0,-)")
+      call chksum(OSS%u_ocn_B(isc-1:iec-1,jsc-1:jec-1), "Intermed OSS%u_ocn_B(-,-)")
+      call chksum(OSS%v_ocn_B(isc:iec,jsc:jec), "Intermed OSS%v_ocn_B(0,0)")
+      call chksum(OSS%v_ocn_B(isc-1:iec-1,jsc:jec), "Intermed OSS%v_ocn_B(-,0)")
+      call chksum(OSS%v_ocn_B(isc:iec,jsc-1:jec-1), "Intermed OSS%v_ocn_B(0,-)")
+      call chksum(OSS%v_ocn_B(isc-1:iec-1,jsc-1:jec-1), "Intermed OSS%v_ocn_B(-,-)")
     endif
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
     call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
@@ -861,17 +871,17 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   call enable_SIS_averaging(real(time_type_to_real(IST%Time_step_slow)), IST%Time, IST%diag)
   if (IST%id_alb>0) call post_avg(IST%id_alb, Ice%albedo, &
                      IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_sst>0) call post_data(IST%id_sst, IST%t_ocn, IST%diag)
-  if (IST%id_sss>0) call post_data(IST%id_sss, IST%s_surf, IST%diag)
-  if (IST%id_ssh>0) call post_data(IST%id_ssh, IST%sea_lev, IST%diag)
+  if (IST%id_sst>0) call post_data(IST%id_sst, OSS%t_ocn, IST%diag)
+  if (IST%id_sss>0) call post_data(IST%id_sss, OSS%s_surf, IST%diag)
+  if (IST%id_ssh>0) call post_data(IST%id_ssh, OSS%sea_lev, IST%diag)
   if (IST%Cgrid_dyn) then
-    if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn_C, IST%diag)
-    if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn_C, IST%diag)
+    if (IST%id_uo>0) call post_data(IST%id_uo, OSS%u_ocn_C, IST%diag)
+    if (IST%id_vo>0) call post_data(IST%id_vo, OSS%v_ocn_C, IST%diag)
   else
-    if (IST%id_uo>0) call post_data(IST%id_uo, IST%u_ocn, IST%diag)
-    if (IST%id_vo>0) call post_data(IST%id_vo, IST%v_ocn, IST%diag)
+    if (IST%id_uo>0) call post_data(IST%id_uo, OSS%u_ocn_B, IST%diag)
+    if (IST%id_vo>0) call post_data(IST%id_vo, OSS%v_ocn_B, IST%diag)
   endif
-  if (IST%id_bheat>0) call post_data(IST%id_bheat, IST%bheat, IST%diag)
+  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, IST%diag)
   call disable_SIS_averaging(IST%diag)
 
   if (IST%debug) then
@@ -955,6 +965,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+
+  type(ocean_sfc_state_type), pointer :: OSS => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  OSS => IST%OSS
+  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
@@ -1071,7 +1086,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    T_Freeze_surf = T_Freeze(IST%s_surf(i,j), IST%ITV)
+    T_Freeze_surf = T_Freeze(OSS%s_surf(i,j), IST%ITV)
     if (IST%mH_ice(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
@@ -1102,8 +1117,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
       ! actually lose or gain any mass from freezing or melting.
       call ice_temp_SIS2(IST%mH_snow(i,j,k)*IG%H_to_kg_m2, IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                        T_Freeze_surf, IST%bheat(i,j), ts_new, &
-                        dt_fast, NkIce, IST%tmelt(i,j,k), IST%bmelt(i,j,k), &
+                        T_Freeze_surf, FIA%bheat(i,j), ts_new, &
+                        dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
                         IST%ice_thm_CSp, IST%ITV, IST%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
@@ -1120,14 +1135,14 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         IST%heat_in(i,j,k) = IST%heat_in(i,j,k) + dt_fast * &
           ((flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
-           IST%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
+           FIA%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*kg_H_Nk) * enth_col(m)
         enddo
         tot_heat_in = enth_units * (IST%heat_in(i,j,k) - &
-                                    (IST%bmelt(i,j,k) + IST%tmelt(i,j,k)))
+                                    (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
         enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > IST%imb_tol * (abs(enth_here) + &
                   abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
@@ -1168,7 +1183,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 
   ! Copy the surface temperatures into the externally visible data type.
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%s_surf(i2,j2) = IST%s_surf(i,j)
+    Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
   enddo ; enddo
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -1302,6 +1317,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(Ice%IG)) allocate(Ice%IG) ; IG => Ice%IG
   if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
 
+  if (.not.associated(IST%IOF)) allocate(IST%IOF)
+  if (.not.associated(IST%OSS)) allocate(IST%OSS)
+  if (.not.associated(IST%FIA)) allocate(IST%FIA)
+
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
 
@@ -1407,7 +1426,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%atmos_winds, &
+  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%FIA%atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
@@ -1629,7 +1648,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%Time_step_fast = Time_step_fast
   IST%Time_step_slow = Time_step_slow
 
-  IST%avg_count = 0
+  IST%FIA%avg_count = 0
   IST%n_calls = 0
 
   if (IST%nudge_sea_ice) then
