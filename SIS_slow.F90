@@ -549,95 +549,55 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
     ! equation) are not included in the dynamics.  All of the thickness categories
     ! are merged together.
     if (IST%Cgrid_dyn) then
-      if (IST%area_wtd_stress) then
-        !   The j-loop extents here are larger than they would normally be in case
-        ! the stresses are being passed to the ocean on a B-grid.
+      !   The j-loop extents here are larger than they would normally be in case
+      ! the stresses are being passed to the ocean on a B-grid.
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,G,ice_cover,WindStr_x_Cu,ice_free, &
 !$OMP                               WindStr_x_A,WindStr_x_ocn_Cu,WindStr_x_ocn_A,      &
 !$OMP                               WindStr_y_Cv,WindStr_y_A,WindStr_y_ocn_Cv,         &
 !$OMP                               WindStr_y_ocn_A) &
 !$OMP                       private(weights,I_wts)
 !$OMP do
-        do j=jsc-1,jec+1 ; do I=isc-1,iec
-          weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i+1,j)*ice_cover(i+1,j))
-          if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
-            WindStr_x_Cu(I,j) = G%mask2dCu(I,j) * &
-                (G%areaT(i,j) * ice_cover(i,j) * WindStr_x_A(i,j) + &
-                 G%areaT(i+1,j)*ice_cover(i+1,j)*WindStr_x_A(i+1,j)) * I_wts
-          else
-            WindStr_x_Cu(I,j) = 0.0
-          endif
+      do j=jsc-1,jec+1 ; do I=isc-1,iec
+        weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i+1,j)*ice_cover(i+1,j))
+        if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+          WindStr_x_Cu(I,j) = G%mask2dCu(I,j) * &
+              (G%areaT(i,j) * ice_cover(i,j) * WindStr_x_A(i,j) + &
+               G%areaT(i+1,j)*ice_cover(i+1,j)*WindStr_x_A(i+1,j)) * I_wts
+        else
+          WindStr_x_Cu(I,j) = 0.0
+        endif
 
-          weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
-          if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
-            WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
-                (G%areaT(i,j) * ice_free(i,j) * WindStr_x_ocn_A(i,j) + &
-                 G%areaT(i+1,j)*ice_free(i+1,j)*WindStr_x_ocn_A(i+1,j)) * I_wts
-          else
-            WindStr_x_ocn_Cu(I,j) = 0.0
-          endif
-        enddo ; enddo
+        weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
+        if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+          WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
+              (G%areaT(i,j) * ice_free(i,j) * WindStr_x_ocn_A(i,j) + &
+               G%areaT(i+1,j)*ice_free(i+1,j)*WindStr_x_ocn_A(i+1,j)) * I_wts
+        else
+          WindStr_x_ocn_Cu(I,j) = 0.0
+        endif
+      enddo ; enddo
 !$OMP end do nowait
 !$OMP do
-        do J=jsc-1,jec ; do i=isc-1,iec+1
-          weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i,j+1)*ice_cover(i,j+1))
-          if (G%mask2dCv(i,J) * weights > 0.0) then ; I_wts = 1.0 / weights
-            WindStr_y_Cv(i,J) = G%mask2dCv(i,J) * &
-                (G%areaT(i,j) * ice_cover(i,j) * WindStr_y_A(i,j) + &
-                 G%areaT(i,j+1)*ice_cover(i,j+1)*WindStr_y_A(i,j+1)) * I_wts
-          else
-            WindStr_y_Cv(i,J) = 0.0
-          endif
+      do J=jsc-1,jec ; do i=isc-1,iec+1
+        weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i,j+1)*ice_cover(i,j+1))
+        if (G%mask2dCv(i,J) * weights > 0.0) then ; I_wts = 1.0 / weights
+          WindStr_y_Cv(i,J) = G%mask2dCv(i,J) * &
+              (G%areaT(i,j) * ice_cover(i,j) * WindStr_y_A(i,j) + &
+               G%areaT(i,j+1)*ice_cover(i,j+1)*WindStr_y_A(i,j+1)) * I_wts
+        else
+          WindStr_y_Cv(i,J) = 0.0
+        endif
 
-          weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
-          if (weights > 0.0) then ; I_wts = 1.0 / weights
-            WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
-                (G%areaT(i,j) * ice_free(i,j) * WindStr_y_ocn_A(i,j) + &
-                 G%areaT(i,j+1)*ice_free(i,j+1)*WindStr_y_ocn_A(i,j+1)) * I_wts
-          else
-            WindStr_y_ocn_Cv(i,J) = 0.0
-          endif
-        enddo ; enddo
+        weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
+        if (weights > 0.0) then ; I_wts = 1.0 / weights
+          WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
+              (G%areaT(i,j) * ice_free(i,j) * WindStr_y_ocn_A(i,j) + &
+               G%areaT(i,j+1)*ice_free(i,j+1)*WindStr_y_ocn_A(i,j+1)) * I_wts
+        else
+          WindStr_y_ocn_Cv(i,J) = 0.0
+        endif
+      enddo ; enddo
 !$OMP end parallel
-      else
-        WindStr_x_Cu(:,:) = 0.0 ; WindStr_x_ocn_Cu(:,:) = 0.0 ; wts(:,:) = 0.0
-        WindStr_y_Cv(:,:) = 0.0 ; WindStr_y_ocn_Cv(:,:) = 0.0 ; wts(:,:) = 0.0
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,ncat,IST,wts,WindStr_x_Cu,    &
-!$OMP                               WindStr_x_ocn_Cu,WindStr_y_Cv,WindStr_y_ocn_Cv) &
-!$OMP                       private(ps_vel)
-!$OMP do
-        do j=jsc-1,jec+1
-          do k=1,ncat ; do I=isc-1,iec
-            ps_vel = 0.5*G%mask2dCu(I,j) * (IST%part_size(i+1,j,k) + IST%part_size(i,j,k))
-            WindStr_x_Cu(I,j) = WindStr_x_Cu(I,j) + ps_vel * (G%mask2dCu(I,j) * &
-                             0.5* (FIA%flux_u_top(i,j,k) + FIA%flux_u_top(i+1,j,k)) )
-            wts(I,J) = wts(I,J) + ps_vel
-          enddo ; enddo
-          do I=isc-1,iec
-            if (wts(I,j) > 0.) WindStr_x_Cu(I,j) = WindStr_x_Cu(I,j) / wts(I,j)
-
-            WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
-                       0.5 * (FIA%flux_u_top(i,j,0) + FIA%flux_u_top(i+1,j,0))
-          enddo
-        enddo
-!$OMP end do nowait
-!$OMP do
-        do J=jsc-1,jec
-          do k=1,ncat ; do i=isc-1,iec+1
-            ps_vel = 0.5*G%mask2dCv(i,J) * (IST%part_size(i,j+1,k) + IST%part_size(i,j,k))
-            WindStr_y_Cv(i,j) = WindStr_y_Cv(i,J) + ps_vel * ( G%mask2dCv(i,J) * &
-                           0.5*(FIA%flux_v_top(i,j,k) + FIA%flux_v_top(i,j+1,k)) )
-            wts(i,J) = wts(i,J) + ps_vel
-          enddo ; enddo
-          do i=isc-1,iec+1
-            if (wts(i,J) > 0.) WindStr_y_Cv(i,J) = WindStr_y_Cv(i,J) / wts(i,J)
-
-            WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
-                       0.5*(FIA%flux_v_top(i,j,0) + FIA%flux_v_top(i,j+1,0))
-          enddo
-        enddo
-!$OMP end parallel
-      endif
 
       if (IST%debug) then
         call IST_chksum("Before SIS_C_dynamics", IST, G, IG)
@@ -684,77 +644,44 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     else ! B-grid dynamics.
 
-      if (IST%area_wtd_stress) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,ice_cover,WindStr_x_B,ice_free, &
 !$OMP                                  WindStr_x_A,WindStr_x_ocn_B,WindStr_x_ocn_A,      &
 !$OMP                                  WindStr_y_ocn_B,WindStr_y_ocn_A,WindStr_y_B,      &
 !$OMP                                  WindStr_y_A)                                      &
 !$OMP                          private(weights,I_wts)
-        do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(I,J) > 0.0) then
-          weights = ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1) + G%areaT(i,j)*ice_cover(i,j)) + &
-                     (G%areaT(i+1,j)*ice_cover(i+1,j) + G%areaT(i,j+1)*ice_cover(i,j+1)) )
-          I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
-          WindStr_x_B(I,J) = G%mask2dBu(I,J) * &
-                  ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_x_A(i+1,j+1) + &
-                    G%areaT(i,j)   * ice_cover(i,j)   * WindStr_x_A(i,j)) + &
-                   (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_x_A(i+1,j) + &
-                    G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_x_A(i,j+1)) ) * I_wts
-          WindStr_y_B(I,J) = G%mask2dBu(I,J) * &
-                  ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_y_A(i+1,j+1) + &
-                    G%areaT(i,j)   * ice_cover(i,j)   * WindStr_y_A(i,j)) + &
-                   (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_y_A(i+1,j) + &
-                    G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_y_A(i,j+1)) ) * I_wts
+      do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(I,J) > 0.0) then
+        weights = ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1) + G%areaT(i,j)*ice_cover(i,j)) + &
+                   (G%areaT(i+1,j)*ice_cover(i+1,j) + G%areaT(i,j+1)*ice_cover(i,j+1)) )
+        I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+        WindStr_x_B(I,J) = G%mask2dBu(I,J) * &
+                ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_x_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_cover(i,j)   * WindStr_x_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_x_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_x_A(i,j+1)) ) * I_wts
+        WindStr_y_B(I,J) = G%mask2dBu(I,J) * &
+                ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_y_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_cover(i,j)   * WindStr_y_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_y_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_y_A(i,j+1)) ) * I_wts
 
 
-          weights = ((G%areaT(i+1,j+1)*ice_free(i+1,j+1) + G%areaT(i,j)*ice_free(i,j)) + &
-                     (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
-          I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
-          WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                  ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_x_ocn_A(i+1,j+1) + &
-                    G%areaT(i,j)   * ice_free(i,j)   * WindStr_x_ocn_A(i,j)) + &
-                   (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_x_ocn_A(i+1,j) + &
-                    G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_x_ocn_A(i,j+1)) ) * I_wts
-          WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                  ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_y_ocn_A(i+1,j+1) + &
-                    G%areaT(i,j)   * ice_free(i,j)   * WindStr_y_ocn_A(i,j)) + &
-                   (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_y_ocn_A(i+1,j) + &
-                    G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_y_ocn_A(i,j+1)) ) * I_wts
-        else
-          WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
-          WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0
-        endif ; enddo ; enddo
+        weights = ((G%areaT(i+1,j+1)*ice_free(i+1,j+1) + G%areaT(i,j)*ice_free(i,j)) + &
+                   (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
+        I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+        WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
+                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_x_ocn_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_x_ocn_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_x_ocn_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_x_ocn_A(i,j+1)) ) * I_wts
+        WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
+                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_y_ocn_A(i+1,j+1) + &
+                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_y_ocn_A(i,j)) + &
+                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_y_ocn_A(i+1,j) + &
+                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_y_ocn_A(i,j+1)) ) * I_wts
       else
-        WindStr_x_B(:,:) = 0.0 ; WindStr_y_B(:,:) = 0.0 ! ; wts(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,ncat,IST,WindStr_x_B,wts,  &
-!$OMP                                  WindStr_y_B,WindStr_x_ocn_B,WindStr_y_ocn_B) &
-!$OMP                          private(ps_vel)
-        do J=jsc-1,jec
-          do k=1,ncat ; do I=isc-1,iec
-            ps_vel = 0.25*G%mask2dBu(I,J) * &
-                ((IST%part_size(i+1,j+1,k) + IST%part_size(i,j,k)) + &
-                 (IST%part_size(i+1,j,k) + IST%part_size(i,j+1,k)) )
-            WindStr_x_B(I,J) = WindStr_x_B(I,J) + ps_vel * 0.25*( &
-                    (FIA%flux_u_top(i+1,j+1,k) + FIA%flux_u_top(i,j,k)) + &
-                    (FIA%flux_u_top(i+1,j,k) + FIA%flux_u_top(i,j+1,k)) )
-            WindStr_y_B(I,J) = WindStr_y_B(I,J) + ps_vel * 0.25*( &
-                    (FIA%flux_v_top(i+1,j+1,k) + FIA%flux_v_top(i,j,k)) + &
-                    (FIA%flux_v_top(i+1,j,k) + FIA%flux_v_top(i,j+1,k)) )
-            wts(I,J) = wts(I,J) + ps_vel
-          enddo ; enddo
-          do I=isc-1,iec
-            if (wts(i,j) > 0.) then
-              WindStr_x_B(I,J) = WindStr_x_B(I,J) / wts(I,J)
-              WindStr_y_B(I,J) = WindStr_y_B(I,J) / wts(I,J)
-            endif
-            WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * 0.25*( &
-                    (FIA%flux_u_top(i+1,j+1,0) + FIA%flux_u_top(i,j,0)) + &
-                    (FIA%flux_u_top(i+1,j,0) + FIA%flux_u_top(i,j+1,0)) )
-            WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * 0.25*( &
-                    (FIA%flux_v_top(i+1,j+1,0) + FIA%flux_v_top(i,j,0)) + &
-                    (FIA%flux_v_top(i+1,j,0) + FIA%flux_v_top(i,j+1,0)) )
-          enddo
-        enddo
-      endif
+        WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
+        WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0
+      endif ; enddo ; enddo
 
       if (IST%debug) then
         call IST_chksum("Before ice_dynamics", IST, G, IG)

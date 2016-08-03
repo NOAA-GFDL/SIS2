@@ -830,12 +830,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
-  call get_param(param_file, mod, "AREA_WEIGHTED_STRESSES", IST%area_wtd_stress, &
-                 "If true, use wind stresses that are weighted by the ice \n"//&
-                 "areas in the neighboring cells.  The default (true) is \n"//&
-                 "probably the right behavior, and this option will be \n"//&
-                 "obsoleted as soon as it is verified to work properly.", &
-                 default=.true.)
+  call obsolete_logical(param_file, "AREA_WEIGHTED_STRESSES", warning_val=.true.)
 
   dflt_stagger = "B" ; if (IST%Cgrid_dyn) dflt_stagger = "C"
   call get_param(param_file, mod, "ICE_OCEAN_STRESS_STAGGER", stagger, &

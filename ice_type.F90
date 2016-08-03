@@ -149,11 +149,6 @@ type ice_state_type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
   ! SLOW DYNAMICS
-  logical :: area_wtd_stress  ! If true, use wind stresses that are weighted
-                       ! by the ice areas in the neighboring cells.  The default
-                       ! (true) is probably the right behavior, and this option
-                       ! will be obsoleted as soon as it is verified to work
-                       ! properly.
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
