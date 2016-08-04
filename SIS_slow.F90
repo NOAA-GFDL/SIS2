@@ -126,11 +126,11 @@ subroutine post_flux_diagnostics(IST, G, IG, Idt_slow)
   if (IST%id_runoff>0) &
     call post_data(IST%id_runoff, IOF%runoff, IST%diag)
   if (IST%id_calving>0) &
-    call post_data(IST%id_calving, IOF%calving, IST%diag)
+    call post_data(IST%id_calving, IOF%calving_preberg, IST%diag)
   if (IST%id_runoff_hflx>0) &
     call post_data(IST%id_runoff_hflx, IOF%runoff_hflx, IST%diag)
   if (IST%id_calving_hflx>0) &
-    call post_data(IST%id_calving_hflx, IOF%calving_hflx, IST%diag)
+    call post_data(IST%id_calving_hflx, IOF%calving_hflx_preberg, IST%diag)
   if (IST%id_frazil>0) &
     call post_data(IST%id_frazil, IST%frazil*Idt_slow, IST%diag)
   if (FIA%id_sh>0) call post_avg(FIA%id_sh, FIA%flux_t_top, IST%part_size, &
@@ -197,9 +197,7 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg, &           ! The area-weighted average ice thickness, in m.
-    h_ice_input, &      ! The specified ice thickness, with specified_ice, in m.
-    ice_cover           ! The fractional ice coverage, summed across all
-                        ! thickness categories; nondimensional, between 0 & 1.
+    h_ice_input         ! The specified ice thickness, with specified_ice, in m.
 
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
@@ -241,22 +239,11 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of update_ice_model_slow")
 
-  call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-
-  ! Save out diagnostics of fluxes.  This must go before the icebergs_run call.
-  call post_flux_diagnostics(IST, G, IG, Idt_slow)
-
   ! Calve off icebergs and integrate forward iceberg trajectories
   if (IST%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
+
     H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
-    ice_cover(:,:) = 0.0
-    do j=jsd,jed
-      do k=1,ncat ; do i=isd,ied
-        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-      enddo ; enddo
-      do i=isd,ied ; ice_cover(i,j) = min(max(ice_cover(i,j), 0.0), 1.0) ; enddo 
-    enddo
     call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
     hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
     
@@ -269,7 +256,7 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
               IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
               IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
               IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
               stress_stagger=IST%IOF%flux_uv_stagger)
     else
@@ -279,7 +266,7 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
               IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
               IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
               IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%IOF%calving_hflx(isc:iec,jsc:jec), ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+              IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
               hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
               stress_stagger=IST%IOF%flux_uv_stagger)
     endif
@@ -323,6 +310,11 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
             rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
       enddo ; enddo ; enddo
     endif
+
+    call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
+
+    ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
+    call post_flux_diagnostics(IST, G, IG, Idt_slow)
 
     call disable_SIS_averaging(IST%diag)
 

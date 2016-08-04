@@ -184,6 +184,9 @@ subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
     IOF%calving(i,j) = LIB%calving(i2,j2)
     IOF%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     IOF%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+    ! diagnostic fluxes...
+    IOF%calving_preberg(i,j) = IOF%calving(i,j)
+    IOF%calving_hflx_preberg(i,j) = IOF%calving_hflx(i,j)
   enddo ; enddo
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc

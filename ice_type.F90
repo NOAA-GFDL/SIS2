@@ -387,11 +387,18 @@ type ice_ocean_flux_type
     runoff => NULL(), &           ! Liquid runoff into the ocean, in kg m-2.
     calving => NULL(), &          ! Calving of ice or runoff of frozen fresh
                                   ! water into the ocean, in kg m-2.
+    calving_preberg => NULL(), &  ! Calving of ice or runoff of frozen fresh
+                                  ! water into the ocean, exclusive of any
+                                  ! iceberg contributions, in kg m-2.
     runoff_hflx => NULL(), &      ! The heat flux associated with runoff, based
                                   ! on the temperature difference relative to a
                                   ! reference temperature, in ???.
     calving_hflx => NULL(), &     ! The heat flux associated with calving, based
                                   ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    calving_hflx_preberg => NULL(), & ! The heat flux associated with calving,
+                                  ! exclusive of any iceberg contributions, based on
+                                  ! the temperature difference relative to a
                                   ! reference temperature, in ???.
     flux_u_ocn => NULL(), &       ! The flux of x-momentum into the ocean, in Pa,
                                   ! at locations determined by flux_uv_stagger,
@@ -741,8 +748,10 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
   allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
+  allocate(IOF%calving_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_preberg(:,:) = 0.0 !NI, diag
   allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
   allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
+  allocate(IOF%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx_preberg(:,:) = 0.0 !NI, diag
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
 
   allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
@@ -889,6 +898,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IOF%flux_sw_nir_dir_ocn, IOF%flux_sw_nir_dif_ocn)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
   deallocate(IOF%runoff, IOF%calving, IOF%runoff_hflx, IOF%calving_hflx)
+  deallocate(IOF%calving_preberg, IOF%calving_hflx_preberg)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, IST%frazil)
