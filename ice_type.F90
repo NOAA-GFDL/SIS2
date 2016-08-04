@@ -241,11 +241,6 @@ type ice_state_type
   real    :: nudge_conc_tol   ! The tolerance for mismatch in the sea ice concentations
                               ! before nudging begins to be applied.
 
-  integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
-  integer, allocatable, dimension(:,:) :: tr_flux_index
-  real, allocatable, dimension(:,:,:,:) :: tr_flux_top
-!  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
-
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
@@ -353,6 +348,13 @@ type fast_ice_avg_type
     lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
     swdn         => NULL()        ! and short-wave radiation at the top of the
                                   ! snow, averaged across categories, in W m-2.
+
+  integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
+  real, pointer, dimension(:,:,:,:) :: &
+    tr_flux_top => NULL()         ! An array of tracer fluxes at the top of the
+                                  ! sea ice.
+  integer, allocatable, dimension(:,:) :: tr_flux_index
+
   integer :: id_sh=-1, id_lh=-1, id_sw=-1,  id_swdn=-1, id_lwdn=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
@@ -415,7 +417,9 @@ type ice_ocean_flux_type
                     ! to determine its value.
 
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
-  real, allocatable, dimension(:,:,:) :: tr_flux_ocn_top
+  real, allocatable, dimension(:,:,:) :: &
+    tr_flux_ocn_top     ! An array of tracer fluxes at the ocean's surface.
+  integer, allocatable, dimension(:,:) :: tr_flux_index
 end type ice_ocean_flux_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

@@ -285,7 +285,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
   endif
 
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = IST%tr_flux_index(m,n)
+    ind = IOF%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.

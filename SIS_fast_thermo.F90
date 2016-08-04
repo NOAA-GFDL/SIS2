@@ -102,27 +102,26 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
   i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
   j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
-  if (IST%num_tr_fluxes < 0) then
+  if (FIA%num_tr_fluxes < 0) then
     ! Determine how many atmospheric boundary fluxes have been passed in, and
     ! set up both an indexing array for these and a space to take their average.
     ! This code is only exercised the first time that sum_top_quantities is called.
-    IST%num_tr_fluxes = 0
+    FIA%num_tr_fluxes = 0
     if (Atmos_boundary_fluxes%num_bcs > 0) then
       max_num_fields = 0
       do n=1,Atmos_boundary_fluxes%num_bcs
-        IST%num_tr_fluxes = IST%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
+        FIA%num_tr_fluxes = FIA%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
         max_num_fields = max(max_num_fields, Atmos_boundary_fluxes%bc(n)%num_fields)
       enddo
 
-      IST%IOF%num_tr_fluxes = IST%num_tr_fluxes
-      if (IST%num_tr_fluxes > 0) then
-        allocate(IST%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, IST%num_tr_fluxes))
-        allocate(IST%IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IST%num_tr_fluxes))
-        IST%tr_flux_top(:,:,:,:) = 0.0 ; IST%IOF%tr_flux_ocn_top(:,:,:) = 0.0
-        allocate(IST%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
-        IST%tr_flux_index(:,:) = -1 ; next_index = 1
+      if (FIA%num_tr_fluxes > 0) then
+        allocate(FIA%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, FIA%num_tr_fluxes))
+        FIA%tr_flux_top(:,:,:,:) = 0.0
+
+        allocate(FIA%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
+        FIA%tr_flux_index(:,:) = -1 ; next_index = 1
         do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
-          IST%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
+          FIA%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
         enddo ; enddo
       endif
     endif
@@ -136,7 +135,7 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
-    if (IST%num_tr_fluxes > 0) IST%tr_flux_top(:,:,:,:) = 0.0
+    if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
 
     ! Diagnostics of sums of the above arrays.
     FIA%lwdn(:,:) = 0.0 ; FIA%swdn(:,:) = 0.0
@@ -162,11 +161,11 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
   enddo ; enddo ; enddo
 
   do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
-    ind = IST%tr_flux_index(m,n)
+    ind = FIA%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      IST%tr_flux_top(i,j,k,ind) = IST%tr_flux_top(i,j,k,ind) + &
+      FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
             Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
   enddo ; enddo
@@ -207,11 +206,14 @@ subroutine avg_top_quantities(IST, G, IG)
   type(ice_grid_type),     intent(in)    :: IG
 
   real    :: u, v, divid, sign
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  integer :: isd, ied, jsd, jed
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   !
   ! compute average fluxes
@@ -246,8 +248,8 @@ subroutine avg_top_quantities(IST, G, IG)
         FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
         FIA%flux_q_top(i,j,k) = 0.0
       endif
-      do n=1,IST%num_tr_fluxes
-        IST%tr_flux_top(i,j,k,n) = IST%tr_flux_top(i,j,k,n) * divid
+      do n=1,FIA%num_tr_fluxes
+        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
     do i=isc,iec
@@ -256,6 +258,42 @@ subroutine avg_top_quantities(IST, G, IG)
     enddo
   enddo
   call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
+
+  ! Determine the fractional ice coverage and the wind stresses averaged
+  ! across all the ice thickness categories on an A-grid.  This is done
+  ! over the entire data domain for safety.
+  FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,IST,FIA) &
+!$OMP                           private(I_wts)
+  do j=jsd,jed
+    do k=1,ncat ; do i=isd,ied
+      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
+    enddo ; enddo
+    do i=isd,ied
+      if (FIA%ice_cover(i,j) > 0.0) then
+        I_wts = 1.0 / FIA%ice_cover(i,j)
+        FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) * I_wts
+        FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) * I_wts
+        if (FIA%ice_cover(i,j) > 1.0) FIA%ice_cover(i,j) = 1.0
+
+        ! The max with 0 in the following line is here for safety; the only known
+        ! instance where it has been required is when reading a SIS-1-derived
+        ! restart file with tiny negative concentrations. SIS2 should not need it.
+        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
+
+    !    Rescale to add up to 1?
+    !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
+    !    FIA%ice_free(i,j) = FIA%ice_free(i,j) * I_wts
+    !    FIA%ice_cover(i,j) = FIA%ice_cover(i,j) * I_wts
+      else
+        FIA%ice_free(i,j) = 1.0 ; FIA%ice_cover(i,j) = 0.0
+        FIA%WindStr_x(i,j) = FIA%flux_u_top(i,j,0)
+        FIA%WindStr_y(i,j) = FIA%flux_u_top(i,j,0)
+      endif
+    enddo
+  enddo
 
   !
   ! set count to zero and fluxes will be zeroed before the next sum

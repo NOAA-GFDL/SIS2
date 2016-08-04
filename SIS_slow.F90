@@ -346,42 +346,6 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
                               message="    Start of update", check_column=.true.)
   call mpp_clock_end(iceClock7)
 
-  ! Determine the fractional ice coverage and the wind stresses averaged
-  ! across all the ice thickness categories on an A-grid.  This is done
-  ! over the entire data domain for safety.
-  FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,IST,FIA) &
-!$OMP                           private(I_wts)
-  do j=jsd,jed
-    do k=1,ncat ; do i=isd,ied
-      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
-      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
-    enddo ; enddo
-    do i=isd,ied
-      if (FIA%ice_cover(i,j) > 0.0) then
-        I_wts = 1.0 / FIA%ice_cover(i,j)
-        FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) * I_wts
-        FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) * I_wts
-        if (FIA%ice_cover(i,j) > 1.0) FIA%ice_cover(i,j) = 1.0
-
-        ! The max with 0 in the following line is here for safety; the only known
-        ! instance where it has been required is when reading a SIS-1-derived
-        ! restart file with tiny negative concentrations. SIS2 should not need it.
-        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
-
-    !    Rescale to add up to 1?
-    !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
-    !    FIA%ice_free(i,j) = FIA%ice_free(i,j) * I_wts
-    !    FIA%ice_cover(i,j) = FIA%ice_cover(i,j) * I_wts
-      else
-        FIA%ice_free(i,j) = 1.0 ; FIA%ice_cover(i,j) = 0.0
-!       FIA%WindStr_x(i,j) = FIA%flux_u_top(i,j,0)
-!       FIA%WindStr_y(i,j) = FIA%flux_u_top(i,j,0)
-      endif
-    enddo
-  enddo
-
   !
   ! Thermodynamics
   !
@@ -483,8 +447,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   endif
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
-!$OMP                                  WindStr_y_ocn_A)                          &
-!$OMP                           private(I_wts)
+!$OMP                                  WindStr_y_ocn_A)
   do j=jsd,jed
     do i=isd,ied
       WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
@@ -1475,15 +1438,25 @@ subroutine SIS2_thermodynamics(IST, IOF, G, IG)
                                  IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 
-  if (IST%num_tr_fluxes>0) then
+  if (FIA%num_tr_fluxes>0) then
+    if (IOF%num_tr_fluxes < 0) then
+      ! This is the first call, and the IOF arrays need to be allocated.
+      IOF%num_tr_fluxes = FIA%num_tr_fluxes
+
+      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
+      IOF%tr_flux_ocn_top(:,:,:) = 0.0
+      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
+      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
+    endif
+
 !$OMP do
-    do n=1,IST%num_tr_fluxes
+    do n=1,FIA%num_tr_fluxes
       do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * IST%tr_flux_top(i,j,0,n)
+        IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
       enddo ; enddo
       do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
         IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
-                   IST%part_size(i,j,k) * IST%tr_flux_top(i,j,k,n)
+                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
       enddo ; enddo ; enddo
     enddo
   endif
