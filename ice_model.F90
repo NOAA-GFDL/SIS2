@@ -97,7 +97,7 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_co
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use ice_thm_mod,   only : slab_ice_optics
-use SIS_slow_mod,  only : update_ice_model_slow, SIS_slow_register_restarts
+use SIS_slow_mod,  only : SIS_dynamics_trans, SIS_slow_thermo, SIS_slow_register_restarts
 use SIS_slow_mod,  only : SIS_slow_init, SIS_slow_end
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
@@ -140,7 +140,9 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call set_ice_state_fluxes(Ice%Ice_state%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
 
-  call update_ice_model_slow(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  call SIS_slow_thermo(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+
+  call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)

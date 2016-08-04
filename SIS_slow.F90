@@ -97,7 +97,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: update_ice_model_slow, SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+public :: SIS_dynamics_trans, SIS_slow_thermo, SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
 
 integer :: iceClock, iceCLock2, iceClock4, iceClock5, &
            iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
@@ -186,100 +186,50 @@ subroutine post_flux_diagnostics(IST, G, IG, Idt_slow)
 end subroutine post_flux_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! update_ice_model_slow - do ice dynamics, transport, and mass changes         !
+! SIS_slow_thermo - do ice slow thermodynamics and mass changes                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
+subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
 
   type(ice_state_type),    intent(inout) :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(icebergs),          pointer       :: icebergs_CS
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
-  real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
-    temp_ice    ! A diagnostic array with the ice temperature in degC.
-  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-    temp_snow   ! A diagnostic array with the snow temperature in degC.
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg, &           ! The area-weighted average ice thickness, in m.
     h_ice_input, &      ! The specified ice thickness, with specified_ice, in m.
-    ms_sum, mi_sum, &   ! Masses of snow and ice per unit total area, in kg m-2.
-    ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
-    ice_cover, &        ! The fractional ice coverage, summed across all
+    ice_cover           ! The fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
-    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
-    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
- real, dimension(SZIB_(G),SZJB_(G)) :: &
-    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
-    WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
-    str_x_ice_ocn_B, str_y_ice_ocn_B  ! Ice-ocean stresses on a B-grid, in Pa.
-  real, dimension(SZIB_(G),SZJ_(G))  :: &
-    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
-    WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
-    str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points, in Pa.
-  real, dimension(SZI_(G),SZJB_(G))  :: &
-    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
-    WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
-    str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points, in Pa.
-  real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
-  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
-
-  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
-
-  real, dimension(SZIB_(G),SZJB_(G)) :: wts  ! A sum of the weights by category.
-  real :: weights  ! A sum of the weights around a point.
-  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
-  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
-  real :: tot_frazil
-  real :: area_h, area_pt
   real :: dt_slow
-  real :: dt_slow_dyn
-  integer :: ndyn_steps
   real :: Idt_slow
-  real :: I_Nk
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
+  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
-  integer ::iyr, imon, iday, ihr, imin, isec
-
-  real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
-                                    ! ice layer if spec_thermo_sal is true.
-  real :: heat_fill_val   ! A value of enthalpy to use for massless categories.
-  logical :: spec_thermo_sal
-  logical :: do_temp_diags
-  real :: enth_units, I_enth_units
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
     mi_old      ! Ice mass per unit area before thermodynamics.
-  real, dimension(SZI_(G),SZJ_(G)) :: &
-    rdg_open, & ! formation rate of open water due to ridging
-    rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
-!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
-    rdg_rate, & ! Niki: Where should this come from?
-    snow2ocn
-  real    :: tmp3
+! real, dimension(SZI_(G),SZJ_(G)) :: &
+!   rdg_open, & ! formation rate of open water due to ridging
+!   rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
+!!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
+!   rdg_rate, & ! Niki: Where should this come from?
+!   snow2ocn
+  real    :: tmp3  ! This is a bad name - make it more descriptive!
 
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  IOF => IST%IOF
-  OSS => IST%OSS
-  FIA => IST%FIA
+! type(ice_ocean_flux_type), pointer :: IOF => NULL()
+! type(ocean_sfc_state_type), pointer :: OSS => NULL()
+! type(fast_ice_avg_type), pointer :: FIA => NULL()
+! IOF => IST%IOF
+! OSS => IST%OSS
+! FIA => IST%FIA
 
   mi_old(:,:,:) = 0.0
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
-  I_Nk = 1.0 / NkIce
+!  I_Nk = 1.0 / NkIce
   dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   IST%n_calls = IST%n_calls + 1
@@ -430,6 +380,91 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   ! This is the end of the thermodynamics.  This subroutine could probably be split
   ! at this point.
 
+end subroutine SIS_slow_thermo
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine SIS_dynamics_trans(IST, icebergs_CS, G, IG)
+
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
+  type(icebergs),          pointer       :: icebergs_CS
+
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
+    temp_ice    ! A diagnostic array with the ice temperature in degC.
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    temp_snow   ! A diagnostic array with the snow temperature in degC.
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    ms_sum, mi_sum, &   ! Masses of snow and ice per unit total area, in kg m-2.
+    ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
+    ice_cover, &        ! The fractional ice coverage, summed across all
+                        ! thickness categories; nondimensional, between 0 & 1.
+    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
+real, dimension(SZIB_(G),SZJB_(G)) :: &
+    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
+    WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
+    WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
+    str_x_ice_ocn_B, str_y_ice_ocn_B  ! Ice-ocean stresses on a B-grid, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G))  :: &
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
+    WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
+    str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points, in Pa.
+  real, dimension(SZI_(G),SZJB_(G))  :: &
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
+    WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
+    str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
+  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
+
+  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
+
+  real :: weights  ! A sum of the weights around a point.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+
+  real :: dt_slow
+  real :: dt_slow_dyn
+  integer :: ndyn_steps
+  real :: Idt_slow
+  real :: I_Nk        ! The inverse of the number of layers in the ice.
+  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
+  integer :: isd, ied, jsd, jed
+  integer ::iyr, imon, iday, ihr, imin, isec
+
+  real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
+                                     ! ice layer if spec_thermo_sal is true.
+  logical :: spec_thermo_sal
+  logical :: do_temp_diags
+  real :: enth_units, I_enth_units
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    rdg_frac    ! fraction of ridged ice per category
+  real, dimension(SZI_(G),SZJ_(G)) :: &
+    rdg_open, & ! formation rate of open water due to ridging
+    rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
+!!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
+    rdg_rate, & ! Niki: Where should this come from?
+    snow2ocn
+  real    :: tmp3  ! This is a bad name - make it more descriptive!
+
+  type(ocean_sfc_state_type), pointer :: OSS => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  OSS => IST%OSS
+  FIA => IST%FIA
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
+  I_Nk = 1.0 / NkIce
+  dt_slow = time_type_to_real(IST%Time_step_slow) ; Idt_slow = 1.0/dt_slow
 
   if (IST%specified_ice) then
     ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
@@ -903,21 +938,23 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   !     in each category; IST%rdg_mice is ridged ice mass per unit total
   !     area throughout the code.
   if (IST%do_ridging) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,rdg_frac,IG) &
-!$OMP                          private(tmp3)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-      if (tmp3*IG%H_to_kg_m2 > IST%Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
-        rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-      else
-        rdg_frac(i,j,k) = 0.0
-      endif
-    enddo ; enddo ; enddo
-
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
 
+!     if (IST%id_rdgf>0) then
+! !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,rdg_frac,IG) &
+! !$OMP                          private(tmp3)
+!       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+!         tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+!         if (tmp3*IG%H_to_kg_m2 > IST%Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
+!           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+!         else
+!           rdg_frac(i,j,k) = 0.0
+!         endif
+!       enddo ; enddo ; enddo
+!       call post_data(IST%id_rdgf, rdg_frac(isc:iec,jsc:jec), IST%diag)
+!     endif
+
     if (IST%id_rdgr>0) call post_data(IST%id_rdgr, rdg_rate(isc:iec,jsc:jec), IST%diag)
-!    if (IST%id_rdgf>0) call post_data(IST%id_rdgf, rdg_frac(isc:iec,jsc:jec), IST%diag)
 !    if (IST%id_rdgo>0) call post_data(IST%id_rdgo, rdg_open(isc:iec,jsc:jec), IST%diag)
 !    if (IST%id_rdgv>0) then
 !      do j=jsc,jec ; do i=isc,iec
@@ -937,11 +974,11 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   call mpp_clock_end(iceClock9)
 
   if (IST%debug) then
-    call IST_chksum("End UIMS", IST, G, IG)
+    call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
   endif
 
   if (IST%bounds_check) then
-    call IST_bounds_check(IST, G, IG, "End of update_ice_slow")
+    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans")
   endif
 
   if (IST%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
@@ -951,7 +988,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp)
   endif
 
-end subroutine update_ice_model_slow
+end subroutine SIS_dynamics_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
