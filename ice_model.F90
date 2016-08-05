@@ -97,8 +97,9 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_co
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use ice_thm_mod,   only : slab_ice_optics
-use SIS_slow_mod,  only : SIS_dynamics_trans, SIS_slow_thermo, update_icebergs
+use SIS_slow_mod,  only : SIS_dynamics_trans, update_icebergs
 use SIS_slow_mod,  only : SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
@@ -146,7 +147,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
-  call SIS_slow_thermo(Ice%Ice_state, Ice%G, Ice%IG)
+  call slow_thermodynamics(Ice%Ice_state, Ice%G, Ice%IG)
 
   call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
@@ -1364,6 +1365,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
   call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+  call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
   call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
@@ -1436,6 +1438,8 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
 
   call SIS_slow_end(IST)
+
+  call SIS_slow_thermo_end(IST)
 
   call SIS_fast_thermo_end(IST)
 

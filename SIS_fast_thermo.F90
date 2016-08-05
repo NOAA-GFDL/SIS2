@@ -202,7 +202,7 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine avg_top_quantities(IST, G, IG)
   type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(in)    :: G
+  type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
 
   real    :: u, v, divid, sign
