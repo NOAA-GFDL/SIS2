@@ -97,10 +97,11 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_dynamics_trans, SIS_slow_thermo, SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+public :: SIS_dynamics_trans, SIS_slow_thermo, update_icebergs
+public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
 
-integer :: iceClock, iceCLock2, iceClock4, iceClock5, &
-           iceClock6, iceClock7, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
+integer :: iceClock4, iceClock5, iceClock6, iceClock7, iceClock8, iceClock9
+integer :: iceClocka, iceClockb, iceClockc
 
 contains
 
@@ -188,19 +189,15 @@ end subroutine post_flux_diagnostics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_thermo - do ice slow thermodynamics and mass changes                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
+subroutine SIS_slow_thermo(IST, G, IG)
 
   type(ice_state_type),    intent(inout) :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
-  type(icebergs),          pointer       :: icebergs_CS
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    hi_avg, &           ! The area-weighted average ice thickness, in m.
     h_ice_input         ! The specified ice thickness, with specified_ice, in m.
 
-  real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
-                      ! from thickness units, in m H-1.
   real :: dt_slow
   real :: Idt_slow
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
@@ -209,12 +206,6 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category
     mi_old      ! Ice mass per unit area before thermodynamics.
-! real, dimension(SZI_(G),SZJ_(G)) :: &
-!   rdg_open, & ! formation rate of open water due to ridging
-!   rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
-!!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
-!   rdg_rate, & ! Niki: Where should this come from?
-!   snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
 
 ! type(ice_ocean_flux_type), pointer :: IOF => NULL()
@@ -237,41 +228,7 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
   endif
 
   if (IST%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of update_ice_model_slow")
-
-  ! Calve off icebergs and integrate forward iceberg trajectories
-  if (IST%do_icebergs) then
-    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock) ! Stop the sea-ice clocks.
-
-    H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
-    call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
-    hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
-    
-    !### I think that there is long-standing bug here, in that the old ice-ocean
-    !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
-    if (IST%Cgrid_dyn) then
-      call icebergs_run( icebergs_CS, IST%Time, &
-              IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-              IST%OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-              IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-              IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-              IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
-              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-              stress_stagger=IST%IOF%flux_uv_stagger)
-    else
-      call icebergs_run( icebergs_CS, IST%Time, &
-              IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-              IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-              IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-              IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
-              hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-              stress_stagger=IST%IOF%flux_uv_stagger)
-    endif
-    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2) ! Restart the sea-ice clocks.
-  endif
+    call IST_bounds_check(IST, G, IG, "Start of SIS_slow_thermo")
 
   !
   ! conservation checks: top fluxes
@@ -280,7 +237,7 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
   call accumulate_input_1(IST, dt_slow, G, IG, IST%sum_output_CSp)
   if (IST%column_check) &
     call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
-                              message="    Start of update", check_column=.true.)
+                              message="    SIS_slow_thermo", check_column=.true.)
   call mpp_clock_end(iceClock7)
 
   !
@@ -347,7 +304,6 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
 
     !  Other routines that do thermodynamic vertical processes should be added here
 
-
     ! Do tracer column physics
     call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
     call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
@@ -369,10 +325,52 @@ subroutine SIS_slow_thermo(IST, icebergs_CS, G, IG)
                                 message="      Post_thermo B ", check_column=.true.)
   endif
 
-  ! This is the end of the thermodynamics.  This subroutine could probably be split
-  ! at this point.
-
 end subroutine SIS_slow_thermo
+
+subroutine update_icebergs(IST, icebergs_CS, G, IG)
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(ice_grid_type),     intent(inout) :: IG
+  type(icebergs),          pointer       :: icebergs_CS
+
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    hi_avg            ! The area-weighted average ice thickness, in m.
+  real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
+                      ! from thickness units, in m H-1.
+
+  integer :: isc, iec, jsc, jec
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
+  call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
+  hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
+
+  !### I think that there is long-standing bug here, in that the old ice-ocean
+  !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
+  if (IST%Cgrid_dyn) then
+    call icebergs_run( icebergs_CS, IST%Time, &
+            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            IST%OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+            IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
+            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
+            stress_stagger=IST%IOF%flux_uv_stagger)
+  else
+    call icebergs_run( icebergs_CS, IST%Time, &
+            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
+            IST%OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+            IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
+            stress_stagger=IST%IOF%flux_uv_stagger)
+  endif
+
+end subroutine update_icebergs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
@@ -2010,8 +2008,6 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
   call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
 
 
-  iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
-  iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
   iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
