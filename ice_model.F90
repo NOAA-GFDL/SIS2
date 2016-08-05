@@ -819,6 +819,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(IST%OSS)) allocate(IST%OSS)
   if (.not.associated(IST%FIA)) allocate(IST%FIA)
 
+  if (.not.associated(IST%fast_thermo_CSp)) allocate(IST%fast_thermo_CSp)
+  if (.not.associated(IST%slow_thermo_CSp)) allocate(IST%slow_thermo_CSp)
+  if (.not.associated(IST%dyn_trans_CSp)) allocate(IST%dyn_trans_CSp)
+
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
 

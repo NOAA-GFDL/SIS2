@@ -38,7 +38,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output, only : write_ice_statistics ! , SIS_sum_output_init
-use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+! use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
 use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE

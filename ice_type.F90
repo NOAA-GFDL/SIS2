@@ -79,9 +79,8 @@ type ice_state_type
                         ! in units of H (usually kg m-2).
     mH_ice =>NULL(), &  ! The mass per unit area of the ice in each category,
                         ! in units of H (usually kg m-2).
-    t_surf =>NULL(), &  ! The surface temperature, in Kelvin.
-    unused_var =>NULL() ! An unused pointer that has been left here due to an
-                        ! apparent bug with the gnu compiler's optimization.
+    t_surf =>NULL()     ! The surface temperature, in Kelvin.
+
   real, pointer, dimension(:,:,:,:) :: &
     sal_ice =>NULL(), & ! The salinity of the sea ice in each category and
                         ! fractional thickness layer, in g/kg.
@@ -118,11 +117,8 @@ type ice_state_type
     frazil => NULL(), &       ! A downward heat flux from the ice into the ocean
                               ! associated with the formation of frazil ice in
                               ! the ocean integrated over a timestep, in J m-2.
-    cool_nudge => NULL(), &   ! A heat flux out of the sea ice that
+    cool_nudge => NULL()      ! A heat flux out of the sea ice that
                               ! acts to create sea-ice, in W m-2.
-
-                              !  IST%mi is not used.
-    mi => NULL()              !  The total ice+snow mass, in kg m-2.
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, pointer, dimension(:,:)   :: &
@@ -148,7 +144,7 @@ type ice_state_type
   ! State type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
-  ! SLOW DYNAMICS
+  ! Delete rho_ocean?
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
@@ -266,6 +262,9 @@ type ice_state_type
   type(ice_ocean_flux_type), pointer :: IOF => NULL()
   type(ocean_sfc_state_type), pointer :: OSS => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
+  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
+  type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
@@ -276,6 +275,15 @@ type ice_state_type
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
 !   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
+
+type fast_thermo_CS ! To be made ; private
+end type fast_thermo_CS
+
+type slow_thermo_CS ! To be made ; private
+end type slow_thermo_CS
+
+type dyn_trans_CS ! To be made ; private
+end type dyn_trans_CS
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
 !! state as seen by the sea-ice or atmosphere, on the ice grid.
