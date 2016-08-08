@@ -49,8 +49,6 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod, only : coupler_3d_bc_type
-use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
-use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
 use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
@@ -373,18 +371,14 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
     call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
   endif
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
 !$OMP                                  j_off,Ice,flux_u,flux_v,flux_t,flux_q,flux_lw, &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif,               &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,               &
 !$OMP                                  lprec,fprec,dhdt,dedt,drdt        )            &
-!$OMP                          private(i2,j2,k2)
+!$OMP                           private(i2,j2,k2)
   do j=jsc,jec
-    do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
-      IST%coszen(i,j) = Atmos_boundary%coszen(i2,j2,1)
-      Ice%p_surf(i2,j2) = Atmos_boundary%p(i2,j2,1)
-    enddo
     !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
     ! different index conventions than are used internally in this component.
     do k=0,ncat ; do i=isc,iec
@@ -546,29 +540,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  ! This routine works on the boundary exchange state.
-  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
-                                Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
-
-  ! This routine works on the boundary exchange state.
-  if (IST%do_sun_angle_for_alb) then
-    call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
-                 IST%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
-    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
-  else
-    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
-  endif
-
   call sum_top_quantities(Ice, IST, Atmos_boundary%fluxes, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
   IST%Time = IST%Time + IST%Time_step_fast ! advance time
-  Ice%Time = IST%Time
 
   ! Copy the surface temperatures into the externally visible data type.
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off

@@ -728,11 +728,60 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
 
+  ! Set some of the ocean properties.
+  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+
   call do_update_ice_model_fast(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+
+  Ice%Time = Ice%Ice_state%Time
 
   call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_fast
+
+subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG )
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+  type(ice_data_type),           intent(inout) :: Ice
+  type(ice_state_type),          intent(inout) :: IST
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(inout) :: IG
+
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
+    dummy, cosz_alb
+  real :: rad, rrsun_dt_ice
+  integer :: i, j, i2, j2, isc, iec, jsc, jec, i_off, j_off
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
+  j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
+
+  rad = acos(-1.)/180.
+  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
+                                Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
+
+  ! This routine works on the boundary exchange state.
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Atmos_boundary,i_off,j_off ) &
+!$OMP                           private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    IST%coszen(i,j) = Atmos_boundary%coszen(i2,j2,1)
+    Ice%p_surf(i2,j2) = Atmos_boundary%p(i2,j2,1)
+  enddo ; enddo
+
+  if (IST%do_sun_angle_for_alb) then
+    call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
+                 IST%time, cosz=cosz_alb, fracday=dummy, rrsun=rrsun_dt_ice, &
+                 dt_time=IST%Time_step_fast)
+    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
+                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+  else
+    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
+                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+  endif
+
+end subroutine set_fast_ocean_sfc_properties
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_init - initializes ice model data, parameters and diagnostics      !
