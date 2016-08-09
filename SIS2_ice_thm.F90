@@ -497,6 +497,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
         fp(1,1) = fp(1,1) - pond_decr
         fs(1,1) = fs(1,1) + pond_decr
       endif
+    else
       call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
                aice, Tsfc, fs, fp, hprad) ! out: fp, hprad
     endif
