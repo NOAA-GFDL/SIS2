@@ -319,8 +319,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
               ! temperature, in kg m-2 s-1 K-1.
     drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    diurnal_factor, cosz_alb
   real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
@@ -329,8 +327,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-  real :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
-  real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
+  real :: diurnal_factor, rad
+  real :: time_since_ae, cosz, fracday_dt_ice, fracday_day
+  real :: cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
@@ -369,7 +368,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 
   if (IST%debug) then
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
-    call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
@@ -400,49 +398,36 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     enddo ; enddo
   enddo
 
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
-!---------------------------------------------------------------------
-!    extract time of day (gmt) from time_type variable time with
-!    function universal_time.
-!---------------------------------------------------------------------
-    gmt = universal_time(IST%Time)
-!---------------------------------------------------------------------
-!    extract the time of year relative to the northern hemisphere
-!    autumnal equinox (time_since_ae) from time_type variable
-!    time using the function orbital_time.
-!---------------------------------------------------------------------
-    time_since_ae = orbital_time(IST%Time)
-!--------------------------------------------------------------------
-!    call diurnal_solar_2d to calculate astronomy fields
-!    convert G%geoLonT and G%geoLatT to radians
-!    Per Rick Hemler:
-!      call daily_mean_solar to get cosz (over a day)
-!      call diurnal_solar with dtime=Dt_ice to get cosz over Dt_ice
-!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice/cosz_day*fracday_day*rrsun_day
-!--------------------------------------------------------------------
-    Dt_ice = IST%Time_step_fast
-  endif
   if (IST%add_diurnal_sw) then
+    !   Orbital_time extracts the time of year relative to the northern
+    ! hemisphere autumnal equinox from a time_type variable.
+    time_since_ae = orbital_time(IST%Time)
+    Dt_ice = IST%Time_step_fast
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,IST,Dt_ice,time_since_ae, &
-!$OMP                                  diurnal_factor) &
+!$OMP                                  ncat,flux_sw_nir_dir,flux_sw_nir_dif, &
+!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif &
 !$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
-!$OMP                                  fracday_day,cosz_day,rrsun_day)
+!$OMP                                  fracday_day,cosz_day,rrsun_day,diurnal_factor)
     do j=jsc,jec ; do i=isc,iec
+!    Per Rick Hemler:
+!      Call diurnal_solar with dtime=Dt_ice to get cosz averaged over Dt_ice.
+!      Call daily_mean_solar to get cosz averaged over a day.  Then
+!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / 
+!                       cosz_day*fracday_day*rrsun_day
+
       call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, IST%Time, cosz=cosz_dt_ice, &
                          fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
       call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
-      diurnal_factor(i,j) = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice /   &
-                                   max(1e-30, cosz_day*fracday_day*rrsun_day)
+      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / &
+                       max(1e-30, cosz_day*fracday_day*rrsun_day)
+      do k=0,ncat
+        flux_sw_nir_dir(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor
+        flux_sw_nir_dif(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor
+        flux_sw_vis_dir(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor
+        flux_sw_vis_dif(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor
+      enddo
     enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_sw_nir_dir, &
-!$OMP                                  flux_sw_nir_dif,flux_sw_vis_dir,      &
-!$OMP                                  flux_sw_vis_dif,diurnal_factor)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-      flux_sw_nir_dir(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_nir_dif(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dir(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dif(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor(i,j)
-    enddo ; enddo ; enddo
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
@@ -546,15 +531,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 
   IST%Time = IST%Time + IST%Time_step_fast ! advance time
 
-  ! Copy the surface temperatures into the externally visible data type.
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
-  enddo ; enddo
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
-  enddo ; enddo ; enddo
-
   call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
   if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
@@ -589,13 +565,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
   call disable_SIS_averaging(IST%diag)
 
-  if (IST%debug) then
+  if (IST%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
-    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
-  endif
 
-  if (IST%bounds_check) &
-    call Ice_public_type_bounds_check(Ice, G, "End update_ice_fast")
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "End of update_ice_fast")
 
