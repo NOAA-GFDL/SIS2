@@ -133,7 +133,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
 
   ! average fluxes from update_ice_model_fast
-  call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
+  call avg_top_quantities(Ice%Ice_state%FIA, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)

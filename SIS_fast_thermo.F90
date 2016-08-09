@@ -73,10 +73,10 @@ contains
 ! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics.     !
 !   Nothing here will be exposed to other modules.                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine sum_top_quantities ( IST, ABT, flux_u, flux_v, flux_t, flux_q, &
+subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
        flux_lw, lprec, fprec, flux_lh, G, IG)
-  type(ice_state_type),             intent(inout) :: IST
+  type(fast_ice_avg_type),          intent(inout) :: FIA
   type(atmos_ice_boundary_type),    intent(in)    :: ABT
   type(SIS_hor_grid_type),          intent(in)    :: G
   type(ice_grid_type),              intent(in)    :: IG
@@ -87,8 +87,6 @@ subroutine sum_top_quantities ( IST, ABT, flux_u, flux_v, flux_t, flux_q, &
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind, max_num_fields, next_index
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -167,17 +165,17 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! avg_top_quantities - time average fluxes for ice and ocean slow physics      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine avg_top_quantities(IST, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
+subroutine avg_top_quantities(FIA, part_size, G, IG)
+  type(fast_ice_avg_type), intent(inout) :: FIA
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
+  real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
+                           intent(in)    :: part_size
 
   real    :: u, v, divid, sign
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -230,9 +228,9 @@ subroutine avg_top_quantities(IST, G, IG)
 !$OMP                           private(I_wts)
   do j=jsd,jed
     do k=1,ncat ; do i=isd,ied
-      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
-      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
+      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
     enddo ; enddo
     do i=isd,ied
       if (FIA%ice_cover(i,j) > 0.0) then
@@ -244,7 +242,7 @@ subroutine avg_top_quantities(IST, G, IG)
         ! The max with 0 in the following line is here for safety; the only known
         ! instance where it has been required is when reading a SIS-1-derived
         ! restart file with tiny negative concentrations. SIS2 should not need it.
-        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
+        FIA%ice_free(i,j) = max(part_size(i,j,0), 0.0)
 
     !    Rescale to add up to 1?
     !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
@@ -291,9 +289,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, G, IG )
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-!  real :: diurnal_factor, rad
-!  real :: time_since_ae, cosz, fracday_dt_ice, fracday_day
-!  real :: cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
@@ -325,8 +320,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, G, IG )
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
-
-!  rad = acos(-1.)/180.
 
   IST%n_fast = IST%n_fast + 1
 
@@ -456,7 +449,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  call sum_top_quantities(IST, Atmos_boundary, flux_u, flux_v, flux_t, &
+  call sum_top_quantities(IST%FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
