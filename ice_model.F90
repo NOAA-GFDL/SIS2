@@ -739,12 +739,16 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%Ice_state%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%G, Ice%IG )
 
   Ice%Time = Ice%Ice_state%Time
   Time_end = Ice%Ice_state%Time
 
-  ! Set some of the evolving ocean properties as seen by the atmosphere.
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, &
+                                  Ice%G, Ice%IG, Time_start, Time_end)
+
+  ! Set some of the evolving ocean properties that will be seen by the
+  ! atmosphere in the next time-step.
   call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, &
                                      Ice%G, Ice%IG, Time_start, Time_end)
 
@@ -816,6 +820,94 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
   endif
 
 end subroutine set_fast_ocean_sfc_properties
+
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end)
+  type(atmos_ice_boundary_type), intent(in)    :: ABT
+  type(ice_data_type),           intent(in)    :: Ice
+  type(ice_state_type),          intent(inout) :: IST
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(in)    :: IG
+  type(time_type),               intent(in)    :: Time_start, Time_end
+
+  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
+  real :: dt_diag
+  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
+                    ! strictly diagnostic purposes.
+  integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
+  integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  NkIce = IG%NkIce
+  io_A = LBOUND(ABT%t_flux,1) - G%isc ; jo_A = LBOUND(ABT%t_flux,2) - G%jsc
+  io_I = LBOUND(Ice%t_surf,1) - G%isc ; jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+
+  dt_diag = time_type_to_real(Time_end - Time_start)
+
+  call enable_SIS_averaging(dt_diag, Time_end, IST%diag)
+
+  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+
+  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+  if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+  do m=1,NkIce
+    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
+                                     IST%part_size(:,:,1:), IST%diag, G=G)
+  enddo
+  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+
+  if (IST%id_sw_pen>0) then
+    tmp_diag(:,:) = 0.0
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
+                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
+    enddo ; enddo ; enddo
+    call post_data(IST%id_sw_pen, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_lwdn > 0) then
+    tmp_diag(:,:) = 0.0
+    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
+                           (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
+    endif ; enddo ; enddo ; enddo
+    call post_data(IST%id_lwdn, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_swdn > 0) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
+!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
+!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
+!$OMP                          private(i2,j2,k2)
+    tmp_diag(:,:) = 0.0
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * ( &
+            (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
+             ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
+            (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
+             ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+    endif ; enddo ; enddo ; enddo
+    call post_data(IST%id_swdn, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
+
+  call disable_SIS_averaging(IST%diag)
+
+end subroutine fast_radiation_diagnostics
 
 !> add_diurnal_SW adjusts the shortwave fluxes in an atmos_boundary_type variable
 !! to add a synthetic diurnal cycle.

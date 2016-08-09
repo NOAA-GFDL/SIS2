@@ -49,11 +49,9 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type
 
-use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ice_state_type, IST_chksum, IST_bounds_check
 use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
 use ice_type_mod, only : atmos_ice_boundary_type, land_ice_boundary_type
-use ice_type_mod, only : IST_chksum, IST_bounds_check
-use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -75,20 +73,18 @@ contains
 ! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics.     !
 !   Nothing here will be exposed to other modules.                             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v, flux_t, flux_q, &
+subroutine sum_top_quantities ( IST, ABT, flux_u, flux_v, flux_t, flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
        flux_lw, lprec, fprec, flux_lh, G, IG)
-  type(ice_data_type),              intent(in)    :: Ice
   type(ice_state_type),             intent(inout) :: IST
-  type(coupler_3d_bc_type),         intent(in)    :: Atmos_boundary_fluxes
+  type(atmos_ice_boundary_type),    intent(in)    :: ABT
   type(SIS_hor_grid_type),          intent(in)    :: G
   type(ice_grid_type),              intent(in)    :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
-  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
-                    ! strictly diagnostic purposes.
+
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind, max_num_fields, next_index
   type(fast_ice_avg_type), pointer :: FIA => NULL()
@@ -96,28 +92,28 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
-  j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
+  i_off = LBOUND(ABT%t_flux,1) - G%isc
+  j_off = LBOUND(ABT%t_flux,2) - G%jsc
 
   if (FIA%num_tr_fluxes < 0) then
     ! Determine how many atmospheric boundary fluxes have been passed in, and
     ! set up both an indexing array for these and a space to take their average.
     ! This code is only exercised the first time that sum_top_quantities is called.
     FIA%num_tr_fluxes = 0
-    if (Atmos_boundary_fluxes%num_bcs > 0) then
+    if (ABT%fluxes%num_bcs > 0) then
       max_num_fields = 0
-      do n=1,Atmos_boundary_fluxes%num_bcs
-        FIA%num_tr_fluxes = FIA%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
-        max_num_fields = max(max_num_fields, Atmos_boundary_fluxes%bc(n)%num_fields)
+      do n=1,ABT%fluxes%num_bcs
+        FIA%num_tr_fluxes = FIA%num_tr_fluxes + ABT%fluxes%bc(n)%num_fields
+        max_num_fields = max(max_num_fields, ABT%fluxes%bc(n)%num_fields)
       enddo
 
       if (FIA%num_tr_fluxes > 0) then
         allocate(FIA%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, FIA%num_tr_fluxes))
         FIA%tr_flux_top(:,:,:,:) = 0.0
 
-        allocate(FIA%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
+        allocate(FIA%tr_flux_index(max_num_fields, ABT%fluxes%num_bcs))
         FIA%tr_flux_index(:,:) = -1 ; next_index = 1
-        do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+        do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
           FIA%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
         enddo ; enddo
       endif
@@ -133,9 +129,6 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
-
-    ! Diagnostics of sums of the above arrays.
-    FIA%lwdn(:,:) = 0.0 ; FIA%swdn(:,:) = 0.0
   endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,flux_u,flux_v,flux_t, &
@@ -157,38 +150,15 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
-  do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+  do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = FIA%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
-            Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
+            ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
   enddo ; enddo
-
-  if (FIA%id_lwdn > 0) then
-    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      FIA%lwdn(i,j) = FIA%lwdn(i,j) + IST%part_size(i,j,k) * &
-                           (flux_lw(i,j,k) + Stefan*IST%t_surf(i,j,k)**4)
-    endif ; enddo ; enddo ; enddo
-  endif
-
-  if (FIA%id_swdn > 0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
-!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
-!$OMP                          private(i2,j2,k2)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      FIA%swdn(i,j) = FIA%swdn(i,j) + IST%part_size(i,j,k) * ( &
-            (flux_sw_vis_dir(i,j,k)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
-             flux_sw_vis_dif(i,j,k)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
-            (flux_sw_nir_dir(i,j,k)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
-             flux_sw_nir_dif(i,j,k)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
-    endif ; enddo ; enddo ; enddo
-  endif
 
   FIA%avg_count = FIA%avg_count + 1
 
@@ -249,10 +219,6 @@ subroutine avg_top_quantities(IST, G, IG)
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
-    do i=isc,iec
-      FIA%lwdn(i,j) = FIA%lwdn(i,j) * divid
-      FIA%swdn(i,j) = FIA%swdn(i,j) * divid
-    enddo
   enddo
   call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
@@ -299,10 +265,9 @@ subroutine avg_top_quantities(IST, G, IG)
 end subroutine avg_top_quantities
 
 
-subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
-  type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(inout) :: IST
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -491,45 +456,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  call sum_top_quantities(Ice, IST, Atmos_boundary%fluxes, flux_u, flux_v, flux_t, &
+  call sum_top_quantities(IST, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
   IST%Time = IST%Time + IST%Time_step_fast ! advance time
-
-  call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
-  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-
-  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-  if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-  do m=1,NkIce
-    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
-                                     IST%part_size(:,:,1:), IST%diag, G=G)
-  enddo
-  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-
-  if (IST%id_sw_pen>0) then
-    tmp_diag(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
-    enddo ; enddo ; enddo
-    call post_data(IST%id_sw_pen, tmp_diag, IST%diag)
-  endif
-
-  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
-  call disable_SIS_averaging(IST%diag)
 
   if (IST%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)

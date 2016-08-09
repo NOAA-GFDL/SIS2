@@ -241,7 +241,7 @@ type ice_state_type
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1
+  integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_swdn=-1, id_lwdn=-1
   integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_mi=-1
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_saltf=-1, id_e2m=-1
@@ -348,14 +348,9 @@ type fast_ice_avg_type
                                     ! ice categories on an A-grid, in Pa.
     ice_free            =>NULL(), & ! The fractional open water used in calculating
                                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ice_cover           =>NULL(), & ! The fractional ice coverage, summed across all
+    ice_cover           =>NULL()    ! The fractional ice coverage, summed across all
                                     ! thickness categories, used in calculating
                                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ! These two arrays are diagnostics of radiative fluxes summed across the
-    ! thickness categories.
-    lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
-    swdn         => NULL()        ! and short-wave radiation at the top of the
-                                  ! snow, averaged across categories, in W m-2.
 
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, pointer, dimension(:,:,:,:) :: &
@@ -363,7 +358,7 @@ type fast_ice_avg_type
                                   ! sea ice.
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
-  integer :: id_sh=-1, id_lh=-1, id_sw=-1,  id_swdn=-1, id_lwdn=-1
+  integer :: id_sh=-1, id_lh=-1, id_sw=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_sw_vis=-1
@@ -751,8 +746,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0 !NI
   allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0 !NI
   allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0 !NI
-  allocate(FIA%lwdn(SZI_(HI), SZJ_(HI))) ; FIA%lwdn(:,:) = 0.0 !NR
-  allocate(FIA%swdn(SZI_(HI), SZJ_(HI))) ; FIA%swdn(:,:) = 0.0 !NR
 
   allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
   allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
@@ -896,7 +889,6 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(FIA%flux_u_top, FIA%flux_v_top )
   deallocate(FIA%flux_t_top, FIA%flux_q_top, FIA%flux_lw_top)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
-  deallocate(FIA%lwdn, FIA%swdn)
   deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
 
@@ -1371,9 +1363,9 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   !
   ! diagnostics for quantities produced outside the ice model
   !
-  FIA%id_swdn  = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
+  IST%id_swdn  = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
              'downward shortwave flux', 'W/m^2', missing_value=missing)
-  FIA%id_lwdn  = register_SIS_diag_field('ice_model','LWDN' ,diag%axesT1, Time, &
+  IST%id_lwdn  = register_SIS_diag_field('ice_model','LWDN' ,diag%axesT1, Time, &
              'downward longwave flux', 'W/m^2', missing_value=missing)
   IST%id_ta    = register_SIS_diag_field('ice_model', 'TA', diag%axesT1, Time, &
              'surface air temperature', 'C', missing_value=missing)
