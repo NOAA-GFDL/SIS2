@@ -734,6 +734,10 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
 
   Time_start = Ice%Ice_state%Time
+  Time_end = Ice%Ice_state%Time + Ice%Ice_state%Time_step_fast
+
+  if (Ice%Ice_state%add_diurnal_sw) &
+    call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
   call do_update_ice_model_fast(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
 
@@ -812,6 +816,60 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
   endif
 
 end subroutine set_fast_ocean_sfc_properties
+
+!> add_diurnal_SW adjusts the shortwave fluxes in an atmos_boundary_type variable
+!! to add a synthetic diurnal cycle.
+subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
+  type(atmos_ice_boundary_type), intent(inout) :: ABT !< The type with atmospheric fluxes to be adjusted.
+  type(SIS_hor_grid_type),       intent(in)    :: G   !< The sea-ice lateral grid type.
+  type(time_type),               intent(in)    :: Time_start !< The start time for this step.
+  type(time_type),               intent(in)    :: Time_end   !< The ending time for this step.
+
+  real :: diurnal_factor, time_since_ae, rad
+  real :: fracday_dt, fracday_day
+  real :: cosz_day, cosz_dt, rrsun_day, rrsun_dt
+  type(time_type) :: dt_here
+
+  integer :: i, j, k, i2, j2, isc, iec, jsc, jec, ncat, i_off, j_off
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = size(ABT%sw_flux_nir_dir,3)
+  i_off = LBOUND(ABT%t_flux,1) - G%isc ; j_off = LBOUND(ABT%t_flux,2) - G%jsc
+
+  !   Orbital_time extracts the time of year relative to the northern
+  ! hemisphere autumnal equinox from a time_type variable.
+  time_since_ae = orbital_time(Time_start)
+  dt_here = Time_end - Time_start
+  rad = acos(-1.)/180.
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,Time_start,dt_here,time_since_ae, &
+!$OMP                                  ncat,flux_sw_nir_dir,flux_sw_nir_dif, &
+!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif &
+!$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
+!$OMP                                  fracday_day,cosz_day,rrsun_day,diurnal_factor)
+  do j=jsc,jec ; do i=isc,iec
+!    Per Rick Hemler:
+!      Call diurnal_solar with dtime=dt_here to get cosz averaged over dt_here.
+!      Call daily_mean_solar to get cosz averaged over a day.  Then
+!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / 
+!                       cosz_day*fracday_day*rrsun_day
+
+    call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, Time_start, cosz=cosz_dt, &
+                       fracday=fracday_dt, rrsun=rrsun_dt, dt_time=dt_here)
+    call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
+    diurnal_factor = cosz_dt*fracday_dt*rrsun_dt / &
+                     max(1e-30, cosz_day*fracday_day*rrsun_day)
+
+    i2 = i+i_off ; j2 = j+j_off
+    do k=1,ncat
+      ABT%sw_flux_nir_dir(i2,j2,k) = ABT%sw_flux_nir_dir(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_nir_dif(i2,j2,k) = ABT%sw_flux_nir_dif(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_vis_dir(i2,j2,k) = ABT%sw_flux_vis_dir(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_vis_dif(i2,j2,k) = ABT%sw_flux_vis_dif(i2,j2,k) * diurnal_factor
+    enddo
+  enddo ; enddo
+
+end subroutine add_diurnal_sw
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_init - initializes ice model data, parameters and diagnostics      !

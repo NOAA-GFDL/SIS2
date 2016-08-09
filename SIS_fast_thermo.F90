@@ -47,7 +47,6 @@ use MOM_time_manager, only : time_type, time_type_to_real
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
-use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod, only : coupler_3d_bc_type
 
 use ice_type_mod, only : ice_data_type, ice_state_type
@@ -79,11 +78,11 @@ contains
 subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v, flux_t, flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
        flux_lw, lprec, fprec, flux_lh, G, IG)
-  type(ice_data_type),              intent(inout) :: Ice
+  type(ice_data_type),              intent(in)    :: Ice
   type(ice_state_type),             intent(inout) :: IST
-  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
-  type(SIS_hor_grid_type),          intent(inout) :: G
-  type(ice_grid_type),              intent(inout) :: IG
+  type(coupler_3d_bc_type),         intent(in)    :: Atmos_boundary_fluxes
+  type(SIS_hor_grid_type),          intent(in)    :: G
+  type(ice_grid_type),              intent(in)    :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
@@ -302,11 +301,11 @@ end subroutine avg_top_quantities
 
 subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 
-  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
-  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
+  type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(inout) :: IST
   type(SIS_hor_grid_type),       intent(inout) :: G
-  type(ice_grid_type),           intent(inout) :: IG
+  type(ice_grid_type),           intent(in)    :: IG
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce) :: &
     flux_t, flux_q, flux_lh, flux_lw, &
@@ -327,9 +326,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-  real :: diurnal_factor, rad
-  real :: time_since_ae, cosz, fracday_dt_ice, fracday_day
-  real :: cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
+!  real :: diurnal_factor, rad
+!  real :: time_since_ae, cosz, fracday_dt_ice, fracday_day
+!  real :: cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
@@ -362,13 +361,12 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
-  rad = acos(-1.)/180.
+!  rad = acos(-1.)/180.
 
   IST%n_fast = IST%n_fast + 1
 
-  if (IST%debug) then
+  if (IST%debug) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
-  endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
 !$OMP                                  j_off,Ice,flux_u,flux_v,flux_t,flux_q,flux_lw, &
@@ -397,38 +395,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
       drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
   enddo
-
-  if (IST%add_diurnal_sw) then
-    !   Orbital_time extracts the time of year relative to the northern
-    ! hemisphere autumnal equinox from a time_type variable.
-    time_since_ae = orbital_time(IST%Time)
-    Dt_ice = IST%Time_step_fast
-
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,IST,Dt_ice,time_since_ae, &
-!$OMP                                  ncat,flux_sw_nir_dir,flux_sw_nir_dif, &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif &
-!$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
-!$OMP                                  fracday_day,cosz_day,rrsun_day,diurnal_factor)
-    do j=jsc,jec ; do i=isc,iec
-!    Per Rick Hemler:
-!      Call diurnal_solar with dtime=Dt_ice to get cosz averaged over Dt_ice.
-!      Call daily_mean_solar to get cosz averaged over a day.  Then
-!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / 
-!                       cosz_day*fracday_day*rrsun_day
-
-      call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, IST%Time, cosz=cosz_dt_ice, &
-                         fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
-      call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
-      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / &
-                       max(1e-30, cosz_day*fracday_day*rrsun_day)
-      do k=0,ncat
-        flux_sw_nir_dir(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor
-        flux_sw_nir_dif(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor
-        flux_sw_vis_dir(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor
-        flux_sw_vis_dif(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor
-      enddo
-    enddo ; enddo
-  endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
@@ -574,7 +540,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
 end subroutine do_update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_fast_thermo_init - initializes ice model data, parameters and diagnostics      !
+! SIS_fast_thermo_init - initializes ice model data, parameters and diagnostics  !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, IST)
   type(time_type),     target, intent(in)    :: Time   ! current time
@@ -601,7 +567,7 @@ end subroutine SIS_fast_thermo_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_end - writes the restart file and deallocates memory               !
+! SIS_fast_thermo_end - deallocates any memory associated with this module.    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_fast_thermo_end (IST)
   type(ice_state_type), pointer :: IST
