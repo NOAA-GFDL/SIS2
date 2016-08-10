@@ -739,7 +739,8 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%Ice_state%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%G, Ice%IG )
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, &
+                                Ice%Ice_state%fast_thermo_CSp, Ice%G, Ice%IG )
 
   Ice%Time = Ice%Ice_state%Time
   Time_end = Ice%Ice_state%Time
@@ -1597,8 +1598,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
-  call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+  call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%fast_thermo_CSp)
+
   call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+
   call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
@@ -1674,7 +1677,7 @@ subroutine ice_model_end (Ice)
 
   call SIS_slow_thermo_end(IST)
 
-  call SIS_fast_thermo_end(IST)
+  call SIS_fast_thermo_end(IST%fast_thermo_CSp)
 
   call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 

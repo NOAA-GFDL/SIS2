@@ -217,7 +217,6 @@ type ice_state_type
 ! SLOW DYNAMICS
   integer :: ntrunc = 0      ! The number of times the velocity has been truncated
                              ! since the last call to write_ice_statistics.
-  integer :: n_fast = 0 !### DELETE THIS!
 ! SLOW THERMO
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
                              ! has been called.
