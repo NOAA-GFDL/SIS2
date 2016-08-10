@@ -130,7 +130,10 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   type(land_ice_boundary_type),  intent(inout) :: Land_boundary
   type(ice_data_type),           intent(inout) :: Ice
 
+  real :: dt_slow  ! The time step over which to advance the model.
+
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  dt_slow = time_type_to_real(Ice%Ice_state%Time_step_slow)
 
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%Ice_state%FIA, Ice%Ice_state%part_size, Ice%G, Ice%IG)
@@ -149,7 +152,8 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call slow_thermodynamics(Ice%Ice_state, Ice%G, Ice%IG)
 
-  call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  call SIS_dynamics_trans(Ice%Ice_state, dt_slow, Ice%Ice_state%dyn_trans_CSp, &
+                          Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
@@ -1049,10 +1053,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(IST%OSS)) allocate(IST%OSS)
   if (.not.associated(IST%FIA)) allocate(IST%FIA)
 
-  if (.not.associated(IST%fast_thermo_CSp)) allocate(IST%fast_thermo_CSp)
-  if (.not.associated(IST%slow_thermo_CSp)) allocate(IST%slow_thermo_CSp)
-  if (.not.associated(IST%dyn_trans_CSp)) allocate(IST%dyn_trans_CSp)
-
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
 
@@ -1087,12 +1087,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
 
-  call get_param(param_file, mod, "DT_ICE_DYNAMICS", IST%dt_ice_dyn, &
-                 "The time step used for the slow ice dynamics, including \n"//&
-                 "stepping the continuity equation and interactions \n"//&
-                 "between the ice mass field and velocities.  If 0 or \n"//&
-                 "negative the coupling time step will be used.", &
-                 units="seconds", default=-1.0)
 
   call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
@@ -1205,8 +1199,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
-  call get_param(param_file, mod, "VERBOSE", IST%verbose, &
-                 "If true, write out verbose diagnostics.", default=.false.)
   call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
@@ -1327,7 +1319,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
   call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                  IST, Ice%Ice_restart, restart_file)
+                                  IST%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
   call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
                               doc_file_dir = dirs%output_directory)
@@ -1602,10 +1594,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
-  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST%dyn_trans_CSp)
+  IST%ice_transport_CSp => IST%dyn_trans_CSp%ice_transport_CSp
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
-                           IST%sum_output_CSp, IST%ntrunc)
+                           IST%sum_output_CSp, IST%dyn_trans_CSp%ntrunc)
 
   !   Initialize any tracers that will be handled via tracer flow control.
   call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp, is_restart)
@@ -1673,7 +1666,7 @@ subroutine ice_model_end (Ice)
 
   !--- release memory ------------------------------------------------
 
-  call SIS_slow_end(IST)
+  call SIS_slow_end(IST%dyn_trans_CSp)
 
   call SIS_slow_thermo_end(IST)
 

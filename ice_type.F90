@@ -170,11 +170,6 @@ type ice_state_type
   type(time_type) :: ice_stats_interval ! The interval between writes of the
                              ! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
-  ! SLOW DYNAMICS
-  real    :: dt_ice_dyn  ! The time step used for the slow ice dynamics, including
-                         ! stepping the continuity equation and interactions
-                         ! between the ice mass field and velocities, in s. If
-                         ! 0 or negative, the coupling time step will be used.
 
   ! FAST THERMO
   real :: kmelt          ! A constant that is used in the calculation of the
@@ -196,10 +191,8 @@ type ice_state_type
                             ! do_ice_limit is true.
   ! Set_ocean_top
   logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
-  ! SLOW THERMO
-  logical :: verbose    ! A flag to control the printing of an ice-diagnostic
-                        ! message.  When true, this will slow the model down.
-  ! FAST THERMO
+
+  ! top level fast
   logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
@@ -214,9 +207,6 @@ type ice_state_type
                              ! or a negative number to apply the frazil flux
                              ! uniformly, in s.
 
-! SLOW DYNAMICS
-  integer :: ntrunc = 0      ! The number of times the velocity has been truncated
-                             ! since the last call to write_ice_statistics.
 ! SLOW THERMO
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
                              ! has been called.
@@ -243,16 +233,16 @@ type ice_state_type
 
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_swdn=-1, id_lwdn=-1
-  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1, id_mi=-1
+  integer :: id_ts=-1, id_t_iceav=-1, id_s_iceav=-1
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_saltf=-1, id_e2m=-1
   integer :: id_rdgr=-1, id_rdgf=-1, id_rdgo=-1, id_rdgv=-1, id_fwnudge=-1
-  integer :: id_frazil=-1, id_alb=-1, id_xprt=-1, id_lsrc=-1, id_lsnk=-1, id_bsnk=-1
-  integer :: id_strna=-1, id_fax=-1, id_fay=-1, id_sn2ic=-1
+  integer :: id_frazil=-1, id_alb=-1, id_lsrc=-1, id_lsnk=-1, id_bsnk=-1
+  integer :: id_strna=-1, id_sn2ic=-1
   integer :: id_slp=-1, id_ext=-1, id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1
   integer :: id_ta=-1, id_obi=-1, id_qfres=-1, id_qflim=-1, id_ix_trans=-1
   integer :: id_iy_trans=-1,   id_sw_dir=-1, id_sw_dif=-1
-  integer :: id_mib=-1, id_coszen=-1
+  integer :: id_coszen=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
   integer :: id_abs_int=-1, id_sw_abs_sfc=-1, id_sw_abs_snow=-1
   integer :: id_sw_pen=-1, id_sw_abs_ocn=-1
@@ -267,8 +257,8 @@ type ice_state_type
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
 
-  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
-  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
+!  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+!  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
@@ -278,20 +268,52 @@ type ice_state_type
 end type ice_state_type
 
 type fast_thermo_CS ! To be made ; private
-  integer :: n_fast = 0      ! The number of times update_ice_model_fast
-                             ! has been called.
-  logical :: debug           ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check    ! If true, enable the heat check column by column.
-  real    :: imb_tol         ! The tolerance for imbalances to be flagged by
-                             ! column_check, nondim.
-  logical :: bounds_check    ! If true, check for sensible values of thicknesses
-                             ! temperatures, fluxes, etc.
+  integer :: n_fast = 0   ! The number of times update_ice_model_fast
+                          ! has been called.
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
 end type fast_thermo_CS
 
 type slow_thermo_CS ! To be made ; private
+  integer :: n_calls = 0  ! The number of times update_ice_model_slow_down
+                          ! has been called.
+  logical :: module_is_initialized = .false.
 end type slow_thermo_CS
 
 type dyn_trans_CS ! To be made ; private
+  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+                       ! sea-ice dynamics.
+  real    :: dt_ice_dyn   ! The time step used for the slow ice dynamics, including
+                          ! stepping the continuity equation and interactions
+                          ! between the ice mass field and velocities, in s. If
+                          ! 0 or negative, the coupling time step will be used.
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
+  logical :: verbose      ! A flag to control the printing of an ice-diagnostic
+                          ! message.  When true, this will slow the model down.
+
+  integer :: ntrunc = 0   ! The number of times the velocity has been truncated
+                          ! since the last call to write_ice_statistics.
+
+  integer :: n_calls = 0  ! The number of times SIS_dynamics_trans has been called.
+
+  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+                                   ! timing of diagnostic output.
+
+  integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
+  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  logical :: module_is_initialized = .false.
 end type dyn_trans_CS
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
@@ -1313,10 +1335,6 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 
   IST%id_ext = register_SIS_diag_field('ice_model', 'EXT', diag%axesT1, Time, &
                'ice modeled', '0 or 1', missing_value=missing)
-  IST%id_mi       = register_SIS_diag_field('ice_model', 'MI', diag%axesT1, Time, &
-               'ice mass', 'kg/m^2', missing_value=missing)
-  IST%id_mib      = register_SIS_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
-               'ice + bergs mass', 'kg/m^2', missing_value=missing)
   IST%id_cn       = register_SIS_diag_field('ice_model', 'CN', diag%axesTc, Time, &
                'ice concentration', '0-1', missing_value=missing)
   IST%id_hs       = register_SIS_diag_field('ice_model', 'HS', diag%axesT1, Time, &
@@ -1413,8 +1431,6 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'ice surface albedo nir_dir','0-1', missing_value=missing )
   IST%id_alb_nir_dif = register_SIS_diag_field('ice_model','alb_nir_dif',diag%axesT1, Time, &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
-  IST%id_xprt     = register_SIS_diag_field('ice_model','XPRT',diag%axesT1, Time, &
-               'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
   IST%id_lsrc     = register_SIS_diag_field('ice_model','LSRC', diag%axesT1, Time, &
                'frozen water local source', 'kg/(m^2*yr)', missing_value=missing)
   IST%id_lsnk     = register_SIS_diag_field('ice_model','LSNK',diag%axesT1, Time, &
@@ -1477,20 +1493,6 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &
        'ice observed', '0 or 1', missing_value=missing)
 
-  !
-  ! diagnostics that are specific to C-grid dynamics of the ice model
-  !
-  if (IST%Cgrid_dyn) then
-    IST%id_fax = register_SIS_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
-               'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
-    IST%id_fay = register_SIS_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
-               'Air stress on ice on C-grid - y component', 'Pa', missing_value=missing)
-  else
-    IST%id_fax = register_SIS_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
-               'air stress on ice - x component', 'Pa', missing_value=missing)
-    IST%id_fay = register_SIS_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
-               'air stress on ice - y component', 'Pa', missing_value=missing)
-  endif
 
   IST%id_rdgr    = register_SIS_diag_field('ice_model','RDG_RATE' ,diag%axesT1, Time, &
                'ice ridging rate', '1/sec', missing_value=missing)
