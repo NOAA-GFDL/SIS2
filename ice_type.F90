@@ -39,7 +39,9 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_data_type, ice_state_type
-public :: ice_ocean_flux_type, ocean_sfc_state_type, fast_ice_avg_type
+public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
+public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
+public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 public :: ice_data_type_register_restarts, ice_state_register_restarts
 public :: ice_diagnostics_init, ice_stock_pe
@@ -47,6 +49,8 @@ public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_ty
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: IST_chksum, Ice_public_type_chksum, Ice_public_type_bounds_check, IST_bounds_check
+
+public :: fast_thermo_CS, slow_thermo_CS, dyn_trans_CS
 
 real, parameter :: missing = -1e34
 integer, parameter :: miss_int = -9999
@@ -213,11 +217,9 @@ type ice_state_type
 ! SLOW DYNAMICS
   integer :: ntrunc = 0      ! The number of times the velocity has been truncated
                              ! since the last call to write_ice_statistics.
+  integer :: n_fast = 0 !### DELETE THIS!
 ! SLOW THERMO
   integer :: n_calls = 0     ! The number of times update_ice_model_slow_down
-                             ! has been called.
-  ! FAST THERMO
-  integer :: n_fast = 0      ! The number of times update_ice_model_fast
                              ! has been called.
   logical :: do_init = .false. ! If true, there is still some initialization
                                ! that needs to be done.
@@ -277,6 +279,14 @@ type ice_state_type
 end type ice_state_type
 
 type fast_thermo_CS ! To be made ; private
+  integer :: n_fast = 0      ! The number of times update_ice_model_fast
+                             ! has been called.
+  logical :: debug           ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check    ! If true, enable the heat check column by column.
+  real    :: imb_tol         ! The tolerance for imbalances to be flagged by
+                             ! column_check, nondim.
+  logical :: bounds_check    ! If true, check for sensible values of thicknesses
+                             ! temperatures, fluxes, etc.
 end type fast_thermo_CS
 
 type slow_thermo_CS ! To be made ; private
@@ -290,18 +300,18 @@ end type dyn_trans_CS
 type ocean_sfc_state_type
   ! 5 of the following 7 variables describe the ocean state as seen by the sea ice.
   real,    pointer, dimension(:,:) :: &
-    s_surf  =>NULL(), &    ! The ocean's surface salinity in g/kg.
-    t_ocn   =>NULL(), &    ! The ocean's bulk surface temperature in degC.
-    u_ocn_B   =>NULL(), &    ! The ocean's zonal velocity on B-grid points in m s-1.
-    v_ocn_B =>NULL(), &    ! The ocean's meridional velocity on B-grid points in m s-1.
-    u_ocn_C =>NULL(), &    ! The ocean's zonal and meridional velocity on C-grid
-    v_ocn_C =>NULL(), &    ! points, both in m s-1.
-    sea_lev =>NULL()       ! The equivalent sea-level, after any non-levitating
-                           ! ice has been converted to sea-water, as determined
-                           ! by the ocean, in m.  Sea-ice only contributes by
-                           ! applying pressure to the ocean that is then
-                           ! (partially) converted back to its equivalent by the
-                           ! ocean.
+    s_surf  => NULL(), &  ! The ocean's surface salinity in g/kg.
+    t_ocn   => NULL(), &  ! The ocean's bulk surface temperature in degC.
+    u_ocn_B => NULL(), &  ! The ocean's zonal velocity on B-grid points in m s-1.
+    v_ocn_B => NULL(), &  ! The ocean's meridional velocity on B-grid points in m s-1.
+    u_ocn_C => NULL(), &  ! The ocean's zonal and meridional velocity on C-grid
+    v_ocn_C => NULL(), &  ! points, both in m s-1.
+    sea_lev => NULL()     ! The equivalent sea-level, after any non-levitating
+                          ! ice has been converted to sea-water, as determined
+                          ! by the ocean, in m.  Sea-ice only contributes by
+                          ! applying pressure to the ocean that is then
+                          ! (partially) converted back to its equivalent by the
+                          ! ocean.
 end type ocean_sfc_state_type
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
@@ -700,10 +710,9 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 end subroutine ice_data_type_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_state_register_restarts - allocate the arrays in the ice_state_type      !
-!     and register any variables in the ice data type that need to be included !
-!     in the restart files.                                                    !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_state_register_restarts allocates the arrays in the ice_state_type
+!!     and registers any variables in the ice data type that need to be included
+!!     in the restart files.
 subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
                                        Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
@@ -724,59 +733,33 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   IOF => IST%IOF
   if (.not.associated(IST%OSS)) allocate(IST%OSS)
   OSS => IST%OSS
-  if (.not.associated(IST%FIA)) allocate(IST%FIA)
-  FIA => IST%FIA
 
   CatIce = IG%CatIce ; NkIce = IG%NkIce
-  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
-  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0 !NI X
-  allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI))) ; OSS%t_ocn(:,:) = 0.0   !NI X
-  allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0 !NR
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
+  allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
+  allocate(IST%enth_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+  if (IST%Cgrid_dyn) then
+    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
+    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
+  else
+    allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
+    allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
+  endif
 
-  allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(FIA%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0 !NR
-  allocate(FIA%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0 !NI
-  allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
 
-  allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
-  allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
-  allocate(IOF%calving_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_preberg(:,:) = 0.0 !NI, diag
-  allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx_preberg(:,:) = 0.0 !NI, diag
-  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
+  call alloc_ocean_sfc_state(IST%OSS, HI, IST%Cgrid_dyn)
 
-  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
-  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
+  call alloc_ice_ocean_flux(IST%IOF, HI)
+
+  call alloc_fast_ice_avg(IST%FIA, HI, IG)
+
+  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
 
   allocate(IST%frazil(SZI_(HI), SZJ_(HI))) ; IST%frazil(:,:) = 0.0 !NR
-
-  allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0 !NI
-  allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0 !NR
-  allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0 !NR
-  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0 !NI
-  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0 !NI
-  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0 !NI
-  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 !NI
 
   allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
@@ -784,18 +767,11 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
 
-  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
   allocate(IST%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
-
-  allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
-  allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
-  allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%enth_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
-  allocate(IST%sal_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
 
   allocate(IST%enth_prev(SZI_(HI), SZJ_(HI), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
   allocate(IST%heat_in(SZI_(HI), SZJ_(HI), CatIce)) ; IST%heat_in(:,:,:) = 0.0
@@ -803,17 +779,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
-  if (IST%Cgrid_dyn) then
-    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
-    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
-    allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0 !NR
-    allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI))) ; OSS%v_ocn_C(:,:) = 0.0 !NR
-  else
-    allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
-    allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
-    allocate(OSS%u_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%u_ocn_B(:,:) = 0.0 !NR
-    allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%v_ocn_B(:,:) = 0.0 !NR
-  endif
 
   ! Now register some of these arrays to be read from the restart files.
   idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
@@ -850,6 +815,99 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
 end subroutine ice_state_register_restarts
 
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
+subroutine alloc_fast_ice_avg(FIA, HI, IG)
+  type(fast_ice_avg_type), pointer    :: FIA
+  type(hor_index_type),    intent(in) :: HI
+  type(ice_grid_type),     intent(in) :: IG
+
+  integer :: CatIce
+
+  if (.not.associated(FIA)) allocate(FIA)
+  CatIce = IG%CatIce
+
+  FIA%avg_count = 0
+  allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(FIA%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0 !NR
+  allocate(FIA%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0 !NI
+  allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0 !NI
+
+  allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0 !NI
+  allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0 !NR
+  allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0 !NR
+  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0 !NI
+  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0 !NI
+  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0 !NI
+  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 !NI
+
+end subroutine alloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
+subroutine alloc_ice_ocean_flux(IOF, HI)
+  type(ice_ocean_flux_type), pointer    :: IOF
+  type(hor_index_type),      intent(in) :: HI
+
+  integer :: CatIce
+
+  if (.not.associated(IOF)) allocate(IOF)
+
+  allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
+  allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
+  allocate(IOF%calving_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_preberg(:,:) = 0.0 !NI, diag
+  allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
+  allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
+  allocate(IOF%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx_preberg(:,:) = 0.0 !NI, diag
+  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
+
+  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
+  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
+
+end subroutine alloc_ice_ocean_flux
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_ocean_sfc_state allocates and zeros out the arrays in an ocean_sfc_state_type.
+subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
+  type(ocean_sfc_state_type), pointer    :: OSS
+  type(hor_index_type),       intent(in) :: HI
+  logical,                    intent(in) :: Cgrid_dyn
+
+  if (.not.associated(OSS)) allocate(OSS)
+
+  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
+  allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
+  allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
+
+  if (Cgrid_dyn) then
+    allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0
+    allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI))) ; OSS%v_ocn_C(:,:) = 0.0
+  else
+    allocate(OSS%u_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%u_ocn_B(:,:) = 0.0
+    allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%v_ocn_B(:,:) = 0.0
+  endif
+
+end subroutine alloc_ocean_sfc_state
+
 subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice
 
@@ -870,20 +928,55 @@ end subroutine dealloc_Ice_arrays
 
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
 
-  IOF => IST%IOF
-  OSS => IST%OSS
-  FIA => IST%FIA
-
-  deallocate(IST%t_surf, OSS%s_surf, OSS%t_ocn, OSS%sea_lev)
-  deallocate(IST%part_size)
+  deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
+  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice, IST%t_surf)
   if (IST%Cgrid_dyn) then
-    deallocate(IST%u_ice_C, IST%v_ice_C, OSS%u_ocn_C, OSS%v_ocn_C)
+    deallocate(IST%u_ice_C, IST%v_ice_C)
   else
-    deallocate(IST%u_ice_B, IST%v_ice_B, OSS%u_ocn_B, OSS%v_ocn_B)
+    deallocate(IST%u_ice_B, IST%v_ice_B)
+  endif
+
+  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm, IST%frazil_input)
+  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
+  deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
+  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen, IST%frazil)
+
+  call dealloc_ocean_sfc_state(IST%OSS)
+
+  call dealloc_fast_ice_avg(IST%FIA)
+
+  call dealloc_ice_ocean_flux(IST%IOF)
+
+end subroutine dealloc_IST_arrays
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_ocean_sfc_state deallocates the arrays in an ocean_sfc_state_type.
+subroutine dealloc_ocean_sfc_state(OSS)
+  type(ocean_sfc_state_type), pointer :: OSS
+
+  if (.not.associated(OSS)) then
+    call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
+    return
+  endif
+
+  deallocate(OSS%s_surf, OSS%t_ocn, OSS%sea_lev)
+  if (associated(OSS%u_ocn_B)) deallocate(OSS%u_ocn_B)
+  if (associated(OSS%v_ocn_B)) deallocate(OSS%v_ocn_B)
+  if (associated(OSS%u_ocn_C)) deallocate(OSS%u_ocn_C)
+  if (associated(OSS%v_ocn_C)) deallocate(OSS%v_ocn_C)
+
+  deallocate(OSS)
+end subroutine dealloc_ocean_sfc_state
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_fast_ice_avg deallocates the arrays in a fast_ice_avg_type.
+subroutine dealloc_fast_ice_avg(FIA)
+  type(fast_ice_avg_type), pointer    :: FIA
+
+  if (.not.associated(FIA)) then
+    call SIS_error(WARNING, "dealloc_fast_ice_avg called with an unassociated pointer.")
+    return
   endif
 
   deallocate(FIA%flux_u_top, FIA%flux_v_top )
@@ -891,6 +984,22 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
   deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
+
+  deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt)
+  deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
+
+  deallocate(FIA)
+end subroutine dealloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_ice_ocean_flux deallocates the arrays in a ice_ocean_flux_type.
+subroutine dealloc_ice_ocean_flux(IOF)
+  type(ice_ocean_flux_type), pointer    :: IOF
+
+  if (.not.associated(IOF)) then
+    call SIS_error(WARNING, "dealloc_ice_ocean_flux called with an unassociated pointer.")
+    return
+  endif
 
   deallocate(IOF%flux_t_ocn_top, IOF%flux_q_ocn_top)
   deallocate(IOF%flux_lw_ocn_top, IOF%flux_lh_ocn_top)
@@ -901,21 +1010,10 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IOF%calving_preberg, IOF%calving_hflx_preberg)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
-  deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, IST%frazil)
-  deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
+  deallocate(IOF)
+end subroutine dealloc_ice_ocean_flux
 
-  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm, IST%frazil_input)
-  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
-  deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
-  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen)
-
-  deallocate(IST%mH_snow, IST%mH_ice)
-  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
-
-  deallocate(IST%IOF)
-
-end subroutine dealloc_IST_arrays
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   character(len=*),        intent(in) :: mesg
   type(ice_state_type),    intent(in) :: IST
