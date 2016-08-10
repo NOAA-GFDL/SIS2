@@ -651,7 +651,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   if (IST%id_hi>0) call post_avg(IST%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
                                  scale=IG%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
-  if (IST%id_ts>0) call post_avg(IST%id_ts, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
+  if (IST%id_tsfc>0) call post_avg(IST%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
                                  CS%diag, G=G, offset=-T_0degC, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, wtd=.true.)
@@ -1041,7 +1041,7 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_slow" ! This module's name.
-  real, parameter       :: missing = -1e34
+  real, parameter    :: missing = -1e34
 
   call callTree_enter("SIS_slow_init(), SIS_slow.F90")
 
