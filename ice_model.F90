@@ -47,7 +47,7 @@ use SIS_get_input, only : Get_SIS_input, directories
 use SIS_sum_output, only : SIS_sum_output_init,  write_ice_statistics
 use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
 
-use MOM_checksums,     only : chksum
+use MOM_checksums,     only : chksum, uchksum, vchksum, Bchksum
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
 use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
@@ -212,10 +212,9 @@ subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
 end subroutine set_ice_state_fluxes
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ocean_top_fluxes - Translate ice-bottom fluxes of heat, mass, salt, and  !
-!   tracers from the ice model's internal state to the public ice data type    !
-!   for use by the ocean model.                                                !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
+!!  tracers from the ice model's internal state to the public ice data type
+!!  for use by the ocean model.
 subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
   type(ice_data_type),       intent(inout) :: Ice
   type(ice_state_type),      intent(in)    :: IST
@@ -324,32 +323,147 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
-  call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
-                             Ocean_boundary%frazil, Ocean_boundary, Ice%G, Ice%IG, &
-                             Ocean_boundary%s, Ocean_boundary%sea_level )
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%Ice_state%OSS, Ice%G, &
+                           Ice%ocean_fields)
+
+  call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
+                             Ice%Ice_state%OSS, Ice%G, Ice%IG )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow_up
 
+!> This subroutine converts the information in a publicly visible
+!! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
+!! variable.
+subroutine unpack_ocn_ice_bdry(OIB, OSS, G, ocean_fields)
+  type(ocean_ice_boundary_type), intent(in)    :: OIB
+  type(ocean_sfc_state_type),    intent(inout) :: OSS
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(coupler_3d_bc_type),      intent(inout) :: ocean_fields
+
+  real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical :: Cgrid_ocn
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,IOB,i_off,j_off,T_0degC) &
+!$OMP                           private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+
+    OSS%t_ocn(i,j) = OIB%t(i2,j2) - T_0degC
+    OSS%s_surf(i,j) = OIB%s(i2,j2)
+    OSS%frazil(i,j) = OIB%frazil(i2,j2)
+    OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
+  enddo ; enddo
+
+  Cgrid_ocn = (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C))
+
+  ! Unpack the ocean surface velocities.
+  if (OIB%stagger == AGRID) then
+    u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
+    enddo ; enddo
+    call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=AGRID)
+
+    if (Cgrid_ocn) then
+      do j=jsc,jec ; do I=isc-1,iec
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
+      enddo ; enddo
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    else
+      do J=jsc-1,jec ; do I=isc-1,iec
+        OSS%u_ocn_B(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
+                               (u_nonsym(i+1,j) + u_nonsym(i,j+1)))
+        OSS%v_ocn_B(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
+                               (v_nonsym(i+1,j) + v_nonsym(i,j+1)))
+      enddo ; enddo
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
+    endif
+
+  elseif (OIB%stagger == BGRID_NE) then
+    if (Cgrid_ocn) then
+        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+        do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+          u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
+        enddo ; enddo
+        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+
+      do j=jsc,jec ; do I=isc-1,iec
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
+      enddo ; enddo
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    else
+      do J=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+        OSS%u_ocn_B(I,J) = OIB%u(i2,j2)
+        OSS%v_ocn_B(I,J) = OIB%v(i2,j2)
+      enddo ; enddo
+      if (G%symmetric) &
+        call fill_symmetric_edges(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
+
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
+    endif
+
+  elseif (OIB%stagger == CGRID_NE) then
+    if (Cgrid_ocn) then
+      do j=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+        OSS%u_ocn_C(I,j) = OIB%u(i2,j2)
+      enddo ; enddo
+      do J=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+        OSS%v_ocn_C(i,J) = OIB%v(i2,j2)
+      enddo ; enddo
+      if (G%symmetric) &
+        call fill_symmetric_edges(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
+
+      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
+    else
+      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+      do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+        u_nonsym(I,j) = OIB%u(i2,j2) ; v_nonsym(i,J) = OIB%v(i2,j2)
+      enddo ; enddo
+      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
+      do J=jsc-1,jec ; do I=isc-1,iec
+        OSS%u_ocn_B(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
+        OSS%v_ocn_B(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
+      enddo ; enddo
+      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
+    endif
+  else
+    call SIS_error(FATAL, "set_ice_surface_state: Unrecognized OIB%stagger.")
+  endif
+
+  call pass_var(OSS%sea_lev, G%Domain)
+
+! Transfer the ocean state for extra tracer fluxes.
+  do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
+    ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
+  enddo ; enddo
+
+end subroutine unpack_ocn_ice_bdry
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_surf_ice_bot, &
-                                 frazil_ice_bot, OIB, G, IG, s_surf_ice_bot, sea_lev_ice_bot )
+subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   type(ice_data_type),                     intent(inout) :: Ice
   type(ice_state_type),                    intent(inout) :: IST
+  type(ocean_sfc_state_type),              intent(in)    :: OSS
   type(SIS_hor_grid_type),                 intent(inout) :: G
   type(ice_grid_type),                     intent(inout) :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: t_surf_ice_bot, u_surf_ice_bot
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: v_surf_ice_bot, frazil_ice_bot
-  type(ocean_ice_boundary_type),           intent(inout) :: OIB
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: s_surf_ice_bot, sea_lev_ice_bot
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: t_surf_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h_ice_input
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: icec, icec_obs
-  real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
   real, dimension(IG%NkIce) :: sw_abs_lay
   real :: u, v
   real :: area_pt
@@ -363,9 +477,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
-  OSS => IST%OSS
+
   FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -416,26 +529,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   if (IST%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
-    call chksum(u_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT u_surf_ice_bot")
-    call chksum(v_surf_ice_bot(isc:iec,jsc:jec), "Start IB2IT v_surf_ice_bot")
   endif
 
-! Transfer the ocean state for extra tracer fluxes.
-  do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
-    Ice%ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
-  enddo ; enddo
   m_ice_tot(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,t_surf_ice_bot,          &
-!$OMP                                  s_surf_ice_bot,frazil_ice_bot,sea_lev_ice_bot, &
-!$OMP                                  ncat,m_ice_tot,Ice,i_off,j_off)                &
-!$OMP                          private(i2,j2,k2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot,i_off,j_off)
   do j=jsc,jec
-    do i=isc,iec
-      OSS%t_ocn(i,j) = t_surf_ice_bot(i,j) - T_0degC
-      OSS%s_surf(i,j) = s_surf_ice_bot(i,j)
-      OSS%frazil(i,j) = frazil_ice_bot(i,j)
-      OSS%sea_lev(i,j) = sea_lev_ice_bot(i,j)
-    enddo
 
     do k=1,ncat ; do i=isc,iec
       FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
@@ -498,100 +596,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     endif ; enddo ; enddo ; enddo
   endif
 
-  if (Ice%flux_uv_stagger == AGRID) then
-    u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-    do j=jsc,jec ; do i=isc,iec
-      u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-    enddo ; enddo
-    call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=AGRID)
-
-    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
-      do J=jsc-1,jec ; do I=isc-1,iec
-        OSS%u_ocn_B(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
-                               (u_nonsym(i+1,j) + u_nonsym(i,j+1)))
-        OSS%v_ocn_B(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
-                               (v_nonsym(i+1,j) + v_nonsym(i,j+1)))
-      enddo ; enddo
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
-    endif
-
-    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
-      do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
-      enddo ; enddo
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
-    endif
-
-  elseif (OIB%stagger == BGRID_NE) then
-    if (IST%Cgrid_dyn) then
-        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-        do j=jsc,jec ; do i=isc,iec
-          u_nonsym(i,j) = u_surf_ice_bot(i,j) ; v_nonsym(i,j) = v_surf_ice_bot(i,j)
-        enddo ; enddo
-        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
-
-      do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
-      enddo ; enddo
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
-    else
-      do J=jsc,jec ; do I=isc,iec
-        OSS%u_ocn_B(I,J) = u_surf_ice_bot(I,J) ! need under-ice current
-        OSS%v_ocn_B(I,J) = v_surf_ice_bot(I,J) ! for water drag term
-      enddo ; enddo
-      if (G%symmetric) &
-        call fill_symmetric_edges(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
-
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
-    endif
-
-  elseif (OIB%stagger == CGRID_NE) then
-    if (IST%Cgrid_dyn) then
-      do j=jsc,jec ; do I=isc,iec
-        OSS%u_ocn_C(I,j) = u_surf_ice_bot(I,j)
-      enddo ; enddo
-      do J=jsc,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = v_surf_ice_bot(I,j)
-      enddo ; enddo
-      if (G%symmetric) &
-        call fill_symmetric_edges(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
-
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
-    else
-      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-      do j=jsc,jec ; do i=isc,iec
-        u_nonsym(I,j) = u_surf_ice_bot(I,j) ; v_nonsym(i,J) = v_surf_ice_bot(i,J)
-      enddo ; enddo
-      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
-      do J=jsc-1,jec ; do I=isc-1,iec
-        OSS%u_ocn_B(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
-        OSS%v_ocn_B(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
-      enddo ; enddo
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
-    endif
-  else
-    call SIS_error(FATAL, "set_ice_surface_state: Unrecognized OIB%stagger.")
-  endif
-
-  call pass_var(OSS%sea_lev, G%Domain)
-
-  if (IST%debug) then
-    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
-      call chksum(OSS%u_ocn_B(isc:iec,jsc:jec), "Post-pass OSS%u_ocn_B(0,0)")
-      call chksum(OSS%v_ocn_B(isc:iec,jsc:jec), "Post-pass OSS%v_ocn_B(0,0)")
-    endif
-    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
-      call chksum(OSS%u_ocn_C(isc:iec,jsc:jec), "Post-pass OSS%u_ocn_C(0,0)")
-      call chksum(OSS%v_ocn_C(isc:iec,jsc:jec), "Post-pass OSS%v_ocn_C(0,0)")
-    endif
-  endif
-
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state")
 
@@ -650,21 +654,14 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
     call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
-    if (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C)) then
-      call chksum(OSS%u_ocn_C(isc:iec,jsc:jec), "Intermed OSS%u_ocn_C(0,0)")
-      call chksum(OSS%v_ocn_C(isc:iec,jsc:jec), "Intermed OSS%v_ocn_C(0,0)")
-    endif
-    if (associated(OSS%u_ocn_B) .and. associated(OSS%v_ocn_B)) then
-      ! Replace these with a MOM6-style chksum_q call.
-      call chksum(OSS%u_ocn_B(isc:iec,jsc:jec), "Intermed OSS%u_ocn_B(0,0)")
-      call chksum(OSS%u_ocn_B(isc-1:iec-1,jsc:jec), "Intermed OSS%u_ocn_B(-,0)")
-      call chksum(OSS%u_ocn_B(isc:iec,jsc-1:jec-1), "Intermed OSS%u_ocn_B(0,-)")
-      call chksum(OSS%u_ocn_B(isc-1:iec-1,jsc-1:jec-1), "Intermed OSS%u_ocn_B(-,-)")
-      call chksum(OSS%v_ocn_B(isc:iec,jsc:jec), "Intermed OSS%v_ocn_B(0,0)")
-      call chksum(OSS%v_ocn_B(isc-1:iec-1,jsc:jec), "Intermed OSS%v_ocn_B(-,0)")
-      call chksum(OSS%v_ocn_B(isc:iec,jsc-1:jec-1), "Intermed OSS%v_ocn_B(0,-)")
-      call chksum(OSS%v_ocn_B(isc-1:iec-1,jsc-1:jec-1), "Intermed OSS%v_ocn_B(-,-)")
-    endif
+    if (associated(OSS%u_ocn_C)) &
+      call uchksum(OSS%u_ocn_C, "OSS%u_ocn_C", G%HI, haloshift=1)
+    if (associated(OSS%v_ocn_C)) &
+      call vchksum(OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1)
+    if (associated(OSS%u_ocn_B)) &
+      call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1)
+    if (associated(OSS%v_ocn_B)) &
+      call Bchksum(OSS%v_ocn_B, "OSS%v_ocn_B", G%HI, haloshift=1)
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
     call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
   endif
