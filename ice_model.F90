@@ -355,6 +355,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   real :: area_pt
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
+  real :: dt_slow  ! The thermodynamic step, in s.
+  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   logical :: sent
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
@@ -430,7 +433,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
     do i=isc,iec
       OSS%t_ocn(i,j) = t_surf_ice_bot(i,j) - T_0degC
       OSS%s_surf(i,j) = s_surf_ice_bot(i,j)
-      IST%frazil(i,j) = frazil_ice_bot(i,j)
+      OSS%frazil(i,j) = frazil_ice_bot(i,j)
       OSS%sea_lev(i,j) = sea_lev_ice_bot(i,j)
     enddo
 
@@ -445,6 +448,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
       else
         FIA%bheat(i,j) = 0.0
       endif
+      FIA%frazil_left(i,j) = OSS%frazil(i,j)
     enddo
   enddo
 
@@ -697,19 +701,25 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, u_surf_ice_bot, v_sur
   !
   ! Pre-timestep diagnostics
   !
-  call enable_SIS_averaging(real(time_type_to_real(IST%Time_step_slow)), IST%Time, IST%diag)
+  dt_slow = time_type_to_real(IST%Time_step_slow)
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
+
+  call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
   if (IST%id_alb>0) call post_avg(IST%id_alb, Ice%albedo, &
                      IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_sst>0) call post_data(IST%id_sst, OSS%t_ocn, IST%diag)
-  if (IST%id_sss>0) call post_data(IST%id_sss, OSS%s_surf, IST%diag)
-  if (IST%id_ssh>0) call post_data(IST%id_ssh, OSS%sea_lev, IST%diag)
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, IST%diag)
+  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, IST%diag)
+  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, IST%diag)
   if (IST%Cgrid_dyn) then
-    if (IST%id_uo>0) call post_data(IST%id_uo, OSS%u_ocn_C, IST%diag)
-    if (IST%id_vo>0) call post_data(IST%id_vo, OSS%v_ocn_C, IST%diag)
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, IST%diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, IST%diag)
   else
-    if (IST%id_uo>0) call post_data(IST%id_uo, OSS%u_ocn_B, IST%diag)
-    if (IST%id_vo>0) call post_data(IST%id_vo, OSS%v_ocn_B, IST%diag)
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, IST%diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, IST%diag)
   endif
+  if (OSS%id_frazil>0) &
+    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, IST%diag)
+
   if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, IST%diag)
   call disable_SIS_averaging(IST%diag)
 

@@ -42,6 +42,7 @@ use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use ice_type_mod, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use ice_type_mod, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -706,7 +707,11 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   type(ice_ocean_flux_type), pointer :: IOF => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(ocean_sfc_state_type), pointer :: OSS => NULL()
   IOF => IST%IOF
+  FIA => IST%FIA
+  OSS => IST%OSS
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -725,7 +730,7 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
            ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_t_ocn_top(i,j)) + &
             (-LI)*(IOF%fprec_ocn_top(i,j) + IOF%calving(i,j)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
-           (IST%frazil_input(i,j)-IST%frazil(i,j))
+           (OSS%frazil(i,j)-FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IST%Enth_Mass_in_atm(i,j) + IST%Enth_Mass_in_ocn(i,j)) + &
             (IST%Enth_Mass_out_atm(i,j) + IST%Enth_Mass_out_ocn(i,j)) )

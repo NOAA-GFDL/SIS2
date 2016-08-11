@@ -117,16 +117,8 @@ type ice_state_type
   real, pointer, dimension(:,:)   :: &
     coszen       => NULL()    ! Cosine of the solar zenith angle, nondim.
 
-  real, pointer, dimension(:,:)   :: &
-    frazil => NULL()          ! A downward heat flux from the ice into the ocean
-                              ! associated with the formation of frazil ice in
-                              ! the ocean integrated over a timestep, in J m-2.
-
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, pointer, dimension(:,:)   :: &
-    frazil_input => NULL(), & ! The input value of frazil at the start of a
-                              ! timestep, in J m-2. This is used only for
-                              ! diagnostic purposes.
     ! These terms diagnose the enthalpy change associated with the addition or
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
@@ -195,11 +187,8 @@ type ice_state_type
   
   ! diagnostic IDs for ice-to-ocean fluxes.
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
-  integer :: id_saltf=-1, id_frazil=-1
+  integer :: id_saltf=-1
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
-
-  ! diagnostic IDs for ocean surface  properties.
-  integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1
 
   integer :: id_slp=-1
   !### THESE DIAGNOSTICS ARE NEVER SENT!
@@ -209,7 +198,7 @@ type ice_state_type
   integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
 
   !### THESE DIAGNOSTICS ARE NEVER SENT!
-  ! integer :: id_strna=-1, id_sw_dir=-1, id_sw_dif=-1
+  ! integer :: id_strna=-1
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
@@ -340,12 +329,19 @@ type ocean_sfc_state_type
     v_ocn_B => NULL(), &  ! The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C => NULL(), &  ! The ocean's zonal and meridional velocity on C-grid
     v_ocn_C => NULL(), &  ! points, both in m s-1.
+    frazil  => NULL(), &  ! A downward heat flux from the ice into the ocean
+                          ! associated with the formation of frazil ice in
+                          ! the ocean integrated over a timestep, in J m-2.
+                          ! This is the input value and is not changed by the ice.
     sea_lev => NULL()     ! The equivalent sea-level, after any non-levitating
                           ! ice has been converted to sea-water, as determined
                           ! by the ocean, in m.  Sea-ice only contributes by
                           ! applying pressure to the ocean that is then
                           ! (partially) converted back to its equivalent by the
                           ! ocean.
+ 
+  ! diagnostic IDs for ocean surface  properties.
+  integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1
 end type ocean_sfc_state_type
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
@@ -386,6 +382,10 @@ type fast_ice_avg_type
   real, pointer, dimension(:,:) :: &
     bheat               =>NULL(), & ! The upward diffusive heat flux from the ocean
                                     ! to the ice at the base of the ice, in W m-2.
+    frazil_left         =>NULL(), & ! The frazil heat flux that has not yet been
+                                    ! consumed in making ice, in J m-2. This array
+                                    ! is decremented by the ice model as the heat
+                                    ! flux is used up.
     WindStr_x           =>NULL(), & ! The zonal wind stress averaged over the ice
                                     ! categories on an A-grid, in Pa.
     WindStr_y           =>NULL(), & ! The meridional wind stress averaged over the
@@ -405,7 +405,7 @@ type fast_ice_avg_type
   integer :: id_sh=-1, id_lh=-1, id_sw=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
-  integer :: id_sw_vis=-1
+  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
 
 end type fast_ice_avg_type
@@ -793,9 +793,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
 
-  allocate(IST%frazil(SZI_(HI), SZJ_(HI))) ; IST%frazil(:,:) = 0.0 !NR
-
-  allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
@@ -876,6 +873,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0 !NI
   allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0 !NI
 
+  allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0 !NR
   allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0 !NI
   allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0 !NR
   allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0 !NR
@@ -931,6 +929,8 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
+  allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
+
 
   if (Cgrid_dyn) then
     allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0
@@ -971,10 +971,10 @@ subroutine dealloc_IST_arrays(IST)
     deallocate(IST%u_ice_B, IST%v_ice_B)
   endif
 
-  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm, IST%frazil_input)
+  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
   deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
-  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen, IST%frazil)
+  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen)
 
   call dealloc_ocean_sfc_state(IST%OSS)
 
@@ -994,7 +994,7 @@ subroutine dealloc_ocean_sfc_state(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%t_ocn, OSS%sea_lev)
+  deallocate(OSS%s_surf, OSS%t_ocn, OSS%sea_lev, OSS%frazil)
   if (associated(OSS%u_ocn_B)) deallocate(OSS%u_ocn_B)
   if (associated(OSS%v_ocn_B)) deallocate(OSS%v_ocn_B)
   if (associated(OSS%u_ocn_C)) deallocate(OSS%u_ocn_C)
@@ -1019,7 +1019,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
 
-  deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt)
+  deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
 
   deallocate(FIA)
@@ -1407,7 +1407,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
                'ocean to ice heat flux', 'W/m^2', missing_value=missing)
   IST%id_e2m      = register_SIS_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
                'heat needed to melt ice', 'J/m^2', missing_value=missing)
-  IST%id_frazil   = register_SIS_diag_field('ice_model','FRAZIL' ,diag%axesT1, Time, &
+  OSS%id_frazil   = register_SIS_diag_field('ice_model','FRAZIL' ,diag%axesT1, Time, &
                'energy flux of frazil formation', 'W/m^2', missing_value=missing)
   IST%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
                'surface albedo','0-1', missing_value=missing )
@@ -1444,23 +1444,22 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 !  IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
 !               'strain angle', 'none', missing_value=missing)
   if (IST%Cgrid_dyn) then
-    IST%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
+    OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
                'surface current - x component', 'm/s', missing_value=missing)
-    IST%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
+    OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
                'surface current - y component', 'm/s', missing_value=missing)
   else
-    IST%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
+    OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
                'surface current - x component', 'm/s', missing_value=missing)
-    IST%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
+    OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
                'surface current - y component', 'm/s', missing_value=missing)
   endif
   FIA%id_sw_vis   = register_SIS_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time, &
                'visible short wave heat flux', 'W/m^2', missing_value=missing)
-!### THIS DIAGNOSTIC IS MISSING.
-!  IST%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
-!               'direct short wave heat flux', 'W/m^2', missing_value=missing)
-!  IST%id_sw_dif   = register_SIS_diag_field('ice_model','SW_DIF' ,diag%axesT1, Time, &
-!               'diffuse short wave heat flux', 'W/m^2', missing_value=missing)
+  FIA%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
+               'direct short wave heat flux', 'W/m^2', missing_value=missing)
+  FIA%id_sw_dif   = register_SIS_diag_field('ice_model','SW_DIF' ,diag%axesT1, Time, &
+               'diffuse short wave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_vis_dir = register_SIS_diag_field('ice_model','SW_VIS_DIR' ,diag%axesT1, Time, &
                'visible direct short wave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_vis_dif = register_SIS_diag_field('ice_model','SW_VIS_DIF' ,diag%axesT1, Time, &
@@ -1482,11 +1481,11 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
 !            'surface air temperature', 'C', missing_value=missing)
   IST%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
              'sea level pressure', 'Pa', missing_value=missing)
-  IST%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
+  OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
              'sea surface temperature', 'deg-C', missing_value=missing)
-  IST%id_sss   = register_SIS_diag_field('ice_model', 'SSS', diag%axesT1, Time, &
+  OSS%id_sss   = register_SIS_diag_field('ice_model', 'SSS', diag%axesT1, Time, &
              'sea surface salinity', 'psu', missing_value=missing)
-  IST%id_ssh   = register_SIS_diag_field('ice_model', 'SSH', diag%axesT1, Time, &
+  OSS%id_ssh   = register_SIS_diag_field('ice_model', 'SSH', diag%axesT1, Time, &
              'sea surface height', 'm', missing_value=missing)
 !### THIS DIAGNOSTIC IS MISSING.
 !  IST%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &
