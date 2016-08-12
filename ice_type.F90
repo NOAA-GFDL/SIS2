@@ -173,11 +173,6 @@ type ice_state_type
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
 
-  logical :: do_init = .false. ! If true, there is still some initialization
-                               ! that needs to be done.
-  logical :: first_time = .true. ! If true, this is the first call to
-                               ! update_ice_model_slow_up
-
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
@@ -577,7 +572,7 @@ type :: ocean_ice_boundary_type
                          ! determined by stagger, in m s-1.
     t      => NULL(), &  ! The ocean's surface temperature in Kelvin.
     s      => NULL(), &  ! The ocean's surface temperature in g/kg.
-    frazil => NULL(), &  ! The frazil heat rejected by the ocean, in J.
+    frazil => NULL(), &  ! The frazil heat rejected by the ocean, in J m-2.
     sea_level => NULL()  ! The sea level after adjustment for any surface
                          ! pressure that the ocean allows to be expressed, in m.
   real, dimension(:,:,:), pointer :: data      =>NULL() ! collective field for "named" fields above

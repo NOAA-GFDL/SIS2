@@ -458,8 +458,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   type(ice_state_type),                    intent(inout) :: IST
   type(ocean_sfc_state_type),              intent(in)    :: OSS
   type(SIS_hor_grid_type),                 intent(inout) :: G
-  type(ice_grid_type),                     intent(inout) :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: t_surf_ice_bot
+  type(ice_grid_type),                     intent(in)    :: IG
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in)   :: t_surf_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(IG%NkIce) :: sw_abs_lay
@@ -490,8 +490,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
-  IST%do_init = .false.
-
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state")
 
@@ -518,6 +516,17 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
       FIA%frazil_left(i,j) = OSS%frazil(i,j)
     enddo
   enddo
+
+  ! Determine the sea-ice optical properties.
+
+  ! These initialization calls for ice-free categories should not really
+  ! be needed because these are only used where there is ice, but the answers
+  ! do change when they are commented out! This needs to be explored! ###
+!  IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
+!  IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
+!  IST%sw_abs_int(:,:,:) = 0.0   ; Ice%albedo(:,:,:) = 0.0
+!  Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
+!  Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
   if (IST%slab_ice) then
     IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
@@ -559,7 +568,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
       ! shortwave radiation in each wavelength and orientation band.  However,
       ! since this is only used for diagnostic purposes, making this change
       ! might not be too urgent. -RWH
-      Ice%albedo(i2,j2,k2)=(Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
+      Ice%albedo(i2,j2,k2) = (Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
                         +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
 
     endif ; enddo ; enddo ; enddo
@@ -1537,7 +1546,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%part_size, G%Domain, complete=.true. )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
 
-    IST%do_init = .true. ! Some more initialization needs to be done in ice_model.
   endif ! file_exist(restart_path)
   deallocate(S_col)
 
