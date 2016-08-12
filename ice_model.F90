@@ -462,8 +462,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: t_surf_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h_ice_input
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: icec, icec_obs
   real, dimension(IG%NkIce) :: sw_abs_lay
   real :: u, v
   real :: area_pt
@@ -487,41 +485,13 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
 
   H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
 
-  ! pass ocean state through ice on first partition
-  if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
+  ! Pass the ocean state through ice on partition 0, unless using specified ice.
+!   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
+  if (.not. (IST%specified_ice .or. IST%do_init)) then ! otherwise, already set by update_ice_model_slow
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
-  if (IST%do_init) then
-    call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
-                         h_ice_input )
-    do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(IST%Rho_ice*IG%kg_m2_to_H)
-    enddo ; enddo
-
-    !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
-    ! the first call to ice_redistribute has the same result.  At present, all
-    ! tracers are initialized to their default values, and snow is set to 0,
-    ! and so do not need to be updated here.
-    if (IST%do_ridging) then
-      do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(1)) then
-        do k=ncat,2,-1 ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(k-1)) then
-          IST%part_size(i,j,k) = IST%part_size(i,j,1)
-          IST%part_size(i,j,1) = 0.0
-          IST%mH_ice(i,j,k) = IST%mH_ice(i,j,1) ; IST%mH_ice(i,j,1) = 0.0
-          !  IST%mH_snow(i,j,k) = IST%mH_snow(i,j,1) ; IST%mH_snow(i,j,1) = 0.0
-          exit ! from k-loop
-        endif ; enddo
-      endif ; enddo ; enddo
-    endif
-
-    call pass_var(IST%part_size, G%Domain, complete=.true. )
-    call pass_var(IST%mH_ice, G%Domain, complete=.true. )
-    IST%do_init = .false.
-  endif
-
-  ! Any special first-time initialization must be completed before this point.
-  IST%first_time = .false.
+  IST%do_init = .false.
 
   if (IST%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state")
@@ -1026,6 +996,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: H_rescale_ice, H_rescale_snow ! Rescaling factors to account for
                          ! differences in thickness units between the current
                          ! model run and the input files.
+
+  real, allocatable, dimension(:,:) :: h_ice_input
+
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -1323,6 +1296,34 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! with the shortwave fluxes.
   IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
+  if (test_grid_copy) then
+    !  Copy the data from the temporary grid to the dyn_hor_grid to CS%G.
+    call create_dyn_horgrid(dG, G%HI)
+    call clone_MOM_domain(G%Domain, dG%Domain)
+
+    call clone_MOM_domain(G%Domain, Ice%G%Domain)
+    call set_hor_grid(Ice%G, param_file)
+
+    call copy_SIS_horgrid_to_dyngrid(G, dG)
+    call copy_dyngrid_to_SIS_horgrid(dG, Ice%G)
+
+    call destroy_dyn_horgrid(dG)
+    call SIS_hor_grid_end(G) ; deallocate(G)
+
+    G => Ice%G
+  endif
+
+  ! Set a few final things to complete the setup of the grid. 
+  G%g_Earth = g_Earth
+  call set_first_direction(G, first_direction)
+  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
+                        domain_name="ice model aux")
+
+  ! Copy the ice model's domain into one with no halos that can be shared
+  ! publicly for use by the exchange grid.
+  call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
+                        domain_name="ice_nohalo")
+
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     Ice%ocean_pt(i2,j2) = ( G%mask2dT(i,j) > 0.5 )
     Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
@@ -1509,6 +1510,34 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       IST%enth_ice(:,:,:,n) = enth_spec_ice
     enddo
 
+    allocate(h_ice_input(G%isc:G%iec,G%jsc:G%jec))
+    call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
+                         h_ice_input, ice_domain=Ice%domain )
+    do j=jsc,jec ; do i=isc,iec
+      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(IST%Rho_ice*IG%kg_m2_to_H)
+    enddo ; enddo
+
+    !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
+    ! the first call to ice_redistribute has the same result.  At present, all
+    ! tracers are initialized to their default values, and snow is set to 0,
+    ! and so do not need to be updated here.
+    if (IST%do_ridging) then
+      do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(1)) then
+        do k=IG%CatIce,2,-1 ; if (IST%mH_ice(i,j,1) > IG%mH_cat_bound(k-1)) then
+          IST%part_size(i,j,k) = IST%part_size(i,j,1)
+          IST%part_size(i,j,1) = 0.0
+          IST%mH_ice(i,j,k) = IST%mH_ice(i,j,1) ; IST%mH_ice(i,j,1) = 0.0
+          !  IST%mH_snow(i,j,k) = IST%mH_snow(i,j,1) ; IST%mH_snow(i,j,1) = 0.0
+          exit ! from k-loop
+        endif ; enddo
+      endif ; enddo ; enddo
+    endif
+
+    deallocate(h_ice_input)
+
+    call pass_var(IST%part_size, G%Domain, complete=.true. )
+    call pass_var(IST%mH_ice, G%Domain, complete=.true. )
+
     IST%do_init = .true. ! Some more initialization needs to be done in ice_model.
   endif ! file_exist(restart_path)
   deallocate(S_col)
@@ -1518,34 +1547,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
-
-  if (test_grid_copy) then
-    !  Copy the data from the temporary grid to the dyn_hor_grid to CS%G.
-    call create_dyn_horgrid(dG, G%HI)
-    call clone_MOM_domain(G%Domain, dG%Domain)
-
-    call clone_MOM_domain(G%Domain, Ice%G%Domain)
-    call set_hor_grid(Ice%G, param_file)
-
-    call copy_SIS_horgrid_to_dyngrid(G, dG)
-    call copy_dyngrid_to_SIS_horgrid(dG, Ice%G)
-
-    call destroy_dyn_horgrid(dG)
-    call SIS_hor_grid_end(G) ; deallocate(G)
-
-    G => Ice%G
-  endif
-
-  ! Set a few final things to complete the  setup of the grid. 
-  Ice%G%g_Earth = g_Earth
-  call set_first_direction(G, first_direction)
-  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
-                        domain_name="ice model aux")
-
-  ! Copy the ice model's domain into one with no halos that can be shared
-  ! publicly for use by the exchange grid.
-  call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
-                        domain_name="ice_nohalo")
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
