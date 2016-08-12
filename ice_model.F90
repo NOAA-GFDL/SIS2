@@ -519,14 +519,17 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
 
   ! Determine the sea-ice optical properties.
 
-  ! These initialization calls for ice-free categories should not really
-  ! be needed because these are only used where there is ice, but the answers
-  ! do change when they are commented out! This needs to be explored! ###
-!  IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
-!  IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-!  IST%sw_abs_int(:,:,:) = 0.0   ; Ice%albedo(:,:,:) = 0.0
-!  Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
-!  Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
+   !   These initialization calls for ice-free categories should not really
+   ! be needed because these are only used where there is ice.
+   IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
+   IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
+   IST%sw_abs_int(:,:,:) = 0.0
+   !   Note that the albedos for the open-ocean category (1 for the Ice)
+   ! should not be changed because they are set elsewhere or set from the
+   ! restart file.
+   Ice%albedo(:,:,2:) = 0.0
+   Ice%albedo_vis_dir(:,:,2:) = 0.0 ; Ice%albedo_vis_dif(:,:,2:) = 0.0
+   Ice%albedo_nir_dir(:,:,2:) = 0.0 ; Ice%albedo_nir_dif(:,:,2:) = 0.0
 
   if (IST%slab_ice) then
     IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
@@ -1545,6 +1548,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     call pass_var(IST%part_size, G%Domain, complete=.true. )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
+
+    !### I think that there should be the equivalent of a call to
+    ! set_fast_ocean_sfc_properties or the routines in it
+    ! (compute_ocean_roughness and compute_ocean_albedo) added here!
+    ! This will change answers! - RWH
 
   endif ! file_exist(restart_path)
   deallocate(S_col)
