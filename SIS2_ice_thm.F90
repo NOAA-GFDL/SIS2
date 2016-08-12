@@ -1800,7 +1800,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       ! Conserved ice bulk salinity by layer (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
-  real, intent(in   ) :: rain        ! rain for pond source (kg/m^2-rain)
+  real, intent(in   ) :: rain        ! rain for pond source (kg/m^2-rain) - not yet active
   real, intent(in   ) :: evap        ! ice evaporation/sublimation (kg/m^2)
   real, intent(in   ) :: tmlt        ! top melting energy (J/m^2)
   real, intent(in   ) :: bmlt        ! bottom melting energy (J/m^2)
@@ -1847,11 +1847,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   enth_unit = ITV%enth_unit
   min_dEnth_freeze = (ITV%LI*enth_unit) * (1.0-CS%liq_lim)
 
-  if ( CS%do_pond ) then ! mw/new - meltwater retention in pond
-    pond_rate = CS%r_min_pond+(CS%r_max_pond-CS%r_min_pond)*a_ice
-  else
-    pond_rate = 0.0
-  endif
+  ! mw/new - meltwater retention in pond
+  pond_rate = CS%r_min_pond+(CS%r_max_pond-CS%r_min_pond)*a_ice
 
   top_melt = tmlt*enth_unit ; bot_melt = bmlt*enth_unit
 
@@ -1878,7 +1875,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   ! in single column test; need to pass all rain through to ocean for now - mw
   ! m_pond = m_pond + pond_rate*rain ! mw/new pond intercepts rain
   ! h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*rain
-  h2o_ice_to_ocn = h2o_ice_to_ocn + rain
+  ! h2o_ice_to_ocn = h2o_ice_to_ocn + rain
 
   ! Delete this later, since it should not happen.
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
@@ -1971,8 +1968,12 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       endif
       m_lay(k) = m_lay(k) - M_melt
       if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
-      h2o_to_pond = h2o_to_pond + pond_rate*M_melt ! mw/new
-      h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*M_melt
+      if ( CS%do_pond) then
+        h2o_to_pond = h2o_to_pond + pond_rate*M_melt ! mw/new
+        h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*M_melt
+      else
+        h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+      endif
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
 
       if (melt_left <= 0.0) exit ! All melt energy has been used.

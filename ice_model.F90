@@ -3130,10 +3130,10 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
     IST%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * IST%fprec_top(i,j,0)
   enddo ; enddo
 !$OMP do
-! mw/new precip now intercepted by pond/passed through if do_pond = false
-! do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-!   IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
-! enddo ; enddo ; enddo
+! mw/new precip will eventually be intercepted by pond eliminating need for next 3 lines
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    IST%lprec_ocn_top(i,j) = IST%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * IST%lprec_top(i,j,k)
+  enddo ; enddo ; enddo
 
   if (IST%num_tr_fluxes>0) then
 !$OMP do
@@ -3190,7 +3190,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
       m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
-      ! mw/new - melt pond size is now adjusted here
+      ! mw/new - melt pond size is now adjusted here (rain ignored in resize, for now)
       call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), m_lay, &
                    enthalpy, S_col, Salin, IST%fprec_top(i,j,k)*dt_slow, &
                    IST%lprec_top(i,j,k)*dt_slow, IST%flux_q_top(i,j,k)*dt_slow, &
@@ -3242,7 +3242,7 @@ subroutine SIS2_thermodynamics(Ice, IST, G, IG) !, runoff, calving, &
 
         heat_input = IST%tmelt(i,j,k) + IST%bmelt(i,j,k) - (heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
         heat_mass_in = enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap
-        mass_in = dt_slow*(IST%fprec_top(i,j,k)+IST%lprec_top(i,j,k)) &
+        mass_in = dt_slow*(IST%fprec_top(i,j,k)) & ! +IST%lprec_top(i,j,k) <- eventually
                 + h2o_ocn_to_ice - h2o_ice_to_ocn &
                 - (dt_slow*IST%flux_q_top(i,j,k)-evap_from_ocn)
 
