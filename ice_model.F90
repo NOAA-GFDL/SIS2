@@ -486,8 +486,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
 
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
-!   if (.not. IST%specified_ice) then ! otherwise, already set by update_ice_model_slow
-  if (.not. (IST%specified_ice .or. IST%do_init)) then ! otherwise, already set by update_ice_model_slow
+  if (.not. IST%specified_ice) then
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
