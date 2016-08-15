@@ -446,7 +446,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
   ! state, potentially including freshwater fluxes to avoid driving oceanic
   ! convection.
   if (CS%nudge_sea_ice) then
-    if (.not.associated(IOF%melt_nudge)) allocate(IOF%melt_nudge(isc:iec,jsc:jec))
+    if (.not.allocated(IOF%melt_nudge)) allocate(IOF%melt_nudge(isc:iec,jsc:jec))
 
     cool_nudge(:,:) = 0.0 ; IOF%melt_nudge(:,:) = 0.0
     icec(:,:) = 0.0

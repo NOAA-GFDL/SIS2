@@ -292,7 +292,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
     endif
     Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
   enddo ; enddo
-  if (associated(IOF%melt_nudge)) then
+  if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
       Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IOF%melt_nudge(i,j)
@@ -359,7 +359,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, ocean_fields)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
   enddo ; enddo
 
-  Cgrid_ocn = (associated(OSS%u_ocn_C) .and. associated(OSS%v_ocn_C))
+  Cgrid_ocn = (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C))
 
   ! Unpack the ocean surface velocities.
   if (OIB%stagger == AGRID) then
@@ -635,13 +635,13 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
     call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
     call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
-    if (associated(OSS%u_ocn_C)) &
+    if (allocated(OSS%u_ocn_C)) &
       call uchksum(OSS%u_ocn_C, "OSS%u_ocn_C", G%HI, haloshift=1)
-    if (associated(OSS%v_ocn_C)) &
+    if (allocated(OSS%v_ocn_C)) &
       call vchksum(OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1)
-    if (associated(OSS%u_ocn_B)) &
+    if (allocated(OSS%u_ocn_B)) &
       call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1)
-    if (associated(OSS%v_ocn_B)) &
+    if (allocated(OSS%v_ocn_B)) &
       call Bchksum(OSS%v_ocn_B, "OSS%v_ocn_B", G%HI, haloshift=1)
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
     call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
@@ -759,7 +759,7 @@ end subroutine update_ice_model_fast
 subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_data_type),           intent(inout) :: Ice
-  type(ice_state_type),          intent(in)    :: IST
+  type(ice_state_type),          intent(inout) :: IST
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
