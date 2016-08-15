@@ -561,7 +561,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
                sw_abs_lay, IST%sw_abs_ocn(i,j,k), IST%sw_abs_int(i,j,k), &
-               IST%ice_thm_CSp, coszen_in=IST%coszen(i,j))
+               IST%ice_thm_CSp, coszen_in=IST%coszen_nextrad(i,j))
 
       do m=1,IG%NkIce ; IST%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -719,15 +719,16 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
 
-  type(time_type) :: Time_start, Time_end
+  type(time_type) :: Time_start, Time_end, dT_fast
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
 
   if (Ice%Ice_state%debug) &
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
 
+  dT_fast = Ice%Ice_state%Time_step_fast
   Time_start = Ice%Ice_state%Time
-  Time_end = Ice%Ice_state%Time + Ice%Ice_state%Time_step_fast
+  Time_end = Time_start + dT_fast
 
   if (Ice%Ice_state%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
@@ -736,7 +737,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
                                 Ice%Ice_state%fast_thermo_CSp, Ice%G, Ice%IG )
 
   Ice%Time = Ice%Ice_state%Time
-  Time_end = Ice%Ice_state%Time
+  Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
 
   call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, &
                                   Ice%G, Ice%IG, Time_start, Time_end)
@@ -744,7 +745,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
   call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, &
-                                     Ice%G, Ice%IG, Time_start, Time_end)
+                                     Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%Ice_state%debug) &
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
@@ -763,12 +764,6 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
    
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    dummy, &  ! A dummy array that is not used again.
-    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
-  real :: rad
-  real :: rrsun_dt_ice
-  type(time_type) :: dT_ice   ! The time interval for this update.
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
@@ -778,9 +773,6 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
   io_I = LBOUND(Ice%t_surf,1) - G%isc
   jo_I = LBOUND(Ice%t_surf,2) - G%jsc
 
-  rad = acos(-1.)/180.
-  dT_ice = Time_end - Time_start
-
   call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
@@ -789,7 +781,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
 !$OMP                           private(i2,j2,i3,j3)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A
-    IST%coszen(i,j) = Atmos_boundary%coszen(i3,j3,1)
+    IST%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     Ice%p_surf(i2,j2) = Atmos_boundary%p(i3,j3,1)
     Ice%s_surf(i2,j2) = IST%OSS%s_surf(i,j)
   enddo ; enddo
@@ -800,20 +792,47 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
-  if (IST%do_sun_angle_for_alb) then
+  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, Time_start, Time_end, &
+                        IST%coszen_nextrad)
+
+end subroutine set_fast_ocean_sfc_properties
+
+!> set_ocean_albedo uses either the time or the input cosine of solar zenith
+!!   angle to calculate the ocean albedo.
+subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, coszen)
+  type(ice_data_type),     intent(inout) :: Ice
+  logical,                 intent(in)    :: recalc_sun_angle
+  type(SIS_hor_grid_type), intent(inout) :: G
+  type(time_type),         intent(in)    :: Time_start, Time_end
+  real, dimension(SZI_(G), SZJ_(G)), &
+                           intent(in)    :: coszen
+   
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
+    dummy, &  ! A dummy array that is not used again.
+    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
+  real :: rad
+  real :: rrsun_dt_ice
+  type(time_type) :: dT_ice   ! The time interval for this update.
+  integer :: i, j, isc, iec, jsc, jec
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  rad = acos(-1.)/180.
+  dT_ice = Time_end - Time_start
+
+  if (recalc_sun_angle) then
     call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
                  Time_start, cosz=cosz_alb, fracday=dummy, rrsun=rrsun_dt_ice, &
                  dt_time=dT_ice)
-    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
   else
-    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+    do j=jsc,jec ; do i=isc,iec ; cosz_alb(i,j) = coszen(i,j) ; enddo ; enddo
   endif
+  call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
+                            Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
 
-end subroutine set_fast_ocean_sfc_properties
+end subroutine set_ocean_albedo
+
 
 subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
@@ -897,7 +916,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end
     call post_data(IST%id_swdn, tmp_diag, IST%diag)
   endif
 
-  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
+  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen_nextrad, IST%diag)
 
   call disable_SIS_averaging(IST%diag)
 
@@ -1305,7 +1324,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! This will likely be replaced later with information provided along
   ! with the shortwave fluxes.
-  IST%coszen(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
+  IST%coszen_nextrad(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
 
   if (test_grid_copy) then
     !  Copy the data from the temporary grid to the dyn_hor_grid to CS%G.

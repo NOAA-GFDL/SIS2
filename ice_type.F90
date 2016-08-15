@@ -115,7 +115,8 @@ type ice_state_type
                               ! absorbed in each of the ice layers, nondim, <=1.
 
   real, pointer, dimension(:,:)   :: &
-    coszen       => NULL()    ! Cosine of the solar zenith angle, nondim.
+    coszen_nextrad  => NULL()    ! Cosine of the solar zenith angle averaged
+                                 ! over the next radiation timestep, nondim.
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, pointer, dimension(:,:)   :: &
@@ -615,7 +616,9 @@ type :: atmos_ice_boundary_type
                          ! with the surface temperature, in kg m-2 s-1 K-1.
     drdt    => NULL(), & ! The derivative of the downward longwave radiative heat
                          ! flux with surface temperature, in W m-2 K-1.
-    coszen  => NULL(), & ! The cosine of the solar zenith angle, nondim and <=1.
+    coszen  => NULL(), & ! The cosine of the solar zenith angle averged over the
+                         ! next radiation timestep (not the one that was used to
+                         ! calculate the sw_flux fields), nondim and <=1.
     p       => NULL(), & ! The atmospheric surface pressure, in Pa, often ~1e5 Pa.
     data    => NULL()
   integer                   :: xtype  ! DIRECT or REDIST - used by coupler.
@@ -786,7 +789,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   call alloc_fast_ice_avg(IST%FIA, HI, IG)
 
-  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
+  allocate(IST%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; IST%coszen_nextrad(:,:) = 0.0 !NR X
 
   allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
@@ -836,7 +839,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
     idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
                                  domain=mpp_domain, position=CORNER, mandatory=.false.)
   endif
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen, &
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen_nextrad, &
                                domain=mpp_domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
@@ -969,7 +972,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
   deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
-  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen)
+  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen_nextrad)
 
   call dealloc_ocean_sfc_state(IST%OSS)
 
@@ -1407,7 +1410,7 @@ subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
   IST%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
                'surface albedo','0-1', missing_value=missing )
   IST%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
-               'cosine of zenith','-1:1', missing_value=missing )
+               'cosine of the solar zenith angle for the next radiation step','-1:1', missing_value=missing )
   IST%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
                'SW frac. abs. at the ice surface','0:1', missing_value=missing )
   IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
