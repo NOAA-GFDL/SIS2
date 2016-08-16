@@ -151,11 +151,6 @@ type ice_state_type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
   ! SLOW DYNAMICS
-  logical :: area_wtd_stress  ! If true, use wind stresses that are weighted
-                       ! by the ice areas in the neighboring cells.  The default
-                       ! (true) is probably the right behavior, and this option
-                       ! will be obsoleted as soon as it is verified to work
-                       ! properly.
   real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
@@ -346,6 +341,15 @@ type fast_ice_avg_type
   real, pointer, dimension(:,:) :: &
     bheat               =>NULL(), & ! The upward diffusive heat flux from the ocean
                                     ! to the ice at the base of the ice, in W m-2.
+    WindStr_x           =>NULL(), & ! The zonal wind stress averaged over the ice
+                                    ! categories on an A-grid, in Pa.
+    WindStr_y           =>NULL(), & ! The meridional wind stress averaged over the
+                                    ! ice categories on an A-grid, in Pa.
+    ice_free            =>NULL(), & ! The fractional open water used in calculating
+                                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_cover           =>NULL(), & ! The fractional ice coverage, summed across all
+                                    ! thickness categories, used in calculating
+                                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
     ! These two arrays are diagnostics of radiative fluxes summed across the
     ! thickness categories.
     lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
@@ -752,11 +756,15 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
   allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
 
-
   allocate(IST%frazil(SZI_(HI), SZJ_(HI))) ; IST%frazil(:,:) = 0.0 !NR
+
   allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0 !NI
   allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0 !NR
   allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0 !NR
+  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0 !NI
+  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0 !NI
+  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0 !NI
+  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 !NI
 
   allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
   allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
@@ -885,6 +893,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, IST%frazil)
+  deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
 
   deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm, IST%frazil_input)
   deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
