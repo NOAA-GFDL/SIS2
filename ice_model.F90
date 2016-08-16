@@ -43,17 +43,21 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
+use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : Get_SIS_input, directories
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
 
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
-use MOM_domains,       only : fill_symmetric_edges, clone_MOM_domain
+use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
+use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
+use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_string_functions, only : uppercase
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
@@ -83,8 +87,7 @@ use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
-use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
-use SIS_grid_initialize, only : SIS_set_grid_metrics
+use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 
 use ice_grid, only : set_ice_grid, ice_grid_end, ice_grid_type
@@ -1971,14 +1974,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       if (IST%debug) then
         call IST_chksum("Before ice_C_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G)
-        call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G)
-        call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G)
-        call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G, haloshift=1)
-        call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G)
-        call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G)
-        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G)
-        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G)
+        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G%HI)
+        call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G%HI)
+        call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G%HI)
+        call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G%HI, haloshift=1)
+        call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G%HI)
+        call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G%HI)
+        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G%HI)
+        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G%HI)
         call check_redundant_C("WindStr before ice_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
       endif
 
@@ -2085,14 +2088,14 @@ subroutine update_ice_model_slow(Ice, IST, G, IG, runoff, calving, &
 
       if (IST%debug) then
         call IST_chksum("Before ice_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G)
-        call hchksum(ms_sum, "ms_sum before ice_dynamics", G)
-        call hchksum(mi_sum, "mi_sum before ice_dynamics", G)
-        call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G, haloshift=1)
-        call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G, symmetric=.true.)
-        call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G, symmetric=.true.)
+        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G%HI)
+        call hchksum(ms_sum, "ms_sum before ice_dynamics", G%HI)
+        call hchksum(mi_sum, "mi_sum before ice_dynamics", G%HI)
+        call hchksum(IST%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
+        call Bchksum(IST%u_ocn, "u_ocn before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(IST%v_ocn, "v_ocn before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G%HI, symmetric=.true.)
+        call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G%HI, symmetric=.true.)
         call check_redundant_B("WindStr before ice_dynamics",WindStr_x_B, WindStr_y_B, G)
       endif
 
@@ -3616,7 +3619,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable :: S_col(:)
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
-  integer :: isc, iec, jsc, jec, CatIce, nCat_dflt
+  integer :: isc, iec, jsc, jec, nCat_dflt
   logical :: spec_thermo_sal
   character(len=128) :: restart_file, restart_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
@@ -3624,9 +3627,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
 
   type(param_file_type) :: param_file
+  type(hor_index_type)  :: HI  !  A hor_index_type for array extents
   type(ice_state_type),    pointer :: IST => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL()
   type(ice_grid_type),     pointer :: IG => NULL()
+  type(dyn_horgrid_type),  pointer :: dG => NULL()
 
   ! Parameters that are read in and used to initialize other modules.  If those
   ! other modules had control states, these would be moved to those modules.
@@ -3648,7 +3653,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real :: g_Earth !   The gravitational acceleration in m s-2.
   integer :: idr, id_sal
+  integer :: write_geom
+  logical :: test_grid_copy = .false.
+  logical :: write_geom_files  ! If true, write out the grid geometry files.
+  logical :: symmetric         ! If true, use symmetric memory allocation.
+  logical :: global_indexing   ! If true use global horizontal index values instead
+                               ! of having the data domain on each processor start at 1.
+  integer :: first_direction   ! An integer that indicates which direction is to be
+                               ! updated first in directionally split parts of the
+                               ! calculation.  This can be altered during the course
+                               ! of the run via calls to set_first_direction.
   logical :: read_aux_restart
   logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
@@ -3659,15 +3675,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     return
   endif
   if (.not.associated(Ice%Ice_state)) allocate(Ice%Ice_state) ; IST => Ice%Ice_state
-  if (.not.associated(Ice%G)) allocate(Ice%G) ; G => Ice%G
+  if (.not.associated(Ice%G)) allocate(Ice%G)
+  if (test_grid_copy) then ; allocate(G)
+  else ; G => Ice%G ; endif
   if (.not.associated(Ice%IG)) allocate(Ice%IG) ; IG => Ice%IG
   if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
 
+  call callTree_enter("ice_model_init(), ice_model.F90")
+
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
+  call log_version(param_file, mod, version, "")
   call get_param(param_file, mod, "SPECIFIED_ICE", IST%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
@@ -3725,6 +3745,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
 
+  call get_param(param_file, mod, "G_EARTH", g_Earth, &
+                 "The gravitational acceleration of the Earth.", &
+                 units="m s-2", default = 9.80)
+
   call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
                  units="m", default=1.0e-4)
@@ -3755,6 +3779,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  default=.true.)
   call get_param(param_file, mod, "DEBUG", IST%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "GLOBAL_INDEXING", global_indexing, &
+                 "If true, use a global lateral indexing convention, so \n"//&
+                 "that corresponding points on different processors have \n"//&
+                 "the same index. This does not work with static memory.", &
+                 default=.false., layoutParam=.true.)
+#ifdef STATIC_MEMORY_
+  if (global_indexing) call SIS_error(FATAL, "ice_model_init: "//&
+       "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
+#endif
+  call get_param(param_file, mod, "FIRST_DIRECTION", first_direction, &
+                 "An integer that indicates which direction goes first \n"//&
+                 "in parts of the code that use directionally split \n"//&
+                 "updates, with even numbers (or 0) used for x- first \n"//&
+                 "and odd numbers used for y-first.", default=0)
 
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
@@ -3858,28 +3896,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "MASSLESS_ICE_SALIN", massless_ice_salin, &
                  "The ice salinity fill value for massless categories.", &
                  units="g kg-1", default=0.0, do_not_log=.true.)
+  call get_param(param_file, "MOM", "WRITE_GEOM", write_geom, &
+                 "If =0, never write the geometry and vertical grid files.\n"//&
+                 "If =1, write the geometry and vertical grid files only for\n"//&
+                 "a new simulation. If =2, always write the geometry and\n"//&
+                 "vertical grid files. Other values are invalid.", default=1)
+  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
+         "WRITE_GEOM must be equal to 0, 1 or 2.")
+  write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
+     ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
   call check_ice_model_nml(param_file)
 
   if (IST%specified_ice) IST%slab_ice = .true.
 
-  nCat_dflt = 5
-  if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
-
+  ! Set up the ice-specific grid describing categories and ice layers.
+  nCat_dflt = 5 ; if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
   call set_ice_grid(Ice%IG, param_file, nCat_dflt)
-
-  call set_hor_grid(Ice%G, param_file)
-  ! Copy the ice model's domain into one with no halos that can be shared
-  ! publicly for use by the exchange grid.
-  call clone_MOM_domain(Ice%G%domain, Ice%domain, halo_size=0, symmetric=.false., &
-                        domain_name="ice_nohalo")
-
-  ! Set the basic (bathymetry and mask independent) grid metrics.
-  call SIS_set_grid_metrics(Ice%G, param_file)
-
-  ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-  call SIS_initialize_fixed(Ice%G, param_file)
-
   if (IST%slab_ice) IG%CatIce = 1 ! open water and ice ... but never in same place
   ! Initialize IG%cat_thick_lim here.  ###This needs to be extended to add more options.
   do k=1,min(IG%CatIce+1,size(hlim_dflt(:)))
@@ -3894,8 +3927,37 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (IST%Rho_ice*IG%kg_m2_to_H)
   enddo
 
-  call set_domain(G%Domain%mpp_domain)
-  CatIce = IG%CatIce
+  ! Set up the domains and lateral grids.
+
+  ! Set up the MOM_domain_type structures.
+#ifdef SYMMETRIC_MEMORY_
+  symmetric = .true.
+#else
+  symmetric = .false.
+#endif
+#ifdef STATIC_MEMORY_
+  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
+            static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
+            NIGLOBAL=NIGLOBAL_, NJGLOBAL=NJGLOBAL_, NIPROC=NIPROC_, &
+            NJPROC=NJPROC_, domain_name="ice model", include_name="SIS2_memory.h")
+#else
+  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
+           domain_name="ice model", include_name="SIS2_memory.h")
+#endif
+
+  call callTree_waypoint("domains initialized (ice_model_init)")
+  call hor_index_init(G%Domain, HI, param_file, &
+                      local_indexing=.not.global_indexing)
+
+  call create_dyn_horgrid(dG, HI) !, bathymetry_at_vel=bathy_at_vel)
+  call clone_MOM_domain(G%Domain, dG%Domain)
+
+  ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
+  call SIS_initialize_fixed(dG, param_file, write_geom_files, dirs%output_directory)
+
+  call set_hor_grid(G, param_file, global_indexing=global_indexing)
+  call copy_dyngrid_to_SIS_horgrid(dG, G)
+  call destroy_dyn_horgrid(dG)
 
   ! Allocate and register fields for restarts.
   call ice_data_type_register_restarts(G%Domain%mpp_domain, IG%CatIce, &
@@ -3915,8 +3977,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 !                                       Ice%Ice_restart, restart_file)
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
+  i_off = LBOUND(Ice%t_surf,1) - HI%isc ; j_off = LBOUND(Ice%t_surf,2) - HI%jsc
 
   ! This will likely be replaced later with information provided along
   ! with the shortwave fluxes.
@@ -4132,6 +4194,34 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
+  if (test_grid_copy) then
+    !  Copy the data from the temporary grid to the dyn_hor_grid to CS%G.
+    call create_dyn_horgrid(dG, G%HI)
+    call clone_MOM_domain(G%Domain, dG%Domain)
+
+    call clone_MOM_domain(G%Domain, Ice%G%Domain)
+    call set_hor_grid(Ice%G, param_file)
+
+    call copy_SIS_horgrid_to_dyngrid(G, dG)
+    call copy_dyngrid_to_SIS_horgrid(dG, Ice%G)
+
+    call destroy_dyn_horgrid(dG)
+    call SIS_hor_grid_end(G) ; deallocate(G)
+
+    G => Ice%G
+  endif
+
+  ! Set a few final things to complete the  setup of the grid. 
+  Ice%G%g_Earth = g_Earth
+  call set_first_direction(G, first_direction)
+  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
+                        domain_name="ice model aux")
+
+  ! Copy the ice model's domain into one with no halos that can be shared
+  ! publicly for use by the exchange grid.
+  call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
+                        domain_name="ice_nohalo")
+
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
@@ -4205,18 +4295,22 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
      endif
   endif
 
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_init
-
-  call nullify_domain()
+  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
+    call set_domain(G%Domain%mpp_domain)
+    call astronomy_init
+    call nullify_domain()
+  endif
 
   ! Do any error checking here.
   if (IST%debug) then
-    call ice_grid_chksum(G)
+    call ice_grid_chksum(G, haloshift=2)
   endif
 
   call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp)
   IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
       (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
+
+  call callTree_leave("ice_model_init()")
 
 end subroutine ice_model_init
 

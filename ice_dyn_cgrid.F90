@@ -33,7 +33,7 @@ module ice_dyn_cgrid
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_error_checking, only : chksum, Bchksum, uchksum, vchksum, hchksum
+use MOM_checksums,      only : chksum, Bchksum, uchksum, vchksum, hchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
@@ -824,11 +824,11 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP end parallel
 
   if (CS%debug) then
-    call uchksum(PFu, "PFu in ice_C_dynamics", G)
-    call vchksum(PFv, "PFv in ice_C_dynamics", G)
+    call uchksum(PFu, "PFu in ice_C_dynamics", G%HI)
+    call vchksum(PFv, "PFv in ice_C_dynamics", G%HI)
 
-    call uchksum(ui, "ui pre-steps ice_C_dynamics", G)
-    call vchksum(vi, "vi pre-steps ice_C_dynamics", G)
+    call uchksum(ui, "ui pre-steps ice_C_dynamics", G%HI)
+    call vchksum(vi, "vi pre-steps ice_C_dynamics", G%HI)
   endif
   if (CS%debug_redundant) then
     call check_redundant_C("PFu/PFv in ice_C_dynamics", PFu, PFv, G)
@@ -1149,18 +1149,19 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     endif
 
     if (CS%debug) then
-      call hchksum(CS%str_d, "str_d in ice_C_dynamics", G, haloshift=1)
-      call hchksum(CS%str_t, "str_t in ice_C_dynamics", G, haloshift=1)
-      call Bchksum(CS%str_s, "str_s in ice_C_dynamics", G, haloshift=1)
+      call hchksum(CS%str_d, "str_d in ice_C_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%str_t, "str_t in ice_C_dynamics", G%HI, haloshift=1)
+      call Bchksum(CS%str_s, "str_s in ice_C_dynamics", G%HI, &
+                   haloshift=0, symmetric=.true.)
 
-      call uchksum(fxic, "fxic in ice_C_dynamics", G)
-      call vchksum(fyic, "fyic in ice_C_dynamics", G)
-      call uchksum(fxoc, "fxoc in ice_C_dynamics", G)
-      call vchksum(fyoc, "fyoc in ice_C_dynamics", G)
-      call uchksum(Cor_u, "Cor_u in ice_C_dynamics", G)
-      call vchksum(Cor_v, "Cor_v in ice_C_dynamics", G)
-      call uchksum(ui, "ui in ice_C_dynamics", G)
-      call vchksum(vi, "vi in ice_C_dynamics", G)
+      call uchksum(fxic, "fxic in ice_C_dynamics", G%HI)
+      call vchksum(fyic, "fyic in ice_C_dynamics", G%HI)
+      call uchksum(fxoc, "fxoc in ice_C_dynamics", G%HI)
+      call vchksum(fyoc, "fyoc in ice_C_dynamics", G%HI)
+      call uchksum(Cor_u, "Cor_u in ice_C_dynamics", G%HI)
+      call vchksum(Cor_v, "Cor_v in ice_C_dynamics", G%HI)
+      call uchksum(ui, "ui in ice_C_dynamics", G%HI)
+      call vchksum(vi, "vi in ice_C_dynamics", G%HI)
     endif
     if (CS%debug_redundant) then
       call check_redundant_C("fxic/fyic in ice_C_dynamics steps",fxic, fyic, G)
@@ -1172,8 +1173,8 @@ subroutine ice_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call uchksum(ui, "ui end ice_C_dynamics", G)
-    call vchksum(vi, "vi end ice_C_dynamics", G)
+    call uchksum(ui, "ui end ice_C_dynamics", G%HI)
+    call vchksum(vi, "vi end ice_C_dynamics", G%HI)
   endif
   if (CS%debug_redundant) &
     call check_redundant_C("ui/vi end ice_C_dynamics", ui, vi, G)

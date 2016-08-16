@@ -27,7 +27,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : param_file_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_error_checking, only : chksum, Bchksum, hchksum, uchksum, vchksum
+use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_get_input, only : archaic_nml_check
 use SIS_sum_output_type, only : SIS_sum_out_CS
@@ -799,22 +799,22 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   ! and js...je as their extent.
   hs=0; if (present(haloshift)) hs=haloshift
 
-  call hchksum(IST%part_size, trim(mesg)//" IST%part_size",G,haloshift=hs)
-  call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice",G,haloshift=hs)
+  call hchksum(IST%part_size, trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
+  call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k
     k_str = "("//trim(adjustl(k_str1))//")"
-    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str),G,haloshift=hs)
-    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str),G,haloshift=hs)
+    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, haloshift=hs)
+    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow",G,haloshift=hs)
-  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow",G,haloshift=hs)
-  if (associated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B",G,haloshift=hs)
-  if (associated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B",G,haloshift=hs)
+  call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs)
+  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
+  if (associated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B", G%HI, haloshift=hs)
+  if (associated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B", G%HI, haloshift=hs)
   call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   if (IST%Cgrid_dyn) then
-    call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C",G,haloshift=hs)
-    call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C",G,haloshift=hs)
+    call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C", G%HI, haloshift=hs)
+    call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C", G%HI, haloshift=hs)
     call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)
   endif
 

@@ -124,14 +124,14 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_hor_grid initializes the sea ice grid array sizes and grid memory.
-subroutine set_hor_grid(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G          !< The horizontal grid type
-  type(param_file_type)  , intent(in)    :: param_file !< Parameter file handle
-!   This subroutine sets up the necessary domain types and the sea-ice grid.
-
-! Arguments: G - The sea-ice's horizontal grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
+subroutine set_hor_grid(G, param_file, HI, global_indexing)
+  type(SIS_hor_grid_type), intent(inout) :: G        !< The horizontal grid type
+  type(param_file_type), intent(in)    :: param_file !< Parameter file handle
+  type(hor_index_type), &
+                  optional, intent(in) :: HI !< A hor_index_type for array extents
+  logical,        optional, intent(in) :: global_indexing !< If true use global index
+                             !! values instead of having the data domain on each
+                             !! processor start at 1.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -139,52 +139,15 @@ subroutine set_hor_grid(G, param_file)
   integer :: IsdB, IedB, JsdB, JedB
   integer :: ied_max, jed_max
   integer :: niblock, njblock, nihalo, njhalo, nblocks, n, i, j
-  logical :: symmetric       ! If true, use symmetric memory allocation.
-  logical :: global_indexing ! If true use global index values instead of having
+  logical :: local_indexing  ! If false use global index values instead of having
                              ! the data domain on each processor start at 1.
+
   integer, allocatable, dimension(:) :: ibegin, iend, jbegin, jend
   character(len=40)  :: mod_nm  = "hor_grid" ! This module's name.
-
-  ! Set up the MOM_domain_type structures.
-#ifdef SYMMETRIC_MEMORY_
-  symmetric = .true.
-#else
-  symmetric = .false.
-#endif
-#ifdef STATIC_MEMORY_
-  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
-            static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
-            NIGLOBAL=NIGLOBAL_, NJGLOBAL=NJGLOBAL_, NIPROC=NIPROC_, &
-            NJPROC=NJPROC_, domain_name="ice model", include_name="SIS2_memory.h")
-#else
-  call MOM_domains_init(G%domain, param_file, symmetric=symmetric, &
-           domain_name="ice model", include_name="SIS2_memory.h")
-#endif
-  call clone_MOM_domain(G%domain, G%domain_aux, symmetric=.false., &
-                        domain_name="ice model aux")
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version, &
                    "Parameters providing information about the lateral grid.")
-  call get_param(param_file, mod_nm, "G_EARTH", G%g_Earth, &
-                 "The gravitational acceleration of the Earth.", &
-                 units="m s-2", default = 9.80)
-  call get_param(param_file, mod_nm, "GLOBAL_INDEXING", global_indexing, &
-                 "If true, use a global lateral indexing convention, so \n"//&
-                 "that corresponding points on different processors have \n"//&
-                 "the same index. This does not work with static memory.", &
-                 default=.false., layoutParam=.true.)
-#ifdef STATIC_MEMORY_
-  if (global_indexing) cal SIS_error(FATAL, "set_hor_grid : "//&
-       "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
-#endif
-
-  call get_param(param_file, mod_nm, "FIRST_DIRECTION", G%first_direction, &
-                 "An integer that indicates which direction goes first \n"//&
-                 "in parts of the code that use directionally split \n"//&
-                 "updates, with even numbers (or 0) used for x- first \n"//&
-                 "and odd numbers used for y-first.", default=0)
-
 
   call get_param(param_file, mod_nm, "NIBLOCK", niblock, "The number of blocks "// &
                  "in the x-direction on each processor (for openmp).", default=1, &
@@ -193,17 +156,35 @@ subroutine set_hor_grid(G, param_file)
                  "in the y-direction on each processor (for openmp).", default=1, &
                  layoutParam=.true.)
 
-  call hor_index_init(G%Domain, G%HI, param_file, &
-                      local_indexing=.not.global_indexing)
+  if (present(HI)) then
+    G%HI = HI
 
-  ! get_domain_extent ensures that domains start at 1 for compatibility between
-  ! static and dynamically allocated arrays, unless global_indexing is true.
-  call get_domain_extent(G%Domain, G%isc, G%iec, G%jsc, G%jec, &
-                         G%isd, G%ied, G%jsd, G%jed, &
-                         G%isg, G%ieg, G%jsg, G%jeg, &
-                         G%idg_offset, G%jdg_offset, G%symmetric, &
-                         local_indexing=.not.global_indexing)
-  G%isd_global = G%isd+G%idg_offset ; G%jsd_global = G%jsd+G%jdg_offset
+    G%isc = HI%isc ; G%iec = HI%iec ; G%jsc = HI%jsc ; G%jec = HI%jec
+    G%isd = HI%isd ; G%ied = HI%ied ; G%jsd = HI%jsd ; G%jed = HI%jed
+    G%isg = HI%isg ; G%ieg = HI%ieg ; G%jsg = HI%jsg ; G%jeg = HI%jeg
+
+    G%IscB = HI%IscB ; G%IecB = HI%IecB ; G%JscB = HI%JscB ; G%JecB = HI%JecB
+    G%IsdB = HI%IsdB ; G%IedB = HI%IedB ; G%JsdB = HI%JsdB ; G%JedB = HI%JedB
+    G%IsgB = HI%IsgB ; G%IegB = HI%IegB ; G%JsgB = HI%JsgB ; G%JegB = HI%JegB
+
+    G%idg_offset = HI%idg_offset ; G%jdg_offset = HI%jdg_offset
+    G%isd_global = G%isd + HI%idg_offset ; G%jsd_global = G%jsd + HI%jdg_offset
+    G%symmetric = HI%symmetric
+  else
+    local_indexing = .true.
+    if (present(global_indexing)) local_indexing = .not.global_indexing
+    call hor_index_init(G%Domain, G%HI, param_file, &
+                        local_indexing=local_indexing)
+
+    ! get_domain_extent ensures that domains start at 1 for compatibility between
+    ! static and dynamically allocated arrays, unless global_indexing is true.
+    call get_domain_extent(G%Domain, G%isc, G%iec, G%jsc, G%jec, &
+                           G%isd, G%ied, G%jsd, G%jed, &
+                           G%isg, G%ieg, G%jsg, G%jeg, &
+                           G%idg_offset, G%jdg_offset, G%symmetric, &
+                           local_indexing=local_indexing)
+    G%isd_global = G%isd+G%idg_offset ; G%jsd_global = G%jsd+G%jdg_offset
+  endif
 
   G%nonblocking_updates = G%Domain%nonblocking_updates
 
@@ -219,6 +200,8 @@ subroutine set_hor_grid(G, param_file)
   G%IecB = G%iec ; G%JecB = G%jec
   G%IedB = G%ied ; G%JedB = G%jed
   G%IegB = G%ieg ; G%JegB = G%jeg
+
+  call SIS_mesg("  SIS_hor_grid.F90, set_hor_grid: allocating metrics", 5)
 
   call allocate_metrics(G)
 

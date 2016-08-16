@@ -38,7 +38,7 @@ module SIS_tracer_registry
 !********+*********+*********+*********+*********+*********+*********+**
 
 use SIS_diag_mediator, only : SIS_diag_ctrl
-use SIS_error_checking, only : hchksum
+use MOM_checksums,     only : hchksum
 use MOM_domains,       only : pass_var
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg
@@ -469,12 +469,12 @@ subroutine SIS_tracer_chksum(mesg, Reg, G)
   do m=1,Reg%ntr ; do l=1,Reg%Tr_ice(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_ice(m)%t(:,:,:,l), mesg//trim(Reg%Tr_ice(m)%name)//" "//&
-                                 trim(adjustl(mesg_l)), G)
+                                 trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
   do m=1,Reg%ntr ; do l=1,Reg%Tr_snow(m)%nL
     write(mesg_l,'("i")') l
     call hchksum(Reg%Tr_snow(m)%t(:,:,:,l), mesg//trim(Reg%Tr_snow(m)%name)//" "//&
-                                 trim(adjustl(mesg_l)), G)
+                                 trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
 end subroutine SIS_tracer_chksum
 
