@@ -97,7 +97,7 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_co
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use ice_thm_mod,   only : slab_ice_optics
-use SIS_slow_mod,  only : update_ice_model_slow, SIS_slow_register_restarts
+use SIS_slow_mod,  only : SIS_dynamics_trans, SIS_slow_thermo, SIS_slow_register_restarts
 use SIS_slow_mod,  only : SIS_slow_init, SIS_slow_end
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
@@ -140,7 +140,9 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call set_ice_state_fluxes(Ice%Ice_state%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
 
-  call update_ice_model_slow(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  call SIS_slow_thermo(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+
+  call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
@@ -182,6 +184,9 @@ subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
     IOF%calving(i,j) = LIB%calving(i2,j2)
     IOF%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     IOF%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+    ! diagnostic fluxes...
+    IOF%calving_preberg(i,j) = IOF%calving(i,j)
+    IOF%calving_hflx_preberg(i,j) = IOF%calving_hflx(i,j)
   enddo ; enddo
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
@@ -285,7 +290,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
   endif
 
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = IST%tr_flux_index(m,n)
+    ind = IOF%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
