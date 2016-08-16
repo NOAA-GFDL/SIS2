@@ -41,7 +41,7 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
-use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ice_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -688,27 +688,26 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 end subroutine write_ice_statistics
 
 
-subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
+subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the bottom of the sea-ice for conservation checks.
-! Arguments: Ice - The publicly visible sea ice data type.
-!  (in)      IST - The internal sea ice state type.
+! Arguments: IST - The internal sea ice state type.
 !  (in)      dt - The amount of time over which to average.
 !  (in)      G - The sea ice model's grid structure.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(inout) :: IST
-  real,                    intent(in)    :: dt
-  type(SIS_sum_out_CS),    pointer       :: CS
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(ice_grid_type),     intent(in) :: IG
+  type(ice_state_type),    intent(in) :: IST
+  real,                    intent(in) :: dt
+  type(SIS_sum_out_CS),    pointer    :: CS
 
   real :: Flux_SW, enth_units, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
-  integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
@@ -717,41 +716,40 @@ subroutine accumulate_bottom_input(IST, Ice, dt, G, CS)
     else ; CS%dt = dt ; endif
   endif
 
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+  do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
-           ( ((Ice%runoff(i2,j2) + Ice%calving(i2,j2)) + &
+           ( ((IST%runoff(i,j) + IST%calving(i,j)) + &
               (IST%lprec_ocn_top(i,j) + IST%fprec_ocn_top(i,j))) - IST%flux_q_ocn_top(i,j) )
     Flux_SW = (IST%flux_sw_vis_dir_ocn(i,j) + IST%flux_sw_vis_dif_ocn(i,j)) + &
               (IST%flux_sw_nir_dir_ocn(i,j) + IST%flux_sw_nir_dif_ocn(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
            ((IST%flux_lw_ocn_top(i,j) - IST%flux_lh_ocn_top(i,j)) - IST%flux_t_ocn_top(i,j)) + &
-            (-LI)*(IST%fprec_ocn_top(i,j) + Ice%calving(i2,j2)) )
+            (-LI)*(IST%fprec_ocn_top(i,j) + IST%calving(i,j)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
            (IST%frazil_input(i,j)-IST%frazil(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IST%Enth_Mass_in_atm(i,j) + IST%Enth_Mass_in_ocn(i,j)) + &
             (IST%Enth_Mass_out_atm(i,j) + IST%Enth_Mass_out_ocn(i,j)) )
-    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * &
-             Ice%flux_salt(i2,j2)
+    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IST%flux_salt(i,j)
   enddo ; enddo
 
 end subroutine accumulate_bottom_input
 
-subroutine accumulate_input_1(IST, Ice, dt, G, CS)
+subroutine accumulate_input_1(IST, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
-! Arguments: Ice - The publicly visible sea ice data type.
-!  (in)      IST - The internal sea ice state type.
+! Arguments: IST - The internal sea ice state type.
 !  (in)      dt - The amount of time over which to average.
+!  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      G - The sea ice model's grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
-  type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(inout) :: IST
+  type(ice_state_type),    intent(in) :: IST
   real,                    intent(in) :: dt
-  type(SIS_hor_grid_type), intent(inout) :: G
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(ice_grid_type),     intent(in) :: IG
   type(SIS_sum_out_CS),    pointer    :: CS
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -774,9 +772,8 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
     heat_in_EFP    !
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
-  integer :: i2, j2, k2, i_off, j_off
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
@@ -798,12 +795,11 @@ subroutine accumulate_input_1(IST, Ice, dt, G, CS)
 
 end subroutine accumulate_input_1
 
-subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
+subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
-! Arguments: Ice - The publicly visible sea ice data type.
-!  (in)      IST - The internal sea ice state type.
+! Arguments: IST - The internal sea ice state type.
 !  (in)      part_size - The fractional ice concentration within a cell in each
 !                      thickness category, nondimensional, 0-1.
 !  (in)      dt - The amount of time over which to average.
@@ -813,7 +809,6 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
 !                 SIS_sum_output_init.
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
-  type(ice_data_type),     intent(inout) :: Ice
   type(ice_state_type),    intent(inout) :: IST
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), intent(in) :: part_size
   real,                    intent(in) :: dt
@@ -821,11 +816,9 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
 
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
-
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
-  integer :: i2, j2, k2, i_off, j_off
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  i_off = LBOUND(Ice%runoff,1) - G%isc ; j_off = LBOUND(Ice%runoff,2) - G%jsc
 
   ! This subroutine includes the accumulation of mass fluxes and heat fluxes
   ! into the ice that are known before SIS#_thermodynamics, as well the
@@ -836,11 +829,11 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,i_off,j_off,CS,dt,Ice,IST,&
 !$OMP                                  enth_units, LI) &
-!$OMP                          private(i2,j2,area_pt)
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+!$OMP                          private(area_pt)
+  do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
-          (Ice%runoff(i2,j2) + Ice%calving(i2,j2))
+          (IST%runoff(i,j) + IST%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
@@ -848,7 +841,7 @@ subroutine accumulate_input_2(IST, Ice, part_size, dt, G, IG, CS)
 
     ! These are mass fluxes that are simply passed through to the ocean.
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
-                      (area_pt * IST%fprec_top(i,j,0) + Ice%calving(i2,j2))
+                      (area_pt * IST%fprec_top(i,j,0) + IST%calving(i,j))
 
   enddo ; enddo
 

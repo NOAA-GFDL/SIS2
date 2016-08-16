@@ -139,7 +139,7 @@ module ice_age_tracer
 contains
 
     logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
-        Ice_restart, restart_file, is_restart)
+        Ice_restart, restart_file)
         type(sis_hor_grid_type),                intent(in) :: G
         type(ice_grid_type),                    intent(in) :: IG
         type(param_file_type),                  intent(in) :: param_file
@@ -148,7 +148,6 @@ contains
         type(SIS_tracer_registry_type),         pointer    :: TrReg
         type(restart_file_type),                intent(inout) :: Ice_restart
         character(len=*)                                   :: restart_file
-        logical,                                intent(in) :: is_restart
         ! This subroutine is used to age register tracer fields and subroutines
         ! to be used with SIS.
         ! Arguments:
@@ -237,11 +236,6 @@ contains
             CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
                 CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
                 mandatory=.false.)
-
-            if(is_restart) then
-                print *, "Restoring state for tracer", CS%id_tracer(m)
-                call restore_state(Ice_restart,CS%id_tracer(m))
-            endif
 
             ! Register the tracer for horizontal advection & diffusion. Note that the argument
             ! of nLTr is 1 because age is uniform within an ice thickness category

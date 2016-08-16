@@ -25,6 +25,7 @@ use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : param_file_type
+use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
@@ -115,7 +116,7 @@ type ice_state_type
   real,    pointer, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     t_surf              =>NULL(), & ! The surface temperature, in Kelvin.
-    flux_u_top          =>NULL(), & ! The downward? flux of zonal and meridional
+    flux_u_top          =>NULL(), & ! The downward flux of zonal and meridional
     flux_v_top          =>NULL(), & ! momentum on an A-grid in ???.
     flux_t_top          =>NULL(), & ! The upward sensible heat flux at the ice top
                                     ! in W m-2.
@@ -166,8 +167,24 @@ type ice_state_type
                                   ! the ocean surface, in kg m-2 s-1.
     coszen       => NULL(), &     ! Cosine of the solar zenith angle, nondim.
     lwdn         => NULL(), &     ! Accumulated diagnostics of downward long-
-    swdn         => NULL()        ! and short-wave radiation at the top of the
+    swdn         => NULL(), &     ! and short-wave radiation at the top of the
                                   ! snow, averaged across categories, in W m-2.
+    runoff => NULL(), &           ! Liquid runoff into the ocean, in kg m-2.
+    calving => NULL(), &          ! Calving of ice or runoff of frozen fresh
+                                  ! water into the ocean, in kg m-2.
+    runoff_hflx => NULL(), &      ! The heat flux associated with runoff, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    calving_hflx => NULL(), &     ! The heat flux associated with calving, based
+                                  ! on the temperature difference relative to a
+                                  ! reference temperature, in ???.
+    flux_u_ocn => NULL(), &       ! The flux of x-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
+    flux_v_ocn => NULL(), &       ! The flux of y-momentum into the ocean, in Pa,
+                                  ! at locations determined by flux_uv_stagger,
+                                  ! but allocated as though on an A-grid.
+    flux_salt  => NULL()          ! The flux of salt out of the ocean in kg m-2.
 
   real, pointer, dimension(:,:,:) :: &
     sw_abs_sfc  => NULL(), &  ! The fractions of the absorbed shortwave radiation
@@ -200,6 +217,15 @@ type ice_state_type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
+  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
+                    ! points of the two wind stress components. Valid entries
+                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
+                    ! corresponding to the community-standard Arakawa notation.
+                    ! (These are named integers taken from mpp_parameter_mod.)
+                    ! Following SIS, this is BGRID_NE by default when the sea
+                    ! ice is initialized, but here it is set to -999 so that a
+                    ! global max across ice and non-ice processors can be used
+                    ! to determine its value.
   logical :: SIS1_5L_thermo ! If true, the thermodynamic calculations inhereted
                        ! from the 5-layer version of SIS1. Otherwise, use the
                        ! newer SIS2 version.
@@ -601,128 +627,135 @@ end subroutine ice_data_type_register_restarts
 !     and register any variables in the ice data type that need to be included !
 !     in the restart files.                                                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_state_register_restarts(G, IG, param_file, IST, Ice_restart, restart_file)
-  type(SIS_hor_grid_type), intent(in)    :: G
+subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
+                                       Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: mpp_domain
+  type(hor_index_type),    intent(in)    :: HI
   type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
   type(restart_file_type), intent(inout) :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
-  type(domain2d), pointer :: domain
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
 
   CatIce = IG%CatIce ; NkIce = IG%NkIce
-  allocate(IST%t_surf(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
-  allocate(IST%s_surf(SZI_(G), SZJ_(G))) ; IST%s_surf(:,:) = 0.0 !NI X
-  allocate(IST%t_ocn(SZI_(G), SZJ_(G))) ; IST%t_ocn(:,:) = 0.0   !NI X
-  allocate(IST%sea_lev(SZI_(G), SZJ_(G))) ; IST%sea_lev(:,:) = 0.0 !NR
-  allocate(IST%part_size(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%coszen(SZI_(G), SZJ_(G))) ; IST%coszen(:,:) = 0.0 !NR X
+  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%s_surf(SZI_(HI), SZJ_(HI))) ; IST%s_surf(:,:) = 0.0 !NI X
+  allocate(IST%t_ocn(SZI_(HI), SZJ_(HI))) ; IST%t_ocn(:,:) = 0.0   !NI X
+  allocate(IST%sea_lev(SZI_(HI), SZJ_(HI))) ; IST%sea_lev(:,:) = 0.0 !NR
+  allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%coszen(SZI_(HI), SZJ_(HI))) ; IST%coszen(:,:) = 0.0 !NR X
 
-  allocate(IST%flux_u_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_v_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR
-  allocate(IST%flux_t_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_q_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lw_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(IST%flux_lh_top(SZI_(G), SZJ_(G), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(IST%lprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
-  allocate(IST%fprec_top(SZI_(G), SZJ_(G), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_u_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_v_top(:,:,:) = 0.0 !NR
+  allocate(IST%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%flux_t_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%flux_q_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_lw_top(:,:,:) = 0.0 !NI
+  allocate(IST%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%flux_lh_top(:,:,:) = 0.0 !NI
+  allocate(IST%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%lprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  IST%fprec_top(:,:,:) = 0.0 !NI
+  allocate(IST%runoff(SZI_(HI), SZJ_(HI))) ; IST%runoff(:,:) = 0.0 !NI
+  allocate(IST%calving(SZI_(HI), SZJ_(HI))) ; IST%calving(:,:) = 0.0 !NI
+  allocate(IST%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IST%runoff_hflx(:,:) = 0.0 !NI
+  allocate(IST%calving_hflx(SZI_(HI), SZJ_(HI))) ; IST%calving_hflx(:,:) = 0.0 !NI
+  allocate(IST%flux_salt(SZI_(HI), SZJ_(HI))) ; IST%flux_salt(:,:) = 0.0 !NI
 
-  allocate(IST%Enth_Mass_in_atm(SZI_(G), SZJ_(G)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_atm(SZI_(G), SZJ_(G))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_in_ocn(SZI_(G), SZJ_(G)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_ocn(SZI_(G), SZJ_(G))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
-  allocate(IST%flux_t_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_t_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_q_ocn_top(SZI_(G), SZJ_(G))) ;  IST%flux_q_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_lw_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lw_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_lh_ocn_top(SZI_(G), SZJ_(G))) ; IST%flux_lh_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_vis_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dir_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
-  allocate(IST%flux_sw_nir_dif_ocn(SZI_(G), SZJ_(G))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
-  allocate(IST%lprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IST%fprec_ocn_top(SZI_(G), SZJ_(G))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
+  allocate(IST%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+  allocate(IST%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%flux_t_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%flux_q_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IST%flux_lw_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IST%flux_lh_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IST%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
+  allocate(IST%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%lprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IST%fprec_ocn_top(:,:) = 0.0 !NI
+  allocate(IST%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_u_ocn(:,:) = 0.0 !NI
+  allocate(IST%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IST%flux_v_ocn(:,:) = 0.0 !NI
 
-  allocate(IST%lwdn(SZI_(G), SZJ_(G))) ; IST%lwdn(:,:) = 0.0 !NR
-  allocate(IST%swdn(SZI_(G), SZJ_(G))) ; IST%swdn(:,:) = 0.0 !NR
-  allocate(IST%frazil(SZI_(G), SZJ_(G))) ; IST%frazil(:,:) = 0.0 !NR
-  allocate(IST%frazil_input(SZI_(G), SZJ_(G))) ; IST%frazil_input(:,:) = 0.0 !NR
-  allocate(IST%bheat(SZI_(G), SZJ_(G))) ; IST%bheat(:,:) = 0.0 !NI
-  allocate(IST%tmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
-  allocate(IST%bmelt(SZI_(G), SZJ_(G), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
+  allocate(IST%lwdn(SZI_(HI), SZJ_(HI))) ; IST%lwdn(:,:) = 0.0 !NR
+  allocate(IST%swdn(SZI_(HI), SZJ_(HI))) ; IST%swdn(:,:) = 0.0 !NR
+  allocate(IST%frazil(SZI_(HI), SZJ_(HI))) ; IST%frazil(:,:) = 0.0 !NR
+  allocate(IST%frazil_input(SZI_(HI), SZJ_(HI))) ; IST%frazil_input(:,:) = 0.0 !NR
+  allocate(IST%bheat(SZI_(HI), SZJ_(HI))) ; IST%bheat(:,:) = 0.0 !NI
+  allocate(IST%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; IST%tmelt(:,:,:) = 0.0 !NR
+  allocate(IST%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; IST%bmelt(:,:,:) = 0.0 !NR
 
-  allocate(IST%sw_abs_sfc(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ocn(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_int(SZI_(G), SZJ_(G), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(IST%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
 
-  allocate(IST%mH_pond(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_pond(:,:,:) = 0.0 !  mw/new
-  allocate(IST%mH_snow(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
-  allocate(IST%enth_snow(SZI_(G), SZJ_(G), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
-  allocate(IST%mH_ice(SZI_(G), SZJ_(G), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%enth_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
-  allocate(IST%sal_ice(SZI_(G), SZJ_(G), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0 !  mw/new
+  allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
+  allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
+  allocate(IST%enth_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
 
-  allocate(IST%enth_prev(SZI_(G), SZJ_(G), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
-  allocate(IST%heat_in(SZI_(G), SZJ_(G), CatIce)) ; IST%heat_in(:,:,:) = 0.0
+  allocate(IST%enth_prev(SZI_(HI), SZJ_(HI), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
+  allocate(IST%heat_in(SZI_(HI), SZJ_(HI), CatIce)) ; IST%heat_in(:,:,:) = 0.0
 
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-  allocate(IST%rdg_mice(SZI_(G), SZJ_(G), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
+  allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
   if (IST%Cgrid_dyn) then
-    allocate(IST%u_ice_C(SZIB_(G), SZJ_(G))) ; IST%u_ice_C(:,:) = 0.0
-    allocate(IST%v_ice_C(SZI_(G), SZJB_(G))) ; IST%v_ice_C(:,:) = 0.0
-    allocate(IST%u_ocn_C(SZIB_(G), SZJ_(G))) ; IST%u_ocn_C(:,:) = 0.0 !NR
-    allocate(IST%v_ocn_C(SZI_(G), SZJB_(G))) ; IST%v_ocn_C(:,:) = 0.0 !NR
+    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
+    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
+    allocate(IST%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ocn_C(:,:) = 0.0 !NR
+    allocate(IST%v_ocn_C(SZI_(HI), SZJB_(HI))) ; IST%v_ocn_C(:,:) = 0.0 !NR
   else
-    allocate(IST%u_ice_B(SZIB_(G), SZJB_(G))) ; IST%u_ice_B(:,:) = 0.0
-    allocate(IST%v_ice_B(SZIB_(G), SZJB_(G))) ; IST%v_ice_B(:,:) = 0.0
-    allocate(IST%u_ocn(SZIB_(G), SZJB_(G))) ; IST%u_ocn(:,:) = 0.0 !NR
-    allocate(IST%v_ocn(SZIB_(G), SZJB_(G))) ; IST%v_ocn(:,:) = 0.0 !NR
+    allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
+    allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
+    allocate(IST%u_ocn(SZIB_(HI), SZJB_(HI))) ; IST%u_ocn(:,:) = 0.0 !NR
+    allocate(IST%v_ocn(SZIB_(HI), SZJB_(HI))) ; IST%v_ocn(:,:) = 0.0 !NR
   endif
 
   ! Now register some of these arrays to be read from the restart files.
-  domain => G%domain%mpp_domain
-  idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=domain)
+  idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
   idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
-                               domain=domain)
+                               domain=mpp_domain)
   idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
-                               domain=domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
+                               domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
-                               domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
-                               domain=domain, mandatory=.false.)
+                               domain=mpp_domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
-                               domain=domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
   idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
                                longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
                                no_domain=.true., mandatory=.false.)
 
   idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
-                               domain=domain, mandatory=.false., units="J kg-1")
+                               domain=mpp_domain, mandatory=.false., units="J kg-1")
   idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
-                               domain=domain, mandatory=.false., units="kg/kg")
+                               domain=mpp_domain, mandatory=.false., units="kg/kg")
 
   if (IST%Cgrid_dyn) then
     idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
-                                 domain=domain, position=EAST, mandatory=.false.)
+                                 domain=mpp_domain, position=EAST, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
-                                 domain=domain, position=NORTH, mandatory=.false.)
+                                 domain=mpp_domain, position=NORTH, mandatory=.false.)
   else
     idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
-                                 domain=domain, position=CORNER, mandatory=.false.)
+                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
-                                 domain=domain, position=CORNER, mandatory=.false.)
+                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
   endif
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen, &
-                               domain=domain, mandatory=.false.)
+                               domain=mpp_domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
 
@@ -768,6 +801,8 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%flux_sw_vis_dir_ocn, IST%flux_sw_vis_dif_ocn)
   deallocate(IST%flux_sw_nir_dir_ocn, IST%flux_sw_nir_dif_ocn)
   deallocate(IST%lprec_ocn_top, IST%fprec_ocn_top)
+  deallocate(IST%runoff, IST%calving, IST%runoff_hflx, IST%calving_hflx)
+  deallocate(IST%flux_u_ocn, IST%flux_v_ocn, IST%flux_salt)
 
   deallocate(IST%lwdn, IST%swdn, IST%coszen, IST%frazil, IST%frazil_input)
   deallocate(IST%bheat, IST%tmelt, IST%bmelt)
@@ -781,15 +816,15 @@ subroutine dealloc_IST_arrays(IST)
 end subroutine dealloc_IST_arrays
 
 subroutine IST_chksum(mesg, IST, G, IG, haloshift)
-  character(len=*),        intent(in)    :: mesg
-  type(ice_state_type),    intent(inout) :: IST
+  character(len=*),        intent(in) :: mesg
+  type(ice_state_type),    intent(in) :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  integer, optional,       intent(in)    :: haloshift
+  type(ice_grid_type),     intent(in) :: IG
+  integer, optional,       intent(in) :: haloshift
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      IST - The ice state type variable to be checked.
-!  (in)      G - The ocean's grid structure.
+!  (in)      G - The ocean's grid structure.  (Inout due to halo updates.)
 !  (in,opt)  haloshift - If present, check halo points out this far.
   character(len=20) :: k_str1, k_str
   integer :: hs, k
@@ -821,8 +856,8 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
 end subroutine IST_chksum
 
 subroutine Ice_public_type_chksum(mesg, Ice)
-  character(len=*),        intent(in)    :: mesg
-  type(ice_data_type),     intent(inout) :: Ice
+  character(len=*),    intent(in) :: mesg
+  type(ice_data_type), intent(in) :: Ice
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      Ice - An ice_data_type structure whose elements are to be
