@@ -41,7 +41,7 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
-use ice_type_mod, only : ice_state_type, ice_ocean_flux_type
+use ice_type_mod, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -772,10 +772,12 @@ subroutine accumulate_input_1(IST, dt, G, IG, CS)
     FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and
     salt_in_EFP, & ! heat_input, in kg, PSU kg, and Joules.
     heat_in_EFP    !
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  FIA => IST%FIA
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
@@ -785,14 +787,14 @@ subroutine accumulate_input_1(IST, dt, G, IG, CS)
 !$OMP                          private(area_pt,Flux_SW)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     area_pt = IST%part_size(i,j,k)
-    Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
-              (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
+    Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
+              (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
         ( Flux_SW * (1.0 - IST%sw_abs_ocn(i,j,k)) + &
-          ((IST%flux_lw_top(i,j,k) - IST%flux_t_top(i,j,k)) )  + &
-           (-IST%flux_lh_top(i,j,k)) + IST%bheat(i,j))
+          ((FIA%flux_lw_top(i,j,k) - FIA%flux_t_top(i,j,k)) )  + &
+           (-FIA%flux_lh_top(i,j,k)) + FIA%bheat(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
-                   (IST%bmelt(i,j,k) + IST%tmelt(i,j,k))
+                   (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine accumulate_input_1
@@ -820,7 +822,9 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
   real :: enth_units, LI
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
   type(ice_ocean_flux_type), pointer :: IOF => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
   IOF => IST%IOF
+  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -841,11 +845,11 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
 
     area_pt = IST%part_size(i,j,0)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
-          ((IST%flux_lw_top(i,j,0) - IST%flux_lh_top(i,j,0)) - IST%flux_t_top(i,j,0))
+          ((FIA%flux_lw_top(i,j,0) - FIA%flux_lh_top(i,j,0)) - FIA%flux_t_top(i,j,0))
 
     ! These are mass fluxes that are simply passed through to the ocean.
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
-                      (area_pt * IST%fprec_top(i,j,0) + IOF%calving(i,j))
+                      (area_pt * FIA%fprec_top(i,j,0) + IOF%calving(i,j))
 
   enddo ; enddo
 
@@ -856,17 +860,17 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       area_pt = part_size(i,j,k)
       pen_frac = 1.0 ; if (k>0) pen_frac = IST%sw_abs_ocn(i,j,k)
-      Flux_SW = (IST%flux_sw_vis_dir_top(i,j,k) + IST%flux_sw_vis_dif_top(i,j,k)) + &
-                (IST%flux_sw_nir_dir_top(i,j,k) + IST%flux_sw_nir_dif_top(i,j,k))
+      Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
+                (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
 
       CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
-          ( (IST%lprec_top(i,j,k) + IST%fprec_top(i,j,k)) - IST%flux_q_top(i,j,k) )
+          ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%flux_q_top(i,j,k) )
       CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
            ( pen_frac*Flux_SW )
 
       if (k>0) &
         CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
-           ((IST%bmelt(i,j,k) + IST%tmelt(i,j,k)) - dt*IST%bheat(i,j))
+           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*FIA%bheat(i,j))
     enddo ; enddo ; enddo
 
  ! Runoff and calving do not bring in salt, so salt_in(i,j) = 0.0
