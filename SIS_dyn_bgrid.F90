@@ -1,4 +1,4 @@
-module ice_dyn_bgrid
+module SIS_dyn_bgrid
 !***********************************************************************
 !*                   GNU General Public License                        *
 !* This file is a part of SIS2.                                        *
@@ -43,9 +43,9 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_B_dyn_init, ice_B_dynamics, ice_B_dyn_end, ice_B_dyn_register_restarts
+public :: SIS_B_dyn_init, SIS_B_dynamics, SIS_B_dyn_end, SIS_B_dyn_register_restarts
 
-type, public :: ice_B_dyn_CS ; private
+type, public :: SIS_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
     sig11 => NULL(), &  ! sig11, sig12, and sig22 are the three elements of
     sig12 => NULL(), &  ! the stress tensor, all in units of Pa m.
@@ -76,19 +76,19 @@ type, public :: ice_B_dyn_CS ; private
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_stren = -1, id_ui = -1, id_vi = -1
-end type ice_B_dyn_CS
+end type SIS_B_dyn_CS
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_B_dyn_init - initialize the ice dynamics and set parameters.             !
+! SIS_B_dyn_init - initialize the ice dynamics and set parameters.             !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
+subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
   type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_B_dyn_CS),          pointer       :: CS
+  type(SIS_B_dyn_CS),          pointer       :: CS
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -102,13 +102,13 @@ subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "ice_dyn" ! This module's name.
+  character(len=40)  :: mod = "SIS_dyn_bgrid" ! This module's name.
 
     real, parameter       :: missing = -1e34
 
   if (.not.associated(CS)) then
-    call SIS_error(FATAL, "ice_dyn_init called with an unassociated control structure. \n"//&
-                    "ice_dyn_register_restarts must be called before ice_dyn_init.")
+    call SIS_error(FATAL, "SIS_B_dyn_init called with an unassociated control structure. \n"//&
+                    "SIS_B_dyn_register_restarts must be called before SIS_B_dyn_init.")
     return
   endif
 
@@ -192,7 +192,7 @@ subroutine ice_B_dyn_init(Time, G, param_file, diag, CS)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesB1, Time,          &
             'ice velocity - y component', 'm/s', missing_value=missing)
 
-end subroutine ice_B_dyn_init
+end subroutine SIS_B_dyn_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -202,7 +202,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
   type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
-  type(ice_B_dyn_CS),               pointer     :: CS
+  type(SIS_B_dyn_CS),               pointer     :: CS
   ! integer, intent(in) :: nCat
   !Niki: TOM has a new option for calculating ice strength. If you want to use it set
   !      prs_rothrock=.true.  In that case we need to review and fix the new code
@@ -263,9 +263,9 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
 end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dynamics - take a single dynamics timestep with EVP subcycles            !
+! SIS_B_dynamics - take a single dynamics timestep with EVP subcycles            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
+subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G
@@ -278,7 +278,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   logical,                            intent(in   ) :: do_ridging
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate    ! ridging rate from drift state
   real,                               intent(in   ) :: dt_slow
-  type(ice_B_dyn_CS),                 pointer       :: CS
+  type(SIS_B_dyn_CS),                 pointer       :: CS
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      msnow - The mass per unit total area (ice covered and ice free)
 !                    of the snow, in kg m-2.
@@ -341,7 +341,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
-       "ice_dynamics: Module must be initialized before it is used.")
+       "SIS_B_dynamics: Module must be initialized before it is used.")
 
   pi = 4.0*atan(1.0)
   EC2I = 1.0/(CS%EC*CS%EC)
@@ -439,21 +439,21 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   enddo ; enddo
 
   if (CS%debug) then
-     call Bchksum(sldx, "sldx in ice_dynamics", G%HI, symmetric=.true.)
-     call Bchksum(sldy, "sldy in ice_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(sldx, "sldx in SIS_B_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(sldy, "sldy in SIS_B_dynamics", G%HI, symmetric=.true.)
 
-     call Bchksum(ui, "ui pre-steps ice_dynamics", G%HI, symmetric=.true.)
-     call Bchksum(vi, "vi pre-steps ice_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(ui, "ui pre-steps SIS_B_dynamics", G%HI, symmetric=.true.)
+     call Bchksum(vi, "vi pre-steps SIS_B_dynamics", G%HI, symmetric=.true.)
   endif
   if (CS%debug_redundant) then
-     call check_redundant_B("sldx/sldy in ice_dynamics", sldx, sldy, G)
-     call check_redundant_B("fxat/fyat in ice_dynamics", fxat, fyat, G)
-     call check_redundant_B("uo/vo in ice_dynamics",uo, vo, G)
-     call check_redundant_B("civ in ice_dynamics", civ, G)
-     call check_redundant_B("miv in ice_dynamics", miv, G)
-     call check_redundant_B("dydx/dxdy in ice_dynamics",dydx, dxdy, G)
+     call check_redundant_B("sldx/sldy in SIS_B_dynamics", sldx, sldy, G)
+     call check_redundant_B("fxat/fyat in SIS_B_dynamics", fxat, fyat, G)
+     call check_redundant_B("uo/vo in SIS_B_dynamics",uo, vo, G)
+     call check_redundant_B("civ in SIS_B_dynamics", civ, G)
+     call check_redundant_B("miv in SIS_B_dynamics", miv, G)
+     call check_redundant_B("dydx/dxdy in SIS_B_dynamics",dydx, dxdy, G)
 
-     call check_redundant_B("ui/vi pre-steps ice_dynamics",ui, vi, G)
+     call check_redundant_B("ui/vi pre-steps SIS_B_dynamics",ui, vi, G)
   endif
 
   do l=1,EVP_steps
@@ -597,34 +597,34 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     enddo ; enddo
 
     if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in ice_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%sig22, "sig22 in ice_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%sig12, "sig12 in ice_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1)
 
-      call Bchksum(fxic, "fxic in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyic, "fyic in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fxoc, "fxoc in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyoc, "fyoc in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fxco, "fxco in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyco, "fyco in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(ui, "ui in ice_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(vi, "vi in ice_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true.)
     endif
     if (CS%debug_redundant) then
-      call check_redundant_B("fxic/fyic in ice_dynamics steps",fxic, fyic, G)
-      call check_redundant_B("fxco in ice_dynamics steps", fxco, fyco, G)
-      call check_redundant_B("fxoc in ice_dynamics steps", fxoc, fyoc, G)
-      call check_redundant_B("ui/vi in ice_dynamics steps", ui, vi, G)
+      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G)
+      call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G)
+      call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G)
+      call check_redundant_B("ui/vi in SIS_B_dynamics steps", ui, vi, G)
     endif
 
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call Bchksum(ui, "ui end ice_dynamics", G%HI, symmetric=.true.)
-    call Bchksum(vi, "vi end ice_dynamics", G%HI, symmetric=.true.)
+    call Bchksum(ui, "ui end SIS_B_dynamics", G%HI, symmetric=.true.)
+    call Bchksum(vi, "vi end SIS_B_dynamics", G%HI, symmetric=.true.)
   endif
   if (CS%debug_redundant) &
-    call check_redundant_B("ui/vi end ice_dynamics", ui, vi, G)
+    call check_redundant_B("ui/vi end SIS_B_dynamics", ui, vi, G)
 
   ! make averages
   I_sub_steps = 1.0/EVP_steps
@@ -678,7 +678,7 @@ subroutine ice_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
     endif ; enddo ; enddo
   endif
 
-end subroutine ice_B_dynamics
+end subroutine SIS_B_dynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! sigI - first stress invariant                                                !
@@ -687,7 +687,7 @@ function sigI(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigI
-  type(ice_B_dyn_CS),               pointer    :: CS
+  type(SIS_B_dyn_CS),               pointer    :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -707,7 +707,7 @@ function sigII(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi, ci, sig11, sig22, sig12
   real, dimension(SZI_(G),SZJ_(G))             :: sigII
-  type(ice_B_dyn_CS),               pointer    :: CS
+  type(SIS_B_dyn_CS),               pointer    :: CS
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -721,14 +721,14 @@ function sigII(mi, ci, sig11, sig22, sig12, G, CS)
 end function sigII
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_B_dyn_register_restarts - allocate and register any variables for this   !
+! SIS_B_dyn_register_restarts - allocate and register any variables for this   !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
+subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
   type(hor_index_type),    intent(in)    :: HI
   type(param_file_type),   intent(in)    :: param_file
-  type(ice_B_dyn_CS),      pointer       :: CS
+  type(SIS_B_dyn_CS),      pointer       :: CS
   type(restart_file_type), intent(inout) :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
@@ -746,7 +746,7 @@ subroutine ice_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (associated(CS)) then
-    call SIS_error(WARNING, "ice_dyn_register_restarts called with an "//&
+    call SIS_error(WARNING, "SIS_B_dyn_register_restarts called with an "//&
                             "associated control structure.")
     return
   endif
@@ -761,18 +761,18 @@ subroutine ice_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
                               domain=mpp_domain, mandatory=.false.)
   id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
                               domain=mpp_domain, mandatory=.false.)
-end subroutine ice_B_dyn_register_restarts
+end subroutine SIS_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_dyn_end - deallocate the memory associated with this module.             !
+! SIS_B_dyn_end - deallocate the memory associated with this module.           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_B_dyn_end(CS)
-  type(ice_B_dyn_CS), pointer :: CS
+subroutine SIS_B_dyn_end(CS)
+  type(SIS_B_dyn_CS), pointer :: CS
 
   deallocate(CS%sig11) ; deallocate(CS%sig12) ; deallocate(CS%sig22)
 
   deallocate(CS)
-end subroutine ice_B_dyn_end
+end subroutine SIS_B_dyn_end
 
 !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_stress_old - deriving ice stress as in SIS of CM2.1                      !
@@ -906,4 +906,4 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
 
 end subroutine ice_stress_new
 
-end module ice_dyn_bgrid
+end module SIS_dyn_bgrid

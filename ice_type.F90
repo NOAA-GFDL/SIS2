@@ -16,8 +16,8 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use ice_dyn_bgrid,    only: ice_B_dyn_CS
-use ice_dyn_cgrid,    only: ice_C_dyn_CS
+use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
+use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
 use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
@@ -30,7 +30,6 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_get_input, only : archaic_nml_check
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
@@ -42,7 +41,7 @@ implicit none ; private
 public :: ice_data_type, ice_state_type
 public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 public :: ice_data_type_register_restarts, ice_state_register_restarts
-public :: ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
+public :: ice_diagnostics_init, ice_stock_pe
 public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
@@ -345,8 +344,8 @@ type ice_state_type
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
-  type(ice_B_dyn_CS), pointer     :: ice_B_dyn_CSp => NULL()
-  type(ice_C_dyn_CS), pointer     :: ice_C_dyn_CSp => NULL()
+  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
@@ -1532,128 +1531,5 @@ subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
   !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 end subroutine lnd_ice_bnd_type_chksum
-
-
-
-subroutine check_ice_model_nml(param_file)
-
-  type(param_file_type), intent(in) :: param_file
-  !--- namelist interface --------------
-  real    :: h_lo_lim       = 0.0        ! min ice thickness for temp. calc.
-  integer :: num_part       = 6          ! number of ice grid partitions
-                                         ! partition 1 is open water
-                                         ! partitions 2 to num_part-1 are
-                                         !   thickness limited ice categories
-                                         ! partition num_part is unlimited ice
-  logical :: atmos_winds = .true.        ! wind stress from atmosphere model over t points and has wrong sign
-  logical :: slab_ice    = .false.       ! do old-style GFDL slab ice?
-  logical :: spec_ice    = .false.       ! old-style GFDL slab ice with SST, ice thickness and conc. from data
-  logical :: do_ice_restore  = .false.   ! restore sea-ice toward climatology
-  logical :: do_ice_limit    = .false.   ! limit sea ice to max_ice_limit
-  real    :: max_ice_limit   = 4.0       ! maximum sea ice height(m),
-                                         ! if do_ice_limit is true
-                                         ! TK: default chosen based on observed
-                                         !     ice thickness data used by climate
-                                         !     group, which range up to 7.31 m
-  real    :: ice_restore_timescale = 5.0 ! time scale for restoring ice (days)
-  logical :: conservation_check = .true. ! check for heat and h2o conservation
-  logical :: slp2ocean          = .false.! apply sea level pressure to ocean surface
-  logical :: verbose            = .false.! control printing message, will slow model down when turn true
-  logical :: do_icebergs        = .false.! call iceberg code to modify calving field
-  logical :: add_diurnal_sw     = .false.! apply an additional diurnal cycle to shortwave radiation
-  logical :: do_sun_angle_for_alb = .false.! find the sun angle for ocean albed in the frame of the ice model
-  integer :: layout(2)          = (/0, 0/)
-  integer :: io_layout(2)       = (/0, 0/)
-
-  real    :: R_ice=0., R_snw=0., R_pnd=0.
-  logical :: do_deltaEdd = .true.
-  character(len=128) :: mask_table = "INPUT/ice_mask_table"
-
-  ! The following are archaic namelist variables. They are here only for error
-  ! checking of attempts to use out-of-date namelist values.
-  real    :: p0             = missing    ! ice strength parameter
-  real    :: c0             = missing    ! another ice strength parameter
-  real    :: cdw            = missing    ! water/ice drag coefficient
-  real    :: wd_turn        = missing    ! water/ice drag turning angle
-  real    :: channel_viscosity = missing ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
-  real    :: smag_ocn          = missing ! Smagorinksy coefficient for viscosity (dimensionless)
-  real    :: ssh_gravity       = missing ! Gravity parameter used in channel viscosity parameterization (m/s^2)
-  real    :: chan_cfl_limit    = missing ! CFL limit for channel viscosity parameterization (dimensionless)
-  integer :: nsteps_dyn     = miss_int   ! dynamics steps per slow timestep
-  integer :: nsteps_adv     = miss_int   ! advection steps per slow timestep
-  real    :: mom_rough_ice  = missing    ! momentum same, cd10=(von_k/ln(10/z0))^2
-  real    :: heat_rough_ice = missing    ! heat roughness length
-  real    :: kmelt          = missing    ! ocean/ice heat flux constant
-  real    :: ks             = missing    ! snow conductivity (W/mK)
-  real    :: alb_sno        = missing    ! snow albedo (less if melting)
-  real    :: alb_ice        = missing    ! ice albedo (less if melting)
-  real    :: pen_ice        = missing    ! part unreflected solar penetrates ice
-  real    :: opt_dep_ice    = missing    ! ice optical depth
-  real    :: t_range_melt   = missing    ! melt albedos scaled in over T range
-  real    :: ice_bulk_salin = missing    ! ice bulk salinity (for ocean salt flux)
-
-  namelist /ice_model_nml/ mom_rough_ice, heat_rough_ice, p0, c0, cdw, wd_turn,  &
-                           kmelt, alb_sno, alb_ice, pen_ice, opt_dep_ice,        &
-                           nsteps_dyn, nsteps_adv, num_part, atmos_winds,        &
-                           slab_ice, spec_ice, ice_bulk_salin, layout,           &
-                           do_ice_restore, do_ice_limit, max_ice_limit,          &
-                           ice_restore_timescale, slp2ocean, conservation_check, &
-                           t_range_melt, ks, h_lo_lim, verbose,        &
-                           do_icebergs, add_diurnal_sw, io_layout, channel_viscosity,&
-                           smag_ocn, ssh_gravity, chan_cfl_limit, do_sun_angle_for_alb, &
-                           mask_table, do_deltaEdd,R_ice,R_snw,R_pnd
-  integer :: io, unit, ierr
-
-#ifdef INTERNAL_FILE_NML
-  read (input_nml_file, nml=ice_model_nml, iostat=io)
-#else
-  unit = open_namelist_file()
-  read  (unit, ice_model_nml,iostat=io)
-  call close_file (unit)
-#endif
-  ierr = check_nml_error(io,'ice_model_nml')
-
-  ! Check for parameters that are still being set via the namelist but which
-  ! should be set via the param_file instead.
-
-  call archaic_nml_check(param_file, "USE_SLAB_ICE", "SLAB_ICE", slab_ice, .false.)
-  call archaic_nml_check(param_file, "DO_ICEBERGS", "do_icebergs", do_icebergs, .false.)
-  call archaic_nml_check(param_file, "SPECIFIED_ICE", "spec_ice", spec_ice, .false.)
-  call archaic_nml_check(param_file, "NSTEPS_DYN", "nsteps_dyn", nsteps_dyn, miss_int, 432)
-  call archaic_nml_check(param_file, "ICE_STRENGTH_PSTAR", "p0", p0, missing)
-  call archaic_nml_check(param_file, "ICE_STRENGTH_CSTAR", "c0", c0, missing)
-  call archaic_nml_check(param_file, "ICE_CDRAG_WATER", "cdw", cdw, missing)
-  call archaic_nml_check(param_file, "AIR_WATER_STRESS_TURN_ANGLE", "wd_turn", wd_turn, missing)
-  call archaic_nml_check(param_file, "NSTEPS_ADV", "nsteps_adv", nsteps_adv, miss_int, 1)
-  call archaic_nml_check(param_file, "ICE_CHANNEL_VISCOSITY", &
-                         "channel_viscosity", channel_viscosity, missing, 0.0)
-  call archaic_nml_check(param_file, "ICE_CHANNEL_SMAG_COEF", "smag_ocn", smag_ocn, missing)
-  call archaic_nml_check(param_file, "ICE_CHANNEL_CFL_LIMIT", "chan_cfl_limit", chan_cfl_limit, missing)
-
-  call archaic_nml_check(param_file, "ICE_BULK_SALINITY", "ice_bulk_salin", ice_bulk_salin, missing)
-  call archaic_nml_check(param_file, "SNOW_ALBEDO", "alb_snow", alb_sno, missing)
-  call archaic_nml_check(param_file, "ICE_ALBEDO", "alb_ice", alb_ice, missing)
-  call archaic_nml_check(param_file, "MOMENTUM_ROUGH_ICE", "mom_rough_ice", mom_rough_ice, missing)
-  call archaic_nml_check(param_file, "HEAT_ROUGH_ICE", "heat_rough_ice", heat_rough_ice, missing)
-  call archaic_nml_check(param_file, "ICE_KMELT", "kmelt", kmelt, missing)
-  call archaic_nml_check(param_file, "SNOW_CONDUCT", "ks", ks, missing)
-  call archaic_nml_check(param_file, "ICE_SW_PEN_FRAC", "pen_ice", pen_ice, missing)
-  call archaic_nml_check(param_file, "ICE_OPTICAL_DEPTH", "opt_dep_ice", opt_dep_ice, missing)
-  call archaic_nml_check(param_file, "ALBEDO_T_MELT_RANGE", "t_range_melt", t_range_melt, missing)
-  call archaic_nml_check(param_file, "ICE_SEES_ATMOS_WINDS", "atmos_winds", atmos_winds, .true.)
-  call archaic_nml_check(param_file, "DO_ICE_RESTORE", "do_ice_restore", do_ice_restore, .false.)
-  call archaic_nml_check(param_file, "APPLY_ICE_LIMIT", "do_ice_limit", do_ice_limit, .false.)
-  call archaic_nml_check(param_file, "MAX_ICE_THICK_LIMIT", "max_ice_limit", max_ice_limit, 4.0)
-  call archaic_nml_check(param_file, "ICE_RESTORE_TIMESCALE", "ice_restore_timescale", ice_restore_timescale, 5.0)
-  call archaic_nml_check(param_file, "APPLY_SLP_TO_OCEAN", "slp2ocean", slp2ocean, .false.)
-  call archaic_nml_check(param_file, "MIN_H_FOR_TEMP_CALC", "h_lo_lim", h_lo_lim, 0.0)
-  call archaic_nml_check(param_file, "ADD_DIURNAL_SW", "add_diurnal_sw", add_diurnal_sw, .false.)
-  call archaic_nml_check(param_file, "DO_SUN_ANGLE_FOR_ALB", "do_sun_angle_for_alb", do_sun_angle_for_alb, .false.)
-  call archaic_nml_check(param_file, "DO_DELTA_EDDINGTON_SW", "do_deltaEdd", do_deltaEdd, .true.)
-  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_ICE", "R_ice", R_ice, 0.0)
-  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_SNOW", "R_snw", R_snw, 0.0)
-  call archaic_nml_check(param_file, "ICE_DELTA_EDD_R_POND", "R_pnd", R_pnd, 0.0)
-
-end subroutine check_ice_model_nml
 
 end module ice_type_mod

@@ -36,7 +36,7 @@ use MOM_io, only : open_namelist_file, check_nml_error
 
 implicit none ; private
 
-public Get_SIS_Input, archaic_nml_check
+public Get_SIS_Input
 
 ! This structure is to simplify communication with the calling code.
 
@@ -48,10 +48,6 @@ type, public :: directories
     input_filename  = ' '     ! A string that indicates the input files or how
                               ! the run segment should be started.
 end type directories
-
-interface archaic_nml_check
-  module procedure archaic_check_real, archaic_check_int, archaic_check_logical
-end interface archaic_nml_check
 
 contains
 
@@ -112,92 +108,5 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
   endif
 
 end subroutine Get_SIS_Input
-
-subroutine archaic_check_real(param_file, pf_name, nl_name, var, missing, default)
-  type(param_file_type), intent(in) :: param_file
-  character(len=*),      intent(in) :: pf_name, nl_name
-  real,                  intent(in) :: var, missing
-  real, optional,        intent(in) :: default
-
-  real :: pf_val, def_val
-
-  if (var == missing) return
-  if (is_root_pe()) then
-    def_val = missing ; if (present(default)) def_val = default
-    pf_val = def_val ; call read_param(param_file, pf_name, pf_val)
-
-    if (var == pf_val) then
-      call SIS_error(WARNING, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used, \n but is set the same as the SIS_input variable "//&
-          trim(pf_name))
-    elseif (pf_val == default) then
-      call SIS_error(FATAL, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used. \n Instead, use the SIS_input variable "//&
-          trim(pf_name))
-    else
-      call SIS_error(FATAL, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used, \n and is set differently from the SIS_input variable "//&
-          trim(pf_name))
-    endif
-  endif
-
-end subroutine archaic_check_real
-
-subroutine archaic_check_int(param_file, pf_name, nl_name, var, missing, default)
-  type(param_file_type), intent(in) :: param_file
-  character(len=*),      intent(in) :: pf_name, nl_name
-  integer,               intent(in) :: var, missing
-  integer, optional,     intent(in) :: default
-
-  integer :: pf_val, def_val
-
-  if (var == missing) return
-  if (is_root_pe()) then
-    def_val = missing ; if (present(default)) def_val = default
-    pf_val = def_val ; call read_param(param_file, pf_name, pf_val)
-
-    if (var == pf_val) then
-      call SIS_error(WARNING, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used, \n but is set the same as the SIS_input variable "//&
-          trim(pf_name))
-    elseif (pf_val == default) then
-      call SIS_error(FATAL, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used. \n Instead, use the SIS_input variable "//&
-          trim(pf_name))
-    else
-      call SIS_error(FATAL, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used, \n and is set differently from the SIS_input variable "//&
-          trim(pf_name))
-    endif
-  endif
-
-end subroutine archaic_check_int
-
-subroutine archaic_check_logical(param_file, pf_name, nl_name, var, missing, default)
-  type(param_file_type), intent(in) :: param_file
-  character(len=*),      intent(in) :: pf_name, nl_name
-  logical,               intent(in) :: var, missing
-  logical, optional,     intent(in) :: default
-
-  logical :: pf_val, def_val
-
-  if (var .eqv. missing) return
-
-  if (is_root_pe()) then
-    def_val = missing ; if (present(default)) def_val = default
-    pf_val = def_val ; call read_param(param_file, pf_name, pf_val)
-
-    if (var .eqv. pf_val) then
-      call SIS_error(WARNING, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used, \n but is set the same as the SIS_input variable "//&
-          trim(pf_name))
-    else
-      call SIS_error(FATAL, "Archaic SIS namelist variable "//trim(nl_name)//&
-          " appears to be used. \n Instead, use the SIS_input variable "//&
-          trim(pf_name))
-    endif
-  endif
-
-end subroutine archaic_check_logical
 
 end module SIS_get_input

@@ -57,7 +57,7 @@ use MOM_hor_index, only : hor_index_type ! , hor_index_init
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use fms_mod, only : clock_flag_default !, file_exist
-! use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
+! use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
@@ -67,10 +67,9 @@ use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use data_override_mod, only : data_override
 
-use ice_type_mod, only : ice_state_type !, ice_data_type
-! use ice_type_mod, only : dealloc_IST_arrays
-! use ice_type_mod, only : ice_state_register_restarts
-! use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
+use ice_type_mod, only : ice_state_type
+! use ice_type_mod, only : dealloc_IST_arrays, ice_state_register_restarts
+! use ice_type_mod, only : ice_diagnostics_init
 use ice_type_mod, only : IST_chksum,  IST_bounds_check
 use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -84,17 +83,13 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 ! use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 
-! use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-! use ice_thm_mod,      only: TFI, CI, e_to_melt
-use ice_thm_mod,      only: e_to_melt, ice5lay_resize
-! use SIS2_ice_thm,  only: ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use ice_thm_mod,   only: e_to_melt, ice5lay_resize
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-! use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S! , Temp_from_Enth_S
-use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze !, e_to_melt_TS
-use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
-use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
+use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
+use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : adjust_ice_categories
 use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
@@ -399,7 +394,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
   !
   ! Thermodynamics
   !
-  if (.not.IST%interspersed_thermo .and. .not. IST%specified_ice) then
+  if (.not.IST%specified_ice) then
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
     mi_old = IST%mH_ice
     
@@ -474,34 +469,32 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
 
-    if (.not.IST%interspersed_thermo .or. nds>1) then
-      ! Correct the wind stresses for changes in the fractional ice-coverage.
-      ice_cover(:,:) = 0.0
+    ! Correct the wind stresses for changes in the fractional ice-coverage.
+    ice_cover(:,:) = 0.0
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,ice_cover,IST,ice_free, &
 !$OMP                                  ice_cover_in,WindStr_x_A,WindStr_x_A_in,     &
 !$OMP                                  WindStr_y_A,WindStr_y_A_in,ice_free_in,      &
 !$OMP                                  WindStr_x_ocn_A,WindStr_y_ocn_A)
-      do j=jsd,jed
-        do k=1,ncat ; do i=isd,ied
-          ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-        enddo ; enddo
-        do i=isd,ied
-          ice_free(i,j) = IST%part_size(i,j,0)
+    do j=jsd,jed
+      do k=1,ncat ; do i=isd,ied
+        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+      enddo ; enddo
+      do i=isd,ied
+        ice_free(i,j) = IST%part_size(i,j,0)
 
-          if (ice_cover(i,j) > ice_cover_in(i,j)) then
-            WindStr_x_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_u_top(i,j,0) + &
-                                ice_cover_in(i,j)*WindStr_x_A_in(i,j)) / ice_cover(i,j)
-            WindStr_y_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_v_top(i,j,0) + &
-                                ice_cover_in(i,j)*WindStr_y_A_in(i,j)) / ice_cover(i,j)
-          elseif (ice_free(i,j) > ice_free_in(i,j)) then
-            WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_x_A_in(i,j) + &
-                                ice_free_in(i,j)*IST%flux_u_top(i,j,0)) / ice_free(i,j)
-            WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_y_A_in(i,j) + &
-                                ice_free_in(i,j)*IST%flux_v_top(i,j,0)) / ice_free(i,j)
-          endif
-        enddo
+        if (ice_cover(i,j) > ice_cover_in(i,j)) then
+          WindStr_x_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_u_top(i,j,0) + &
+                              ice_cover_in(i,j)*WindStr_x_A_in(i,j)) / ice_cover(i,j)
+          WindStr_y_A(i,j) = ((ice_cover(i,j)-ice_cover_in(i,j))*IST%flux_v_top(i,j,0) + &
+                              ice_cover_in(i,j)*WindStr_y_A_in(i,j)) / ice_cover(i,j)
+        elseif (ice_free(i,j) > ice_free_in(i,j)) then
+          WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_x_A_in(i,j) + &
+                              ice_free_in(i,j)*IST%flux_u_top(i,j,0)) / ice_free(i,j)
+          WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-ice_free_in(i,j))*WindStr_y_A_in(i,j) + &
+                              ice_free_in(i,j)*IST%flux_v_top(i,j,0)) / ice_free(i,j)
+        endif
       enddo
-    endif
+    enddo
 
     !
     ! Dynamics - update ice velocities.
@@ -611,24 +604,24 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
       endif
 
       if (IST%debug) then
-        call IST_chksum("Before ice_C_dynamics", IST, G, IG)
-        call hchksum(IST%part_size(:,:,0), "ps(0) before ice_C_dynamics", G%HI)
-        call hchksum(ms_sum, "ms_sum before ice_C_dynamics", G%HI)
-        call hchksum(mi_sum, "mi_sum before ice_C_dynamics", G%HI)
-        call hchksum(IST%sea_lev, "sea_lev before ice_C_dynamics", G%HI, haloshift=1)
-        call uchksum(IST%u_ocn_C, "u_ocn_C before ice_C_dynamics", G%HI)
-        call vchksum(IST%v_ocn_C, "v_ocn_C before ice_C_dynamics", G%HI)
-        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before ice_C_dynamics", G%HI)
-        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before ice_C_dynamics", G%HI)
-        call check_redundant_C("WindStr before ice_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
+        call IST_chksum("Before SIS_C_dynamics", IST, G, IG)
+        call hchksum(IST%part_size(:,:,0), "ps(0) before SIS_C_dynamics", G%HI)
+        call hchksum(ms_sum, "ms_sum before SIS_C_dynamics", G%HI)
+        call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
+        call hchksum(IST%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
+        call uchksum(IST%u_ocn_C, "u_ocn_C before SIS_C_dynamics", G%HI)
+        call vchksum(IST%v_ocn_C, "v_ocn_C before SIS_C_dynamics", G%HI)
+        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before SIS_C_dynamics", G%HI)
+        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before SIS_C_dynamics", G%HI)
+        call check_redundant_C("WindStr before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
       endif
 
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
-      call ice_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
+      call SIS_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                         IST%u_ocn_C, IST%v_ocn_C, &
                         WindStr_x_Cu, WindStr_y_Cv, IST%sea_lev, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
-                        dt_slow_dyn, G, IST%ice_C_dyn_CSp)
+                        dt_slow_dyn, G, IST%SIS_C_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
@@ -739,10 +732,10 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call ice_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
+      call SIS_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                         IST%u_ocn, IST%v_ocn, WindStr_x_B, WindStr_y_B, IST%sea_lev, &
                         str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
-                        rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, IST%ice_B_dyn_CSp)
+                        rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, IST%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (IST%debug) then
@@ -784,72 +777,7 @@ subroutine update_ice_model_slow(IST, icebergs_CS, G, IG)
 
     call mpp_clock_end(iceClock4)
 
-    !
-    ! Thermodynamics (The thermodynamic changes might have been applied above.)
-    !
-    if (IST%interspersed_thermo .and. nds==1) then
-
-      !TOM> Store old ice mass per unit area for calculating partial ice growth.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        mi_old(i,j,k) = IST%mH_ice(i,j,k)
-    enddo ; enddo ; enddo
-      !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
-      !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-      if (IST%do_ridging) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
-!$OMP                          private(tmp3)
-        do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-          tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-          rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-              rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-        enddo ; enddo ; enddo
-      endif
-
-      call disable_SIS_averaging(IST%diag)
-
-      ! The thermodynamics routines return updated values of the ice and snow
-      ! masses-per-unit area and enthalpies.
-      call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
-      if (IST%SIS1_5L_thermo) then
-        call SIS1_5L_thermodynamics(IST, G, IG)
-      else
-        call SIS2_thermodynamics(IST, G, IG)
-
-      endif
-
-      !TOM> calculate partial ice growth for ridging and aging.
-      if (IST%do_ridging) then
-        !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
-        !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac,mi_old)
-        do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-          if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-            IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
-               (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
-          IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
-        enddo ; enddo ; enddo
-      endif
-
-      !  Other routines that do thermodynamic vertical processes should be added here.
-      !  Do tracer column physics
-      call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-      call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
-      call disable_SIS_averaging(IST%diag)
-
-      call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                                 IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
-
-      call accumulate_bottom_input(IST, dt_slow, G, IG, IST%sum_output_CSp)
-
-      if (IST%column_check) &
-        call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp, &
-                                  message="        Post_thermo", check_column=.true.)
-    endif  ! Interspersed thermo
-
     call enable_SIS_averaging(dt_slow_dyn, IST%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), IST%diag)
-
-
     !
     ! Do ice transport ... all ocean fluxes have been calculated by now.
     !
@@ -2451,10 +2379,11 @@ end subroutine SIS2_thermodynamics
 ! SIS_slow_register_restarts - allocate and register any variables for this    !
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_register_restarts(mpp_domain, HI, param_file, IST, &
+subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, IST, &
                                       Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
   type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    pointer       :: IST
   type(restart_file_type), intent(inout) :: Ice_restart
@@ -2479,11 +2408,20 @@ subroutine SIS_slow_register_restarts(mpp_domain, HI, param_file, IST, &
 !    return
 !  endif
 !  allocate(IST)
+  if (IST%Cgrid_dyn) then
+    call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%SIS_C_dyn_CSp, Ice_restart, restart_file)
+  else
+    call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
+                 IST%SIS_B_dyn_CSp, Ice_restart, restart_file)
+  endif
+!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
+!                                       Ice_restart, restart_file)
 
 end subroutine SIS_slow_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_slow_init - initializes ice model data, parameters and diagnostics      !
+! SIS_slow_init - initializes ice model data, parameters and diagnostics       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
   type(time_type),     target, intent(in)    :: Time   ! current time
@@ -2501,6 +2439,14 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, IST)
 
   ! Read all relevant parameters and write them to the model log.
 !   call log_version(param_file, mod, version, "")
+
+  if (IST%Cgrid_dyn) then
+    call SIS_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%SIS_C_dyn_CSp, IST%ntrunc)
+  else
+    call SIS_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%SIS_B_dyn_CSp)
+  endif
+  call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
+
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
@@ -2523,6 +2469,13 @@ end subroutine SIS_slow_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_slow_end (IST)
   type(ice_state_type), pointer :: IST
+
+  if (IST%Cgrid_dyn) then
+    call SIS_C_dyn_end(IST%SIS_C_dyn_CSp)
+  else
+    call SIS_B_dyn_end(IST%SIS_B_dyn_CSp)
+  endif
+  call ice_transport_end(IST%ice_transport_CSp)
 
 end subroutine SIS_slow_end
 

@@ -41,15 +41,13 @@ module ice_model_mod
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
-use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
+! use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
+! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_get_input, only : Get_SIS_input, directories
-use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
-use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+use SIS_sum_output, only : SIS_sum_output_init,  write_ice_statistics
 use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
 
+use MOM_checksums,     only : chksum
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
 use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
@@ -58,35 +56,35 @@ use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
+use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : uppercase
-use MOM_EOS, only : EOS_type, calculate_density_derivs
+use MOM_time_manager, only : time_type, time_type_to_real
+use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
+use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
+use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
-use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use mpp_mod, only : CLOCK_COMPONENT, CLOCK_ROUTINE
 
-use time_manager_mod, only : time_type, time_type_to_real, get_date, get_time
-use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
-use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
-use astronomy_mod, only: astronomy_init, astronomy_end
-use astronomy_mod, only: universal_time, orbital_time, diurnal_solar, daily_mean_solar
-use coupler_types_mod,only: coupler_3d_bc_type
-use data_override_mod, only : data_override
-use ocean_albedo_mod, only: compute_ocean_albedo            ! ice sets ocean surface
-use ocean_rough_mod,  only: compute_ocean_roughness         ! properties over water
+use astronomy_mod, only : astronomy_init, astronomy_end
+use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
+use coupler_types_mod, only : coupler_3d_bc_type
+use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
+use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
 use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
-use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe, check_ice_model_nml
+use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
 use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
 use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
 use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
-use ice_utils_mod, only : get_avg, post_avg, ice_line, ice_grid_chksum
+use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 
@@ -95,24 +93,14 @@ use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
-use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-
-use ice_thm_mod,   only: slab_ice_optics, ice_thm_param, ice5lay_temp, ice5lay_resize
-use ice_thm_mod,   only: TFI, CI, e_to_melt
+use ice_thm_mod,   only : slab_ice_optics, ice_thm_param, ice5lay_temp, TFI, CI
 use SIS_slow_mod,  only : update_ice_model_slow, SIS_slow_register_restarts
 use SIS_slow_mod,  only : SIS_slow_init, SIS_slow_end
-use SIS2_ice_thm,  only: ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-use SIS2_ice_thm,  only: enthalpy_from_TS, enth_from_TS, Temp_from_En_S, Temp_from_Enth_S
-use SIS2_ice_thm,  only: T_freeze, calculate_T_freeze, enthalpy_liquid, e_to_melt_TS
-use ice_dyn_bgrid, only: ice_B_dynamics, ice_B_dyn_init, ice_B_dyn_register_restarts, ice_B_dyn_end
-use ice_dyn_cgrid, only: ice_C_dynamics, ice_C_dyn_init, ice_C_dyn_register_restarts, ice_C_dyn_end
-use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
-use ice_transport_mod, only : adjust_ice_categories
-use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
+use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
+use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
 implicit none ; private
 
@@ -1471,12 +1459,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "from the SIS1 5 layer. Otherwise, use the newer SIS2 version.", &
                  default=.false.)
   
-  call get_param(param_file, mod, "INTERSPERSED_ICE_THERMO", IST%interspersed_thermo, &
-                 "If true, the sea ice thermodynamic updates are applied \n"//&
-                 "after the new velocities are determined, but before the \n"//&
-                 "transport occurs.  Otherwise, the ice thermodynamic \n"//&
-                 "updates occur at the start of the slow ice update and \n"//&
-                 "dynamics and continuity can occur together.", default=.false.)
+  call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
   call get_param(param_file, mod, "AREA_WEIGHTED_STRESSES", IST%area_wtd_stress, &
                  "If true, use wind stresses that are weighted by the ice \n"//&
                  "areas in the neighboring cells.  The default (true) is \n"//&
@@ -1676,8 +1659,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
-  call check_ice_model_nml(param_file)
-
   if (IST%specified_ice) IST%slab_ice = .true.
 
   ! Set up the ice-specific grid describing categories and ice layers.
@@ -1736,15 +1717,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                    IST, Ice%Ice_restart, restart_file)
 
-  if (IST%Cgrid_dyn) then
-    call ice_C_dyn_register_restarts(G%domain%mpp_domain, HI, param_file, &
-                 IST%ice_C_dyn_CSp, Ice%Ice_restart, restart_file)
-  else
-    call ice_B_dyn_register_restarts(G%domain%mpp_domain, HI, param_file, &
-                 IST%ice_B_dyn_CSp, Ice%Ice_restart, restart_file)
-  endif
-!  call ice_transport_register_restarts(G, param_file, IST%ice_transport_CSp, &
-!                                       Ice%Ice_restart, restart_file)
+  call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
+                                  IST, Ice%Ice_restart, restart_file)
+
 
   ! Register tracers that will be advected around.
   call register_SIS_tracer_pair(IST%enth_ice, IG%NkIce, "enth_ice", &
@@ -1761,8 +1736,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   !   Register any tracers that will be handled via tracer flow control for 
   ! restarts and advection.
-  call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, IST%diag, IST%TrReg, &
-     Ice%Ice_restart, restart_file)
+  call SIS_call_tracer_register(G, IG, param_file, IST%SIS_tracer_flow_CSp, &
+                                IST%diag, IST%TrReg, Ice%Ice_restart, restart_file)
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
@@ -2011,17 +1986,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call clone_MOM_domain(G%domain, Ice%domain, halo_size=0, symmetric=.false., &
                         domain_name="ice_nohalo")
 
-
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
   call ice_thm_param(IST%slab_ice, k_snow, h_lo_lim)
 
-  if (IST%Cgrid_dyn) then
-    call ice_C_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_C_dyn_CSp, IST%ntrunc)
-  else
-    call ice_B_dyn_init(IST%Time, G, param_file, IST%diag, IST%ice_B_dyn_CSp)
-  endif
-  call ice_transport_init(IST%Time, G, param_file, IST%diag, IST%ice_transport_CSp)
+  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
                            IST%sum_output_CSp, IST%ntrunc)
@@ -2039,24 +2008,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Initialize icebergs
   if (IST%do_icebergs) then
      if( ASSOCIATED(G%Domain%maskmap)) then
-       call icebergs_init(Ice%icebergs, &
-       G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
-       Ice%axes(1:2), G%Domain%X_flags, G%Domain%Y_flags, &
-       time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-       G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
-       G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
-       Ice%area, &
-       G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
-       maskmap=G%Domain%maskmap )
+       call icebergs_init(Ice%icebergs, G%Domain%niglobal, G%Domain%njglobal, &
+               G%Domain%layout, G%Domain%io_layout, Ice%axes(1:2), &
+               G%Domain%X_flags, G%Domain%Y_flags, time_type_to_real(Time_step_slow), &
+               Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
+               G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+               G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+               Ice%area,  G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+               G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), maskmap=G%Domain%maskmap )
      else
-       call icebergs_init(Ice%icebergs, &
-       G%Domain%niglobal, G%Domain%njglobal, G%Domain%layout, G%Domain%io_layout, &
-       Ice%axes(1:2), G%Domain%X_flags, G%Domain%Y_flags, &
-       time_type_to_real(Time_step_slow), Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
-       G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
-       G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
-       Ice%area, &
-       G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1) )
+       call icebergs_init(Ice%icebergs, G%Domain%niglobal, G%Domain%njglobal, &
+                G%Domain%layout, G%Domain%io_layout, Ice%axes(1:2), &
+                G%Domain%X_flags, G%Domain%Y_flags, time_type_to_real(Time_step_slow), &
+                Time, G%geoLonBu(isc:iec,jsc:jec), G%geoLatBu(isc:iec,jsc:jec), &
+                G%mask2dT(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+                G%dxCv(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), G%dyCu(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+                Ice%area, G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
+                G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1) )
      endif
   endif
 
@@ -2094,12 +2062,8 @@ subroutine ice_model_end (Ice)
 
   !--- release memory ------------------------------------------------
 
-  if (IST%Cgrid_dyn) then
-    call ice_C_dyn_end(IST%ice_C_dyn_CSp)
-  else
-    call ice_B_dyn_end(IST%ice_B_dyn_CSp)
-  endif
-  call ice_transport_end(IST%ice_transport_CSp)
+  call SIS_slow_end(IST)
+
   call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 
   call SIS_hor_grid_end(Ice%G)
