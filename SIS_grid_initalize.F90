@@ -5,6 +5,7 @@
 module SIS_grid_initialize
 
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
+use SIS_hor_grid, only : set_derived_SIS_metrics
 use SIS_hor_grid, only : ocean_grid_type => SIS_hor_grid_type
 
 use MOM_domains, only : pass_var, pass_vector, pe_here, root_PE, broadcast
@@ -91,106 +92,12 @@ subroutine SIS_set_grid_metrics(G, param_file)
   end select
 
 ! Calculate derived metrics (i.e. reciprocals and products)
-  call set_grid_derived_metrics(G, param_file)
+  call set_derived_SIS_metrics(G)
 
 ! This has not been written yet for SIS2 grids. -RWH
 !  if (debug) call grid_metrics_chksum('SIS_grid_initialize/set_grid_metrics',G)
 
-! ------------------------------------------------------------------------------
 end subroutine SIS_set_grid_metrics
-
-
-!> set_grid_derived_metrics is sets additional grid metrics that can be derived
-!!   from the basic grid lengths and areas.
-subroutine set_grid_derived_metrics(G, param_file)
-  type(SIS_hor_grid_type), intent(inout) :: G           !< The horizontal grid structure
-  type(param_file_type),   intent(in)    :: param_file  !< Parameter file structure
-
-!    Calculate the values of the metric terms that might be used
-!  and save them in arrays.  This should be identical to the corresponding
-!  subroutine in MOM_grid_initialize.F90.
-!    Within this subroutine, the x- and y- grid spacings and their
-!  inverses and the cell areas centered on T, Bu, Cu, and Cv points are
-!  calculated, as are the geographic locations of each of these 4
-!  sets of points.
-  character( len = 128) :: warnmesg
-  integer :: i, j, isd, ied, jsd, jed
-  integer :: IsdB, IedB, JsdB, JedB
-
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
-
-  call MOM_mesg("  SIS_grid_initialize.F90, set_grid_derived_metrics: deriving metrics", 5)
-
-  do j=jsd,jed ; do i=isd,ied
-    if (G%dxT(i,j) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dxT",i,j,G%dxT(i,j),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dxT(i,j) = 0.0
-    endif
-    if (G%dyT(i,j) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dyT",i,j,G%dyT(i,j),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dyT(i,j) = 0.0
-    endif
-    G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
-    G%IdyT(i,j) = Adcroft_reciprocal(G%dyT(i,j))
-    G%IareaT(i,j) = Adcroft_reciprocal(G%areaT(i,j))
-  enddo ; enddo
-
-  do j=jsd,jed ; do I=IsdB,IedB
-    if (G%dxCu(I,j) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dxCu",I,j,G%dxCu(I,j),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dxCu(I,j) = 0.0
-    endif
-    if (G%dyCu(I,j) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dyCu",I,j,G%dyCu(I,j),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dyCu(I,j) = 0.0
-    endif
-    G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
-    G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
-  enddo ; enddo
-
-  do J=JsdB,JedB ; do i=isd,ied
-    if (G%dxCv(i,J) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dxCv",i,J,G%dxCv(i,J),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dxCv(i,J) = 0.0
-    endif
-    if (G%dyCv(i,J) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dyCv",i,J,G%dyCv(i,J),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dyCv(i,J) = 0.0
-    endif
-    G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
-    G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
-  enddo ; enddo
-
-  do J=JsdB,JedB ; do I=IsdB,IedB
-    if (G%dxBu(I,J) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dxBu",I,J,G%dxBu(I,J),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dxBu(I,J) = 0.0
-    endif
-    if (G%dyBu(I,J) < 0.0) then
-      write(warnmesg,68)  pe_here(),"dyBu",I,J,G%dyBu(I,J),0.0
-      call MOM_mesg(warnmesg, all_print=.true.)
-      G%dyBu(I,J) = 0.0
-    endif
-
-    G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
-    G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
-    ! areaBu has usually been set to a positive area elsewhere.
-    if (G%areaBu(I,J) <= 0.0) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
-    G%IareaBu(I,J) = Adcroft_reciprocal(G%areaBu(I,J))
-  enddo ; enddo
-
-68 FORMAT ("WARNING: PE ",I4," ",a4,"(",I4,",",I4,") = ",ES12.4, &
-           " is being changed to ",ES12.4,".")
-
-end subroutine set_grid_derived_metrics
 
 ! ------------------------------------------------------------------------------
 

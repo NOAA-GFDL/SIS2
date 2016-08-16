@@ -1,5 +1,5 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_hor_grid - sets up grid and processor domains and a wide variety of  !
+! SIS_hor_grid - sets up grid and processor domains and a wide variety of      !
 !   metric terms in a way that is very similar to MOM6. - Robert Hallberg      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_hor_grid
@@ -17,7 +17,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: set_hor_grid, SIS_hor_grid_end, isPointInCell
+public :: set_hor_grid, SIS_hor_grid_end, set_derived_SIS_metrics, set_first_direction, isPointInCell
 
 type, public :: SIS_hor_grid_type
   type(MOM_domain_type), pointer :: Domain => NULL()
@@ -32,7 +32,7 @@ type, public :: SIS_hor_grid_type
   integer :: isd_global         ! The values of isd and jsd in the global
   integer :: jsd_global         ! (decomposition invariant) index space.
   integer :: idg_offset         ! The offset between the corresponding global
-  integer :: jdg_offset         ! and local array indices.
+  integer :: jdg_offset         ! and local array indices; add to local to get global.
 
   logical :: symmetric          ! True if symmetric memory is used.
   logical :: nonblocking_updates  ! If true, non-blocking halo updates are
@@ -297,6 +297,60 @@ subroutine set_hor_grid(G, param_file)
         call SIS_error(FATAL, "SIS: set_hor_grid: G%jed_bk > G%jed")
 
 end subroutine set_hor_grid
+
+
+!> set_derived_SIS_metrics calculates metric terms that are derived from other metrics.
+subroutine set_derived_SIS_metrics(G)
+  type(SIS_hor_grid_type), intent(inout) :: G !< The horizontal grid type
+!    Various inverse grid spacings and derived areas are calculated within this
+!  subroutine.
+  integer :: i, j, isd, ied, jsd, jed
+  integer :: IsdB, IedB, JsdB, JedB
+
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+
+  do j=jsd,jed ; do i=isd,ied
+    if (G%dxT(i,j) < 0.0) G%dxT(i,j) = 0.0
+    if (G%dyT(i,j) < 0.0) G%dyT(i,j) = 0.0
+    G%IdxT(i,j) = Adcroft_reciprocal(G%dxT(i,j))
+    G%IdyT(i,j) = Adcroft_reciprocal(G%dyT(i,j))
+    G%IareaT(i,j) = Adcroft_reciprocal(G%areaT(i,j))
+  enddo ; enddo
+
+  do j=jsd,jed ; do I=IsdB,IedB
+    if (G%dxCu(I,j) < 0.0) G%dxCu(I,j) = 0.0
+    if (G%dyCu(I,j) < 0.0) G%dyCu(I,j) = 0.0
+    G%IdxCu(I,j) = Adcroft_reciprocal(G%dxCu(I,j))
+    G%IdyCu(I,j) = Adcroft_reciprocal(G%dyCu(I,j))
+  enddo ; enddo
+
+  do J=JsdB,JedB ; do i=isd,ied
+    if (G%dxCv(i,J) < 0.0) G%dxCv(i,J) = 0.0
+    if (G%dyCv(i,J) < 0.0) G%dyCv(i,J) = 0.0
+    G%IdxCv(i,J) = Adcroft_reciprocal(G%dxCv(i,J))
+    G%IdyCv(i,J) = Adcroft_reciprocal(G%dyCv(i,J))
+  enddo ; enddo
+
+  do J=JsdB,JedB ; do I=IsdB,IedB
+    if (G%dxBu(I,J) < 0.0) G%dxBu(I,J) = 0.0
+    if (G%dyBu(I,J) < 0.0) G%dyBu(I,J) = 0.0
+
+    G%IdxBu(I,J) = Adcroft_reciprocal(G%dxBu(I,J))
+    G%IdyBu(I,J) = Adcroft_reciprocal(G%dyBu(I,J))
+    ! areaBu has usually been set to a positive area elsewhere.
+    if (G%areaBu(I,J) <= 0.0) G%areaBu(I,J) = G%dxBu(I,J) * G%dyBu(I,J)
+    G%IareaBu(I,J) =  Adcroft_reciprocal(G%areaBu(I,J))
+  enddo ; enddo
+end subroutine set_derived_SIS_metrics
+
+!> Adcroft_reciprocal(x) = 1/x for |x|>0 or 0 for x=0.
+function Adcroft_reciprocal(val) result(I_val)
+  real, intent(in) :: val  !< The value being inverted.
+  real :: I_val            !< The Adcroft reciprocal of val.
+
+  I_val = 0.0 ; if (val /= 0.0) I_val = 1.0/val
+end function Adcroft_reciprocal
 
 !> Returns true if the coordinates (x,y) are within the h-cell (i,j)
 logical function isPointInCell(G, i, j, x, y)
