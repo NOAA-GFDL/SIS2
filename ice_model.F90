@@ -1137,9 +1137,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  
   call get_param(param_file, mod, "CONSTANT_COSZEN_IC", coszen_IC, &
                  "A constant value to use to initialize the cosine of \n"//&
-                 "the solar zenith angle for the next step, or a negative \n"//&
-                 "number to use the current time and astronomy.", &
-                 units="nondim", default=cos(3.14*67.0/180.0)) !### Change to default=-1.0)
+                 "the solar zenith angle for the first radiation step, \n"//&
+                 "or a negative number to use the current time and astronomy.", &
+                 units="nondim", default=-1.0)
   call get_param(param_file, mod, "DT_RADIATION", dt_Rad_real, &
                  "The time step with which the shortwave radiation and \n"//&
                  "fields like albedos are updated.  Currently this is only \n"//&
