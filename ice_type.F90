@@ -705,15 +705,6 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 
 
   ! Now register some of these arrays to be read from the restart files.
-  idr = register_restart_field(Ice_restart, restart_file, 'albedo',    Ice%albedo,    domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dir', Ice%albedo_vis_dir, &
-                                      domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dir', Ice%albedo_nir_dir, &
-                                      domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'albedo_vis_dif', Ice%albedo_vis_dif, &
-                                      domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'albedo_nir_dif', Ice%albedo_nir_dif, &
-                                      domain=domain, mandatory=.false.)
   idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)

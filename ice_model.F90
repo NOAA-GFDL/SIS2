@@ -1524,12 +1524,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       endif
     endif
 
-    if (.not.query_initialized(Ice%Ice_restart, 'albedo_vis_dir')) then
-      dT_r = dT_rad ; if (IST%do_sun_angle_for_alb) dT_r = IST%Time_step_fast
-      call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
-                            IST%Time + dT_r, IST%coszen_nextrad)
-    endif
-
     H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
     if (IG%H_to_kg_m2 == -1.0) then
       ! This is an older restart file, and the snow and ice thicknesses are in
@@ -1621,12 +1615,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       deallocate(dummy)
     endif
 
-!###    dT_r = dT_rad ; if (IST%do_sun_angle_for_alb) dT_r = IST%Time_step_fast
-!###    call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
-!###                          IST%Time + dT_r, IST%coszen_nextrad)
-
   endif ! file_exist(restart_path)
   deallocate(S_col)
+
+  ! Set the initial ocean albedos, either using coszen_nextrad (which has
+  ! already been initialized) or a synthetic sun angle.
+  dT_r = dT_rad ; if (IST%do_sun_angle_for_alb) dT_r = IST%Time_step_fast
+  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
+                        IST%Time + dT_r, IST%coszen_nextrad)
 
   do k=0,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
