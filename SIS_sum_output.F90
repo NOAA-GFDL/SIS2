@@ -41,7 +41,7 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
-use ice_type_mod, only : ice_state_type
+use ice_type_mod, only : ice_state_type, ice_ocean_flux_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -706,6 +706,8 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
   real :: Flux_SW, enth_units, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()
+  IOF => IST%IOF
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -718,20 +720,20 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
-           ( ((IST%runoff(i,j) + IST%calving(i,j)) + &
-              (IST%lprec_ocn_top(i,j) + IST%fprec_ocn_top(i,j))) - IST%flux_q_ocn_top(i,j) )
-    Flux_SW = (IST%flux_sw_vis_dir_ocn(i,j) + IST%flux_sw_vis_dif_ocn(i,j)) + &
-              (IST%flux_sw_nir_dir_ocn(i,j) + IST%flux_sw_nir_dif_ocn(i,j))
+           ( ((IOF%runoff(i,j) + IOF%calving(i,j)) + &
+              (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%flux_q_ocn_top(i,j) )
+    Flux_SW = (IOF%flux_sw_vis_dir_ocn(i,j) + IOF%flux_sw_vis_dif_ocn(i,j)) + &
+              (IOF%flux_sw_nir_dir_ocn(i,j) + IOF%flux_sw_nir_dif_ocn(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
-           ((IST%flux_lw_ocn_top(i,j) - IST%flux_lh_ocn_top(i,j)) - IST%flux_t_ocn_top(i,j)) + &
-            (-LI)*(IST%fprec_ocn_top(i,j) + IST%calving(i,j)) )
+           ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_t_ocn_top(i,j)) + &
+            (-LI)*(IOF%fprec_ocn_top(i,j) + IOF%calving(i,j)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
            (IST%frazil_input(i,j)-IST%frazil(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IST%Enth_Mass_in_atm(i,j) + IST%Enth_Mass_in_ocn(i,j)) + &
             (IST%Enth_Mass_out_atm(i,j) + IST%Enth_Mass_out_ocn(i,j)) )
-    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IST%flux_salt(i,j)
+    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%flux_salt(i,j)
   enddo ; enddo
 
 end subroutine accumulate_bottom_input
@@ -817,6 +819,8 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()
+  IOF => IST%IOF
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -833,7 +837,7 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
-          (IST%runoff(i,j) + IST%calving(i,j))
+          (IOF%runoff(i,j) + IOF%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
@@ -841,7 +845,7 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
 
     ! These are mass fluxes that are simply passed through to the ocean.
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
-                      (area_pt * IST%fprec_top(i,j,0) + IST%calving(i,j))
+                      (area_pt * IST%fprec_top(i,j,0) + IOF%calving(i,j))
 
   enddo ; enddo
 
