@@ -58,7 +58,7 @@ use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : uppercase
-use MOM_time_manager, only : time_type, time_type_to_real
+use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
@@ -1014,6 +1014,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! other modules had control states, these would be moved to those modules.
   real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
   real :: heat_rough_ice ! heat roughness length, in m.
+  real :: dt_Rad_real    ! The radiation timestep, in s.
+  type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
+  type(time_type) :: dt_r   ! A temporary radiation timestep.
+  real :: rad            ! The conversion factor from degrees to radians.
+  real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
   ! Parameters that properly belong exclusively to ice_thm.
   real :: k_snow         ! snow conductivity (W/mK)
@@ -1028,7 +1033,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                          ! differences in thickness units between the current
                          ! model run and the input files.
 
-  real, allocatable, dimension(:,:) :: h_ice_input
+  real, allocatable, dimension(:,:) :: &
+    h_ice_input, dummy  ! Temporary arrays.
 
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
@@ -1038,6 +1044,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed, nondim.
+  real :: coszen_IC      ! A constant value that is used to initialize
+                         ! coszen if it is not read from a restart file, or a
+                         ! negative number to use the time and geometry.
   
   integer :: idr, id_sal
   integer :: write_geom
@@ -1126,6 +1135,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "HEAT_ROUGH_ICE", heat_rough_ice, &
                  "The default roughness length scale for the turbulent \n"//&
                  "transfer of heat into the ocean.", units="m", default=1.0e-4)
+                 
+  call get_param(param_file, mod, "CONSTANT_COSZEN_IC", coszen_IC, &
+                 "A constant value to use to initialize the cosine of \n"//&
+                 "the solar zenith angle for the first radiation step, \n"//&
+                 "or a negative number to use the current time and astronomy.", &
+                 units="nondim", default=-1.0)
+  call get_param(param_file, mod, "DT_RADIATION", dt_Rad_real, &
+                 "The time step with which the shortwave radiation and \n"//&
+                 "fields like albedos are updated.  Currently this is only \n"//&
+                 "used to initialize albedos when there is no restart file.", &
+                 units="s", default=time_type_to_real(Time_step_slow))
+  dt_Rad = real_to_time_type(dt_Rad_real)
   call get_param(param_file, mod, "ICE_KMELT", IST%kmelt, &
                  "A constant giving the proportionality of the ocean/ice \n"//&
                  "base heat flux to the tempature difference, given by \n"//&
@@ -1323,10 +1344,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   i_off = LBOUND(Ice%t_surf,1) - HI%isc ; j_off = LBOUND(Ice%t_surf,2) - HI%jsc
 
-  ! This will likely be replaced later with information provided along
-  ! with the shortwave fluxes.
-  IST%coszen_nextrad(:,:) = cos(3.14*67.0/180.0) ! NP summer solstice.
-
   if (test_grid_copy) then
     !  Copy the data from the temporary grid to the dyn_hor_grid to CS%G.
     call create_dyn_horgrid(dG, G%HI)
@@ -1365,6 +1382,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%Time_Init      = Time_Init
   IST%Time_step_fast = Time_step_fast
   IST%Time_step_slow = Time_step_slow
+
+!  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
+    call set_domain(G%Domain%mpp_domain)
+    call astronomy_init
+    call nullify_domain()
+!  endif
 
   !
   ! Read the restart file, if it exists.
@@ -1489,6 +1512,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
+    if (.not.query_initialized(Ice%Ice_restart, 'coszen')) then
+      if (coszen_IC >= 0.0) then
+        IST%coszen_nextrad(:,:) = coszen_IC
+      else
+        rad = acos(-1.)/180.
+        allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
+        call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
+                   IST%Time, cosz=IST%coszen_nextrad, fracday=dummy, &
+                   rrsun=rrsun, dt_time=dT_rad)
+        deallocate(dummy)
+      endif
+    endif
+
     H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
     if (IG%H_to_kg_m2 == -1.0) then
       ! This is an older restart file, and the snow and ice thicknesses are in
@@ -1569,13 +1605,25 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%part_size, G%Domain, complete=.true. )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
 
-    !### I think that there should be the equivalent of a call to
-    ! set_fast_ocean_sfc_properties or the routines in it
-    ! (compute_ocean_roughness and compute_ocean_albedo) added here!
-    ! This will change answers! - RWH
+    if (coszen_IC >= 0.0) then
+      IST%coszen_nextrad(:,:) = coszen_IC
+    else
+      rad = acos(-1.)/180.
+      allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
+      call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
+                         IST%Time, cosz=IST%coszen_nextrad, fracday=dummy, &
+                         rrsun=rrsun, dt_time=dT_rad)
+      deallocate(dummy)
+    endif
 
   endif ! file_exist(restart_path)
   deallocate(S_col)
+
+  ! Set the initial ocean albedos, either using coszen_nextrad (which has
+  ! already been initialized) or a synthetic sun angle.
+  dT_r = dT_rad ; if (IST%do_sun_angle_for_alb) dT_r = IST%Time_step_fast
+  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
+                        IST%Time + dT_r, IST%coszen_nextrad)
 
   do k=0,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -1626,12 +1674,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                 Ice%area, G%cos_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1), &
                 G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1) )
      endif
-  endif
-
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
-    call set_domain(G%Domain%mpp_domain)
-    call astronomy_init
-    call nullify_domain()
   endif
 
   ! Do any error checking here.
