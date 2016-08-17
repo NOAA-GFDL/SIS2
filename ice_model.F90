@@ -53,7 +53,7 @@ use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_
 use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+use MOM_file_parser, only : get_param, log_param, log_version, read_param, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_obsolete_params, only : obsolete_logical
@@ -130,10 +130,13 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   type(land_ice_boundary_type),  intent(inout) :: Land_boundary
   type(ice_data_type),           intent(inout) :: Ice
 
+  real :: dt_slow  ! The time step over which to advance the model.
+
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  dt_slow = time_type_to_real(Ice%Ice_state%Time_step_slow)
 
   ! average fluxes from update_ice_model_fast
-  call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
+  call avg_top_quantities(Ice%Ice_state%FIA, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
@@ -147,9 +150,11 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
-  call slow_thermodynamics(Ice%Ice_state, Ice%G, Ice%IG)
+  call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%Ice_state%slow_thermo_CSp, &
+                           Ice%G, Ice%IG)
 
-  call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  call SIS_dynamics_trans(Ice%Ice_state, dt_slow, Ice%Ice_state%dyn_trans_CSp, &
+                          Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
@@ -727,13 +732,243 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
 
+  type(time_type) :: Time_start, Time_end
+
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+  if (Ice%Ice_state%debug) &
+    call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
+
+  Time_start = Ice%Ice_state%Time
+  Time_end = Ice%Ice_state%Time + Ice%Ice_state%Time_step_fast
+
+  if (Ice%Ice_state%add_diurnal_sw) &
+    call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
+
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, &
+                                Ice%Ice_state%fast_thermo_CSp, Ice%G, Ice%IG )
+
+  Ice%Time = Ice%Ice_state%Time
+  Time_end = Ice%Ice_state%Time
+
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, &
+                                  Ice%G, Ice%IG, Time_start, Time_end)
+
+  ! Set some of the evolving ocean properties that will be seen by the
+  ! atmosphere in the next time-step.
+  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, &
+                                     Ice%G, Ice%IG, Time_start, Time_end)
+
+  if (Ice%Ice_state%debug) &
+    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
+  if (Ice%Ice_state%bounds_check) &
+    call Ice_public_type_bounds_check(Ice, Ice%G, "End update_ice_fast")
 
   call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_fast
+
+subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_start, Time_end)
+  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
+  type(ice_data_type),           intent(inout) :: Ice
+  type(ice_state_type),          intent(in)    :: IST
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(inout) :: IG
+  type(time_type),               intent(in)    :: Time_start, Time_end
+   
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
+    dummy, &  ! A dummy array that is not used again.
+    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
+  real :: rad
+  real :: rrsun_dt_ice
+  type(time_type) :: dT_ice   ! The time interval for this update.
+  integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
+  integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  io_A = LBOUND(Atmos_boundary%t_flux,1) - G%isc
+  jo_A = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
+  io_I = LBOUND(Ice%t_surf,1) - G%isc
+  jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+
+  rad = acos(-1.)/180.
+  dT_ice = Time_end - Time_start
+
+  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
+                                Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
+
+  ! Update publicly visible ice_data_type variables..
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,Atmos_boundary,io_A,jo_A,io_I,jo_I ) &
+!$OMP                           private(i2,j2,i3,j3)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A
+    IST%coszen(i,j) = Atmos_boundary%coszen(i3,j3,1)
+    Ice%p_surf(i2,j2) = Atmos_boundary%p(i3,j3,1)
+    Ice%s_surf(i2,j2) = IST%OSS%s_surf(i,j)
+  enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
+!$OMP                           private(i2,j2,k2)
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
+    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+  enddo ; enddo ; enddo
+
+  if (IST%do_sun_angle_for_alb) then
+    call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
+                 Time_start, cosz=cosz_alb, fracday=dummy, rrsun=rrsun_dt_ice, &
+                 dt_time=dT_ice)
+    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
+                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+  else
+    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
+                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+  endif
+
+end subroutine set_fast_ocean_sfc_properties
+
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end)
+  type(atmos_ice_boundary_type), intent(in)    :: ABT
+  type(ice_data_type),           intent(in)    :: Ice
+  type(ice_state_type),          intent(inout) :: IST
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(in)    :: IG
+  type(time_type),               intent(in)    :: Time_start, Time_end
+
+  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
+  real :: dt_diag
+  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
+                    ! strictly diagnostic purposes.
+  integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
+  integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  NkIce = IG%NkIce
+  io_A = LBOUND(ABT%t_flux,1) - G%isc ; jo_A = LBOUND(ABT%t_flux,2) - G%jsc
+  io_I = LBOUND(Ice%t_surf,1) - G%isc ; jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+
+  dt_diag = time_type_to_real(Time_end - Time_start)
+
+  call enable_SIS_averaging(dt_diag, Time_end, IST%diag)
+
+  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
+                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+
+  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+  if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+  do m=1,NkIce
+    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
+                                     IST%part_size(:,:,1:), IST%diag, G=G)
+  enddo
+  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
+                                   IST%part_size(:,:,1:), IST%diag, G=G)
+
+  if (IST%id_sw_pen>0) then
+    tmp_diag(:,:) = 0.0
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
+                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
+    enddo ; enddo ; enddo
+    call post_data(IST%id_sw_pen, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_lwdn > 0) then
+    tmp_diag(:,:) = 0.0
+    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
+                           (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
+    endif ; enddo ; enddo ; enddo
+    call post_data(IST%id_lwdn, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_swdn > 0) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
+!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
+!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
+!$OMP                          private(i2,j2,k2)
+    tmp_diag(:,:) = 0.0
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
+      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * ( &
+            (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
+             ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
+            (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
+             ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+    endif ; enddo ; enddo ; enddo
+    call post_data(IST%id_swdn, tmp_diag, IST%diag)
+  endif
+
+  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
+
+  call disable_SIS_averaging(IST%diag)
+
+end subroutine fast_radiation_diagnostics
+
+!> add_diurnal_SW adjusts the shortwave fluxes in an atmos_boundary_type variable
+!! to add a synthetic diurnal cycle.
+subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
+  type(atmos_ice_boundary_type), intent(inout) :: ABT !< The type with atmospheric fluxes to be adjusted.
+  type(SIS_hor_grid_type),       intent(in)    :: G   !< The sea-ice lateral grid type.
+  type(time_type),               intent(in)    :: Time_start !< The start time for this step.
+  type(time_type),               intent(in)    :: Time_end   !< The ending time for this step.
+
+  real :: diurnal_factor, time_since_ae, rad
+  real :: fracday_dt, fracday_day
+  real :: cosz_day, cosz_dt, rrsun_day, rrsun_dt
+  type(time_type) :: dt_here
+
+  integer :: i, j, k, i2, j2, isc, iec, jsc, jec, ncat, i_off, j_off
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = size(ABT%sw_flux_nir_dir,3)
+  i_off = LBOUND(ABT%t_flux,1) - G%isc ; j_off = LBOUND(ABT%t_flux,2) - G%jsc
+
+  !   Orbital_time extracts the time of year relative to the northern
+  ! hemisphere autumnal equinox from a time_type variable.
+  time_since_ae = orbital_time(Time_start)
+  dt_here = Time_end - Time_start
+  rad = acos(-1.)/180.
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,Time_start,dt_here,time_since_ae, &
+!$OMP                                  ncat,flux_sw_nir_dir,flux_sw_nir_dif, &
+!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif &
+!$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
+!$OMP                                  fracday_day,cosz_day,rrsun_day,diurnal_factor)
+  do j=jsc,jec ; do i=isc,iec
+!    Per Rick Hemler:
+!      Call diurnal_solar with dtime=dt_here to get cosz averaged over dt_here.
+!      Call daily_mean_solar to get cosz averaged over a day.  Then
+!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / 
+!                       cosz_day*fracday_day*rrsun_day
+
+    call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, Time_start, cosz=cosz_dt, &
+                       fracday=fracday_dt, rrsun=rrsun_dt, dt_time=dt_here)
+    call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
+    diurnal_factor = cosz_dt*fracday_dt*rrsun_dt / &
+                     max(1e-30, cosz_day*fracday_day*rrsun_day)
+
+    i2 = i+i_off ; j2 = j+j_off
+    do k=1,ncat
+      ABT%sw_flux_nir_dir(i2,j2,k) = ABT%sw_flux_nir_dir(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_nir_dif(i2,j2,k) = ABT%sw_flux_nir_dif(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_vis_dir(i2,j2,k) = ABT%sw_flux_vis_dir(i2,j2,k) * diurnal_factor
+      ABT%sw_flux_vis_dif(i2,j2,k) = ABT%sw_flux_vis_dif(i2,j2,k) * diurnal_factor
+    enddo
+  enddo ; enddo
+
+end subroutine add_diurnal_sw
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_init - initializes ice model data, parameters and diagnostics      !
@@ -788,10 +1023,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  real :: g_Earth !   The gravitational acceleration in m s-2.
+  real :: g_Earth        !   The gravitational acceleration in m s-2.
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
+                         ! that is used to calculate the ocean salt flux.
+  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
+                         ! salinity of the water from which it formed, nondim.
+  
   integer :: idr, id_sal
   integer :: write_geom
   logical :: test_grid_copy = .false.
+  logical :: nudge_sea_ice
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -820,10 +1061,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(IST%OSS)) allocate(IST%OSS)
   if (.not.associated(IST%FIA)) allocate(IST%FIA)
 
-  if (.not.associated(IST%fast_thermo_CSp)) allocate(IST%fast_thermo_CSp)
-  if (.not.associated(IST%slow_thermo_CSp)) allocate(IST%slow_thermo_CSp)
-  if (.not.associated(IST%dyn_trans_CSp)) allocate(IST%dyn_trans_CSp)
-
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
 
@@ -840,8 +1077,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  default=.false.)
   call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
-  
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
   call obsolete_logical(param_file, "AREA_WEIGHTED_STRESSES", warning_val=.true.)
 
@@ -858,12 +1095,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
 
-  call get_param(param_file, mod, "DT_ICE_DYNAMICS", IST%dt_ice_dyn, &
-                 "The time step used for the slow ice dynamics, including \n"//&
-                 "stepping the continuity equation and interactions \n"//&
-                 "between the ice mass field and velocities.  If 0 or \n"//&
-                 "negative the coupling time step will be used.", &
-                 units="seconds", default=-1.0)
 
   call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
@@ -928,47 +1159,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
-  call get_param(param_file, mod, "ICE_BULK_SALINITY", IST%ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "g/kg", default=4.0)
-  call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", IST%ice_rel_salin, &
+  call get_param(param_file, mod, "ICE_BULK_SALINITY", ice_bulk_salin, &
+                 "The fixed bulk salinity of sea ice.", units = "g/kg", &
+                 default=4.0, do_not_log=.true.)
+  call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the \n"//&
                  "salinity of the seawater from which it formed.", &
-                 units = "nondim", default=0.0)
-  call get_param(param_file, mod, "DO_ICE_RESTORE", IST%do_ice_restore, &
-                 "If true, restore the sea ice state toward climatology.", &
-                 default=.false.)
-  if (IST%do_ice_restore) &
-    call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", IST%ice_restore_timescale, &
-                 "The restoring timescale when DO_ICE_RESTORE is true.", &
-                 units="days", default=5.0)
-  call get_param(param_file, mod, "APPLY_ICE_LIMIT", IST%do_ice_limit, &
-                 "If true, restore the sea ice state toward climatology.", &
-                 default=.false.)
-  if (IST%do_ice_limit) &
-    call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", IST%max_ice_limit, &
-                 "The maximum permitted sea ice thickness when \n"//&
-                 "APPLY_ICE_LIMIT is true.", units="m", default=4.0)
-
-
-  call get_param(param_file, mod, "NUDGE_SEA_ICE", IST%nudge_sea_ice, &
-                 "If true, constrain the sea ice concentrations using observations.", &
-                 default=.false.)
-  if (IST%nudge_sea_ice) then
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_RATE", IST%nudge_sea_ice_rate, &
-                 "The rate of cooling of ice-free water that should be ice \n"//&
-                 "covered in order to constrained the ice concentration to \n"//&
-                 "track observations.  A suggested value is ~10000 W m-2.", &
-                 units = "W m-2", default=0.0)
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_TOLERANCE", IST%nudge_conc_tol, &
-                 "The tolerance for mismatch in the sea ice concentations \n"//&
-                 "before nudging begins to be applied.  Values of order 0.1\n"//&
-                 "should work well.", units = "nondim", default=0.0)
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_STABILITY", IST%nudge_stab_fac, &
-                 "A factor that determines whether the buoyancy flux \n"//&
-                 "associated with the sea ice nudging of warm water includes \n"//&
-                 "a freshwater flux so as to be destabilizing on net (<1), \n"//&
-                 "stabilizing (>1), or neutral (=1).", units="nondim", default=1.0)
-  endif
+                 units = "nondim", default=0.0, do_not_log=.true.)
+  if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
 
   call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
@@ -976,8 +1174,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
-  call get_param(param_file, mod, "VERBOSE", IST%verbose, &
-                 "If true, write out verbose diagnostics.", default=.false.)
   call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
@@ -989,17 +1185,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "DO_RIDGING", IST%do_ridging, &
                  "If true, call the ridging routines.", default=.false.)
 
-  call get_param(param_file, mod, "SIS2_FILLING_FRAZIL", IST%filling_frazil, &
-               "If true, apply frazil to fill as many categories as \n"//&
-               "possible to fill in a uniform (minimum) amount of ice \n"//&
-               "in all the thinnest categories. Otherwise the frazil is \n"//&
-               "always assigned to a single category.", default=.false.) !###CHANGE DEFAULTS.
-  if (IST%filling_frazil) then
-    call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", IST%fraz_fill_time, &
-               "A timescale with which the filling frazil causes the \n"//&
-               "thinest cells to attain similar thicknesses, or a negative \n"//&
-               "number to apply the frazil flux uniformly.", default=0.0, units="s")
-  endif
 
   call get_param(param_file, mod, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
@@ -1012,10 +1197,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "globally summed ice statistics and conservation checks.", &
                  default=set_time(0,1), timeunit=Time_unit)
 
-  if ((IST%ice_bulk_salin > 0.0) .and. (IST%ice_rel_salin > 0.0)) &
-    call SIS_error(FATAL, "It is inconsistent to have both ICE_BULK_SALINITY "//&
-                   "and ICE_RELATIVE_SALINITY set to positive values.")
-  if (IST%ice_bulk_salin < 0.0) IST%ice_bulk_salin = 0.0
 
   call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
@@ -1098,14 +1279,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
   call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                  IST, Ice%Ice_restart, restart_file)
+                                  IST%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
   call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
                               doc_file_dir = dirs%output_directory)
   call set_SIS_axes_info(G, IG, param_file, IST%diag)
 
+  nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
   call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
-                         init_EOS=IST%nudge_sea_ice)
+                         init_EOS=nudge_sea_ice)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
 
@@ -1116,7 +1298,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                                 massless_iceval=massless_ice_enth*enth_unit, &
                                 massless_snowval=massless_snow_enth*enth_unit)
 
-  if (IST%ice_rel_salin > 0.0) then
+  if (ice_rel_salin > 0.0) then
     call register_SIS_tracer(IST%sal_ice, G, IG, IG%NkIce, "salin_ice", param_file, &
                              IST%TrReg, snow_tracer=.false., &
                              massless_val=massless_ice_salin)
@@ -1145,14 +1327,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%Time_Init      = Time_Init
   IST%Time_step_fast = Time_step_fast
   IST%Time_step_slow = Time_step_slow
-
-  IST%FIA%avg_count = 0
-  IST%n_calls = 0
-
-  if (IST%nudge_sea_ice) then
-    allocate(IST%cool_nudge(isc:iec,jsc:jec)) ; IST%cool_nudge(:,:) = 0.0
-    allocate(IST%IOF%melt_nudge(isc:iec,jsc:jec)) ; IST%IOF%melt_nudge(:,:) = 0.0
-  endif
 
   !
   ! Read the restart file, if it exists.
@@ -1192,7 +1366,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
           IST%sal_ice(i,j,k,1) = sal_ice_tmp(i,j,k,1)
         enddo ; enddo ; enddo
       else
-        IST%sal_ice(:,:,:,1) = IST%ice_bulk_salin
+        IST%sal_ice(:,:,:,1) = ice_bulk_salin
       endif
       do n=2,IG%NkIce
         write(nstr, '(I4)') n ; nstr = adjustl(nstr)
@@ -1320,7 +1494,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%rough_heat(:,:,:)  = heat_rough_ice
     Ice%rough_moist(:,:,:) = heat_rough_ice
     IST%t_surf(:,:,:) = T_0degC
-    IST%sal_ice(:,:,:,:) = IST%ice_bulk_salin
+    IST%sal_ice(:,:,:,:) = ice_bulk_salin
 
     enth_spec_snow = Enth_from_TS(0.0, 0.0, IST%ITV)
     IST%enth_snow(:,:,:,1) = enth_spec_snow
@@ -1369,12 +1543,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
-  call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
-  call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
-  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+  call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%fast_thermo_CSp)
+
+  call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%slow_thermo_CSp)
+
+  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST%dyn_trans_CSp)
+  IST%ice_transport_CSp => IST%dyn_trans_CSp%ice_transport_CSp
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
-                           IST%sum_output_CSp, IST%ntrunc)
+                           IST%sum_output_CSp, IST%dyn_trans_CSp%ntrunc)
 
   !   Initialize any tracers that will be handled via tracer flow control.
   call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp, is_restart)
@@ -1420,7 +1597,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call ice_grid_chksum(G, haloshift=2)
   endif
 
-  call write_ice_statistics(IST, IST%Time, IST%n_calls, G, IG, IST%sum_output_CSp)
+  call write_ice_statistics(IST, IST%Time, 0, G, IG, IST%sum_output_CSp)
   IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
       (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
 
@@ -1442,11 +1619,11 @@ subroutine ice_model_end (Ice)
 
   !--- release memory ------------------------------------------------
 
-  call SIS_slow_end(IST)
+  call SIS_slow_end(IST%dyn_trans_CSp)
 
-  call SIS_slow_thermo_end(IST)
+  call SIS_slow_thermo_end(IST%slow_thermo_CSp)
 
-  call SIS_fast_thermo_end(IST)
+  call SIS_fast_thermo_end(IST%fast_thermo_CSp)
 
   call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
 

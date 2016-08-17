@@ -47,16 +47,12 @@ use MOM_time_manager, only : time_type, time_type_to_real
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
-use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use coupler_types_mod, only : coupler_3d_bc_type
-use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
-use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ice_state_type, IST_chksum, IST_bounds_check
 use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
 use ice_type_mod, only : atmos_ice_boundary_type, land_ice_boundary_type
-use ice_type_mod, only : IST_chksum, IST_bounds_check
-use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
+use ice_type_mod, only : fast_thermo_CS
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -75,52 +71,48 @@ public :: avg_top_quantities
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! sum_top_quantities - sum fluxes for later use by ice/ocean slow physics.     !
-!   Nothing here will be exposed to other modules.                             !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v, flux_t, flux_q, &
+!> sum_top_quantities does a running sum of fluxes for later use by the slow ice
+!!   physics and the ocean.  Nothing here will be exposed to other modules until
+!!   after it has passed through avg_top_quantities.
+subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
        flux_lw, lprec, fprec, flux_lh, G, IG)
-  type(ice_data_type),              intent(inout) :: Ice
-  type(ice_state_type),             intent(inout) :: IST
-  type(coupler_3d_bc_type),         intent(inout) :: Atmos_boundary_fluxes
-  type(SIS_hor_grid_type),          intent(inout) :: G
-  type(ice_grid_type),              intent(inout) :: IG
+  type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(atmos_ice_boundary_type), intent(in)    :: ABT
+  type(SIS_hor_grid_type),       intent(in)    :: G
+  type(ice_grid_type),           intent(in)    :: IG
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
-  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
-                    ! strictly diagnostic purposes.
+
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind, max_num_fields, next_index
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  i_off = LBOUND(Ice%albedo_vis_dir,1) - G%isc
-  j_off = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
+  i_off = LBOUND(ABT%t_flux,1) - G%isc
+  j_off = LBOUND(ABT%t_flux,2) - G%jsc
 
   if (FIA%num_tr_fluxes < 0) then
     ! Determine how many atmospheric boundary fluxes have been passed in, and
     ! set up both an indexing array for these and a space to take their average.
     ! This code is only exercised the first time that sum_top_quantities is called.
     FIA%num_tr_fluxes = 0
-    if (Atmos_boundary_fluxes%num_bcs > 0) then
+    if (ABT%fluxes%num_bcs > 0) then
       max_num_fields = 0
-      do n=1,Atmos_boundary_fluxes%num_bcs
-        FIA%num_tr_fluxes = FIA%num_tr_fluxes + Atmos_boundary_fluxes%bc(n)%num_fields
-        max_num_fields = max(max_num_fields, Atmos_boundary_fluxes%bc(n)%num_fields)
+      do n=1,ABT%fluxes%num_bcs
+        FIA%num_tr_fluxes = FIA%num_tr_fluxes + ABT%fluxes%bc(n)%num_fields
+        max_num_fields = max(max_num_fields, ABT%fluxes%bc(n)%num_fields)
       enddo
 
       if (FIA%num_tr_fluxes > 0) then
         allocate(FIA%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, FIA%num_tr_fluxes))
         FIA%tr_flux_top(:,:,:,:) = 0.0
 
-        allocate(FIA%tr_flux_index(max_num_fields, Atmos_boundary_fluxes%num_bcs))
+        allocate(FIA%tr_flux_index(max_num_fields, ABT%fluxes%num_bcs))
         FIA%tr_flux_index(:,:) = -1 ; next_index = 1
-        do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+        do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
           FIA%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
         enddo ; enddo
       endif
@@ -136,12 +128,9 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
-
-    ! Diagnostics of sums of the above arrays.
-    FIA%lwdn(:,:) = 0.0 ; FIA%swdn(:,:) = 0.0
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,flux_u,flux_v,flux_t, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_u,flux_v,flux_t, &
 !$OMP                                  flux_q,flux_sw_nir_dir,flux_sw_nir_dif,        &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_lw,       &
 !$OMP                                  lprec,fprec,flux_lh)
@@ -160,57 +149,34 @@ subroutine sum_top_quantities ( Ice, IST, Atmos_boundary_fluxes, flux_u, flux_v,
     FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
 
-  do n=1,Atmos_boundary_fluxes%num_bcs ; do m=1,Atmos_boundary_fluxes%bc(n)%num_fields
+  do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = FIA%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
-            Atmos_boundary_fluxes%bc(n)%field(m)%values(i2,j2,k2)
+            ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
   enddo ; enddo
-
-  if (FIA%id_lwdn > 0) then
-    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      FIA%lwdn(i,j) = FIA%lwdn(i,j) + IST%part_size(i,j,k) * &
-                           (flux_lw(i,j,k) + Stefan*IST%t_surf(i,j,k)**4)
-    endif ; enddo ; enddo ; enddo
-  endif
-
-  if (FIA%id_swdn > 0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
-!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
-!$OMP                          private(i2,j2,k2)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      FIA%swdn(i,j) = FIA%swdn(i,j) + IST%part_size(i,j,k) * ( &
-            (flux_sw_vis_dir(i,j,k)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
-             flux_sw_vis_dif(i,j,k)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
-            (flux_sw_nir_dir(i,j,k)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
-             flux_sw_nir_dif(i,j,k)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
-    endif ; enddo ; enddo ; enddo
-  endif
 
   FIA%avg_count = FIA%avg_count + 1
 
 end subroutine sum_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! avg_top_quantities - time average fluxes for ice and ocean slow physics      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine avg_top_quantities(IST, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
+!> avg_top_quantities determines time average fluxes for later use by the
+!!    slow ice physics and by the ocean.
+subroutine avg_top_quantities(FIA, part_size, G, IG)
+  type(fast_ice_avg_type), intent(inout) :: FIA
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
+  real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
+                           intent(in)    :: part_size
 
   real    :: u, v, divid, sign
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -226,7 +192,7 @@ subroutine avg_top_quantities(IST, G, IG)
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
   divid = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,sign,divid,G) private(u,v)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G) private(u,v)
   do j=jsc,jec
     do k=0,ncat ;  do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
@@ -252,10 +218,6 @@ subroutine avg_top_quantities(IST, G, IG)
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
-    do i=isc,iec
-      FIA%lwdn(i,j) = FIA%lwdn(i,j) * divid
-      FIA%swdn(i,j) = FIA%swdn(i,j) * divid
-    enddo
   enddo
   call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
@@ -263,13 +225,13 @@ subroutine avg_top_quantities(IST, G, IG)
   ! across all the ice thickness categories on an A-grid.  This is done
   ! over the entire data domain for safety.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,IST,FIA) &
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA) &
 !$OMP                           private(I_wts)
   do j=jsd,jed
     do k=1,ncat ; do i=isd,ied
-      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
-      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
+      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
     enddo ; enddo
     do i=isd,ied
       if (FIA%ice_cover(i,j) > 0.0) then
@@ -281,7 +243,7 @@ subroutine avg_top_quantities(IST, G, IG)
         ! The max with 0 in the following line is here for safety; the only known
         ! instance where it has been required is when reading a SIS-1-derived
         ! restart file with tiny negative concentrations. SIS2 should not need it.
-        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
+        FIA%ice_free(i,j) = max(part_size(i,j,0), 0.0)
 
     !    Rescale to add up to 1?
     !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
@@ -302,13 +264,18 @@ subroutine avg_top_quantities(IST, G, IG)
 end subroutine avg_top_quantities
 
 
-subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> do_update_ice_model_fast applies the surface heat fluxes, shortwave radiation
+!!   diffusion of heat to the sea-ice to implicitly determine a new temperature
+!!   profile, subject to the constraint that ice and snow temperatures are never
+!!   above freezing.  Melting and freezing occur elsewhere.
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
 
-  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
-  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
+  type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
-  type(ice_grid_type),           intent(inout) :: IG
+  type(ice_grid_type),           intent(in)    :: IG
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce) :: &
     flux_t, flux_q, flux_lh, flux_lw, &
@@ -321,8 +288,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
               ! temperature, in kg m-2 s-1 K-1.
     drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    diurnal_factor, cosz_alb
   real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
@@ -331,8 +296,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-  real :: gmt, time_since_ae, cosz, rrsun, fracday, fracday_dt_ice, fracday_day
-  real :: rad, cosz_day, cosz_dt_ice, rrsun_day, rrsun_dt_ice
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
@@ -360,31 +323,26 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
   OSS => IST%OSS
   FIA => IST%FIA
 
+  if (.not.associated(CS)) call SIS_error(FATAL, &
+         "SIS_fast_thermo: Module must be initialized before it is used.")
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
-  rad = acos(-1.)/180.
+  CS%n_fast = CS%n_fast + 1
 
-  IST%n_fast = IST%n_fast + 1
-
-  if (IST%debug) then
+  if (CS%debug) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
-    call Ice_public_type_chksum("Start do_update_ice_model_fast", Ice)
-  endif
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
 !$OMP                                  j_off,Ice,flux_u,flux_v,flux_t,flux_q,flux_lw, &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif,               &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,               &
 !$OMP                                  lprec,fprec,dhdt,dedt,drdt        )            &
-!$OMP                          private(i2,j2,k2)
+!$OMP                           private(i2,j2,k2)
   do j=jsc,jec
-    do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
-      IST%coszen(i,j) = Atmos_boundary%coszen(i2,j2,1)
-      Ice%p_surf(i2,j2) = Atmos_boundary%p(i2,j2,1)
-    enddo
     !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
     ! different index conventions than are used internally in this component.
     do k=0,ncat ; do i=isc,iec
@@ -405,51 +363,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
       drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
   enddo
-
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
-!---------------------------------------------------------------------
-!    extract time of day (gmt) from time_type variable time with
-!    function universal_time.
-!---------------------------------------------------------------------
-    gmt = universal_time(IST%Time)
-!---------------------------------------------------------------------
-!    extract the time of year relative to the northern hemisphere
-!    autumnal equinox (time_since_ae) from time_type variable
-!    time using the function orbital_time.
-!---------------------------------------------------------------------
-    time_since_ae = orbital_time(IST%Time)
-!--------------------------------------------------------------------
-!    call diurnal_solar_2d to calculate astronomy fields
-!    convert G%geoLonT and G%geoLatT to radians
-!    Per Rick Hemler:
-!      call daily_mean_solar to get cosz (over a day)
-!      call diurnal_solar with dtime=Dt_ice to get cosz over Dt_ice
-!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice/cosz_day*fracday_day*rrsun_day
-!--------------------------------------------------------------------
-    Dt_ice = IST%Time_step_fast
-  endif
-  if (IST%add_diurnal_sw) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,IST,Dt_ice,time_since_ae, &
-!$OMP                                  diurnal_factor) &
-!$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
-!$OMP                                  fracday_day,cosz_day,rrsun_day)
-    do j=jsc,jec ; do i=isc,iec
-      call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, IST%Time, cosz=cosz_dt_ice, &
-                         fracday=fracday_dt_ice, rrsun=rrsun_dt_ice, dt_time=Dt_ice)
-      call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
-      diurnal_factor(i,j) = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice /   &
-                                   max(1e-30, cosz_day*fracday_day*rrsun_day)
-    enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_sw_nir_dir, &
-!$OMP                                  flux_sw_nir_dif,flux_sw_vis_dir,      &
-!$OMP                                  flux_sw_vis_dif,diurnal_factor)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-      flux_sw_nir_dir(i,j,k) = flux_sw_nir_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_nir_dif(i,j,k) = flux_sw_nir_dif(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dir(i,j,k) = flux_sw_vis_dir(i,j,k) * diurnal_factor(i,j)
-      flux_sw_vis_dif(i,j,k) = flux_sw_vis_dif(i,j,k) * diurnal_factor(i,j)
-    enddo ; enddo ; enddo
-  endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
@@ -510,7 +423,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                         T_Freeze_surf, FIA%bheat(i,j), ts_new, &
                         dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                        IST%ice_thm_CSp, IST%ITV, IST%column_check)
+                        IST%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -521,7 +434,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
       flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
       flux_lh(i,j,k) = latent * flux_q(i,j,k)
 
-      if (IST%column_check) then
+      if (CS%column_check) then
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         IST%heat_in(i,j,k) = IST%heat_in(i,j,k) + dt_fast * &
@@ -535,7 +448,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
         tot_heat_in = enth_units * (IST%heat_in(i,j,k) - &
                                     (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
         enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
-        if (abs(enth_imb) > IST%imb_tol * (abs(enth_here) + &
+        if (abs(enth_imb) > CS%imb_tol * (abs(enth_here) + &
                   abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
           norm_enth_imb = enth_imb / (abs(enth_here) + &
                   abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in))
@@ -548,95 +461,30 @@ subroutine do_update_ice_model_fast( Atmos_boundary, Ice, IST, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  ! This routine works on the boundary exchange state.
-  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
-                                Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
-
-  ! This routine works on the boundary exchange state.
-  if (IST%do_sun_angle_for_alb) then
-    call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
-                 IST%time, cosz=cosz_alb, fracday=diurnal_factor, rrsun=rrsun_dt_ice, dt_time=Dt_ice)  !diurnal_factor as dummy
-    call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
-  else
-    call compute_ocean_albedo(Ice%ocean_pt, IST%coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
-                              Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                              Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
-  endif
-
-  call sum_top_quantities(Ice, IST, Atmos_boundary%fluxes, flux_u, flux_v, flux_t, &
+  call sum_top_quantities(IST%FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
   IST%Time = IST%Time + IST%Time_step_fast ! advance time
-  Ice%Time = IST%Time
 
-  ! Copy the surface temperatures into the externally visible data type.
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
-  enddo ; enddo
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
-  enddo ; enddo ; enddo
-
-  call enable_SIS_averaging(dt_fast, IST%Time, IST%diag)
-  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-
-  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-  if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-  do m=1,NkIce
-    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
-                                     IST%part_size(:,:,1:), IST%diag, G=G)
-  enddo
-  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
-
-  if (IST%id_sw_pen>0) then
-    tmp_diag(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
-    enddo ; enddo ; enddo
-    call post_data(IST%id_sw_pen, tmp_diag, IST%diag)
-  endif
-
-  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen, IST%diag)
-  call disable_SIS_averaging(IST%diag)
-
-  if (IST%debug) then
+  if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
-    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
-  endif
 
-  if (IST%bounds_check) &
-    call Ice_public_type_bounds_check(Ice, G, "End update_ice_fast")
-  if (IST%bounds_check) &
+  if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "End of update_ice_fast")
 
 end subroutine do_update_ice_model_fast
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_fast_thermo_init - initializes ice model data, parameters and diagnostics      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, IST)
+!> SIS_fast_thermo_init - initializes the parameters and diagnostics associated
+!!    with the SIS_fast_thermo module.
+subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
   type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_state_type), intent(inout) :: IST
+  type(fast_thermo_CS),        pointer       :: CS
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -644,10 +492,33 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, IST)
  
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
 
-  ! Read all relevant parameters and write them to the model log.
-!  call log_version(param_file, mod, version, "")
+  if (associated(CS)) then
+    call SIS_error(WARNING, "SIS_fast_thermo_init called with associated control structure.")
+!    return
+  else
+    allocate(CS)
+  endif
 
-  IST%FIA%avg_count = 0
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod, version, &
+     "This module applies rapidly varying heat fluxes to the ice and does an "//&
+     "implicit surface temperature calculation.")
+
+  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+                 "If true, add code to allow debugging of conservation \n"//&
+                 "column-by-column.  This does not change answers, but \n"//&
+                 "can increase model run time.", default=.false.)
+  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+                 "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
+                 units="nondim", default=1.0e-9)
+  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+                 "If true, periodically check the values of ice and snow \n"//&
+                 "temperatures and thicknesses to ensure that they are \n"//&
+                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "does not change answers, but can increase model run time.", &
+                 default=.true.)
+  call get_param(param_file, mod, "DEBUG", CS%debug, &
+                 "If true, write out verbose debugging data.", default=.false.)
 
   call callTree_leave("SIS_fast_thermo_init()")
 
@@ -655,14 +526,11 @@ end subroutine SIS_fast_thermo_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_end - writes the restart file and deallocates memory               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_fast_thermo_end (IST)
-  type(ice_state_type), pointer :: IST
+!> SIS_fast_thermo_end deallocates any memory associated with this module.
+subroutine SIS_fast_thermo_end(CS)
+  type(fast_thermo_CS), pointer :: CS
 
-  !--- release memory ------------------------------------------------
-
-!  deallocate(IST)
+  if (associated(CS)) deallocate(CS)
 
 end subroutine SIS_fast_thermo_end
 

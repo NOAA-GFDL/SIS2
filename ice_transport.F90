@@ -407,7 +407,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
 
     ! Is sum(part_sz) = 1 ?
 
-!  Niki: TOM does the ridging after redistribute which would need IST%age_ice and IST%rdg_hice below.
+!  Niki: TOM does the ridging after redistribute which would need age_ice and rdg_hice below.
 !   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
 !   !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
 !   if (CS%do_ridging) then
