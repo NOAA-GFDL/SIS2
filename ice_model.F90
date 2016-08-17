@@ -97,8 +97,9 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_co
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use ice_thm_mod,   only : slab_ice_optics
-use SIS_slow_mod,  only : SIS_dynamics_trans, SIS_slow_thermo, SIS_slow_register_restarts
-use SIS_slow_mod,  only : SIS_slow_init, SIS_slow_end
+use SIS_slow_mod,  only : SIS_dynamics_trans, update_icebergs
+use SIS_slow_mod,  only : SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
@@ -129,8 +130,8 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   type(land_ice_boundary_type),  intent(inout) :: Land_boundary
   type(ice_data_type),           intent(inout) :: Ice
 
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock2)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%Ice_state, Ice%G, Ice%IG)
 
@@ -140,7 +141,13 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call set_ice_state_fluxes(Ice%Ice_state%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
 
-  call SIS_slow_thermo(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+  if (Ice%Ice_state%do_icebergs) then
+    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+    call update_icebergs(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  endif
+
+  call slow_thermodynamics(Ice%Ice_state, Ice%G, Ice%IG)
 
   call SIS_dynamics_trans(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
 
@@ -156,8 +163,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call Ice_public_type_bounds_check(Ice, Ice%G, "End update_ice_slow")
   endif
 
-  call mpp_clock_end(iceClock2)
-  call mpp_clock_end(iceClock)
+  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow_dn
 
@@ -311,13 +317,13 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
   type(ice_data_type),           intent(inout) :: Ice
 
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, Ocean_boundary%u, Ocean_boundary%v, &
                              Ocean_boundary%frazil, Ocean_boundary, Ice%G, Ice%IG, &
                              Ocean_boundary%s, Ocean_boundary%sea_level )
-  call mpp_clock_end(iceClock1)
-  call mpp_clock_end(iceClock)
+
+  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow_up
 
@@ -718,17 +724,14 @@ end subroutine set_ice_surface_state
 !                         (fast) atmospheric timestep (see coupler_main.f90)   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine update_ice_model_fast( Atmos_boundary, Ice )
-
   type(ice_data_type),              intent(inout) :: Ice
   type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
 
-  call mpp_clock_begin(iceClock)
-  call mpp_clock_begin(iceClock3)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
 
-  call do_update_ice_model_fast( Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
+  call do_update_ice_model_fast(Atmos_boundary, Ice, Ice%Ice_state, Ice%G, Ice%IG )
 
-  call mpp_clock_end(iceClock3)
-  call mpp_clock_end(iceClock)
+  call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_fast
 
@@ -816,6 +819,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(IST%IOF)) allocate(IST%IOF)
   if (.not.associated(IST%OSS)) allocate(IST%OSS)
   if (.not.associated(IST%FIA)) allocate(IST%FIA)
+
+  if (.not.associated(IST%fast_thermo_CSp)) allocate(IST%fast_thermo_CSp)
+  if (.not.associated(IST%slow_thermo_CSp)) allocate(IST%slow_thermo_CSp)
+  if (.not.associated(IST%dyn_trans_CSp)) allocate(IST%dyn_trans_CSp)
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1363,6 +1370,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
 
   call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
+  call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST)
   call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST)
 
   call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
@@ -1435,6 +1443,8 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
 
   call SIS_slow_end(IST)
+
+  call SIS_slow_thermo_end(IST)
 
   call SIS_fast_thermo_end(IST)
 

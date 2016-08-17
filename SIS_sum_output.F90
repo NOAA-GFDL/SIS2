@@ -713,10 +713,7 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
-  if (CS%dt < 0.0) then
-    if (IST%dt_ice_dyn > 0.0) then ; CS%dt = IST%dt_ice_dyn
-    else ; CS%dt = dt ; endif
-  endif
+  if (CS%dt < 0.0) CS%dt = dt
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
