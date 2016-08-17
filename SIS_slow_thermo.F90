@@ -117,8 +117,9 @@ subroutine post_flux_diagnostics(IST, CS, G, IG, Idt_slow)
     call post_data(IST%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
   if (IST%id_calving_hflx>0) &
     call post_data(IST%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
-  if (IST%id_frazil>0) &
-    call post_data(IST%id_frazil, IST%frazil*Idt_slow, CS%diag)
+  ! The frazil diagnostic is with the other ocean surface diagnostics.
+  ! if (IST%id_frazil>0) &
+  !   call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
   if (FIA%id_sh>0) call post_avg(FIA%id_sh, FIA%flux_t_top, IST%part_size, &
                                  CS%diag, G=G)
   if (FIA%id_lh>0) call post_avg(FIA%id_lh, FIA%flux_lh_top, IST%part_size, &
@@ -153,6 +154,28 @@ subroutine post_flux_diagnostics(IST, CS, G, IG, Idt_slow)
       enddo ; enddo
     enddo
     call post_data(FIA%id_sw_vis, tmp2d, CS%diag)
+  endif
+  if (FIA%id_sw_dir>0) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST)
+    do j=jsc,jec
+      do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
+      do k=0,ncat ; do i=isc,iec
+        tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
+              FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_nir_dir_top(i,j,k) )
+      enddo ; enddo
+    enddo
+    call post_data(FIA%id_sw_dir, tmp2d, CS%diag)
+  endif
+  if (FIA%id_sw_dif>0) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST)
+    do j=jsc,jec
+      do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
+      do k=0,ncat ; do i=isc,iec
+        tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
+              FIA%flux_sw_vis_dif_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
+      enddo ; enddo
+    enddo
+    call post_data(FIA%id_sw_dif, tmp2d, CS%diag)
   endif
   if (FIA%id_sw_nir_dir>0) call post_avg(FIA%id_sw_nir_dir, FIA%flux_sw_nir_dir_top, &
                              IST%part_size, CS%diag, G=G)
@@ -261,7 +284,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, G, IG)
     call accumulate_input_2(IST, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
     do j=jsc,jec ; do i=isc,iec
-      IST%frazil_input(i,j) = IST%frazil(i,j)
       IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
       IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
     enddo ; enddo
@@ -424,7 +446,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
   ! state, potentially including freshwater fluxes to avoid driving oceanic
   ! convection.
   if (CS%nudge_sea_ice) then
-    if (.not.associated(IOF%melt_nudge)) allocate(IOF%melt_nudge(isc:iec,jsc:jec))
+    if (.not.allocated(IOF%melt_nudge)) allocate(IOF%melt_nudge(isc:iec,jsc:jec))
 
     cool_nudge(:,:) = 0.0 ; IOF%melt_nudge(:,:) = 0.0
     icec(:,:) = 0.0
@@ -454,7 +476,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
       endif
 
       if (cool_nudge(i,J) > 0.0) then
-        IST%frazil(i,j) = IST%frazil(i,j) + cool_nudge(i,j)*dt_slow
+        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) + cool_nudge(i,j)*dt_slow
       elseif (cool_nudge(i,J) < 0.0) then
         FIA%bheat(i,j) = FIA%bheat(i,j) - cool_nudge(i,j)
       endif
@@ -487,7 +509,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
       qflx_res_ice(i,j) = -(LatHtFus*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
                            (86400.0*CS%ice_restore_timescale)
       if (qflx_res_ice(i,j) < 0.0) then
-        IST%frazil(i,j) = IST%frazil(i,j) - qflx_res_ice(i,j)*dt_slow
+        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
       elseif (qflx_res_ice(i,j) >  0.0) then
         FIA%bheat(i,j) = FIA%bheat(i,j) + qflx_res_ice(i,j)
       endif
@@ -510,7 +532,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
       endif ; enddo ; enddo
 
       do i=isc,iec
-        heat_in_col(i,j) = heat_in_col(i,j) - IST%frazil(i,j)
+        heat_in_col(i,j) = heat_in_col(i,j) - FIA%frazil_left(i,j)
         heat_in_col(i,j) = heat_in_col(i,j) - IST%part_size(i,j,0) * dt_slow*FIA%flux_t_top(i,j,0)
       enddo
 
@@ -744,7 +766,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
 !$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
 !$OMP                                  fill_frac,d_enth,                            &
 !$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
-  do j=jsc,jec ; do i=isc,iec ; if (IST%frazil(i,j)>0.0) then
+  do j=jsc,jec ; do i=isc,iec ; if (FIA%frazil_left(i,j)>0.0) then
 
     frazil_cat(1:ncat) = 0.0
     k_merge = 1  ! Find the category that will be combined with the ice free category.
@@ -772,8 +794,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
 
     if (CS%filling_frazil) then
       if (CS%fraz_fill_time < 0.0) then
-        frazil_cat(k) = IST%frazil(i,J)
-        IST%frazil(i,j) = 0.0
+        frazil_cat(k) = FIA%frazil_left(i,J)
+        FIA%frazil_left(i,j) = 0.0
       else
         part_sum = 0.0
         fill_frac = 1.0 ; if (CS%fraz_fill_time > 0.0) &
@@ -782,17 +804,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
           part_sum = part_sum + IST%part_size(i,j,k)
           d_enth = fill_frac * max(0.0, LatHtFus * IG%H_to_kg_m2 * &
                          (IG%mH_cat_bound(k+1) - IST%mH_ice(i,j,k)))
-          if (d_enth*part_sum > IST%frazil(i,j)) then
-            frazil_cat(k) = IST%frazil(i,j) / part_sum
-            IST%frazil(i,j) = 0.0
+          if (d_enth*part_sum > FIA%frazil_left(i,j)) then
+            frazil_cat(k) = FIA%frazil_left(i,j) / part_sum
+            FIA%frazil_left(i,j) = 0.0
             exit
           else
             frazil_cat(k) = d_enth
-            IST%frazil(i,j) = IST%frazil(i,j) - frazil_cat(k)*part_sum
+            FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - frazil_cat(k)*part_sum
           endif
         enddo
-        if (IST%frazil(i,j) > 0.0) &
-          frazil_cat(ncat) = IST%frazil(i,j)
+        if (FIA%frazil_left(i,j) > 0.0) &
+          frazil_cat(ncat) = FIA%frazil_left(i,j)
           ! Note that at this point we should have that part_sum = 1.0.
         do k=ncat-1,1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
       endif
@@ -800,8 +822,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
       ! Set the frazil that is absorbed in this category and remove it from
       ! the overall frazil energy.
       I_part = 1.0 / (IST%part_size(i,j,k))
-      frazil_cat(k_merge) = IST%frazil(i,j) * I_part
-      IST%frazil(i,j) = 0.0
+      frazil_cat(k_merge) = FIA%frazil_left(i,j) * I_part
+      FIA%frazil_left(i,j) = 0.0
     endif
 
     do k=1,ncat ; if (frazil_cat(k) > 0.0) then
@@ -947,7 +969,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, IOF, G, IG)
     ! Add back any frazil that has not been used yet.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,heat_in_col,IST,dt_slow)
     do j=jsc,jec ; do i=isc,iec
-      heat_in_col(i,j) = heat_in_col(i,j) + IST%frazil(i,j) + IOF%flux_t_ocn_top(i,j)*dt_slow
+      heat_in_col(i,j) = heat_in_col(i,j) + FIA%frazil_left(i,j) + IOF%flux_t_ocn_top(i,j)*dt_slow
     enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then

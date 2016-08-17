@@ -6,9 +6,10 @@ module ice_spec_mod
 use fms_mod, only: open_namelist_file, check_nml_error, close_file, &
                    stdlog, stdout, mpp_pe, mpp_root_pe, write_version_number
 use mpp_mod, only: input_nml_file
+use mpp_domains_mod, only : domain2d
 
 use time_manager_mod, only: time_type, get_date, set_date
-use data_override_mod,only: data_override
+use data_override_mod, only : data_override, data_override_init
 
 implicit none
 include 'netcdf.inc'
@@ -41,26 +42,26 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_sea_surface - get SST, ice concentration and thickness from data         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_sea_surface(Time, ts, cn, iceh)
-type (time_type),                         intent(in)  :: Time
-real, dimension(:, :),                    intent(out) :: ts
-real, dimension(size(ts,1),size(ts,2),2), intent(out) :: cn
-real, dimension(size(ts,1),size(ts,2)),   intent(out) :: iceh
+subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain)
+  type (time_type),                         intent(in)  :: Time
+  real, dimension(:, :),                    intent(out) :: ts
+  real, dimension(size(ts,1),size(ts,2),2), intent(out) :: cn
+  real, dimension(size(ts,1),size(ts,2)),   intent(out) :: iceh
+  type(domain2d),                 optional, intent(in)  :: ice_domain
+  real, dimension(size(ts,1),size(ts,2))                :: sst, icec
 
-real, dimension(size(ts,1),size(ts,2))                :: sst, icec
+  real ::  t_sw_freeze0 = -1.8
+  real ::  t_sw_freeze
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  integer :: ierr, io, unit
+  type(time_type) :: Spec_Time
+  integer :: tod(3), dum1, dum2, dum3
+  integer :: stdoutunit,stdlogunit
 
-real ::  t_sw_freeze0 = -1.8
-real ::  t_sw_freeze
-real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-integer :: ierr, io, unit
-type(time_type) :: Spec_Time
-integer :: tod(3),dum
-integer :: stdoutunit,stdlogunit
+  stdoutunit=stdout()
+  stdlogunit=stdlog()
 
-stdoutunit=stdout()
-stdlogunit=stdlog()
-
-if(.not.module_is_initialized) then
+  if (.not.module_is_initialized) then
 #ifdef INTERNAL_FILE_NML
     read (input_nml_file, nml=ice_spec_nml, iostat=io)
 #else
@@ -73,28 +74,30 @@ if(.not.module_is_initialized) then
     write (stdoutunit, ice_spec_nml)
     write (stdlogunit, ice_spec_nml)
 
-   call write_version_number(version, tagname)
-   module_is_initialized = .true.
-endif
+    call write_version_number(version, tagname)
+    module_is_initialized = .true.
+  endif
+
+  if (present(ice_domain)) call data_override_init(Ice_domain_in = Ice_domain)
 
 ! modify time repeating single day option
   if (all(repeat_date>0)) then
-     call get_date(Time,dum,dum,dum,tod(1),tod(2),tod(3))
-     Spec_Time = set_date(repeat_date(1),repeat_date(2),repeat_date(3),tod(1),tod(2),tod(3))
+    call get_date(Time,dum1,dum2,dum3,tod(1),tod(2),tod(3))
+    Spec_Time = set_date(repeat_date(1),repeat_date(2),repeat_date(3),tod(1),tod(2),tod(3))
   else
-     Spec_Time = Time
+    Spec_Time = Time
   endif
 
   t_sw_freeze = t_sw_freeze0
   if (sst_degk) then
-     t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
+    t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
   endif
   icec = 0.0; iceh = 0.0; sst = t_sw_freeze;
   call data_override('ICE', 'sic_obs', icec, Spec_Time)
   call data_override('ICE', 'sit_obs', iceh, Spec_Time)
   call data_override('ICE', 'sst_obs', sst,  Spec_Time)
 
-  if(mcm_ice) then
+  if (mcm_ice) then
     icec = 0.0
 !   TK Mod: Limit minimum non-zero sea ice thickness to 0.01m.
 !           This is to eliminate some very thin but non-zero
@@ -119,7 +122,7 @@ endif
       iceh = 0.0
     end where
     if (.not.do_leads) then
-       where (icec >= minimum_ice_concentration) icec = 1.0
+      where (icec >= minimum_ice_concentration) icec = 1.0
     endif
   endif
 
@@ -128,20 +131,19 @@ endif
 ! add on non-zero sea surface temperature perturbation (namelist option)
 ! this perturbation may be useful in accessing model sensitivities
 
-   if ( abs(sst_pert) > 0.0001 ) then
-      sst = sst + sst_pert
-   endif
+  if ( abs(sst_pert) > 0.0001 ) then
+    sst = sst + sst_pert
+  endif
 
   cn(:,:,2) = icec
   cn(:,:,1) = 1-cn(:,:,2)
 
   if (sst_degk) then
-     ts = sst
+    ts = sst
   else
-     ts = sst+T_0degC
+    ts = sst+T_0degC
   endif
 
-  return
 end subroutine get_sea_surface
 
 end module ice_spec_mod
