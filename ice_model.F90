@@ -524,14 +524,17 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
 
   ! Determine the sea-ice optical properties.
 
-  !   These initialization calls for ice-free categories should not really
-  ! be needed because these arrays are only used where there is ice.
-  IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
-  IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-  IST%sw_abs_int(:,:,:) = 0.0
-  Ice%albedo(:,:,:) = 0.0
-  Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
-  Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
+  !   These initialization calls for ice-free categories are not really
+  ! needed because these arrays are only used where there is ice.
+  ! In the case of slab_ice, the various IST%sw_abs arrays are initialized
+  ! to 0 when they are allocated, and this never changes.
+  ! The following lines can be uncommented without changing answers.
+  ! IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
+  ! IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
+  ! IST%sw_abs_int(:,:,:) = 0.0
+  ! Ice%albedo(:,:,:) = 0.0
+  ! Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
+  ! Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
   ! Set the initial ocean albedos, either using coszen_nextrad or a 
   ! synthetic sun angle.
