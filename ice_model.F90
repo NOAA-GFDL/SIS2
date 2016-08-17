@@ -469,6 +469,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real :: dt_slow  ! The thermodynamic step, in s.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   logical :: sent
@@ -519,22 +520,23 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
 
   ! Determine the sea-ice optical properties.
 
-   !   These initialization calls for ice-free categories should not really
-   ! be needed because these are only used where there is ice.
-   IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
-   IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-   IST%sw_abs_int(:,:,:) = 0.0
-   !   Note that the albedos for the open-ocean category (1 for the Ice)
-   ! should not be changed because they are set elsewhere or set from the
-   ! restart file.
-   Ice%albedo(:,:,2:) = 0.0
-   Ice%albedo_vis_dir(:,:,2:) = 0.0 ; Ice%albedo_vis_dif(:,:,2:) = 0.0
-   Ice%albedo_nir_dir(:,:,2:) = 0.0 ; Ice%albedo_nir_dif(:,:,2:) = 0.0
+  !   These initialization calls for ice-free categories should not really
+  ! be needed because these arrays are only used where there is ice.
+  IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
+  IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
+  IST%sw_abs_int(:,:,:) = 0.0
+  Ice%albedo(:,:,:) = 0.0
+  Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
+  Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
+
+  ! Set the initial ocean albedos, either using coszen_nextrad or a 
+  ! synthetic sun angle.
+  dT_r = IST%Time_step_slow
+  if (IST%frequent_albedo_update) dT_r = IST%Time_step_fast
+  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
+                        IST%Time + dT_r, IST%coszen_nextrad)
 
   if (IST%slab_ice) then
-    IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
-    IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-    IST%sw_abs_int(:,:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice) &
 !$OMP                          private(i2,j2,k2)
@@ -792,8 +794,13 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
     Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
-  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, Time_start, Time_end, &
-                        IST%coszen_nextrad)
+  ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
+  ! if the coupled model's radiation timestep is shorter than the slow coupling
+  ! timestep.  However, it is safe (if wasteful) to call it more frequently.
+  if (IST%frequent_albedo_update) then
+    call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, Time_start, &
+                          Time_end, IST%coszen_nextrad)
+  endif
 
 end subroutine set_fast_ocean_sfc_properties
 
@@ -1015,7 +1022,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: heat_rough_ice ! heat roughness length, in m.
   real :: dt_Rad_real    ! The radiation timestep, in s.
   type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
-  type(time_type) :: dt_r   ! A temporary radiation timestep.
   real :: rad            ! The conversion factor from degrees to radians.
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
@@ -1248,6 +1254,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
   if (IST%specified_ice) IST%slab_ice = .true.
+
+  IST%frequent_albedo_update = .true.
+  !### Instead perhaps this could be
+  !###   IST%frequent_albedo_update = IST%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
+  !### However this changes answers in coupled models.  I don't understand why. -RWH
 
   ! Set up the ice-specific grid describing categories and ice layers.
   nCat_dflt = 5 ; if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
@@ -1617,12 +1628,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   endif ! file_exist(restart_path)
   deallocate(S_col)
-
-  ! Set the initial ocean albedos, either using coszen_nextrad (which has
-  ! already been initialized) or a synthetic sun angle.
-  dT_r = dT_rad ; if (IST%do_sun_angle_for_alb) dT_r = IST%Time_step_fast
-  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
-                        IST%Time + dT_r, IST%coszen_nextrad)
 
   do k=0,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1

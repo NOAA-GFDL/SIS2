@@ -173,6 +173,10 @@ type ice_state_type
   logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
   logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
                                   ! the ocean albedo in the frame of the ice model.
+  logical :: frequent_albedo_update ! If true, update the ice and ocean albedos
+                                  ! within the fast ice model update.  Otherwise,
+                                  ! the albedos are only updated within
+                                  ! set_ice_surface_state.
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
