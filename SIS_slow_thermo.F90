@@ -107,14 +107,14 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
-  if (IST%id_runoff>0) &
-    call post_data(IST%id_runoff, IOF%runoff, CS%diag)
-  if (IST%id_calving>0) &
-    call post_data(IST%id_calving, IOF%calving_preberg, CS%diag)
-  if (IST%id_runoff_hflx>0) &
-    call post_data(IST%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
-  if (IST%id_calving_hflx>0) &
-    call post_data(IST%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
+  if (IOF%id_runoff>0) &
+    call post_data(IOF%id_runoff, IOF%runoff, CS%diag)
+  if (IOF%id_calving>0) &
+    call post_data(IOF%id_calving, IOF%calving_preberg, CS%diag)
+  if (IOF%id_runoff_hflx>0) &
+    call post_data(IOF%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
+  if (IOF%id_calving_hflx>0) &
+    call post_data(IOF%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
   ! The frazil diagnostic is with the other ocean surface diagnostics.
   ! if (IST%id_frazil>0) &
   !   call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
@@ -1034,7 +1034,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     enddo ; enddo
     call post_data(CS%id_lsrc, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
-  if (IST%id_saltf>0) call post_data(IST%id_saltf, IOF%flux_salt, CS%diag)
+  if (IOF%id_saltf>0) call post_data(IOF%id_saltf, IOF%flux_salt, CS%diag)
   if (CS%id_bsnk>0)  call post_data(CS%id_bsnk, bsnk(isc:iec,jsc:jec)*yr_dtslow, &
                                     CS%diag)
   if (FIA%id_tmelt>0) call post_avg(FIA%id_tmelt, FIA%tmelt, IST%part_size(:,:,1:), CS%diag, G=G, &

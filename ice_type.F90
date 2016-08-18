@@ -170,9 +170,6 @@ type ice_state_type
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1, id_swdn=-1, id_lwdn=-1
   
-  ! diagnostic IDs for ice-to-ocean fluxes.
-  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
-  integer :: id_saltf=-1
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_slp=-1
@@ -472,6 +469,10 @@ type ice_ocean_flux_type
   real, allocatable, dimension(:,:,:) :: &
     tr_flux_ocn_top     ! An array of tracer fluxes at the ocean's surface.
   integer, allocatable, dimension(:,:) :: tr_flux_index
+
+  ! diagnostic IDs for ice-to-ocean fluxes.
+  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
+  integer :: id_saltf=-1
 end type ice_ocean_flux_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1374,18 +1375,18 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, G, diag, Time)
                'rate of snow fall', 'kg/(m^2*s)', missing_value=missing)
   FIA%id_rain     = register_SIS_diag_field('ice_model','RAIN' ,diag%axesT1, Time, &
                'rate of rain fall', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_runoff   = register_SIS_diag_field('ice_model','RUNOFF' ,diag%axesT1, Time, &
+  IOF%id_runoff   = register_SIS_diag_field('ice_model','RUNOFF' ,diag%axesT1, Time, &
                'liquid runoff', 'kg/(m^2*s)', missing_value=missing)
 
-  IST%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
+  IOF%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
+  IOF%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
                'liquid runoff sensible heat flux', 'W/m^2', missing_value=missing)
-  IST%id_calving_hflx  = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
+  IOF%id_calving_hflx  = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
                'frozen runoff sensible heat flux', 'W/m^2', missing_value=missing)
   FIA%id_evap     = register_SIS_diag_field('ice_model','EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', missing_value=missing)
-  IST%id_saltf    = register_SIS_diag_field('ice_model','SALTF' ,diag%axesT1, Time, &
+  IOF%id_saltf    = register_SIS_diag_field('ice_model','SALTF' ,diag%axesT1, Time, &
                'ice to ocean salt flux', 'kg/(m^2*s)', missing_value=missing)
   FIA%id_tmelt    = register_SIS_diag_field('ice_model','TMELT'  ,diag%axesT1, Time, &
                'upper surface melting energy flux', 'W/m^2', missing_value=missing)
