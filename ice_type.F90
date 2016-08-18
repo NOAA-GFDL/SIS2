@@ -118,21 +118,6 @@ type ice_state_type
     coszen_nextrad  ! Cosine of the solar zenith angle averaged
                     ! over the next radiation timestep, nondim.
 
-  ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
-  real, allocatable, dimension(:,:)   :: &
-    ! These terms diagnose the enthalpy change associated with the addition or
-    ! removal of water mass (liquid or frozen) from the ice model are required
-    ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
-    ! that add mass to the ice are generally negative.
-    Enth_Mass_in_atm , & ! The enthalpy introduced to the ice by water
-                         ! fluxes from the atmosphere, in J m-2.
-    Enth_Mass_out_atm, & ! Negative of the enthalpy extracted from the
-                         ! ice by water fluxes to the atmosphere, in J m-2.
-    Enth_Mass_in_ocn , & ! The enthalpy introduced to the ice by water
-                         ! fluxes from the ocean, in J m-2.
-    Enth_Mass_out_ocn    ! Negative of the enthalpy extracted from the
-                         ! ice by water fluxes to the ocean, in J m-2.
-
 
   ! State type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
@@ -454,6 +439,22 @@ type ice_ocean_flux_type
                         ! acts to nudge the ocean surface salinity to
                         ! facilitate the retention of sea ice, in kg m-2 s-1.
     flux_salt           ! The flux of salt out of the ocean in kg m-2.
+
+
+  ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
+  real, allocatable, dimension(:,:)   :: &
+    ! These terms diagnose the enthalpy change associated with the addition or
+    ! removal of water mass (liquid or frozen) from the ice model are required
+    ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
+    ! that add mass to the ice are generally negative.
+    Enth_Mass_in_atm , & ! The enthalpy introduced to the ice by water
+                         ! fluxes from the atmosphere, in J m-2.
+    Enth_Mass_out_atm, & ! Negative of the enthalpy extracted from the
+                         ! ice by water fluxes to the atmosphere, in J m-2.
+    Enth_Mass_in_ocn , & ! The enthalpy introduced to the ice by water
+                         ! fluxes from the ocean, in J m-2.
+    Enth_Mass_out_ocn    ! Negative of the enthalpy extracted from the
+                         ! ice by water fluxes to the ocean, in J m-2.
 
   integer :: stress_count ! The number of times that the stresses from the ice
                         ! to the ocean have been incremented.
@@ -777,11 +778,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   allocate(IST%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; IST%coszen_nextrad(:,:) = 0.0 !NR X
 
-  allocate(IST%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_atm(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IST%Enth_Mass_in_ocn(:,:) = 0.0 !NR
-  allocate(IST%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IST%Enth_Mass_out_ocn(:,:) = 0.0 !NR
-
   allocate(IST%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
   allocate(IST%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
@@ -899,6 +895,12 @@ subroutine alloc_ice_ocean_flux(IOF, HI)
   allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
   allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
 
+  allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0 !NR
+  allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0 !NR
+  allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0 !NR
+  allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+
+
 end subroutine alloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -955,8 +957,6 @@ subroutine dealloc_IST_arrays(IST)
     deallocate(IST%u_ice_B, IST%v_ice_B)
   endif
 
-  deallocate(IST%Enth_Mass_in_atm, IST%Enth_Mass_out_atm)
-  deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen_nextrad)
 
@@ -1021,6 +1021,9 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%runoff, IOF%calving, IOF%runoff_hflx, IOF%calving_hflx)
   deallocate(IOF%calving_preberg, IOF%calving_hflx_preberg)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
+
+  deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
+  deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
 
   deallocate(IOF)
 end subroutine dealloc_ice_ocean_flux

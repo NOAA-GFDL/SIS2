@@ -729,8 +729,8 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
            (OSS%frazil(i,j)-FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
-           ((IST%Enth_Mass_in_atm(i,j) + IST%Enth_Mass_in_ocn(i,j)) + &
-            (IST%Enth_Mass_out_atm(i,j) + IST%Enth_Mass_out_ocn(i,j)) )
+           ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
+            (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
     CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%flux_salt(i,j)
   enddo ; enddo
 

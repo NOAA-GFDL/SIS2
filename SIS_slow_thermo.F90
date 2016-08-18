@@ -278,8 +278,8 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
     do j=jsc,jec ; do i=isc,iec
-      IST%Enth_Mass_in_atm(i,j) = 0.0 ; IST%Enth_Mass_out_atm(i,j) = 0.0
-      IST%Enth_Mass_in_ocn(i,j) = 0.0 ; IST%Enth_Mass_out_ocn(i,j) = 0.0
+      IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
+      IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
     enddo ; enddo
 
     ! The thermodynamics routines return updated values of the ice and snow
@@ -679,18 +679,18 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       ! IST%enth_snow(i,j,k,1) = Enthalpy(0)
 
       enth_snowfall = ((dt_slow*FIA%fprec_top(i,j,k)) * enthalpy(0))
-      IST%Enth_Mass_in_atm(i,j) = IST%Enth_Mass_in_atm(i,j) + &
+      IOF%Enth_Mass_in_atm(i,j) = IOF%Enth_Mass_in_atm(i,j) + &
            IST%part_size(i,j,k) * enth_snowfall
 
-!      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+!      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
 
-      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
           IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
 
-      IST%Enth_Mass_out_ocn(i,j) = IST%Enth_Mass_out_ocn(i,j) - &
+      IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
           IST%part_size(i,j,k) * enth_ice_to_ocn
-      IST%Enth_Mass_out_atm(i,j) = IST%Enth_Mass_out_atm(i,j) - &
+      IOF%Enth_Mass_out_atm(i,j) = IOF%Enth_Mass_out_atm(i,j) - &
           IST%part_size(i,j,k) * enth_evap
 
 
@@ -865,9 +865,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
 
-!      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+!      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
-      IST%Enth_Mass_in_ocn(i,j) = IST%Enth_Mass_in_ocn(i,j) + &
+      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
           IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
       net_melt(i,j) = net_melt(i,j) - &
              (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
@@ -941,7 +941,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         enddo
         net_melt(i,j) = net_melt(i,j) + h2o_ice_to_ocn * Idt_slow
         qflx_lim_ice(i,j) = enth_to_melt * I_enth_units * Idt_slow
-        IST%Enth_Mass_out_ocn(i,j) = IST%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
+        IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (CS%ice_rel_salin > 0.0) then
           salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
         endif
@@ -974,8 +974,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       enth_here = enth_col(i,j)
       tot_heat_in = enth_units*heat_in_col(i,j) + enth_mass_in_col(i,j)
-      emic2 = (IST%Enth_Mass_in_ocn(i,j) + IST%Enth_Mass_in_atm(i,j) + &
-               IST%Enth_Mass_out_ocn(i,j) + IST%Enth_Mass_out_atm(i,j))
+      emic2 = (IOF%Enth_Mass_in_ocn(i,j) + IOF%Enth_Mass_in_atm(i,j) + &
+               IOF%Enth_Mass_out_ocn(i,j) + IOF%Enth_Mass_out_atm(i,j))
       tot_heat_in2 = enth_units*heat_in_col(i,j) + emic2
 
       enth_imb = enth_here - (enth_prev_col(i,j) + tot_heat_in)
