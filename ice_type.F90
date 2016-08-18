@@ -285,6 +285,9 @@ type dyn_trans_CS ! To be made ; private
                           ! since the last call to write_ice_statistics.
 
   integer :: n_calls = 0  ! The number of times SIS_dynamics_trans has been called.
+  type(time_type) :: ice_stats_interval ! The interval between writes of the
+                          ! globally summed ice statistics and conservation checks.
+  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
 
   type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the

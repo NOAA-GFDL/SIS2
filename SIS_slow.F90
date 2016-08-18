@@ -745,9 +745,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
   endif
 
-  if (CS%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
+  if (CS%Time + (IST%Time_step_slow/2) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-    IST%write_ice_stats_time = IST%write_ice_stats_time + IST%ice_stats_interval
+    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
   endif
@@ -1045,6 +1045,7 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_slow" ! This module's name.
+  real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   real, parameter    :: missing = -1e34
 
   call callTree_enter("SIS_slow_init(), SIS_slow.F90")
@@ -1073,6 +1074,15 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
+
+  call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
+                 "The time unit for ICE_STATS_INTERVAL.", &
+                 units="s", default=86400.0)
+  call get_param(param_file, mod, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
+                 "The interval in units of TIMEUNIT between writes of the \n"//&
+                 "globally summed ice statistics and conservation checks.", &
+                 default=set_time(0,1), timeunit=Time_unit)
+
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
@@ -1100,6 +1110,9 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
                            CS%sum_output_CSp, CS%ntrunc)
+
+  CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
+      (1 + (Time - Time_init) / CS%ice_stats_interval)
 
   !
   ! diagnostics that are specific to C-grid dynamics of the ice model

@@ -1039,7 +1039,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Parameters that properly belong exclusively to ice_thm.
   real :: k_snow         ! snow conductivity (W/mK)
   real :: h_lo_lim       ! The min ice thickness for temp. calc, in m.
-  real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion
                          ! factor.
@@ -1233,15 +1232,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call get_param(param_file, mod, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
-
-  call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
-                 "The time unit for ICE_STATS_INTERVAL.", &
-                 units="s", default=86400.0)
-  call get_param(param_file, mod, "ICE_STATS_INTERVAL",IST%ice_stats_interval, &
-                 "The interval in units of TIMEUNIT between writes of the \n"//&
-                 "globally summed ice statistics and conservation checks.", &
-                 default=set_time(0,1), timeunit=Time_unit)
-
 
   call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
@@ -1705,8 +1695,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call write_ice_statistics(IST, IST%Time, 0, G, IG, &
                             SIS_slow_sum_output_CS(IST%dyn_trans_CSp))
-  IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
-      (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
 
   call callTree_leave("ice_model_init()")
 
