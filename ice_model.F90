@@ -101,7 +101,7 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 use ice_thm_mod,   only : slab_ice_optics
 use SIS_slow_mod,  only : SIS_dynamics_trans, update_icebergs
 use SIS_slow_mod,  only : SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
-use SIS_slow_mod,  only : SIS_slow_transport_CS
+use SIS_slow_mod,  only : SIS_slow_transport_CS, SIS_slow_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
@@ -1657,15 +1657,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%slow_thermo_CSp)
 
-  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST%dyn_trans_CSp)
+  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, IST%dyn_trans_CSp, &
+                     dirs%output_directory, Time_Init)
 !  IST%ice_transport_CSp => SIS_slow_transport_CS(IST%dyn_trans_CSp)
-
-  call SIS_sum_output_init(G, param_file, dirs%output_directory, Time_Init, &
-                           IST%sum_output_CSp, IST%dyn_trans_CSp%ntrunc)
 
   call SIS_slow_thermo_set_ptrs(IST%slow_thermo_CSp, &
            transport_CSp=SIS_slow_transport_CS(IST%dyn_trans_CSp), &
-           sum_out_CSp=IST%sum_output_CSp)
+           sum_out_CSp=SIS_slow_sum_output_CS(IST%dyn_trans_CSp))
 
   !   Initialize any tracers that will be handled via tracer flow control.
   call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, IST%SIS_tracer_flow_CSp, is_restart)
@@ -1705,7 +1703,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call ice_grid_chksum(G, haloshift=2)
   endif
 
-  call write_ice_statistics(IST, IST%Time, 0, G, IG, IST%sum_output_CSp)
+  call write_ice_statistics(IST, IST%Time, 0, G, IG, &
+                            SIS_slow_sum_output_CS(IST%dyn_trans_CSp))
   IST%write_ice_stats_time = Time_Init + IST%ice_stats_interval * &
       (1 + (IST%Time - Time_init) / IST%ice_stats_interval)
 

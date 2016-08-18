@@ -104,7 +104,7 @@ contains
 
 subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
                                ntrunc)
-  type(SIS_hor_grid_type),  intent(inout) :: G
+  type(SIS_hor_grid_type),  intent(in)    :: G
   type(param_file_type),    intent(in)    :: param_file
   character(len=*),         intent(in)    :: directory
   type(time_type),          intent(in)    :: Input_start_time

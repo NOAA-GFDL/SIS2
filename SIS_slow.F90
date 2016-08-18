@@ -37,8 +37,7 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
-! use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 
 use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
@@ -92,7 +91,7 @@ implicit none ; private
 
 public :: SIS_dynamics_trans, update_icebergs
 public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
-public :: SIS_slow_transport_CS
+public :: SIS_slow_transport_CS, SIS_slow_sum_output_CS
 
 integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
@@ -548,7 +547,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                          rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp, &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
 
     if (CS%id_xprt>0) then
@@ -747,10 +746,10 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 
   if (CS%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
     IST%write_ice_stats_time = IST%write_ice_stats_time + IST%ice_stats_interval
   elseif (CS%column_check) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
   endif
 
 end subroutine SIS_dynamics_trans
@@ -1033,13 +1032,15 @@ end subroutine SIS_slow_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_init - initializes ice model data, parameters and diagnostics       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
+subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
   type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(dyn_trans_CS),          pointer       :: CS
+  character(len=*),            intent(in)    :: output_dir
+  type(time_type),             intent(in)    :: Time_Init  ! starting time of model integration
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1097,6 +1098,9 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
   endif
   call ice_transport_init(CS%Time, G, param_file, CS%diag, CS%ice_transport_CSp)
 
+  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
+                           CS%sum_output_CSp, CS%ntrunc)
+
   !
   ! diagnostics that are specific to C-grid dynamics of the ice model
   !
@@ -1130,14 +1134,24 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
 end subroutine SIS_slow_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
-!  the dyn_trans_CS points to.
+!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!!  the dyn_trans_CS points to.
 function SIS_slow_transport_CS(CS) result(transport_CSp)
   type(dyn_trans_CS), pointer :: CS
   type(ice_transport_CS), pointer :: transport_CSp
 
   transport_CSp => CS%ice_transport_CSp
 end function SIS_slow_transport_CS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!!  the dyn_trans_CS points to.
+function SIS_slow_sum_output_CS(CS) result(sum_out_CSp)
+  type(dyn_trans_CS), pointer :: CS
+  type(SIS_sum_out_CS), pointer :: sum_out_CSp
+
+  sum_out_CSp => CS%sum_output_CSp
+end function SIS_slow_sum_output_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_end - deallocates memory                                            !

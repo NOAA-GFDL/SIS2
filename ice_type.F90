@@ -191,7 +191,6 @@ type ice_state_type
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
-  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 !   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
@@ -295,6 +294,7 @@ type dyn_trans_CS ! To be made ; private
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   logical :: module_is_initialized = .false.
 end type dyn_trans_CS
 
