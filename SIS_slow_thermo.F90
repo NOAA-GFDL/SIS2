@@ -37,7 +37,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_sum_output, only : write_ice_statistics! , SIS_sum_output_init
+use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
 ! use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
@@ -77,13 +77,14 @@ use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
 use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
-use ice_transport_mod, only : adjust_ice_categories
+use ice_transport_mod, only : adjust_ice_categories, ice_transport_CS
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
 public :: slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
+public :: SIS_slow_thermo_set_ptrs
 
 integer :: iceClock5, iceClock6, iceClock7
 
@@ -234,9 +235,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-  call accumulate_input_1(IST, FIA, dt_slow, G, IG, IST%sum_output_CSp)
+  call accumulate_input_1(IST, FIA, dt_slow, G, IG, CS%sum_output_CSp)
   if (CS%column_check) &
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp, &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                               message="    SIS_slow_thermo", check_column=.true.)
   call mpp_clock_end(iceClock7)
 
@@ -275,7 +276,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
     call disable_SIS_averaging(CS%diag)
 
-    call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, IST%sum_output_CSp)
+    call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST)
     do j=jsc,jec ; do i=isc,iec
       IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
@@ -308,19 +309,19 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
     call disable_SIS_averaging(CS%diag)
 
-    call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, IST%sum_output_CSp)
+    call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
 
     if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp, &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_thermo A", check_column=.true.)
     call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, &
-                               IST%TrReg, G, IG, IST%ice_transport_CSp) !Niki: add ridging?
+                               IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
     call pass_var(IST%part_size, G%Domain)
     call pass_var(IST%mH_ice, G%Domain, complete=.false.)
     call pass_var(IST%mH_snow, G%Domain, complete=.true.)
 
     if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp, &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_thermo B ", check_column=.true.)
   endif
 
@@ -1194,11 +1195,22 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS)
 end subroutine SIS_slow_thermo_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_slow_thermo_set_ptrs can be used to set one of several pointers that
+!! are in the slow_therm_CS.
+subroutine SIS_slow_thermo_set_ptrs(CS, transport_CSp, sum_out_CSp)
+  type(slow_thermo_CS), pointer :: CS
+  type(ice_transport_CS), optional, pointer :: transport_CSp
+  type(SIS_sum_out_CS),   optional, pointer :: sum_out_CSp
+
+  if (present(transport_CSp)) CS%ice_transport_CSp => transport_CSp
+  if (present(sum_out_CSp)) CS%sum_output_CSp => sum_out_CSp
+
+end subroutine SIS_slow_thermo_set_ptrs
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_slow_thermo_end deallocates any memory associated with this module.
 subroutine SIS_slow_thermo_end (CS)
   type(slow_thermo_CS), pointer :: CS
-
-  if (associated(CS)) deallocate(CS)
 
 end subroutine SIS_slow_thermo_end
 

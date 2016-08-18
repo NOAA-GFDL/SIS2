@@ -189,11 +189,10 @@ type ice_state_type
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
 
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
-  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostis.
+  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 !   type(icebergs), pointer     :: icebergs => NULL()
 end type ice_state_type
 
@@ -260,6 +259,8 @@ type slow_thermo_CS ! To be made ; private
   type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
+  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
 
   integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1
   integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1

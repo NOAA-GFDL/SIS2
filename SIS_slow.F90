@@ -82,6 +82,7 @@ use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
 use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
+use ice_transport_mod, only : ice_transport_CS
 
 use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
@@ -91,6 +92,7 @@ implicit none ; private
 
 public :: SIS_dynamics_trans, update_icebergs
 public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+public :: SIS_slow_transport_CS
 
 integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
@@ -1126,6 +1128,16 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
   call callTree_leave("SIS_slow_init()")
 
 end subroutine SIS_slow_init
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!  the dyn_trans_CS points to.
+function SIS_slow_transport_CS(CS) result(transport_CSp)
+  type(dyn_trans_CS), pointer :: CS
+  type(ice_transport_CS), pointer :: transport_CSp
+
+  transport_CSp => CS%ice_transport_CSp
+end function SIS_slow_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_end - deallocates memory                                            !
