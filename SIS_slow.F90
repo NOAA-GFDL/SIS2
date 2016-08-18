@@ -96,11 +96,14 @@ integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
 contains
 
-subroutine update_icebergs(IST, icebergs_CS, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(icebergs),          pointer       :: icebergs_CS
+subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(ice_ocean_flux_type),  intent(inout) :: IOF
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
+  type(icebergs),             pointer       :: icebergs_CS
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
@@ -119,24 +122,24 @@ subroutine update_icebergs(IST, icebergs_CS, G, IG)
   !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, IST%Time, &
-            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-            IST%OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IST%IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger)
   else
     call icebergs_run( icebergs_CS, IST%Time, &
-            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
+            OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IST%IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger)
   endif
 
 end subroutine update_icebergs
@@ -144,14 +147,17 @@ end subroutine update_icebergs
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_dynamics_trans(IST, dt_slow, CS, icebergs_CS, G, IG)
+subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG)
 
-  type(ice_state_type),    intent(inout) :: IST
-  real,                    intent(in)    :: dt_slow
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(dyn_trans_CS),      pointer       :: CS
-  type(icebergs),          pointer       :: icebergs_CS
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(ice_ocean_flux_type),  intent(inout) :: IOF
+  real,                       intent(in)    :: dt_slow
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
+  type(dyn_trans_CS),         pointer       :: CS
+  type(icebergs),             pointer       :: icebergs_CS
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -216,11 +222,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
 
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  OSS => IST%OSS
-  FIA => IST%FIA
-
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
@@ -234,7 +235,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
-  IST%IOF%stress_count = 0
+  IOF%stress_count = 0
   
   CS%n_calls = CS%n_calls + 1
 
@@ -397,7 +398,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       if (CS%debug) call IST_chksum("Before set_ocean_top_stress_Cgrid", IST, G, IG)
 
-      call set_ocean_top_stress_Cgrid(IST%IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
+      call set_ocean_top_stress_Cgrid(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
                                       str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, IG)
       if (CS%debug) call IST_chksum("After set_ocean_top_stress_Cgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
@@ -496,7 +497,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       endif
 
       if (CS%debug) call IST_chksum("Before set_ocean_top_stress_Bgrid", IST, G, IG)
-      call set_ocean_top_stress_Bgrid(IST%IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
+      call set_ocean_top_stress_Bgrid(IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
                                       str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G, IG)
       if (CS%debug) call IST_chksum("After set_ocean_top_stress_Bgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
@@ -558,7 +559,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call mpp_clock_end(iceClock8)
 
   enddo ! nds=1,ndyn_steps
-  call finish_ocean_top_stresses(IST%IOF, G%HI)
+  call finish_ocean_top_stresses(IOF, G%HI)
 
   ! Add snow volume dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
@@ -576,7 +577,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
   enddo ; enddo ; enddo
 
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport")
+  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
 
   ! Sum the concentration weighted mass for diagnostics.
@@ -740,7 +741,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 
   if (CS%bounds_check) then
-    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans")
+    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
   endif
 
   if (CS%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then

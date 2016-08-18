@@ -269,10 +269,12 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
+  type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -317,11 +319,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  OSS => IST%OSS
-  FIA => IST%FIA
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
@@ -459,7 +456,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  call sum_top_quantities(IST%FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
+  call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
@@ -469,7 +466,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "End of update_ice_fast")
+    call IST_bounds_check(IST, G, IG, "End of update_ice_fast", OSS=OSS)
 
 end subroutine do_update_ice_model_fast
 

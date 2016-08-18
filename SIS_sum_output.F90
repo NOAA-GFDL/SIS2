@@ -688,7 +688,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 end subroutine write_ice_statistics
 
 
-subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
+subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the bottom of the sea-ice for conservation checks.
 ! Arguments: IST - The internal sea ice state type.
@@ -697,21 +697,18 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 !  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
-  type(SIS_hor_grid_type), intent(in) :: G
-  type(ice_grid_type),     intent(in) :: IG
-  type(ice_state_type),    intent(in) :: IST
-  real,                    intent(in) :: dt
-  type(SIS_sum_out_CS),    pointer    :: CS
+  type(SIS_hor_grid_type),    intent(in) :: G
+  type(ice_grid_type),        intent(in) :: IG
+  type(ice_state_type),       intent(in) :: IST
+  type(ocean_sfc_state_type), intent(in) :: OSS
+  type(fast_ice_avg_type),    intent(in) :: FIA
+  type(ice_ocean_flux_type),  intent(in) :: IOF
+  real,                       intent(in) :: dt
+  type(SIS_sum_out_CS),       pointer    :: CS
 
   real :: Flux_SW, enth_units, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  IOF => IST%IOF
-  FIA => IST%FIA
-  OSS => IST%OSS
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -739,7 +736,7 @@ subroutine accumulate_bottom_input(IST, dt, G, IG, CS)
 
 end subroutine accumulate_bottom_input
 
-subroutine accumulate_input_1(IST, dt, G, IG, CS)
+subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
@@ -750,6 +747,7 @@ subroutine accumulate_input_1(IST, dt, G, IG, CS)
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_sum_output_init.
   type(ice_state_type),    intent(in) :: IST
+  type(fast_ice_avg_type), intent(in) :: FIA
   real,                    intent(in) :: dt
   type(SIS_hor_grid_type), intent(in) :: G
   type(ice_grid_type),     intent(in) :: IG
@@ -773,13 +771,10 @@ subroutine accumulate_input_1(IST, dt, G, IG, CS)
     FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and
     salt_in_EFP, & ! heat_input, in kg, PSU kg, and Joules.
     heat_in_EFP    !
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-
   integer :: i, j, k, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  FIA => IST%FIA
-
+ 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
@@ -800,7 +795,7 @@ subroutine accumulate_input_1(IST, dt, G, IG, CS)
 
 end subroutine accumulate_input_1
 
-subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
+subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
@@ -815,6 +810,8 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(ice_state_type),    intent(inout) :: IST
+  type(fast_ice_avg_type),    intent(in) :: FIA
+  type(ice_ocean_flux_type),  intent(in) :: IOF
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), intent(in) :: part_size
   real,                    intent(in) :: dt
   type(SIS_sum_out_CS),    pointer    :: CS
@@ -822,10 +819,6 @@ subroutine accumulate_input_2(IST, part_size, dt, G, IG, CS)
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  IOF => IST%IOF
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 

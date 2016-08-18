@@ -752,15 +752,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-
-  if (.not.associated(IST%IOF)) allocate(IST%IOF)
-  IOF => IST%IOF
-  if (.not.associated(IST%OSS)) allocate(IST%OSS)
-  OSS => IST%OSS
-
+ 
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
   allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
@@ -777,12 +769,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   endif
 
   allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
-
-  call alloc_ocean_sfc_state(IST%OSS, HI, IST%Cgrid_dyn)
-
-  call alloc_ice_ocean_flux(IST%IOF, HI)
-
-  call alloc_fast_ice_avg(IST%FIA, HI, IG)
 
   allocate(IST%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; IST%coszen_nextrad(:,:) = 0.0 !NR X
 
@@ -968,12 +954,6 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%Enth_Mass_in_ocn, IST%Enth_Mass_out_ocn)
   deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
   deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen_nextrad)
-
-  call dealloc_ocean_sfc_state(IST%OSS)
-
-  call dealloc_fast_ice_avg(IST%FIA)
-
-  call dealloc_ice_ocean_flux(IST%IOF)
 
 end subroutine dealloc_IST_arrays
 
@@ -1171,11 +1151,12 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
 
 end subroutine Ice_public_type_bounds_check
 
-subroutine IST_bounds_check(IST, G, IG, msg)
+subroutine IST_bounds_check(IST, G, IG, msg, OSS)
   type(ice_state_type),    intent(in)    :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
   character(len=*),        intent(in)    :: msg
+  type(ocean_sfc_state_type), optional, intent(in) :: OSS
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
@@ -1201,14 +1182,22 @@ subroutine IST_bounds_check(IST, G, IG, msg)
   enddo ; enddo ; enddo
 
   tOcn_min = -100. ; tOcn_max = 60.
+  if (present(OSS)) then
+    do j=jsc,jec ; do i=isc,iec
+      if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0) .or. &
+          (OSS%t_ocn(i,j) < tOcn_min) .or. (OSS%t_ocn(i,j) > tOcn_max)) then
+        n_bad = n_bad + 1
+        if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
+      endif
+    enddo ; enddo
+  endif
   do j=jsc,jec ; do i=isc,iec
-    if ((abs(sum_part_sz(i,j) - 1.0) > 1.0e-5) .or. &
-        (IST%OSS%s_surf(i,j) < 0.0) .or. (IST%OSS%s_surf(i,j) > 100.0) .or. &
-        (IST%OSS%t_ocn(i,j) < tOcn_min) .or. (IST%OSS%t_ocn(i,j) > tOcn_max)) then
+    if (abs(sum_part_sz(i,j) - 1.0) > 1.0e-5) then
       n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "sum_part_sz" ; endif
     endif
   enddo ; enddo
+
   tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
   tice_min = -100. ; tice_max = 1.0
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
@@ -1248,9 +1237,11 @@ subroutine IST_bounds_check(IST, G, IG, msg)
            G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
     if (k_bad > 0) then
       write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
-    else
+    elseif (present(OSS)) then
       write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
-            IST%OSS%t_ocn(i,j), IST%OSS%s_surf(i,j), sum_part_sz(i,j)
+            OSS%t_ocn(i,j), OSS%s_surf(i,j), sum_part_sz(i,j)
+    else
+      write(mesg2,'("sum_part_sz = ",1pe12.4)') sum_part_sz(i,j)
     endif
     call SIS_error(WARNING, "Bad ice state "//trim(err)//" "//trim(msg)//" ; "//trim(mesg1)//&
                             " ; "//trim(mesg2), all_print=.true.)
@@ -1303,25 +1294,21 @@ end subroutine ice_model_restart
 ! </SUBROUTINE>
 !=======================================================================
 
-subroutine ice_diagnostics_init(Ice, IST, G, diag, Time)
-  type(ice_data_type),     intent(inout) :: Ice
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(SIS_diag_ctrl),     intent(in)    :: diag
-  type(time_type),         intent(inout) :: Time
+subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, G, diag, Time)
+  type(ice_data_type),        intent(inout) :: Ice
+  type(ice_state_type),       intent(inout) :: IST
+  type(ice_ocean_flux_type),  intent(inout) :: IOF
+  type(ocean_sfc_state_type), intent(inout) :: OSS
+  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(SIS_diag_ctrl),        intent(in)    :: diag
+  type(time_type),            intent(inout) :: Time
 
   real, parameter       :: missing = -1e34
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
   integer :: i, j, k, isc, iec, jsc, jec, n, nLay
   character(len=8) :: nstr
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-
-  IOF => IST%IOF
-  OSS => IST%OSS
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nLay = Ice%IG%NkIce

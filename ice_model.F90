@@ -75,8 +75,10 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, ice_state_type, ice_ocean_flux_type
-use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
+use ice_type_mod, only : ice_data_type, ice_state_type
+use ice_type_mod, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
+use ice_type_mod, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
+use ice_type_mod, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
@@ -146,15 +148,16 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   if (Ice%Ice_state%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%Ice_state, Ice%icebergs, Ice%G, Ice%IG)
+    call update_icebergs(Ice%Ice_state, Ice%Ice_state%OSS, Ice%Ice_state%IOF, Ice%Ice_state%FIA, &
+                         Ice%icebergs, Ice%G, Ice%IG)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
   call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%Ice_state%slow_thermo_CSp, &
-                           Ice%G, Ice%IG)
+                           Ice%Ice_state%OSS, Ice%Ice_state%FIA, Ice%Ice_state%IOF, Ice%G, Ice%IG)
 
-  call SIS_dynamics_trans(Ice%Ice_state, dt_slow, Ice%Ice_state%dyn_trans_CSp, &
-                          Ice%icebergs, Ice%G, Ice%IG)
+  call SIS_dynamics_trans(Ice%Ice_state, Ice%Ice_state%OSS, Ice%Ice_state%FIA, Ice%Ice_state%IOF, &
+                          dt_slow, Ice%Ice_state%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
@@ -331,7 +334,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
                            Ice%ocean_fields)
 
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
-                             Ice%Ice_state%OSS, Ice%G, Ice%IG )
+                             Ice%Ice_state%OSS, Ice%Ice_state%FIA, Ice%G, Ice%IG )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -457,13 +460,15 @@ end subroutine unpack_ocn_ice_bdry
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
-  type(ice_data_type),                     intent(inout) :: Ice
-  type(ice_state_type),                    intent(inout) :: IST
-  type(ocean_sfc_state_type),              intent(in)    :: OSS
-  type(SIS_hor_grid_type),                 intent(inout) :: G
-  type(ice_grid_type),                     intent(in)    :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in)   :: t_surf_ice_bot
+subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
+  type(ice_data_type),        intent(inout) :: Ice
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(in)    :: IG
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
+                              intent(in)    :: t_surf_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(IG%NkIce) :: sw_abs_lay
@@ -480,9 +485,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-
-  FIA => IST%FIA
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -496,7 +498,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   endif
 
   if (IST%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state")
+    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", OSS=OSS)
 
   if (IST%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
@@ -587,7 +589,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, G, IG)
   endif
 
   if (IST%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state")
+    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off) &
@@ -742,8 +744,9 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%Ice_state%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, &
-                                Ice%Ice_state%fast_thermo_CSp, Ice%G, Ice%IG )
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%Ice_state%OSS, &
+                                Ice%Ice_state%FIA, Ice%Ice_state%fast_thermo_CSp, &
+                                Ice%G, Ice%IG )
 
   Ice%Time = Ice%Ice_state%Time
   Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
@@ -792,7 +795,6 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A
     IST%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     Ice%p_surf(i2,j2) = Atmos_boundary%p(i3,j3,1)
-    Ice%s_surf(i2,j2) = IST%OSS%s_surf(i,j)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
 !$OMP                           private(i2,j2,k2)
@@ -1064,6 +1066,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: write_geom
   logical :: test_grid_copy = .false.
   logical :: nudge_sea_ice
+  logical :: atmos_winds
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -1087,10 +1090,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   else ; G => Ice%G ; endif
   if (.not.associated(Ice%IG)) allocate(Ice%IG) ; IG => Ice%IG
   if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
-
-  if (.not.associated(IST%IOF)) allocate(IST%IOF)
-  if (.not.associated(IST%OSS)) allocate(IST%OSS)
-  if (.not.associated(IST%FIA)) allocate(IST%FIA)
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1198,7 +1197,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%FIA%atmos_winds, &
+!  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", IST%FIA%atmos_winds, &
+  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
@@ -1322,6 +1322,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                    IST, Ice%Ice_restart, restart_file)
+
+  call alloc_ocean_sfc_state(IST%OSS, HI, IST%Cgrid_dyn)
+
+  call alloc_ice_ocean_flux(IST%IOF, HI)
+
+  call alloc_fast_ice_avg(IST%FIA, HI, IG)
+  IST%FIA%atmos_winds = atmos_winds
 
   ! IST%IOF has now been set and can be used.
   IST%IOF%flux_uv_stagger = Ice%flux_uv_stagger
@@ -1642,7 +1649,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-  call ice_diagnostics_init(Ice, IST, G, IST%diag, IST%Time)
+  call ice_diagnostics_init(Ice, IST, IST%IOF, IST%OSS, IST%FIA, G, IST%diag, IST%Time)
 
   call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%fast_thermo_CSp)
 
@@ -1727,6 +1734,12 @@ subroutine ice_model_end (Ice)
   call dealloc_Ice_arrays(Ice)
 
   call SIS_tracer_flow_control_end(IST%SIS_tracer_flow_CSp)
+
+  call dealloc_ocean_sfc_state(IST%OSS)
+
+  call dealloc_fast_ice_avg(IST%FIA)
+
+  call dealloc_ice_ocean_flux(IST%IOF)
 
   call dealloc_IST_arrays(IST)
   deallocate(Ice%Ice_restart)
