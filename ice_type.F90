@@ -203,9 +203,6 @@ type ice_state_type
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
   type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
@@ -564,6 +561,14 @@ type ice_data_type !  ice_public_type
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
+                               ! the ice to the ocean that are calculated by the ice model.
+  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
+                               ! that describe the ocean's surface state, as it is revealed
+                               ! to the ice model.
+  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
+                               ! fields that are calculated during the fast ice step but
+                               ! stored for later use by the slow ice step or the ocean.
   type(restart_file_type), pointer :: Ice_restart => NULL()
 end type ice_data_type !  ice_public_type
 
