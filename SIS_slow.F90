@@ -246,7 +246,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
-!$OMP                                  WindStr_y_ocn_A)
+!$OMP                                  WindStr_y_ocn_A,FIA)
   do j=jsd,jed
     do i=isd,ied
       WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
@@ -573,7 +573,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
   ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
   enddo ; enddo ; enddo
@@ -802,7 +802,7 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Bgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,                    &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,                &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
@@ -905,7 +905,7 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,    &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,    &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
