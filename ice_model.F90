@@ -192,7 +192,7 @@ subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,LIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF,LIB,i_off,j_off) &
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
@@ -206,7 +206,7 @@ subroutine set_ice_state_fluxes(IOF, Ice, LIB, G, IG)
   enddo ; enddo
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF,Ice,i_off,j_off) &
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
@@ -272,7 +272,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
       call disable_SIS_averaging(IST%diag)
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
@@ -358,7 +358,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, ocean_fields)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,IOB,i_off,j_off,T_0degC) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
 
@@ -549,7 +549,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
 
   if (IST%slab_ice) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
-!$OMP                                  H_to_m_snow,H_to_m_ice) &
+!$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -564,7 +564,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
     endif ; enddo ; enddo ; enddo
   else
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,IG,i_off,j_off, &
-!$OMP                                  H_to_m_snow,H_to_m_ice) &
+!$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2,sw_abs_lay)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -594,7 +594,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
     call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2,k2)
   do j=jsc,jec
     do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
@@ -609,7 +609,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
 
   ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
   if (IST%Cgrid_dyn) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       if (G%mask2dT(i,j) > 0.5 ) then
@@ -623,7 +623,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
       endif
     enddo ; enddo
   else ! B-grid discretization.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       if (G%mask2dT(i,j) > 0.5 ) then
@@ -918,11 +918,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end
   endif
 
   if (IST%id_swdn > 0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,i_off,j_off, &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,            &
-!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif)            &
-!$OMP                          private(i2,j2,k2)
     tmp_diag(:,:) = 0.0
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,ABT, &
+!$OMP                                  io_I,jo_I,io_A,jo_A,tmp_diag) &
+!$OMP                          private(i2,j2,k2,i3,j3)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * ( &
@@ -966,9 +965,8 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
   rad = acos(-1.)/180.
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,rad,Time_start,dt_here,time_since_ae, &
-!$OMP                                  ncat,flux_sw_nir_dir,flux_sw_nir_dif, &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif &
-!$OMP                          private(cosz_dt_ice,fracday_dt_ice,rrsun_dt_ice, &
+!$OMP                                  ncat,ABT,i_off,j_off) &
+!$OMP                          private(i,j,i2,j2,k,cosz_dt,fracday_dt,rrsun_dt, &
 !$OMP                                  fracday_day,cosz_day,rrsun_day,diurnal_factor)
   do j=jsc,jec ; do i=isc,iec
 !    Per Rick Hemler:
