@@ -1306,6 +1306,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call copy_dyngrid_to_SIS_horgrid(dG, G)
   call destroy_dyn_horgrid(dG)
 
+  call set_domain(G%Domain%mpp_domain)
   ! Allocate and register fields for restarts.
   call ice_data_type_register_restarts(G%domain%mpp_domain, IG%CatIce, &
                          param_file, Ice, Ice%Ice_restart, restart_file)
@@ -1398,9 +1399,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%Time_step_slow = Time_step_slow
 
 !  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
-    call set_domain(G%Domain%mpp_domain)
+!    call set_domain(G%Domain%mpp_domain)
     call astronomy_init
-    call nullify_domain()
+!    call nullify_domain()
 !  endif
 
   !
@@ -1685,6 +1686,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                 G%sin_rot(G%isc-1:G%iec+1,G%jsc-1:G%jec+1) )
      endif
   endif
+  !nullify_domain perhaps could be called somewhere closer to set_domain 
+  !but it should be callled after restore_state() otherwise it causes a restart mismatch
+  call nullify_domain()
+
 
   ! Do any error checking here.
   if (IST%debug) then
