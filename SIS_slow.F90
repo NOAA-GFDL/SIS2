@@ -37,8 +37,7 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init
-! use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 
 use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
@@ -82,6 +81,7 @@ use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
 use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
+use ice_transport_mod, only : ice_transport_CS
 
 use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
 
@@ -91,16 +91,20 @@ implicit none ; private
 
 public :: SIS_dynamics_trans, update_icebergs
 public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
+public :: SIS_slow_transport_CS, SIS_slow_sum_output_CS
 
 integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
 contains
 
-subroutine update_icebergs(IST, icebergs_CS, G, IG)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(icebergs),          pointer       :: icebergs_CS
+subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(ice_ocean_flux_type),  intent(inout) :: IOF
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
+  type(icebergs),             pointer       :: icebergs_CS
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
@@ -119,24 +123,24 @@ subroutine update_icebergs(IST, icebergs_CS, G, IG)
   !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, IST%Time, &
-            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-            IST%OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IST%IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger)
   else
     call icebergs_run( icebergs_CS, IST%Time, &
-            IST%IOF%calving(isc:iec,jsc:jec), IST%OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
+            OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%IOF%flux_u_ocn(isc:iec,jsc:jec), IST%IOF%flux_v_ocn(isc:iec,jsc:jec), &
-            IST%OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IST%IOF%calving_hflx(isc:iec,jsc:jec), IST%FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IST%IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger)
   endif
 
 end subroutine update_icebergs
@@ -144,14 +148,17 @@ end subroutine update_icebergs
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_dynamics_trans(IST, dt_slow, CS, icebergs_CS, G, IG)
+subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG)
 
-  type(ice_state_type),    intent(inout) :: IST
-  real,                    intent(in)    :: dt_slow
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(dyn_trans_CS),      pointer       :: CS
-  type(icebergs),          pointer       :: icebergs_CS
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(ice_ocean_flux_type),  intent(inout) :: IOF
+  real,                       intent(in)    :: dt_slow
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
+  type(dyn_trans_CS),         pointer       :: CS
+  type(icebergs),             pointer       :: icebergs_CS
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -216,11 +223,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
 
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  OSS => IST%OSS
-  FIA => IST%FIA
-
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
@@ -234,7 +236,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
-  IST%IOF%stress_count = 0
+  IOF%stress_count = 0
   
   CS%n_calls = CS%n_calls + 1
 
@@ -244,7 +246,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
-!$OMP                                  WindStr_y_ocn_A)
+!$OMP                                  WindStr_y_ocn_A,FIA)
   do j=jsd,jed
     do i=isd,ied
       WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
@@ -397,7 +399,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       if (CS%debug) call IST_chksum("Before set_ocean_top_stress_Cgrid", IST, G, IG)
 
-      call set_ocean_top_stress_Cgrid(IST%IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
+      call set_ocean_top_stress_Cgrid(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
                                       str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, IG)
       if (CS%debug) call IST_chksum("After set_ocean_top_stress_Cgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
@@ -496,7 +498,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       endif
 
       if (CS%debug) call IST_chksum("Before set_ocean_top_stress_Bgrid", IST, G, IG)
-      call set_ocean_top_stress_Bgrid(IST%IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
+      call set_ocean_top_stress_Bgrid(IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
                                       str_x_ice_ocn_B, str_y_ice_ocn_B, IST%part_size, G, IG)
       if (CS%debug) call IST_chksum("After set_ocean_top_stress_Bgrid", IST, G, IG)
       call mpp_clock_end(iceClockc)
@@ -546,7 +548,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                          snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp, &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
 
     if (CS%id_xprt>0) then
@@ -559,7 +561,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call mpp_clock_end(iceClock8)
 
   enddo ! nds=1,ndyn_steps
-  call finish_ocean_top_stresses(IST%IOF, G%HI)
+  call finish_ocean_top_stresses(IOF, G%HI)
 
   ! Add snow volume dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
@@ -572,12 +574,12 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
   ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
   enddo ; enddo ; enddo
 
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport")
+  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
 
   ! Sum the concentration weighted mass for diagnostics.
@@ -744,14 +746,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 
   if (CS%bounds_check) then
-    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans")
+    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
   endif
 
-  if (CS%Time + (IST%Time_step_slow/2) > IST%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp)
-    IST%write_ice_stats_time = IST%write_ice_stats_time + IST%ice_stats_interval
+  if (CS%Time + (IST%Time_step_slow/2) > CS%write_ice_stats_time) then
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, IST%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
   endif
 
 end subroutine SIS_dynamics_trans
@@ -804,7 +806,7 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Bgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,                    &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,                &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
@@ -907,7 +909,7 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,    &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,    &
 !$OMP                               part_size,windstr_x_water,windstr_y_water, &
 !$OMP                               str_ice_oce_x,str_ice_oce_y)               &
 !$OMP                       private(ps_vel)
@@ -1034,17 +1036,20 @@ end subroutine SIS_slow_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_init - initializes ice model data, parameters and diagnostics       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
+subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
   type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(dyn_trans_CS),          pointer       :: CS
+  character(len=*),            intent(in)    :: output_dir
+  type(time_type),             intent(in)    :: Time_Init  ! starting time of model integration
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_slow" ! This module's name.
+  real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   real, parameter    :: missing = -1e34
 
   call callTree_enter("SIS_slow_init(), SIS_slow.F90")
@@ -1073,6 +1078,15 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
+
+  call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
+                 "The time unit for ICE_STATS_INTERVAL.", &
+                 units="s", default=86400.0)
+  call get_param(param_file, mod, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
+                 "The interval in units of TIMEUNIT between writes of the \n"//&
+                 "globally summed ice statistics and conservation checks.", &
+                 default=set_time(0,1), timeunit=Time_unit)
+
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
@@ -1097,6 +1111,12 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
     call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
   endif
   call ice_transport_init(CS%Time, G, param_file, CS%diag, CS%ice_transport_CSp)
+
+  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
+                           CS%sum_output_CSp, CS%ntrunc)
+
+  CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
+      (1 + (Time - Time_init) / CS%ice_stats_interval)
 
   !
   ! diagnostics that are specific to C-grid dynamics of the ice model
@@ -1129,6 +1149,26 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS)
   call callTree_leave("SIS_slow_init()")
 
 end subroutine SIS_slow_init
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!!  the dyn_trans_CS points to.
+function SIS_slow_transport_CS(CS) result(transport_CSp)
+  type(dyn_trans_CS), pointer :: CS
+  type(ice_transport_CS), pointer :: transport_CSp
+
+  transport_CSp => CS%ice_transport_CSp
+end function SIS_slow_transport_CS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!!  the dyn_trans_CS points to.
+function SIS_slow_sum_output_CS(CS) result(sum_out_CSp)
+  type(dyn_trans_CS), pointer :: CS
+  type(SIS_sum_out_CS), pointer :: sum_out_CSp
+
+  sum_out_CSp => CS%sum_output_CSp
+end function SIS_slow_sum_output_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_slow_end - deallocates memory                                            !

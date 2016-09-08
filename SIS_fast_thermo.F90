@@ -133,7 +133,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_u,flux_v,flux_t, &
 !$OMP                                  flux_q,flux_sw_nir_dir,flux_sw_nir_dif,        &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_lw,       &
-!$OMP                                  lprec,fprec,flux_lh)
+!$OMP                                  lprec,fprec,flux_lh,FIA)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
     FIA%flux_u_top(i,j,k)  = FIA%flux_u_top(i,j,k)  + flux_u(i,j,k)
     FIA%flux_v_top(i,j,k)  = FIA%flux_v_top(i,j,k)  + flux_v(i,j,k)
@@ -192,7 +192,7 @@ subroutine avg_top_quantities(FIA, part_size, G, IG)
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
   divid = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G) private(u,v)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA) private(u,v)
   do j=jsc,jec
     do k=0,ncat ;  do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
@@ -225,7 +225,7 @@ subroutine avg_top_quantities(FIA, part_size, G, IG)
   ! across all the ice thickness categories on an A-grid.  This is done
   ! over the entire data domain for safety.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA) &
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA,part_size) &
 !$OMP                           private(I_wts)
   do j=jsd,jed
     do k=1,ncat ; do i=isd,ied
@@ -269,10 +269,12 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
+  type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -318,11 +320,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
-  type(ocean_sfc_state_type), pointer :: OSS => NULL()
-  type(fast_ice_avg_type), pointer :: FIA => NULL()
-  OSS => IST%OSS
-  FIA => IST%FIA
-
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
 
@@ -337,7 +334,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
-!$OMP                                  j_off,Ice,flux_u,flux_v,flux_t,flux_q,flux_lw, &
+!$OMP                                  j_off,flux_u,flux_v,flux_t,flux_q,flux_lw, &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif,               &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,               &
 !$OMP                                  lprec,fprec,dhdt,dedt,drdt        )            &
@@ -383,7 +380,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG)                 &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,CS)      &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
@@ -461,7 +458,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
     endif
   enddo ; enddo ; enddo
 
-  call sum_top_quantities(IST%FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
+  call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
@@ -471,7 +468,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, CS, G, IG )
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "End of update_ice_fast")
+    call IST_bounds_check(IST, G, IG, "End of update_ice_fast", OSS=OSS)
 
 end subroutine do_update_ice_model_fast
 
