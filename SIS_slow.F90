@@ -649,7 +649,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call post_data(IST%id_ext, diagVar, CS%diag)
   endif
   if (IST%id_hp>0) call post_avg(IST%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
-                                 IST%diag, G=G, &
+                                 CS%diag, G=G, &
                                  scale=IG%H_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
   if (IST%id_hs>0) call post_avg(IST%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
