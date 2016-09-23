@@ -130,6 +130,8 @@ type ice_state_type
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
+ logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
+                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
   ! SLOW THERMO (mostly)
   logical :: do_ridging     ! If true, use the ridging code
 
@@ -169,7 +171,9 @@ type ice_state_type
   integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1, id_swdn=-1, id_lwdn=-1
-  
+ 
+  !integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
+
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_slp=-1
@@ -294,6 +298,7 @@ type dyn_trans_CS ! To be made ; private
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+  integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -532,6 +537,9 @@ type ice_data_type !  ice_public_type
     runoff => NULL(), &   ! Liquid runoff into the ocean, in kg m-2.
     calving => NULL(), &  ! Calving of ice or runoff of frozen fresh water into
                           ! the ocean, in kg m-2.
+    ustar_berg => NULL(), &  !ustar contribution below icebergs in m/s
+    area_berg => NULL(),  &  !fraction of grid cell covered by icebergs in m2/m2
+    mass_berg => NULL(),  &  !mass of icebergs in km/m^2
     runoff_hflx => NULL(), &  ! The heat flux associated with runoff, based on
                               ! the temperature difference relative to a
                               ! reference temperature, in ???.
@@ -717,6 +725,13 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+  !Should only use if icebergs is on.
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0 !derived
+    allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0   !derived
+    allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0 !derived
+  endif
 
 
   ! Now register some of these arrays to be read from the restart files.
@@ -949,6 +964,12 @@ subroutine dealloc_Ice_arrays(Ice)
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif)
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif)
   deallocate(Ice%area, Ice%mi)
+
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    deallocate(Ice%ustar_berg)
+    deallocate(Ice%area_berg)
+    deallocate(Ice%mass_berg)
+  endif
 end subroutine dealloc_Ice_arrays
 
 subroutine dealloc_IST_arrays(IST)
@@ -1116,6 +1137,11 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   call chksum(Ice%calving, trim(mesg)//" Ice%calving")
   call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
 
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
+    call chksum(Ice%area_berg, trim(mesg)//" Ice%area_berg")
+    call chksum(Ice%mass_berg, trim(mesg)//" Ice%mass_berg")
+  endif
 end subroutine Ice_public_type_chksum
 
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
@@ -1637,6 +1663,12 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
+
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg       )
+    write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg        )
+    write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg        )
+  endif
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
