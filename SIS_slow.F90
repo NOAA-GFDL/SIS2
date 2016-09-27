@@ -130,7 +130,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc-1:iec+1,jsc-1:jec+1))
+            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec))
   else
     call icebergs_run( icebergs_CS, IST%Time, &
             IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
@@ -140,7 +140,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc-1:iec+1,jsc-1:jec+1))
+            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec))
   endif
 
 end subroutine update_icebergs
