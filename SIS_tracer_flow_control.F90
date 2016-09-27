@@ -1,14 +1,14 @@
 module SIS_tracer_flow_control
     !***********************************************************************
     !*                   GNU General Public License                        *
-    !* This file is a part of MOM.                                         *
+    !* This file is a part of SIS2.                                        *
     !*                                                                     *
-    !* MOM is free software; you can redistribute it and/or modify it and  *
+    !* SIS2 is free software; you can redistribute it and/or modify it and *
     !* are expected to follow the terms of the GNU General Public License  *
     !* as published by the Free Software Foundation; either version 2 of   *
     !* the License, or (at your option) any later version.                 *
     !*                                                                     *
-    !* MOM is distributed in the hope that it will be useful, but WITHOUT  *
+    !* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
     !* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
     !* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
     !* License for more details.                                           *
@@ -96,7 +96,7 @@ contains
     ! tracers and apply vertical column processes to tracers.
 
     subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-        Ice_restart, restart_file, is_restart)
+        Ice_restart, restart_file)
         type(SIS_hor_grid_type),                intent(in) :: G
         type(ice_grid_type),                    intent(in) :: IG
         type(param_file_type),                  intent(in) :: param_file
@@ -105,7 +105,6 @@ contains
         type(SIS_tracer_registry_type),         pointer    :: TrReg
         type(restart_file_type),                intent(inout) :: Ice_restart
         character(len=*),                       intent(in) :: restart_file
-        logical,                                intent(in) :: is_restart
 
         ! Argument:  G - The ice model's horizontal grid structure.
         !  (in)      IG - The ice model's grid structure.
@@ -142,7 +141,7 @@ contains
 
             if (CS%use_ice_age) CS%use_ice_age = &
                 register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-                diag, TrReg, Ice_restart, restart_file, is_restart)
+                diag, TrReg, Ice_restart, restart_file)
 
 
         end subroutine SIS_call_tracer_register

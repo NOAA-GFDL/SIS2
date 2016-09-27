@@ -1,41 +1,36 @@
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!                                                                   !!
-!!                   GNU General Public License                      !!
-!!                                                                   !!
-!! This file is part of the Flexible Modeling System (FMS).          !!
-!!                                                                   !!
-!! FMS is free software; you can redistribute it and/or modify       !!
-!! it and are expected to follow the terms of the GNU General Public !!
-!! License as published by the Free Software Foundation.             !!
-!!                                                                   !!
-!! FMS is distributed in the hope that it will be useful,            !!
-!! but WITHOUT ANY WARRANTY; without even the implied warranty of    !!
-!! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the     !!
-!! GNU General Public License for more details.                      !!
-!!                                                                   !!
-!! You should have received a copy of the GNU General Public License !!
-!! along with FMS; if not, write to:                                 !!
-!!          Free Software Foundation, Inc.                           !!
-!!          59 Temple Place, Suite 330                               !!
-!!          Boston, MA  02111-1307  USA                              !!
-!! or see:                                                           !!
-!!          http://www.gnu.org/licenses/gpl.txt                      !!
-!!                                                                   !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!***********************************************************************
+!*                   GNU General Public License                        *
+!* This file is a part of SIS2.                                        *
+!*                                                                     *
+!* SIS2 is free software; you can redistribute it and/or modify it and *
+!* are expected to follow the terms of the GNU General Public License  *
+!* as published by the Free Software Foundation; either version 2 of   *
+!* the License, or (at your option) any later version.                 *
+!*                                                                     *
+!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
+!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
+!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
+!* License for more details.                                           *
+!*                                                                     *
+!* For the full text of the GNU General Public License,                *
+!* write to: Free Software Foundation, Inc.,                           *
+!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
+!* or see:   http://www.gnu.org/licenses/gpl.html                      *
+!***********************************************************************
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This module contains convenient utilities for use by the SIS2 sea ice model. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_utils_mod
 
-use MOM_coms,          only : g_sum=>reproducing_sum
-use MOM_domains,       only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_error_handler, only : is_root_pe
-use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
-use SIS_error_checking, only : hchksum, Bchksum, uchksum, vchksum
+use MOM_coms,           only : g_sum=>reproducing_sum
+use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
+use MOM_error_handler,  only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler,  only : is_root_pe
+use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
+use MOM_checksums,      only : hchksum, Bchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B
-use SIS_hor_grid,   only : SIS_hor_grid_type
+use SIS_hor_grid,       only : SIS_hor_grid_type
 
 implicit none ; private
 
@@ -306,28 +301,28 @@ subroutine ice_grid_chksum(G, haloshift)
 
   hs = 1 ; if (present(haloshift)) hs = haloshift
 
-  call hchksum(G%mask2dT, "G%mask2dT", G, haloshift=hs)
-  call hchksum(G%geoLatT, "G%geoLatT", G, haloshift=hs)
-  call hchksum(G%geoLonT, "G%geoLonT", G, haloshift=hs)
-  call hchksum(G%dxT, "G%dxT", G, haloshift=hs)
-  call hchksum(G%IdxT, "G%IdxT", G, haloshift=hs)
-  call hchksum(G%IdyT, "G%IdyT", G, haloshift=hs)
-  call hchksum(G%dyT, "G%dyT", G, haloshift=hs)
-  call hchksum(G%areaT, "G%areaT", G, haloshift=hs)
-  call hchksum(G%IareaT, "G%IareaT", G, haloshift=hs)
-  call hchksum(G%mask2dT, "G%mask2dT", G, haloshift=hs)
-  call hchksum(G%cos_rot, "G%cos_rot", G)
-  call hchksum(G%sin_rot, "G%sin_rot", G)
+  call hchksum(G%mask2dT, "G%mask2dT", G%HI, haloshift=hs)
+  call hchksum(G%geoLatT, "G%geoLatT", G%HI, haloshift=hs)
+  call hchksum(G%geoLonT, "G%geoLonT", G%HI, haloshift=hs)
+  call hchksum(G%dxT, "G%dxT", G%HI, haloshift=hs)
+  call hchksum(G%IdxT, "G%IdxT", G%HI, haloshift=hs)
+  call hchksum(G%IdyT, "G%IdyT", G%HI, haloshift=hs)
+  call hchksum(G%dyT, "G%dyT", G%HI, haloshift=hs)
+  call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs)
+  call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs)
+  call hchksum(G%mask2dT, "G%mask2dT", G%HI, haloshift=hs)
+  call hchksum(G%cos_rot, "G%cos_rot", G%HI)
+  call hchksum(G%sin_rot, "G%sin_rot", G%HI)
 
-  call Bchksum(G%mask2dBu, "G%mask2dBu", G, haloshift=hs)
-  call Bchksum(G%geoLatBu, "G%geoLatBu", G, haloshift=hs)
-  call Bchksum(G%geoLonBu, "G%geoLonBu", G, haloshift=hs)
-  call Bchksum(G%dxBu, "G%dxBu", G, haloshift=hs)
-  call Bchksum(G%dyBu, "G%dyBu", G, haloshift=hs)
-  call Bchksum(G%IdxBu, "G%IdxBu", G, haloshift=hs)
-  call Bchksum(G%IdyBu, "G%IdyBu", G, haloshift=hs)
-  call Bchksum(G%areaBu, "G%areaBu", G, haloshift=hs)
-  call Bchksum(G%IareaBu, "G%IareaBu", G, haloshift=hs)
+  call Bchksum(G%mask2dBu, "G%mask2dBu", G%HI, haloshift=hs)
+  call Bchksum(G%geoLatBu, "G%geoLatBu", G%HI, haloshift=hs)
+  call Bchksum(G%geoLonBu, "G%geoLonBu", G%HI, haloshift=hs)
+  call Bchksum(G%dxBu, "G%dxBu", G%HI, haloshift=hs)
+  call Bchksum(G%dyBu, "G%dyBu", G%HI, haloshift=hs)
+  call Bchksum(G%IdxBu, "G%IdxBu", G%HI, haloshift=hs)
+  call Bchksum(G%IdyBu, "G%IdyBu", G%HI, haloshift=hs)
+  call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs)
+  call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs)
 
   call check_redundant_B("G%dx/dyBu", G%dxBu, G%dyBu, G, &
              isc-1, iec+1, jsc-1, jec+1, To_All+Scalar_Pair)
@@ -336,25 +331,30 @@ subroutine ice_grid_chksum(G, haloshift)
   call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1)
   call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1)
 
-  call uchksum(G%mask2dCu, "G%mask2dCu", G, haloshift=hs)
-  call uchksum(G%geoLatCu, "G%geoLatCu", G, haloshift=hs)
-  call uchksum(G%geoLonCu, "G%geolonCu", G, haloshift=hs)
-  call uchksum(G%dxCu, "G%dxCu", G, haloshift=hs)
-  call uchksum(G%dyCu, "G%dyCu", G, haloshift=hs)
-  call uchksum(G%IdxCu, "G%IdxCu", G, haloshift=hs)
-  call uchksum(G%IdyCu, "G%IdyCu", G, haloshift=hs)
-  call uchksum(G%areaCu, "G%areaCu", G, haloshift=hs)
-  call uchksum(G%IareaCu, "G%IareaCu", G, haloshift=hs)
+  call uchksum(G%mask2dCu, "G%mask2dCu", G%HI, haloshift=hs)
+  call uchksum(G%geoLatCu, "G%geoLatCu", G%HI, haloshift=hs)
+  call uchksum(G%geoLonCu, "G%geolonCu", G%HI, haloshift=hs)
+  call uchksum(G%dxCu, "G%dxCu", G%HI, haloshift=hs)
+  call uchksum(G%dyCu, "G%dyCu", G%HI, haloshift=hs)
+  call uchksum(G%IdxCu, "G%IdxCu", G%HI, haloshift=hs)
+  call uchksum(G%IdyCu, "G%IdyCu", G%HI, haloshift=hs)
+  call uchksum(G%areaCu, "G%areaCu", G%HI, haloshift=hs)
+  call uchksum(G%IareaCu, "G%IareaCu", G%HI, haloshift=hs)
 
-  call vchksum(G%mask2dCv, "G%mask2dCv", G, haloshift=hs)
-  call vchksum(G%geoLatCv, "G%geoLatCv", G, haloshift=hs)
-  call vchksum(G%geoLonCv, "G%geoLonCv", G, haloshift=hs)
-  call vchksum(G%dxCv, "G%dxCv", G, haloshift=hs)
-  call vchksum(G%dyCv, "G%dyCv", G, haloshift=hs)
-  call vchksum(G%IdxCv, "G%IdxCv", G, haloshift=hs)
-  call vchksum(G%IdyCv, "G%IdyCv", G, haloshift=hs)
-  call uchksum(G%areaCu, "G%areaCv", G, haloshift=hs)
-  call uchksum(G%IareaCu, "G%IareaCv", G, haloshift=hs)
+  call vchksum(G%mask2dCv, "G%mask2dCv", G%HI, haloshift=hs)
+  call vchksum(G%geoLatCv, "G%geoLatCv", G%HI, haloshift=hs)
+  call vchksum(G%geoLonCv, "G%geoLonCv", G%HI, haloshift=hs)
+  call vchksum(G%dxCv, "G%dxCv", G%HI, haloshift=hs)
+  call vchksum(G%dyCv, "G%dyCv", G%HI, haloshift=hs)
+  call vchksum(G%IdxCv, "G%IdxCv", G%HI, haloshift=hs)
+  call vchksum(G%IdyCv, "G%IdyCv", G%HI, haloshift=hs)
+  call uchksum(G%areaCu, "G%areaCv", G%HI, haloshift=hs)
+  call uchksum(G%IareaCu, "G%IareaCv", G%HI, haloshift=hs)
+
+  call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs)
+  call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs)
+  call hchksum(G%dF_dx, "G%dF_dx", G%HI, haloshift=hs)
+  call hchksum(G%dF_dy, "G%dF_dy", G%HI, haloshift=hs)
 
 end subroutine ice_grid_chksum
 
