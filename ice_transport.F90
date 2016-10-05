@@ -831,10 +831,14 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
       enddo ; enddo
 
       if (do_any) then
+!The following subroutine calls are not thread-safe. There is a pointer in the subroutine
+!(Tr) that could be redirected from underneath a thread when another goes in.
+!$OMP CRITICAL (safepointer)
         call advect_tracers_thicker(mca0_ice, trans_ice, G, IG, CS%SIS_tr_adv_CSp, &
                                     TrReg, .false., j, isc, iec)
         call advect_tracers_thicker(mca0_snow, trans_snow, G, IG, CS%SIS_tr_adv_CSp, &
                                     TrReg, .true., j, isc, iec)
+!$OMP END CRITICAL (safepointer)
       endif
 
       k=nCat

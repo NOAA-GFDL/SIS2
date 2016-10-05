@@ -589,6 +589,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   enddo ; enddo ; enddo
 
   if (FIA%num_tr_fluxes>0) then
+!It is necessary and sufficient that only one OMP thread goes through the following block
+!since IOF is shared between the threads (hence the block is not thread-safe).
+!$OMP SINGLE
     if (IOF%num_tr_fluxes < 0) then
       ! This is the first call, and the IOF arrays need to be allocated.
       IOF%num_tr_fluxes = FIA%num_tr_fluxes
@@ -598,7 +601,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
       IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
     endif
-
+!$OMP END SINGLE
 !$OMP do
     do n=1,FIA%num_tr_fluxes
       do j=jsc,jec ; do i=isc,iec
