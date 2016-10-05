@@ -526,8 +526,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     endif
 
     if (CS%Cgrid_dyn) then
-      call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%u_ice_C, IST%v_ice_C, &
-                         IST%TrReg, OSS%sea_lev, dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+      call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
+                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, OSS%sea_lev, &
+                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -541,10 +542,10 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
       enddo ; enddo
 
-      call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, uc, vc, &
-                         IST%TrReg, OSS%sea_lev, dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
-                         IST%rdg_mice, snow2ocn, rdg_rate, &
-                         rdg_open, rdg_vosh)
+      call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
+                         uc, vc, IST%TrReg, OSS%sea_lev, dt_slow_dyn, G, IG, &
+                         CS%ice_transport_CSp, IST%rdg_mice, &
+                         snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -647,6 +648,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     enddo ; enddo
     call post_data(IST%id_ext, diagVar, CS%diag)
   endif
+  if (IST%id_hp>0) call post_avg(IST%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
+                                 CS%diag, G=G, &
+                                 scale=IG%H_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
   if (IST%id_hs>0) call post_avg(IST%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
                                  scale=IG%H_to_kg_m2/IST%Rho_snow, wtd=.true.)

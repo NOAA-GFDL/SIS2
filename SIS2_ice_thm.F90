@@ -29,6 +29,74 @@
 !                                       Mike Winton  (Michael.Winton@noaa.gov) !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! Enhancement for melt ponds cohabiting ice top with snow layer:               !
+!                                                                              !
+!    ->+--------+ <- ts==0C when pond (net heat here -> pond freeze/melt)      !
+!   /  |        |--------|<-+                                                  !
+! hs   |  snow  |  pond  |   hp - layer has no heat capacity; "surface" energy !
+!      |        |        |  .     balance takes place at ice/snow top          !
+!   \  |        |        |  .                                                  !
+!    =>+--------+--------|<-+                                                  !
+!   /  |                 |                                                     !
+! hi   |    ...ice...    |                   do_pond = true activates scheme   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!
+!             SIS2 "getting-started" melt pond scheme
+! 
+! This melt pond scheme adds a single layer melt pond to each ice thickness
+! category.  The layer does not have heat capacity.  It is assumed to be at
+! freshwater freezing temperature and well mixed.  All pond surface fluxes
+! are communicated directly to its bottom where surface energy balance is
+! calculated.  The pond layer is advected and redistributed between ice
+! thickness categories similarly to the snow and ice layers.  As is the case
+! with snow, pond cannot exist without an ice layer below.  Basic descriptions
+! of pond sources and sinks, and pond fraction for radiation treatments follow:
+! 
+! Source water:  Surface melting of snow and ice are the source of pond water.
+! The runoff scheme keys on the total ice covered area.  This is the only
+! interaction between category variables in the scheme.  The scheme uses r, the
+! fraction of melt (r)etained given by the CICE5 scheme (p. 42):
+! r = r_min + (r_max-r_min)*ice_area.  The controlling namelist
+! parameters for r_min and r_max are pond_r_min and pond_r_max.
+! 
+! Freezing sink:  The surface energy budget continues to be performed at the
+! top of the snow or ice when pond is present but the interface is fixed at
+! freezing temperature and the residual between the fluxes on either side of the
+! interface is made up with melt or freezing.  Freezing in this calculation is a
+! sink of pond water.
+! 
+! Freeboard sink:  if the pond and snow are sufficiently massive to push the top
+! of the sea ice below sea level, pond is dumped into the ocean until the ice
+! top is brought back to sea level, or the pond is completely depleted.  This
+! adjustment follows the CICE5 Hunke "level ice" pond scheme.
+! 
+! Porous-ice sink:  No through-ice drainage occurs until the ice average
+! temperature exceeds a specified value.  The namelist parameter for this is
+! pond_porous_temp.  Once this limit is exceeded the pond drains to a minimum
+! value intended to represent coverage by ponds at sea level.  This scheme is
+! a placeholder for the mushy-layer thermodynamics to be implemented later.
+! 
+! Pond fraction for radiation:  In the snow-free case we assume that pond
+! fraction ranges between a specified minimum, where surface cavities below
+! sea level are filled with pond water, and a specified maximum value.
+! The pond depth and pond fraction are considered to be proportional as was
+! found at the SHEBA site and incorporated into the Bailey melt pond
+! parameterization.  This means that the pond fraction is proportional to
+! the square root of the pond volume.  The pond volume has a maximum
+! determined by the non-negative freeboard requirement.  This pond volume
+! is associated with the maximum pond fraction, so less pond water is needed
+! to cover thinner ice.
+! 
+! New namelist parameters: do_pond, pond_r_max, pond_r_min, pond_porous_temp,
+! pond_frac_max, pond_frac_min
+! 
+! New diagnostics: hp, fp, pond_source, pond_sink_freeboard, pond_sink_porous,
+! pond_sink_tot <only hp implemented so far; add pond transport diagnostics?>
+!
+! M. Winton (6/16)
+!
+
 module SIS2_ice_thm
 
 ! for calling delta-Eddington shortwave from ice_optics
@@ -114,7 +182,17 @@ type, public :: SIS2_ice_thm_CS ; private
   logical :: do_deltaEdd = .true.  ! If true, use a delta-Eddington radiative
                           ! transfer calculation for the shortwave radiation
                           ! within the sea-ice and snow.
+
+  logical :: do_pond = .false. ! activate melt pond scheme - mw/new
+  ! mw/new - these melt pond control data are temporarily placed here
+  real :: tdrain = -0.8 ! if average ice temp. > tdrain, drain pond
+  real :: r_min_pond = 0.15 ! pond retention of meltwater
+  real :: r_max_pond = 0.9  ! see CICE5 doc
+  real :: max_pond_frac = 0.5  ! pond water beyond this is dumped
+  real :: min_pond_frac = 0.2  ! ponds below sea level don't drain
+  ! mw/new - end of melt pond control data
 end type SIS2_ice_thm_CS
+
 
 contains
 
@@ -130,9 +208,16 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
 
   real :: sal_ice_top(1)  ! A specified surface salinity of ice.
 
-  real :: deltaEdd_R_ice  ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_snow ! Mysterious delta-Eddington tuning parameters, unknown.
-  real :: deltaEdd_R_pond ! Mysterious delta-Eddington tuning parameters, unknown.
+  !
+  ! Albedo tuning parameters are documented in:
+  !
+  ! Briegleb, B.P., and B. Light, 2007:  A delta-Eddington multiple scattering
+  !  parameterization for solar radiation in the sea ice component of the
+  !  Community Climate System Model, NCAR/TN+472+STR.
+  !
+  real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning, non-dim.
+  real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning, non-dim.
+  real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning, non-dim.
   character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
@@ -206,6 +291,24 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
   call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
                  "If true, a delta-Eddington radiative transfer calculation \n"//&
                  "for the shortwave radiation within the sea-ice.", default=.true.)
+  call get_param(param_file, mod, "DO_POND", CS%do_pond, &
+                 "If true, calculate melt ponds and use them for\n"//&
+                 "shortwave radiation calculation.", default=.false.)
+  call get_param(param_file, mod, "TDRAIN", CS%tdrain, &
+                 "Melt ponds drain to sea level when ice average temp.\n"//&
+                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8)
+  call get_param(param_file, mod, "R_MIN_POND", CS%r_min_pond, &
+                 "Minimum retention rate of surface water sources in melt pond\n"//&
+                 "(retention scales linearly with ice cover)", default=0.15)
+  call get_param(param_file, mod, "R_MAX_POND", CS%r_max_pond, &
+                 "Maximum retention rate of surface water sources in melt pond\n"//&
+                 "(retention scales linearly with ice cover)", default=0.9)
+  call get_param(param_file, mod, "MIN_POND_FRAC", CS%min_pond_frac, &
+                 "Minimum melt pond cover (by ponds at sea level)\n"//&
+                 "pond drains to this when ice is porous.", default=0.2)
+  call get_param(param_file, mod, "MAX_POND_FRAC", CS%max_pond_frac, &
+                 "Maximum melt pond cover - associated with pond volume\n"//&
+                 "that suppresses ice top to waterline", default=0.5)
   call get_param(param_file, mod, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
                  "An estimate of the range of snow and ice temperatures \n"//&
                  "that is used to evaluate whether an explicit diffusive \n"//&
@@ -224,16 +327,16 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
     call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
                    "A dreadfully documented tuning parameter for the radiative \n"//&
                    "propeties of sea ice with the delta-Eddington radiative \n"//&
-                   "transfer calculation.", units="perhaps nondimensional?", default=0.0)
+                   "transfer calculation.", units="nondimensional", default=0.0)
     call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
                    "A dreadfully documented tuning parameter for the radiative \n"//&
                    "propeties of snow on sea ice with the delta-Eddington \n"//&
                    "radiative transfer calculation.", &
-                   units="perhaps nondimensional?", default=0.0)
+                   units="nondimensional", default=0.0)
     call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
                    "A dreadfully documented tuning parameter for the radiative \n"//&
                    "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
-                   "radiative transfer calculation.", units="perhaps nondimensional?", &
+                   "radiative transfer calculation.", units="nondimensional", &
                    default=0.0)
     call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
 
@@ -265,9 +368,10 @@ end subroutine SIS2_ice_thm_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
+subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
                     alb_nir_dir, alb_nir_dif, abs_sfc, abs_snow, abs_ice_lay, &
-                    abs_ocn, abs_int, CS, coszen_in)
+                    abs_ocn, abs_int, CS, ITV, coszen_in)
+  real, intent(in   ) :: mp  ! pond mass (kg/m2) mw/new
   real, intent(in   ) :: hs  ! snow thickness (m-snow)
   real, intent(in   ) :: hi  ! ice thickness (m-ice)
   real, intent(in   ) :: ts  ! surface temperature
@@ -283,6 +387,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
   real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
   real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
   type(SIS2_ice_thm_CS), intent(in) :: CS
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, intent(in),optional :: coszen_in
 
   real :: alb, as, ai, snow_cover, fh
@@ -319,7 +424,7 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
   real (kind=dbl_kind), dimension (1,1) :: &
     fs     , & ! horizontal coverage of snow
     fp     , & ! pond fractional coverage (0 to 1)
-    hp         ! pond depth (m)
+    hprad      ! pond depth (m) for radiation code - may be diagnosed
 
   real (kind=dbl_kind), dimension (1,1,1) :: &
     rhosnw , & ! density in snow layer (kg/m3)
@@ -347,6 +452,8 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
     albice  , & ! bare ice albedo, for history
     albsno  , & ! snow albedo, for history
     albpnd      ! pond albedo, for history
+
+  real (kind=dbl_kind) :: max_mp, hs_mask_pond, pond_decr
 
   if (CS%do_deltaEdd) then
 
@@ -376,10 +483,27 @@ subroutine ice_optics_SIS2(hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
     call shortwave_dEdd0_set_snow(nx_block, ny_block, icells, indxi, indxj, &
              aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
 
-    call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
-             aice, Tsfc, fs, fp, hp) ! out: fp, hp
+    if ( CS%do_pond ) then ! mw/new
+      max_mp = (ITV%Rho_water-ITV%Rho_ice)*hi  ! max pond allowed by waterline
+      fp(1,1) = CS%max_pond_frac*sqrt(min(1.0,mp/max_mp))
+      ! set average pond depth (max. = 2*average)
+      hprad(1,1) = mp/(fp(1,1)*1000)  ! freshwater density = 1000 kg/m2
+      fs(1,1) = fs(1,1)*(1-fp(1,1))   ! reduce fs to frac of pond-free ice
+      ! decrement fp (increment fs) for snow masking of pond: pond is completely
+      ! masked when snow depth contains 2*average_pond_depth in its pore space
+      if (hs>0.0 .and. hprad(1,1)>0.0) then
+        hs_mask_pond = 2*hprad(1,1)*ITV%Rho_ice/(ITV%Rho_ice-ITV%Rho_snow)
+        pond_decr = fp(1,1)*min(1.0,hs/hs_mask_pond)
+        fp(1,1) = fp(1,1) - pond_decr
+        fs(1,1) = fs(1,1) + pond_decr
+      endif
+    else
+      call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
+               aice, Tsfc, fs, fp, hprad) ! out: fp, hprad
+    endif
+
     call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
-             aice, vice, vsno, fs, rhosnw, rsnw, fp, hp, swvdr, swvdf, &
+             aice, vice, vsno, fs, rhosnw, rsnw, fp, hprad, swvdr, swvdf, &
              swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
              fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
     ! out: alvdf, alvdr, and subsequent.
@@ -446,9 +570,11 @@ end subroutine ice_optics_SIS2
 ! ice_temp_SIS2 - A subroutine that calculates the snow and ice enthalpy       !
 !    changes due to surface forcing.                                           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, &
+! m_pond - mw/new
+subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
+  real, intent(in   ) :: m_pond  ! pond mass per unit area (kg m-2)
   real, intent(in   ) :: m_snow  ! snow mass per unit area (H, usually kg m-2)
   real, intent(in   ) :: m_ice   ! ice mass per unit area (H, usually kg m-2)
   real, dimension(0:NkIce) , &
@@ -620,7 +746,8 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
   !  (A - B*tsurf_est) = k0skin * (tsurf_est - temp_est(0))
   tsurf_est = (A + k0skin*temp_est(0)) / (B + k0skin)
 
-  if (tsurf_est > tsf) then
+  if (tsurf_est > tsf .or. m_pond > 0.0 ) then ! mw/new - liq. h2o @ sfc 
+                                               ! also pins temp at freezing
     ! The surface is melting, set tsurf to melt temp. and recalculate I_bb.
     tsurf_est = tsf
     ! cc(0) = k0skin*dtt
@@ -672,7 +799,9 @@ subroutine ice_temp_SIS2(m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, tfw, fb, 
                       (CS%temp_range_est * ITV%Cp_Ice + ITV%LI)
 
   e_extra = 0.0
-  if (tsurf > tsf) then ! The surface is melting: update enthalpy with the surface at melt temp.
+  if (tsurf > tsf .or. m_pond > 0.0) then
+                  ! The surface is melting: update enthalpy with the surface at melt temp.
+                  ! mw/new - liq h2o at surface also pins temp at freezing
     tsurf = tsf
     ! Accumulate surface melt energy.
     if (mL_snow>0.0) then
@@ -1653,11 +1782,14 @@ end subroutine get_SIS2_thermo_coefs
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
-                           snow, evap, tmlt, bmlt, NkIce, &
+subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
+                           snow, rain, evap, tmlt, bmlt, NkIce, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, CS, ablation, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
+  ! mw/new - melt pond - added first two arguments & rain
+  real, intent(in   ) :: a_ice       ! area of ice (1-open_water_frac) for pond retention
+  real, intent(inout) :: m_pond      ! melt pond mass (kg/m2)
   real, dimension(0:NkIce), &
         intent(inout) :: m_lay       ! Snow and ice mass per unit area by layer in kg m-2.
   real, dimension(0:NkIce+1), &
@@ -1668,6 +1800,7 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       ! Conserved ice bulk salinity by layer (g/kg)
   real, intent(in   ) :: snow        ! new snow (kg/m^2-snow)
+  real, intent(in   ) :: rain        ! rain for pond source (kg/m^2-rain) - not yet active
   real, intent(in   ) :: evap        ! ice evaporation/sublimation (kg/m^2)
   real, intent(in   ) :: tmlt        ! top melting energy (J/m^2)
   real, intent(in   ) :: bmlt        ! bottom melting energy (J/m^2)
@@ -1707,11 +1840,15 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: enth_unit
   real :: h2o_to_ocn, h2o_orig, h2o_imb
+  real :: pond_rate, h2o_to_pond, h2o_from_pond, tavg, mp_min, mp_max ! mw/new
   integer :: k
   logical :: debug = .false.
 
   enth_unit = ITV%enth_unit
   min_dEnth_freeze = (ITV%LI*enth_unit) * (1.0-CS%liq_lim)
+
+  ! mw/new - meltwater retention in pond
+  pond_rate = CS%r_min_pond+(CS%r_max_pond-CS%r_min_pond)*a_ice
 
   top_melt = tmlt*enth_unit ; bot_melt = bmlt*enth_unit
 
@@ -1729,8 +1866,16 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
 
   evap_from_ocn = 0.0 ! for excess evap-melt
   h2o_ocn_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0 ; snow_to_ice  = 0.0
+  h2o_to_pond = 0.0
+  h2o_from_pond = 0.0
   salt_to_ice = 0.0
   enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
+
+  ! raining on cold ice led to unphysical temperature oscillations
+  ! in single column test; need to pass all rain through to ocean for now - mw
+  ! m_pond = m_pond + pond_rate*rain ! mw/new pond intercepts rain
+  ! h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*rain
+  ! h2o_ice_to_ocn = h2o_ice_to_ocn + rain
 
   ! Delete this later, since it should not happen.
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
@@ -1742,14 +1887,34 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
     m_lay(0) = m_lay(0) - evap ! Treat frost formation like snow.
     enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
   endif
-  ! Assume that Salin(NkIce+1) already is the freezing salinity.
-  salin_freeze = Salin(NkIce+1)
 
-  if (top_melt < 0.0) then  ! this usually shouldn't happen
+  if (top_melt < 0.0 .and. CS%do_pond) then ! mw/new: add fresh/0C ice to top layer
+    ! enth_freeze = -ITV%LI   ! this is right for prognostic salinity (i think)
+    enth_freeze = Enthalpy(1) ! this is right for fixed salinity
+    m_freeze = top_melt/enth_freeze;
+    if (m_freeze > m_pond) then
+      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / &
+                    (m_lay(1)+m_pond) ! excess freezing energy goes to cooling
+      Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_pond) ! for bulk salinity
+      m_lay(1) = m_lay(1)+m_pond
+      m_pond = 0.0
+    else
+      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / &
+                  (m_lay(1)+m_freeze)
+      Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_freeze) ! for bulk salinity
+      m_lay(1) = m_lay(1)+m_freeze
+      m_pond = m_pond - m_freeze
+    endif
+    top_melt = 0.0
+  endif
+
+  if (top_melt < 0.0 .and. .not. CS%do_pond) then ! shouldn't happen but can handle
     bot_melt = bot_melt + top_melt
     top_melt = 0.0
   endif
 
+  ! Assume that Salin(NkIce+1) already is the bottom freezing salinity.
+  salin_freeze = Salin(NkIce+1)
   if (bot_melt < 0.0 ) then ! add freezing to bottom layer at tice and salin_freeze.
     ! Enth_freeze is based on the colder of the properties of the existing ice
     ! or the heat content of ocean water after a small fraction has frozen.
@@ -1803,12 +1968,18 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
       endif
       m_lay(k) = m_lay(k) - M_melt
       if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
-      h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+      if ( CS%do_pond) then
+        h2o_to_pond = h2o_to_pond + pond_rate*M_melt ! mw/new
+        h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*M_melt
+      else
+        h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
+      endif
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
 
       if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
 
+    m_pond = m_pond + h2o_to_pond ! mw/new - add to pond from rain and surface melt
     heat_to_ocn = heat_to_ocn + melt_left/enth_unit ! melt heat left after snow & ice gone
   endif
 
@@ -1841,13 +2012,36 @@ subroutine ice_resize_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   Enthalpy_melt = enthM_melt
   Enthalpy_freeze = enthM_freezing
 
-  ! Make the snow below waterline adjustment.
+  ! calculate total ice for pond drainage and waterline adjustments below
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
 
-  m_submerged = (mtot_ice+m_lay(0))* (ITV%Rho_ice/ITV%Rho_water) ! The mass of ice that will
-                ! be submerged when floating according to Archimedes principle.
-  if (m_submerged > mtot_ice) then ! convert snow to ice to maintain ice top at waterline
-    snow_to_ice = m_submerged - mtot_ice ! need this much ice mass from snow
+  if ( m_pond > 0.0 ) then ! consider pond drainage through ice
+    tavg = 0.0
+    do k=1,NkIce ! calculate liquid fraction as in Hunke et al 2013
+      tavg = tavg+Temp_from_En_S(Enthalpy(k), Sice_therm(k), ITV)*m_lay(k)
+    end do
+    tavg = tavg/mtot_ice  ! average ice temperature
+    if (tavg > CS%tdrain) then ! drain pond based on tunable ice temp. criterion
+      mp_max = mtot_ice*(ITV%Rho_water/ITV%Rho_ice-1)
+      mp_min = mp_max*(CS%min_pond_frac/CS%max_pond_frac)**2
+      h2o_ice_to_ocn = h2o_ice_to_ocn + max(m_pond-mp_min,0.0)
+      m_pond = m_pond-max(m_pond-mp_min,0.0)
+    endif
+  endif
+
+  ! calculate mass to take from pond to bring ice top to waterline - mw/new
+  h2o_from_pond = m_pond+m_lay(0)-(ITV%Rho_water/ITV%Rho_ice-1.0)*mtot_ice
+  if (h2o_from_pond>0.0) then ! reduce pond to raise ice top toward waterline
+    h2o_from_pond = min(h2o_from_pond,m_pond) ! keep m_pond >= 0.0
+    m_pond = m_pond - h2o_from_pond
+    h2o_ice_to_ocn = h2o_ice_to_ocn + h2o_from_pond ! pass dumped h2o to ocean
+  endif
+
+  ! The mass of ice that must be submerged (when floating according to
+  ! Archimedes principle) for ice top to be at waterline.
+  m_submerged = (mtot_ice+m_lay(0)+m_pond)* (ITV%Rho_ice/ITV%Rho_water)
+  if (m_submerged > mtot_ice) then
+    snow_to_ice = min(m_submerged - mtot_ice, m_lay(0)) ! need ice from snow
 
     m_lay(0) = m_lay(0) - snow_to_ice
 

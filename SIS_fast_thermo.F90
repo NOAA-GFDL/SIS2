@@ -414,7 +414,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
       ! actually lose or gain any mass from freezing or melting.
-      call ice_temp_SIS2(IST%mH_snow(i,j,k)*IG%H_to_kg_m2, IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
+      ! mw/new - pass melt pond (surface temp fixed at freezing when present)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+                        IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                         T_Freeze_surf, FIA%bheat(i,j), ts_new, &
                         dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &

@@ -422,7 +422,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
-                          (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k))
+                          (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k) + &
+                           IST%mH_pond(i,j,k)) ! mw/new - assumed pond heat/salt = 0
 
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
                           (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1))
