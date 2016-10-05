@@ -259,11 +259,12 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
   enddo ; enddo ; enddo
 
   if (IST%do_icebergs) then
-    call icebergs_incr_mass(Ice%icebergs, Ice%mi(:,:)) ! Add icebergs mass in kg/m^2
+    Ice%mi(:,:)=Ice%mi(:,:)+ IOF%mass_berg(G%isc:G%iec,G%jsc:G%jec)
+    !call icebergs_incr_mass(Ice%icebergs,  Ice%mi(:,:)) ! Add icebergs mass in kg/m^2
     if  (IST%pass_iceberg_area_to_ocean) then
-      Ice%ustar_berg(:,:)=Ice%icebergs%grd%ustar_iceberg(Ice%icebergs%grd%isc:Ice%icebergs%grd%iec,Ice%icebergs%grd%jsc:Ice%icebergs%grd%jec)
-      Ice%area_berg(:,:)=Ice%icebergs%grd%spread_area(Ice%icebergs%grd%isc:Ice%icebergs%grd%iec,Ice%icebergs%grd%jsc:Ice%icebergs%grd%jec)
-      Ice%mass_berg(:,:)=Ice%icebergs%grd%spread_mass(Ice%icebergs%grd%isc:Ice%icebergs%grd%iec,Ice%icebergs%grd%jsc:Ice%icebergs%grd%jec)
+      Ice%ustar_berg(:,:)=IOF%ustar_berg(G%isc:G%iec,G%jsc:G%jec)
+      Ice%area_berg(:,:)=IOF%area_berg(G%isc:G%iec,G%jsc:G%jec)
+      Ice%mass_berg(:,:)=IOF%mass_berg(G%isc:G%iec,G%jsc:G%jec)
     endif
   endif
 

@@ -446,6 +446,12 @@ type ice_ocean_flux_type
                         ! facilitate the retention of sea ice, in kg m-2 s-1.
     flux_salt           ! The flux of salt out of the ocean in kg m-2.
 
+  !Iceberg fields
+  real, allocatable, dimension(:,:)   :: &
+    ustar_berg , &  !ustar contribution below icebergs in m/s
+    area_berg ,  &  !fraction of grid cell covered by icebergs in m2/m2
+    mass_berg       !mass of icebergs in km/m^2
+
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &
@@ -920,6 +926,10 @@ subroutine alloc_ice_ocean_flux(IOF, HI)
   allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0 !NR
   allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0 !NR
 
+  !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.) 
+  allocate(IOF%mass_berg(SZI_(HI), SZJ_(HI))) ; IOF%mass_berg(:,:) = 0.0 !NI
+  allocate(IOF%ustar_berg(SZI_(HI), SZJ_(HI))) ; IOF%ustar_berg(:,:) = 0.0 !NI
+  allocate(IOF%area_berg(SZI_(HI), SZJ_(HI))) ; IOF%area_berg(:,:) = 0.0 !NI
 
 end subroutine alloc_ice_ocean_flux
 
@@ -1050,6 +1060,10 @@ subroutine dealloc_ice_ocean_flux(IOF)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
   deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
+
+  !Deallocating iceberg fields
+  deallocate(IOF%mass_berg, IOF%ustar_berg)
+  deallocate(IOF%area_berg)
 
   deallocate(IOF)
 end subroutine dealloc_ice_ocean_flux

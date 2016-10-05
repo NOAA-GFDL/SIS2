@@ -130,7 +130,9 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec))
+            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            mass_berg=IOF%mass_berg(isc:iec,jsc:jec),ustar_berg=IOF%ustar_berg(isc:iec,jsc:jec), &
+            area_berg=IOF%area_berg(isc:iec,jsc:jec) )
   else
     call icebergs_run( icebergs_CS, IST%Time, &
             IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
@@ -140,7 +142,9 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec))
+            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            mass_berg=IOF%mass_berg(isc:iec,jsc:jec),ustar_berg=IOF%ustar_berg(isc:iec,jsc:jec), &
+            area_berg=IOF%area_berg(isc:iec,jsc:jec) )
   endif
 
 end subroutine update_icebergs
@@ -593,7 +597,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), CS%diag)
 
     if (CS%id_mib>0) then
-      if (IST%do_icebergs) call icebergs_incr_mass(icebergs_CS, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
+      if (IST%do_icebergs)  mass(isc:iec,jsc:jec) = (mass(isc:iec,jsc:jec) + IOF%mass_berg(G%isc:G%iec,G%jsc:G%jec)) ! Add icebergs mass in kg/m^2
+      !if (IST%do_icebergs)  call icebergs_incr_mass(icebergs_CS, mass(isc:iec,jsc:jec) ) ! Add icebergs mass in kg/m^2
       call post_data(CS%id_mib, mass(isc:iec,jsc:jec), CS%diag)
     endif
   endif
@@ -601,21 +606,21 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     allocate(ustar_berg(G%isc:G%iec,G%jsc:G%jec))
     ustar_berg(:,:)=0.
     if ((IST%do_icebergs) .and. (IST%pass_iceberg_area_to_ocean))&
-      ustar_berg(isc:iec,jsc:jec)=icebergs_CS%grd%ustar_iceberg(icebergs_CS%grd%isc:icebergs_CS%grd%iec,icebergs_CS%grd%jsc:icebergs_CS%grd%jec)
+      ustar_berg(:,:)=IOF%ustar_berg(G%isc:G%iec,G%jsc:G%jec)
     call post_data(CS%id_ustar_berg, ustar_berg(isc:iec,jsc:jec), CS%diag)
   endif
   if (CS%id_area_berg>0) then
     allocate(area_berg(G%isc:G%iec,G%jsc:G%jec))
     area_berg(:,:)=0.
     if ((IST%do_icebergs) .and. (IST%pass_iceberg_area_to_ocean))&
-      area_berg(isc:iec,jsc:jec)=icebergs_CS%grd%spread_area(icebergs_CS%grd%isc:icebergs_CS%grd%iec,icebergs_CS%grd%jsc:icebergs_CS%grd%jec)
+      area_berg(:,:)=IOF%area_berg(G%isc:G%iec,G%jsc:G%jec)
     call post_data(CS%id_area_berg, area_berg(isc:iec,jsc:jec), CS%diag)
   endif
   if (CS%id_mass_berg>0) then
     allocate(mass_berg(G%isc:G%iec,G%jsc:G%jec))
     mass_berg(:,:)=0.
     if ((IST%do_icebergs) .and. (IST%pass_iceberg_area_to_ocean)) &
-      mass_berg(isc:iec,jsc:jec)=icebergs_CS%grd%spread_mass(icebergs_CS%grd%isc:icebergs_CS%grd%iec,icebergs_CS%grd%jsc:icebergs_CS%grd%jec)
+      mass_berg(:,:)=IOF%mass_berg(G%isc:G%iec,G%jsc:G%jec)
     call post_data(CS%id_mass_berg, mass_berg(isc:iec,jsc:jec), CS%diag)
   endif
 
