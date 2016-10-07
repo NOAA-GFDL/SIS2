@@ -530,12 +530,12 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
 
   !   These initialization calls for ice-free categories are not really
   ! needed because these arrays are only used where there is ice.
-  ! In the case of slab_ice, the various IST%sw_abs arrays are initialized
+  ! In the case of slab_ice, the various FIA%sw_abs arrays are initialized
   ! to 0 when they are allocated, and this never changes.
   ! The following lines can be uncommented without changing answers.
-  ! IST%sw_abs_sfc(:,:,:) = 0.0 ; IST%sw_abs_snow(:,:,:) = 0.0
-  ! IST%sw_abs_ice(:,:,:,:) = 0.0 ; IST%sw_abs_ocn(:,:,:) = 0.0
-  ! IST%sw_abs_int(:,:,:) = 0.0
+  ! FIA%sw_abs_sfc(:,:,:) = 0.0 ; FIA%sw_abs_snow(:,:,:) = 0.0
+  ! FIA%sw_abs_ice(:,:,:,:) = 0.0 ; FIA%sw_abs_ocn(:,:,:) = 0.0
+  ! FIA%sw_abs_int(:,:,:) = 0.0
   ! Ice%albedo(:,:,:) = 0.0
   ! Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
   ! Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
@@ -573,11 +573,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
                IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
-               IST%sw_abs_sfc(i,j,k),  IST%sw_abs_snow(i,j,k), &
-               sw_abs_lay, IST%sw_abs_ocn(i,j,k), IST%sw_abs_int(i,j,k), &
+               FIA%sw_abs_sfc(i,j,k),  FIA%sw_abs_snow(i,j,k), &
+               sw_abs_lay, FIA%sw_abs_ocn(i,j,k), FIA%sw_abs_int(i,j,k), &
                IST%ice_thm_CSp, IST%ITV, coszen_in=IST%coszen_nextrad(i,j))
 
-      do m=1,IG%NkIce ; IST%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+      do m=1,IG%NkIce ; FIA%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
       !Niki: Is the following correct for diagnostics?
       !   Probably this calculation of the "average" albedo should be replaced
@@ -679,17 +679,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
     enddo
   endif
 
-  if (IST%column_check) then
-    IST%enth_prev(:,:,:) = 0.0
-    IST%heat_in(:,:,:) = 0.0
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,k)>0.0) then
-      IST%enth_prev(i,j,k) = (IST%mH_snow(i,j,k)*IG%H_to_kg_m2) * IST%enth_snow(i,j,k,1)
-      do m=1,IG%NkIce
-        IST%enth_prev(i,j,k) = IST%enth_prev(i,j,k) + &
-                               (IST%mH_ice(i,j,k)*kg_H_Nk) * IST%enth_ice(i,j,k,m)
-      enddo
-    endif ; enddo ; enddo ; enddo
-  endif
   !
   ! Pre-timestep diagnostics
   !
@@ -697,7 +686,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-  if (IST%id_alb>0) call post_avg(IST%id_alb, Ice%albedo, &
+  if (FIA%id_alb>0) call post_avg(FIA%id_alb, Ice%albedo, &
                      IST%part_size(isc:iec,jsc:jec,:), IST%diag)
   if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, IST%diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, IST%diag)
@@ -754,7 +743,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Ice%Time = Ice%Ice_state%Time
   Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
 
-  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, &
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%FIA, &
                                   Ice%G, Ice%IG, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
@@ -853,10 +842,11 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 end subroutine set_ocean_albedo
 
 
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end)
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(inout) :: IST
+  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
@@ -877,34 +867,34 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, G, IG, Time_start, Time_end
 
   call enable_SIS_averaging(dt_diag, Time_end, IST%diag)
 
-  if (IST%id_alb_vis_dir>0) call post_avg(IST%id_alb_vis_dir, Ice%albedo_vis_dir, &
+  if (FIA%id_alb_vis_dir>0) call post_avg(FIA%id_alb_vis_dir, Ice%albedo_vis_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_vis_dif>0) call post_avg(IST%id_alb_vis_dif, Ice%albedo_vis_dif, &
+  if (FIA%id_alb_vis_dif>0) call post_avg(FIA%id_alb_vis_dif, Ice%albedo_vis_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dir>0) call post_avg(IST%id_alb_nir_dir, Ice%albedo_nir_dir, &
+  if (FIA%id_alb_nir_dir>0) call post_avg(FIA%id_alb_nir_dir, Ice%albedo_nir_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (IST%id_alb_nir_dif>0) call post_avg(IST%id_alb_nir_dif, Ice%albedo_nir_dif, &
+  if (FIA%id_alb_nir_dif>0) call post_avg(FIA%id_alb_nir_dif, Ice%albedo_nir_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
 
-  if (IST%id_sw_abs_sfc>0) call post_avg(IST%id_sw_abs_sfc, IST%sw_abs_sfc, &
+  if (FIA%id_sw_abs_sfc>0) call post_avg(FIA%id_sw_abs_sfc, FIA%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
-  if (IST%id_sw_abs_snow>0) call post_avg(IST%id_sw_abs_snow, IST%sw_abs_snow, &
+  if (FIA%id_sw_abs_snow>0) call post_avg(FIA%id_sw_abs_snow, FIA%sw_abs_snow, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
   do m=1,NkIce
-    if (IST%id_sw_abs_ice(m)>0) call post_avg(IST%id_sw_abs_ice(m), IST%sw_abs_ice(:,:,:,m), &
+    if (FIA%id_sw_abs_ice(m)>0) call post_avg(FIA%id_sw_abs_ice(m), FIA%sw_abs_ice(:,:,:,m), &
                                      IST%part_size(:,:,1:), IST%diag, G=G)
   enddo
-  if (IST%id_sw_abs_ocn>0) call post_avg(IST%id_sw_abs_ocn, IST%sw_abs_ocn, &
+  if (FIA%id_sw_abs_ocn>0) call post_avg(FIA%id_sw_abs_ocn, FIA%sw_abs_ocn, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
 
-  if (IST%id_sw_pen>0) then
+  if (FIA%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                     (IST%sw_abs_ocn(i,j,k) + IST%sw_abs_int(i,j,k))
+                     (FIA%sw_abs_ocn(i,j,k) + FIA%sw_abs_int(i,j,k))
     enddo ; enddo ; enddo
-    call post_data(IST%id_sw_pen, tmp_diag, IST%diag)
+    call post_data(FIA%id_sw_pen, tmp_diag, IST%diag)
   endif
 
   if (IST%id_lwdn > 0) then
@@ -1061,7 +1051,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
-  
+  real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
+
   integer :: idr, id_sal
   integer :: write_geom
   logical :: test_grid_copy = .false.
@@ -1125,8 +1116,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
 
-
-  call get_param(param_file, mod, "RHO_OCEAN", IST%Rho_ocean, &
+  ! Rho_ocean is not actually used here, but it used from later get_param
+  ! calls in other modules.  This call is here to avoid changing the order of
+  ! the entries in the SIS_parameter_doc files.
+  call get_param(param_file, mod, "RHO_OCEAN", Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
   call get_param(param_file, mod, "RHO_ICE", IST%Rho_ice, &

@@ -98,23 +98,7 @@ type ice_state_type
     rdg_mice    ! A diagnostic of the ice load that was formed by
                 ! ridging, in H (usually kg m-2).
 
-  ! These two arrarys are used with column_check when evaluating the enthalpy
-  ! conservation with the fast thermodynamics code. 
-  real, pointer, dimension(:,:,:) :: &
-    enth_prev, heat_in
 
-
-  ! Shortwave absorption parameters that are set in ice_optics.
-  real, allocatable, dimension(:,:,:) :: &
-    sw_abs_sfc , &  ! The fractions of the absorbed shortwave radiation
-    sw_abs_snow, &  ! that are absorbed in a surface skin layer (_sfc),
-    sw_abs_ocn , &  ! the snow (_snow), by the ocean (_ocn), or integrated
-    sw_abs_int      ! across all of the ice layers (_int), all nondim
-                    ! and <=1.  sw_abs_int is only used for diagnostics.
-                    ! Only sw_abs_ocn is used in the slow step.
-  real, allocatable, dimension(:,:,:,:) :: &
-    sw_abs_ice      ! The fraction of the absorbed shortwave that is
-                    ! absorbed in each of the ice layers, nondim, <=1.
 
   real, allocatable, dimension(:,:)   :: &
     coszen_nextrad  ! Cosine of the solar zenith angle averaged
@@ -126,8 +110,7 @@ type ice_state_type
   ! State type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
-  ! Delete rho_ocean?
-  real :: Rho_ocean    ! The nominal density of sea water, in kg m-3.
+
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
@@ -143,11 +126,6 @@ type ice_state_type
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
-
-  ! SLOW DYNAMICS?
-  type(time_type) :: ice_stats_interval ! The interval between writes of the
-                             ! globally summed ice statistics and conservation checks.
-  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
 
   ! FAST THERMO
   real :: kmelt          ! A constant that is used in the calculation of the
@@ -168,7 +146,7 @@ type ice_state_type
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
-  integer, dimension(:), allocatable :: id_t, id_sw_abs_ice, id_sal
+  integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1, id_swdn=-1, id_lwdn=-1
   
@@ -177,9 +155,7 @@ type ice_state_type
   integer :: id_slp=-1
   !### THESE DIAGNOSTICS ARE NEVER SENT!
   ! integer :: id_ta=-1, id_obi=-1
-  integer :: id_coszen=-1, id_alb=-1
-  integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
-  integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
+  integer :: id_coszen=-1
 
   !### THESE DIAGNOSTICS ARE NEVER SENT!
   ! integer :: id_strna=-1
@@ -198,6 +174,11 @@ type ice_state_type
 end type ice_state_type
 
 type fast_thermo_CS ! To be made ; private
+  ! These two arrarys are used with column_check when evaluating the enthalpy
+  ! conservation with the fast thermodynamics code. 
+  real, pointer, dimension(:,:,:) :: &
+    enth_prev, heat_in
+
   logical :: debug        ! If true, write verbose checksums for debugging purposes.
   logical :: column_check ! If true, enable the heat check column by column.
   real    :: imb_tol      ! The tolerance for imbalances to be flagged by
@@ -381,6 +362,19 @@ type fast_ice_avg_type
                    ! thickness categories, used in calculating
                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
+
+  ! Shortwave absorption parameters that are set in ice_optics.
+  real, allocatable, dimension(:,:,:) :: &
+    sw_abs_sfc , &  ! The fractions of the absorbed shortwave radiation
+    sw_abs_snow, &  ! that are absorbed in a surface skin layer (_sfc),
+    sw_abs_ocn , &  ! the snow (_snow), by the ocean (_ocn), or integrated
+    sw_abs_int      ! across all of the ice layers (_int), all nondim
+                    ! and <=1.  sw_abs_int is only used for diagnostics.
+                    ! Only sw_abs_ocn is used in the slow step.
+  real, allocatable, dimension(:,:,:,:) :: &
+    sw_abs_ice      ! The fraction of the absorbed shortwave that is
+                    ! absorbed in each of the ice layers, nondim, <=1.
+
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
     tr_flux_top    ! An array of tracer fluxes at the top of the
@@ -392,6 +386,12 @@ type fast_ice_avg_type
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
+
+  integer, allocatable, dimension(:)   :: id_sw_abs_ice
+  integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
+
+  integer :: id_alb=-1
+  integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
 
 end type fast_ice_avg_type
 
@@ -786,15 +786,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
   allocate(IST%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; IST%coszen_nextrad(:,:) = 0.0 !NR X
 
-  allocate(IST%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_sfc(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_snow(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sw_abs_ice(:,:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_ocn(:,:,:) = 0.0 !NR
-  allocate(IST%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; IST%sw_abs_int(:,:,:) = 0.0 !NR
-
-  allocate(IST%enth_prev(SZI_(HI), SZJ_(HI), CatIce)) ; IST%enth_prev(:,:,:) = 0.0
-  allocate(IST%heat_in(SZI_(HI), SZJ_(HI), CatIce)) ; IST%heat_in(:,:,:) = 0.0
-
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
@@ -844,10 +835,10 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
 
-  integer :: CatIce
+  integer :: CatIce, NkIce
 
   if (.not.associated(FIA)) allocate(FIA)
-  CatIce = IG%CatIce
+  CatIce = IG%CatIce ; NkIce = IG%NkIce
 
   FIA%avg_count = 0
   allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0 !NR
@@ -871,6 +862,13 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0 !NI
   allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0 !NI
   allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 !NI
+
+  ! These arrays are instantaneous values, not averages, but may be updated frequently.
+  allocate(FIA%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_sfc(:,:,:) = 0.0 !NR
+  allocate(FIA%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_snow(:,:,:) = 0.0 !NR
+  allocate(FIA%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; FIA%sw_abs_ice(:,:,:,:) = 0.0 !NR
+  allocate(FIA%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0 !NR
+  allocate(FIA%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_int(:,:,:) = 0.0 !NR
 
 end subroutine alloc_fast_ice_avg
 
@@ -968,8 +966,7 @@ subroutine dealloc_IST_arrays(IST)
     deallocate(IST%u_ice_B, IST%v_ice_B)
   endif
 
-  deallocate(IST%sw_abs_sfc, IST%sw_abs_snow, IST%sw_abs_ice)
-  deallocate(IST%sw_abs_ocn, IST%sw_abs_int, IST%coszen_nextrad)
+  deallocate(IST%coszen_nextrad)
 
 end subroutine dealloc_IST_arrays
 
@@ -1010,6 +1007,9 @@ subroutine dealloc_fast_ice_avg(FIA)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
+
+  deallocate(FIA%sw_abs_sfc, FIA%sw_abs_snow, FIA%sw_abs_ice)
+  deallocate(FIA%sw_abs_ocn, FIA%sw_abs_int)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg
@@ -1410,35 +1410,35 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, G, diag, Time)
                'heat needed to melt ice', 'J/m^2', missing_value=missing)
   OSS%id_frazil   = register_SIS_diag_field('ice_model','FRAZIL' ,diag%axesT1, Time, &
                'energy flux of frazil formation', 'W/m^2', missing_value=missing)
-  IST%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
+  FIA%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
                'surface albedo','0-1', missing_value=missing )
   IST%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
                'cosine of the solar zenith angle for the next radiation step','-1:1', missing_value=missing )
-  IST%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
+  FIA%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
                'SW frac. abs. at the ice surface','0:1', missing_value=missing )
-  IST%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
+  FIA%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
                'SW frac. abs. in snow','0:1', missing_value=missing )
 
-  call safe_alloc_ids_1d(IST%id_sw_abs_ice, nLay)
+  call safe_alloc_ids_1d(FIA%id_sw_abs_ice, nLay)
   do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-    IST%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
+    FIA%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
                  diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
                  '0:1', missing_value=missing )
   enddo
-  IST%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
+  FIA%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
                'SW frac. pen. surf.','0:1', missing_value=missing )
-  IST%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
+  FIA%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
                'SW frac. sent to the ocean','0:1', missing_value=missing )
 
 
-  IST%id_alb_vis_dir = register_SIS_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time, &
+  FIA%id_alb_vis_dir = register_SIS_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time, &
                'ice surface albedo vis_dir','0-1', missing_value=missing )
-  IST%id_alb_vis_dif = register_SIS_diag_field('ice_model','alb_vis_dif',diag%axesT1, Time, &
+  FIA%id_alb_vis_dif = register_SIS_diag_field('ice_model','alb_vis_dif',diag%axesT1, Time, &
                'ice surface albedo vis_dif','0-1', missing_value=missing )
-  IST%id_alb_nir_dir = register_SIS_diag_field('ice_model','alb_nir_dir',diag%axesT1, Time, &
+  FIA%id_alb_nir_dir = register_SIS_diag_field('ice_model','alb_nir_dir',diag%axesT1, Time, &
                'ice surface albedo nir_dir','0-1', missing_value=missing )
-  IST%id_alb_nir_dif = register_SIS_diag_field('ice_model','alb_nir_dif',diag%axesT1, Time, &
+  FIA%id_alb_nir_dif = register_SIS_diag_field('ice_model','alb_nir_dif',diag%axesT1, Time, &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
 
 !### THIS DIAGNOSTIC IS MISSING.

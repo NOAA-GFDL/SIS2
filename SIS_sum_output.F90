@@ -45,7 +45,7 @@ use ice_type_mod, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use ice_type_mod, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
-use SIS2_ice_thm, only : enthalpy_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
+use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 
 use netcdf
@@ -280,6 +280,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
   real :: Extent       ! The total extent of the sea ice in m2.
   real :: heat_imb     ! The column integrated heat imbalance in enth_unit kg m-2.
   real :: mass_imb     ! The column integrated mass imbalance in kg.
+  real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point, in enth_unit.
   real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
   type(EFP_type) :: &
@@ -415,6 +416,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
   col_heat(:,:,:) = 0.0
   col_salt(:,:,:) = 0.0
 
+  enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV)
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
@@ -422,11 +424,12 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
-                          (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k) + &
-                           IST%mH_pond(i,j,k)) ! mw/new - assumed pond heat/salt = 0
+                          (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + &
+                           IST%mH_pond(i,j,k))) ! mw/new - assumed pond heat/salt = 0
 
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
-                          (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1))
+                          (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1) + &
+                           IST%mH_pond(i,j,k) * enth_liq_0)
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
                             ((IST%mH_ice(i,j,k)*kg_H_nlay) * IST%enth_ice(i,j,k,L))
@@ -787,7 +790,7 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
     Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
               (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
-        ( Flux_SW * (1.0 - IST%sw_abs_ocn(i,j,k)) + &
+        ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_t_top(i,j,k)) )  + &
            (-FIA%flux_lh_top(i,j,k)) + FIA%bheat(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
@@ -854,7 +857,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 !$OMP                          private(area_pt,pen_frac,Flux_SW)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       area_pt = part_size(i,j,k)
-      pen_frac = 1.0 ; if (k>0) pen_frac = IST%sw_abs_ocn(i,j,k)
+      pen_frac = 1.0 ; if (k>0) pen_frac = FIA%sw_abs_ocn(i,j,k)
       Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
                 (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
 

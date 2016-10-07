@@ -330,6 +330,18 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
   CS%n_fast = CS%n_fast + 1
 
+  if (CS%column_check .and. (FIA%avg_count==0)) then
+    CS%heat_in(:,:,:) = 0.0
+    CS%enth_prev(:,:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,k)>0.0) then
+      CS%enth_prev(i,j,k) = (IST%mH_snow(i,j,k)*IG%H_to_kg_m2) * IST%enth_snow(i,j,k,1)
+      do m=1,IG%NkIce
+        CS%enth_prev(i,j,k) = CS%enth_prev(i,j,k) + &
+                               (IST%mH_ice(i,j,k)*kg_H_Nk) * IST%enth_ice(i,j,k,m)
+      enddo
+    endif ; enddo ; enddo ; enddo
+  endif
+
   if (CS%debug) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
@@ -405,22 +417,23 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
       dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-              (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
+              (flux_lw(i,j,k) + FIA%sw_abs_sfc(i,j,k)*flux_sw)) - &
              dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
-      SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
-      do m=1,NkIce ; SW_abs_col(m) = IST%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
+      SW_abs_col(0) = FIA%sw_abs_snow(i,j,k)*flux_sw
+      do m=1,NkIce ; SW_abs_col(m) = FIA%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
       ! actually lose or gain any mass from freezing or melting.
       ! mw/new - pass melt pond (surface temp fixed at freezing when present)
-      call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
-                        IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
-                        enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                        T_Freeze_surf, FIA%bheat(i,j), ts_new, &
-                        dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                        IST%ice_thm_CSp, IST%ITV, CS%column_check)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
+                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
+                         T_Freeze_surf, FIA%bheat(i,j), ts_new, &
+                         dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
+                         IST%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -434,22 +447,22 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
       if (CS%column_check) then
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
-        IST%heat_in(i,j,k) = IST%heat_in(i,j,k) + dt_fast * &
-          ((flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
+        CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
+          ((flux_lw(i,j,k) + FIA%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
            FIA%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*kg_H_Nk) * enth_col(m)
         enddo
-        tot_heat_in = enth_units * (IST%heat_in(i,j,k) - &
+        tot_heat_in = enth_units * (CS%heat_in(i,j,k) - &
                                     (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
-        enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
+        enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > CS%imb_tol * (abs(enth_here) + &
-                  abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
+                  abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
           norm_enth_imb = enth_imb / (abs(enth_here) + &
-                  abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in))
-          enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
+                  abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in))
+          enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         endif
       endif
 
@@ -516,6 +529,11 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
                  default=.true.)
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+
+  if (CS%column_check) then
+    allocate(CS%enth_prev(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
+    allocate(CS%heat_in(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
+  endif
 
   call callTree_leave("SIS_fast_thermo_init()")
 
