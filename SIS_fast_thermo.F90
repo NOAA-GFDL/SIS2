@@ -50,7 +50,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use coupler_types_mod, only : coupler_3d_bc_type
 
 use ice_type_mod, only : ice_state_type, IST_chksum, IST_bounds_check
-use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
+use ice_type_mod, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
 use ice_type_mod, only : atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : fast_thermo_CS
 use ice_utils_mod, only : post_avg
@@ -166,8 +166,9 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> avg_top_quantities determines time average fluxes for later use by the
 !!    slow ice physics and by the ocean.
-subroutine avg_top_quantities(FIA, part_size, G, IG)
+subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA
+  type(ice_rad_type),      intent(in)    :: Rad
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
@@ -209,6 +210,9 @@ subroutine avg_top_quantities(FIA, part_size, G, IG)
       FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
       FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
       FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
+      
+      ! Copy radiation fields from the fast to the slow states.
+      FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
       if ((k>0) .and. (FIA%flux_q_top(i,j,k) < 0.0)) then
         FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
@@ -269,11 +273,12 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
   type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(ice_rad_type),            intent(in)    :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
@@ -417,11 +422,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
       dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-              (flux_lw(i,j,k) + FIA%sw_abs_sfc(i,j,k)*flux_sw)) - &
+              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
              dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
-      SW_abs_col(0) = FIA%sw_abs_snow(i,j,k)*flux_sw
-      do m=1,NkIce ; SW_abs_col(m) = FIA%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
+      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*flux_sw
+      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
@@ -448,7 +453,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
-          ((flux_lw(i,j,k) + FIA%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
+          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
            FIA%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)

@@ -79,6 +79,7 @@ use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 use ice_type_mod, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use ice_type_mod, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+use ice_type_mod, only : ice_rad_type, alloc_ice_rad, dealloc_ice_rad
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
@@ -140,7 +141,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   dt_slow = time_type_to_real(Ice%Ice_state%Time_step_slow)
 
   ! average fluxes from update_ice_model_fast
-  call avg_top_quantities(Ice%FIA, Ice%Ice_state%part_size, Ice%G, Ice%IG)
+  call avg_top_quantities(Ice%FIA, Ice%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
   if (Ice%Ice_state%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
@@ -336,7 +337,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
                            Ice%ocean_fields)
 
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
-                             Ice%OSS, Ice%FIA, Ice%G, Ice%IG )
+                             Ice%OSS, Ice%Rad, Ice%FIA, Ice%G, Ice%IG )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -462,10 +463,11 @@ end subroutine unpack_ocn_ice_bdry
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
+subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
   type(ice_data_type),        intent(inout) :: Ice
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ice_rad_type),         intent(inout) :: Rad
   type(fast_ice_avg_type),    intent(inout) :: FIA
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(in)    :: IG
@@ -530,12 +532,12 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
 
   !   These initialization calls for ice-free categories are not really
   ! needed because these arrays are only used where there is ice.
-  ! In the case of slab_ice, the various FIA%sw_abs arrays are initialized
+  ! In the case of slab_ice, the various Rad%sw_abs arrays are initialized
   ! to 0 when they are allocated, and this never changes.
   ! The following lines can be uncommented without changing answers.
-  ! FIA%sw_abs_sfc(:,:,:) = 0.0 ; FIA%sw_abs_snow(:,:,:) = 0.0
-  ! FIA%sw_abs_ice(:,:,:,:) = 0.0 ; FIA%sw_abs_ocn(:,:,:) = 0.0
-  ! FIA%sw_abs_int(:,:,:) = 0.0
+  ! Rad%sw_abs_sfc(:,:,:) = 0.0 ; Rad%sw_abs_snow(:,:,:) = 0.0
+  ! Rad%sw_abs_ice(:,:,:,:) = 0.0 ; Rad%sw_abs_ocn(:,:,:) = 0.0
+  ! Rad%sw_abs_int(:,:,:) = 0.0
   ! Ice%albedo(:,:,:) = 0.0
   ! Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
   ! Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
@@ -573,11 +575,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
                IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
-               FIA%sw_abs_sfc(i,j,k),  FIA%sw_abs_snow(i,j,k), &
-               sw_abs_lay, FIA%sw_abs_ocn(i,j,k), FIA%sw_abs_int(i,j,k), &
+               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
                IST%ice_thm_CSp, IST%ITV, coszen_in=IST%coszen_nextrad(i,j))
 
-      do m=1,IG%NkIce ; FIA%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
       !Niki: Is the following correct for diagnostics?
       !   Probably this calculation of the "average" albedo should be replaced
@@ -686,7 +688,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, FIA, G, IG)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
-  if (FIA%id_alb>0) call post_avg(FIA%id_alb, Ice%albedo, &
+  if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
                      IST%part_size(isc:iec,jsc:jec,:), IST%diag)
   if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, IST%diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, IST%diag)
@@ -736,7 +738,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%Ice_state%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, &
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%Rad, &
                                 Ice%FIA, Ice%Ice_state%fast_thermo_CSp, &
                                 Ice%G, Ice%IG )
 
@@ -744,7 +746,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
 
   call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%FIA, &
-                                  Ice%G, Ice%IG, Time_start, Time_end)
+                                  Ice%Rad, Ice%G, Ice%IG, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
@@ -842,11 +844,12 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 end subroutine set_ocean_albedo
 
 
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, G, IG, Time_start, Time_end)
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(inout) :: IST
   type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(ice_rad_type),            intent(inout) :: Rad
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
@@ -867,34 +870,34 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, G, IG, Time_start, Tim
 
   call enable_SIS_averaging(dt_diag, Time_end, IST%diag)
 
-  if (FIA%id_alb_vis_dir>0) call post_avg(FIA%id_alb_vis_dir, Ice%albedo_vis_dir, &
+  if (Rad%id_alb_vis_dir>0) call post_avg(Rad%id_alb_vis_dir, Ice%albedo_vis_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (FIA%id_alb_vis_dif>0) call post_avg(FIA%id_alb_vis_dif, Ice%albedo_vis_dif, &
+  if (Rad%id_alb_vis_dif>0) call post_avg(Rad%id_alb_vis_dif, Ice%albedo_vis_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (FIA%id_alb_nir_dir>0) call post_avg(FIA%id_alb_nir_dir, Ice%albedo_nir_dir, &
+  if (Rad%id_alb_nir_dir>0) call post_avg(Rad%id_alb_nir_dir, Ice%albedo_nir_dir, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (FIA%id_alb_nir_dif>0) call post_avg(FIA%id_alb_nir_dif, Ice%albedo_nir_dif, &
+  if (Rad%id_alb_nir_dif>0) call post_avg(Rad%id_alb_nir_dif, Ice%albedo_nir_dif, &
                              IST%part_size(isc:iec,jsc:jec,:), IST%diag)
 
-  if (FIA%id_sw_abs_sfc>0) call post_avg(FIA%id_sw_abs_sfc, FIA%sw_abs_sfc, &
+  if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
-  if (FIA%id_sw_abs_snow>0) call post_avg(FIA%id_sw_abs_snow, FIA%sw_abs_snow, &
+  if (Rad%id_sw_abs_snow>0) call post_avg(Rad%id_sw_abs_snow, Rad%sw_abs_snow, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
   do m=1,NkIce
-    if (FIA%id_sw_abs_ice(m)>0) call post_avg(FIA%id_sw_abs_ice(m), FIA%sw_abs_ice(:,:,:,m), &
+    if (Rad%id_sw_abs_ice(m)>0) call post_avg(Rad%id_sw_abs_ice(m), Rad%sw_abs_ice(:,:,:,m), &
                                      IST%part_size(:,:,1:), IST%diag, G=G)
   enddo
-  if (FIA%id_sw_abs_ocn>0) call post_avg(FIA%id_sw_abs_ocn, FIA%sw_abs_ocn, &
+  if (Rad%id_sw_abs_ocn>0) call post_avg(Rad%id_sw_abs_ocn, Rad%sw_abs_ocn, &
                                    IST%part_size(:,:,1:), IST%diag, G=G)
 
-  if (FIA%id_sw_pen>0) then
+  if (Rad%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                     (FIA%sw_abs_ocn(i,j,k) + FIA%sw_abs_int(i,j,k))
+                     (Rad%sw_abs_ocn(i,j,k) + Rad%sw_abs_int(i,j,k))
     enddo ; enddo ; enddo
-    call post_data(FIA%id_sw_pen, tmp_diag, IST%diag)
+    call post_data(Rad%id_sw_pen, tmp_diag, IST%diag)
   endif
 
   if (IST%id_lwdn > 0) then
@@ -1315,6 +1318,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)
   Ice%FIA%atmos_winds = atmos_winds
 
+  call alloc_ice_rad(Ice%Rad, HI, IG)
+
   ! Ice%IOF has now been set and can be used.
   Ice%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
@@ -1634,7 +1639,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-  call ice_diagnostics_init(Ice, IST, Ice%IOF, Ice%OSS, Ice%FIA, G, IST%diag, IST%Time)
+  call ice_diagnostics_init(Ice, IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IST%diag, IST%Time)
 
   call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%fast_thermo_CSp)
 
@@ -1728,6 +1733,8 @@ subroutine ice_model_end (Ice)
   call dealloc_ocean_sfc_state(Ice%OSS)
 
   call dealloc_fast_ice_avg(Ice%FIA)
+
+  call dealloc_ice_rad(Ice%Rad)
 
   call dealloc_ice_ocean_flux(Ice%IOF)
 
