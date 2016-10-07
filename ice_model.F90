@@ -295,7 +295,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
     Ice%calving_hflx(i2,j2) = IOF%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
 
-    if (IST%slp2ocean) then
+    if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
     else
       Ice%p_surf(i2,j2) = 0.0
@@ -520,7 +520,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
 
     do i=isc,iec
       if (m_ice_tot(i,j) > 0.0) then
-        FIA%bheat(i,j) = IST%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), IST%ITV))
+        FIA%bheat(i,j) = OSS%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), IST%ITV))
       else
         FIA%bheat(i,j) = 0.0
       endif
@@ -745,8 +745,8 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Ice%Time = Ice%Ice_state%Time
   Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
 
-  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%FIA, &
-                                  Ice%Rad, Ice%G, Ice%IG, Time_start, Time_end)
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
+                                  Ice%G, Ice%IG, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
@@ -845,11 +845,10 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 end subroutine set_ocean_albedo
 
 
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start, Time_end)
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(inout) :: IST
-  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(ice_rad_type),            intent(inout) :: Rad
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -901,7 +900,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start
     call post_data(Rad%id_sw_pen, tmp_diag, IST%diag)
   endif
 
-  if (IST%id_lwdn > 0) then
+  if (Rad%id_lwdn > 0) then
     tmp_diag(:,:) = 0.0
     Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
@@ -909,10 +908,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                            (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
     endif ; enddo ; enddo ; enddo
-    call post_data(IST%id_lwdn, tmp_diag, IST%diag)
+    call post_data(Rad%id_lwdn, tmp_diag, IST%diag)
   endif
 
-  if (IST%id_swdn > 0) then
+  if (Rad%id_swdn > 0) then
     tmp_diag(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,ABT, &
 !$OMP                                  io_I,jo_I,io_A,jo_A,tmp_diag) &
@@ -925,7 +924,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
     endif ; enddo ; enddo ; enddo
-    call post_data(IST%id_swdn, tmp_diag, IST%diag)
+    call post_data(Rad%id_swdn, tmp_diag, IST%diag)
   endif
 
   if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, IST%diag)
@@ -1056,12 +1055,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
   real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
+  real :: kmelt          ! A constant that is used in the calculation of the
+                         ! ocean/ice basal heat flux, in W m-2 K-1.  This could
+                         ! be changed to reflect the turbulence in the under-ice
+                         ! ocean boundary layer and the effective depth of the
+                         ! reported value of t_ocn.
 
   integer :: idr, id_sal
   integer :: write_geom
   logical :: test_grid_copy = .false.
   logical :: nudge_sea_ice
-  logical :: atmos_winds
+  logical :: atmos_winds, slp2ocean
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
@@ -1074,6 +1078,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: read_aux_restart
   logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
+
+  ! ### These are just here to keep the order of SIS_parameter_doc.
+  logical :: column_check
+  real :: imb_tol
 
   if (associated(Ice%Ice_state)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -1156,7 +1164,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "used to initialize albedos when there is no restart file.", &
                  units="s", default=time_type_to_real(Time_step_slow))
   dt_Rad = real_to_time_type(dt_Rad_real)
-  call get_param(param_file, mod, "ICE_KMELT", IST%kmelt, &
+  call get_param(param_file, mod, "ICE_KMELT", kmelt, &
                  "A constant giving the proportionality of the ocean/ice \n"//&
                  "base heat flux to the tempature difference, given by \n"//&
                  "the product of the heat capacity per unit volume of sea \n"//&
@@ -1165,11 +1173,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "SNOW_CONDUCT", k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-  call get_param(param_file, mod, "COLUMN_CHECK", IST%column_check, &
+  call get_param(param_file, mod, "COLUMN_CHECK", column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", IST%imb_tol, &
+  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
   call get_param(param_file, mod, "ICE_BOUNDS_CHECK", IST%bounds_check, &
@@ -1209,7 +1217,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  units = "nondim", default=0.0, do_not_log=.true.)
   if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
 
-  call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", IST%slp2ocean, &
+  call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
                  "the ocean.", default=.false.)
   call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
@@ -1309,8 +1317,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                                    IST, Ice%Ice_restart, restart_file)
 
   call alloc_ocean_sfc_state(Ice%OSS, HI, IST%Cgrid_dyn)
+  Ice%OSS%kmelt = kmelt
 
   call alloc_ice_ocean_flux(Ice%IOF, HI)
+  Ice%IOF%slp2ocean = slp2ocean
 
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)
   Ice%FIA%atmos_winds = atmos_winds

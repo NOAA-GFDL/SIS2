@@ -114,28 +114,13 @@ type ice_state_type
 
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
-  logical :: column_check   ! If true, enable the heat check column by column.
-  real    :: imb_tol        ! The tolerance for imbalances to be flagged by
-                            ! column_check, nondim.
   logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
   logical :: debug           ! If true, write verbose checksums for debugging purposes.
 
-  ! FAST THERMO
-  real :: kmelt          ! A constant that is used in the calculation of the
-                         ! ocean/ice basal heat flux, in W m-2 K-1.
-
-  ! Set_ocean_top
-  logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
-
-  ! top level fast
-
-!   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
-!   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
-
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
-  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1, id_swdn=-1, id_lwdn=-1
+  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
   
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
@@ -291,6 +276,14 @@ type ocean_sfc_state_type
                 ! applying pressure to the ocean that is then
                 ! (partially) converted back to its equivalent by the
                 ! ocean.
+
+!   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
+
+  real :: kmelt ! A constant that is used in the calculation of the ocean/ice
+                ! basal heat flux, in W m-2 K-1.  This could be replaced with
+                ! an array reflecting the turbulence in the under-ice ocean
+                ! boundary layer and the effective depth of the reported value
+                ! of t_ocn.
  
   ! diagnostic IDs for ocean surface  properties.
   integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1
@@ -402,7 +395,7 @@ type ice_rad_type
 
   integer, allocatable, dimension(:)   :: id_sw_abs_ice
   integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
-  integer :: id_alb=-1, id_coszen=-1
+  integer :: id_alb=-1, id_coszen=-1, id_swdn=-1, id_lwdn=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
 
 end type ice_rad_type
@@ -482,6 +475,9 @@ type ice_ocean_flux_type
                     ! ice is initialized, but here it is set to -999 so that a
                     ! global max across ice and non-ice processors can be used
                     ! to determine its value.
+  logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
+
+!   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
 
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
@@ -1494,7 +1490,7 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, Rad, G, diag, Time)
                'ice surface albedo nir_dif','0-1', missing_value=missing )
 
 !### THIS DIAGNOSTIC IS MISSING.
-!  IST%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
+!  dyn%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
 !               'strain angle', 'none', missing_value=missing)
   if (IST%Cgrid_dyn) then
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
@@ -1525,9 +1521,9 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, Rad, G, diag, Time)
   !
   ! diagnostics for quantities produced outside the ice model
   !
-  IST%id_swdn  = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
+  Rad%id_swdn  = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
              'downward shortwave flux', 'W/m^2', missing_value=missing)
-  IST%id_lwdn  = register_SIS_diag_field('ice_model','LWDN' ,diag%axesT1, Time, &
+  Rad%id_lwdn  = register_SIS_diag_field('ice_model','LWDN' ,diag%axesT1, Time, &
              'downward longwave flux', 'W/m^2', missing_value=missing)
 !### THIS DIAGNOSTIC IS MISSING.
 ! IST%id_ta    = register_SIS_diag_field('ice_model', 'TA', diag%axesT1, Time, &
