@@ -42,7 +42,7 @@ public :: ice_data_type, ice_state_type
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-public :: ice_rad_type, alloc_ice_rad, dealloc_ice_rad
+public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 public :: ice_data_type_register_restarts, ice_state_register_restarts
 public :: ice_diagnostics_init, ice_stock_pe
@@ -99,13 +99,6 @@ type ice_state_type
     rdg_mice    ! A diagnostic of the ice load that was formed by
                 ! ridging, in H (usually kg m-2).
 
-
-
-  real, allocatable, dimension(:,:)   :: &
-    coszen_nextrad  ! Cosine of the solar zenith angle averaged
-                    ! over the next radiation timestep, nondim.
-
-
   ! State type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   ! State type
@@ -136,13 +129,6 @@ type ice_state_type
   logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
 
   ! top level fast
-  logical :: add_diurnal_sw ! If true, apply a synthetic diurnal cycle to the shortwave radiation.
-  logical :: do_sun_angle_for_alb ! If true, find the sun angle for calculating
-                                  ! the ocean albedo in the frame of the ice model.
-  logical :: frequent_albedo_update ! If true, update the ice and ocean albedos
-                                  ! within the fast ice model update.  Otherwise,
-                                  ! the albedos are only updated within
-                                  ! set_ice_surface_state.
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 !   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -156,7 +142,6 @@ type ice_state_type
   integer :: id_slp=-1
   !### THESE DIAGNOSTICS ARE NEVER SENT!
   ! integer :: id_ta=-1, id_obi=-1
-  integer :: id_coszen=-1
 
   !### THESE DIAGNOSTICS ARE NEVER SENT!
   ! integer :: id_strna=-1
@@ -402,10 +387,22 @@ type ice_rad_type
     sw_abs_ice      !< The fraction of the absorbed shortwave that is
                     !! absorbed in each of the ice layers, nondim, <=1.
 
+  real, allocatable, dimension(:,:)   :: &
+    coszen_nextrad  !< Cosine of the solar zenith angle averaged
+                    !! over the next radiation timestep, nondim.
+
+  logical :: add_diurnal_sw       !< If true, apply a synthetic diurnal cycle to
+                                  !! the shortwave radiation.
+  logical :: do_sun_angle_for_alb !< If true, find the sun angle for calculating
+                                  !! the ocean albedo in the frame of the ice model.
+  logical :: frequent_albedo_update !< If true, update the ice and ocean albedos
+                                  !! within the fast ice model update.  Otherwise,
+                                  !! the albedos are only updated within
+                                  !! set_ice_surface_state.
+
   integer, allocatable, dimension(:)   :: id_sw_abs_ice
   integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
-
-  integer :: id_alb=-1
+  integer :: id_alb=-1, id_coszen=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
 
 end type ice_rad_type
@@ -769,7 +766,7 @@ end subroutine ice_data_type_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts allocates the arrays in the ice_state_type
-!!     and registers any variables in the ice data type that need to be included
+!!     and registers any variables in the ice state type that need to be included
 !!     in the restart files.
 subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
                                        Ice_restart, restart_file)
@@ -801,8 +798,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   endif
 
   allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
-
-  allocate(IST%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; IST%coszen_nextrad(:,:) = 0.0 !NR X
 
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
@@ -840,8 +835,6 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
     idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
                                  domain=mpp_domain, position=CORNER, mandatory=.false.)
   endif
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen', IST%coszen_nextrad, &
-                               domain=mpp_domain, mandatory=.false.)
 
 end subroutine ice_state_register_restarts
 
@@ -887,13 +880,20 @@ end subroutine alloc_fast_ice_avg
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> alloc_ice_rad allocates and zeros out the arrays in an ice_rad_type.
-subroutine alloc_ice_rad(Rad, HI, IG)
-  type(ice_rad_type),   pointer    :: Rad
-  type(hor_index_type), intent(in) :: HI
-  type(ice_grid_type),  intent(in) :: IG
+!> ice_rad_register_restarts allocates the arrays in the ice_rad_type
+!!     and registers any variables in the ice rad type that need to be included
+!!     in the restart files.
+subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
+                                       Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: mpp_domain
+  type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_rad_type),      pointer       :: Rad
+  type(restart_file_type), intent(inout) :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
 
-  integer :: CatIce, NkIce
+  integer :: CatIce, NkIce, idr
 
   if (.not.associated(Rad)) allocate(Rad)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
@@ -904,7 +904,12 @@ subroutine alloc_ice_rad(Rad, HI, IG)
   allocate(Rad%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
   allocate(Rad%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
 
-end subroutine alloc_ice_rad
+  allocate(Rad%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; Rad%coszen_nextrad(:,:) = 0.0
+
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
+                               domain=mpp_domain, mandatory=.false.)
+
+end subroutine ice_rad_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
@@ -999,8 +1004,6 @@ subroutine dealloc_IST_arrays(IST)
     deallocate(IST%u_ice_B, IST%v_ice_B)
   endif
 
-  deallocate(IST%coszen_nextrad)
-
 end subroutine dealloc_IST_arrays
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1057,6 +1060,7 @@ subroutine dealloc_ice_rad(Rad)
 
   deallocate(Rad%sw_abs_sfc, Rad%sw_abs_snow, Rad%sw_abs_ice)
   deallocate(Rad%sw_abs_ocn, Rad%sw_abs_int)
+  deallocate(Rad%coszen_nextrad)
 
   deallocate(Rad)
 end subroutine dealloc_ice_rad
@@ -1460,7 +1464,7 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, Rad, G, diag, Time)
                'energy flux of frazil formation', 'W/m^2', missing_value=missing)
   Rad%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
                'surface albedo','0-1', missing_value=missing )
-  IST%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
+  Rad%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
                'cosine of the solar zenith angle for the next radiation step','-1:1', missing_value=missing )
   Rad%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
                'SW frac. abs. at the ice surface','0:1', missing_value=missing )

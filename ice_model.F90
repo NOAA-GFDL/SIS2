@@ -79,7 +79,7 @@ use ice_type_mod, only : ice_data_type, ice_state_type
 use ice_type_mod, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 use ice_type_mod, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use ice_type_mod, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-use ice_type_mod, only : ice_rad_type, alloc_ice_rad, dealloc_ice_rad
+use ice_type_mod, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
 use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
 use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
@@ -545,9 +545,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
   ! Set the initial ocean albedos, either using coszen_nextrad or a 
   ! synthetic sun angle.
   dT_r = IST%Time_step_slow
-  if (IST%frequent_albedo_update) dT_r = IST%Time_step_fast
-  call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, IST%Time, &
-                        IST%Time + dT_r, IST%coszen_nextrad)
+  if (Rad%frequent_albedo_update) dT_r = IST%Time_step_fast
+  call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, IST%Time, &
+                        IST%Time + dT_r, Rad%coszen_nextrad)
 
   if (IST%slab_ice) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
@@ -577,7 +577,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
                sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               IST%ice_thm_CSp, IST%ITV, coszen_in=IST%coszen_nextrad(i,j))
+               IST%ice_thm_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
 
       do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -735,7 +735,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Time_start = Ice%Ice_state%Time
   Time_end = Time_start + dT_fast
 
-  if (Ice%Ice_state%add_diurnal_sw) &
+  if (Ice%Rad%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
   call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%Rad, &
@@ -750,7 +750,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
-  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, &
+  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
                                      Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%Ice_state%debug) &
@@ -762,10 +762,11 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
 end subroutine update_ice_model_fast
 
-subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_start, Time_end)
+subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_data_type),           intent(inout) :: Ice
   type(ice_state_type),          intent(inout) :: IST
+  type(ice_rad_type),            intent(inout) :: Rad
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
@@ -787,7 +788,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
 !$OMP                           private(i2,j2,i3,j3)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A
-    IST%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
+    Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     Ice%p_surf(i2,j2) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
@@ -800,9 +801,9 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, G, IG, Time_
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
   ! if the coupled model's radiation timestep is shorter than the slow coupling
   ! timestep.  However, it is safe (if wasteful) to call it more frequently.
-  if (IST%frequent_albedo_update) then
-    call set_ocean_albedo(Ice, IST%do_sun_angle_for_alb, G, Time_start, &
-                          Time_end, IST%coszen_nextrad)
+  if (Rad%frequent_albedo_update) then
+    call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, Time_start, &
+                          Time_end, Rad%coszen_nextrad)
   endif
 
 end subroutine set_fast_ocean_sfc_properties
@@ -927,7 +928,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, FIA, Rad, G, IG, Time_start
     call post_data(IST%id_swdn, tmp_diag, IST%diag)
   endif
 
-  if (IST%id_coszen>0) call post_data(IST%id_coszen, IST%coszen_nextrad, IST%diag)
+  if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, IST%diag)
 
   call disable_SIS_averaging(IST%diag)
 
@@ -1061,6 +1062,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: test_grid_copy = .false.
   logical :: nudge_sea_ice
   logical :: atmos_winds
+  logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -1215,10 +1217,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "calculations.", units="m", default=0.0)
   call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
-  call get_param(param_file, mod, "ADD_DIURNAL_SW", IST%add_diurnal_sw, &
+  call get_param(param_file, mod, "ADD_DIURNAL_SW", add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
                  "radiation.", default=.false.)
-  call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", IST%do_sun_angle_for_alb, &
+  call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", do_sun_angle_for_alb, &
                  "If true, find the sun angle for calculating the ocean \n"//&
                  "albedo within the sea ice model.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", IST%do_ridging, &
@@ -1248,11 +1250,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
   if (IST%specified_ice) IST%slab_ice = .true.
-
-  IST%frequent_albedo_update = .true.
-  !### Instead perhaps this could be
-  !###   IST%frequent_albedo_update = IST%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
-  !### However this changes answers in coupled models.  I don't understand why. -RWH
 
   ! Set up the ice-specific grid describing categories and ice layers.
   nCat_dflt = 5 ; if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
@@ -1318,7 +1315,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)
   Ice%FIA%atmos_winds = atmos_winds
 
-  call alloc_ice_rad(Ice%Rad, HI, IG)
+  call ice_rad_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
+                                 Ice%Rad, Ice%Ice_restart, restart_file)
+  Ice%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
+  Ice%Rad%add_diurnal_sw = add_diurnal_sw
+  Ice%Rad%frequent_albedo_update = .true.
+  !### Instead perhaps this could be
+  !###   Ice%Rad%frequent_albedo_update = Ice%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
+  !### However this changes answers in coupled models.  I don't understand why. -RWH
 
   ! Ice%IOF has now been set and can be used.
   Ice%IOF%flux_uv_stagger = Ice%flux_uv_stagger
@@ -1397,7 +1401,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   IST%Time_step_fast = Time_step_fast
   IST%Time_step_slow = Time_step_slow
 
-!  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) then
+!  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) then
 !    call set_domain(G%Domain%mpp_domain)
     call astronomy_init
 !    call nullify_domain()
@@ -1528,12 +1532,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     if (.not.query_initialized(Ice%Ice_restart, 'coszen')) then
       if (coszen_IC >= 0.0) then
-        IST%coszen_nextrad(:,:) = coszen_IC
+        Ice%Rad%coszen_nextrad(:,:) = coszen_IC
       else
         rad = acos(-1.)/180.
         allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
         call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                   IST%Time, cosz=IST%coszen_nextrad, fracday=dummy, &
+                   IST%Time, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
                    rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
@@ -1620,12 +1624,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
 
     if (coszen_IC >= 0.0) then
-      IST%coszen_nextrad(:,:) = coszen_IC
+      Ice%Rad%coszen_nextrad(:,:) = coszen_IC
     else
       rad = acos(-1.)/180.
       allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
       call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                         IST%Time, cosz=IST%coszen_nextrad, fracday=dummy, &
+                         IST%Time, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
                          rrsun=rrsun, dt_time=dT_rad)
       deallocate(dummy)
     endif
@@ -1734,8 +1738,6 @@ subroutine ice_model_end (Ice)
 
   call dealloc_fast_ice_avg(Ice%FIA)
 
-  call dealloc_ice_rad(Ice%Rad)
-
   call dealloc_ice_ocean_flux(Ice%IOF)
 
   call dealloc_IST_arrays(IST)
@@ -1743,7 +1745,10 @@ subroutine ice_model_end (Ice)
 
   ! End icebergs
   if (IST%do_icebergs) call icebergs_end(Ice%icebergs)
-  if (IST%add_diurnal_sw .or. IST%do_sun_angle_for_alb) call astronomy_end
+
+  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) call astronomy_end
+
+  call dealloc_ice_rad(Ice%Rad)
 
   call SIS_diag_mediator_end(IST%Time, IST%diag)
 
