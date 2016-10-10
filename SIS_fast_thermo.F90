@@ -212,7 +212,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
       
       ! Copy radiation fields from the fast to the slow states.
-      FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
+      if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
       if ((k>0) .and. (FIA%flux_q_top(i,j,k) < 0.0)) then
         FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
