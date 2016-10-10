@@ -74,6 +74,7 @@ use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
 use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
 use ice_transport_mod, only : adjust_ice_categories, ice_transport_CS
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
@@ -302,7 +303,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
     ! Do tracer column physics
     call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-    call SIS_call_tracer_column_fns(dt_slow, G, IG, IST%SIS_tracer_flow_CSp, IST%mH_ice, mi_old)
+    call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
     call disable_SIS_averaging(CS%diag)
 
     call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
@@ -1065,13 +1066,14 @@ end subroutine SIS2_thermodynamics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_slow_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_slow_thermo module.
-subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS)
+subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_CSp)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
   type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
   type(slow_thermo_CS),        pointer       :: CS
+  type(SIS_tracer_flow_control_CS), pointer  :: tracer_flow_CSp
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1088,6 +1090,7 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS)
   endif
 
   CS%diag => diag ; CS%Time => Time
+  if (associated(tracer_flow_CSp)) CS%tracer_flow_CSp => tracer_flow_CSp
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, &

@@ -132,6 +132,8 @@ type ice_data_type !  ice_public_type
                     ! global max across ice and non-ice processors can be used
                     ! to determine its value.
 
+  ! The following are actually private to SIS2, and are not used elsewhere by
+  ! other FMS modules.
       type(icebergs), pointer     :: icebergs => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
@@ -148,6 +150,11 @@ type ice_data_type !  ice_public_type
   type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
                                ! the absorption, reflection and transmission of
                                ! shortwave radiation.
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
+  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
+  type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
+  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
+
   type(restart_file_type), pointer :: Ice_restart => NULL()
 end type ice_data_type !  ice_public_type
 
