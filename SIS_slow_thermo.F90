@@ -60,7 +60,6 @@ use data_override_mod, only : data_override
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum, IST_bounds_check
-use SIS_types, only : slow_thermo_CS
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -81,7 +80,66 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
-public :: SIS_slow_thermo_set_ptrs
+public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
+
+type slow_thermo_CS ; private
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
+                         ! that is used to calculate the ocean salt flux.
+  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
+                         ! salinity of the water from which it formed, nondim.
+
+  logical :: filling_frazil  ! If true, apply frazil to fill as many categories
+                             ! as possible to fill in a uniform (minimum) amount
+                             ! of frazil in all the thinnest categories.
+                             ! Otherwise the frazil is always assigned to a
+                             ! single category with part size > 0.01.
+  real    :: fraz_fill_time  ! A timescale with which the filling frazil causes
+                             ! the thinest cells to attain similar thicknesses,
+                             ! or a negative number to apply the frazil flux
+                             ! uniformly, in s.
+
+  logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
+                            ! by applying a restorative heat flux.
+  real    :: ice_restore_timescale ! The time scale for restoring ice when
+                            ! do_ice_restore is true, in days.
+
+  logical :: do_ice_limit   ! Limit the sea ice thickness to max_ice_limit.
+  real    :: max_ice_limit  ! The maximum sea ice thickness, in m, when
+                            ! do_ice_limit is true.
+
+  logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
+  real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
+                              ! should be ice  covered in order to constrained the
+                              ! ice concentration to track observations.  A suggested
+                              ! value is of order 10000 W m-2.
+  real    :: nudge_stab_fac   ! A factor that determines whether the buoyancy
+                              ! flux associated with the sea ice nudging of
+                              ! warm water includes a freshwater flux so as to
+                              ! be destabilizing on net (<1), stabilizing (>1),
+                              ! or neutral (=1).  The default is 1.
+  real    :: nudge_conc_tol   ! The tolerance for mismatch in the sea ice concentations
+                              ! before nudging begins to be applied.
+
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
+
+  integer :: n_calls = 0  ! The number of times update_ice_model_slow_down
+                          ! has been called.
+
+  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+                                   ! timing of diagnostic output.
+  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
+  type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
+
+  integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1
+  integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
+end type slow_thermo_CS
 
 integer :: iceClock5, iceClock6, iceClock7
 

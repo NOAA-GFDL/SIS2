@@ -30,13 +30,15 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
+use SIS_slow_mod, only : dyn_trans_CS
+use SIS_slow_thermo, only : slow_thermo_CS
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
 use SIS_types, only : ice_ocean_flux_type, ocean_sfc_state_type
-use SIS_types, only : fast_thermo_CS, slow_thermo_CS, dyn_trans_CS
+use SIS_types, only : fast_thermo_CS
 
 implicit none ; private
 

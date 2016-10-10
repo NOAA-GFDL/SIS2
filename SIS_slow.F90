@@ -63,7 +63,6 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum,  IST_bounds_check
-use SIS_types, only : dyn_trans_CS
 use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -77,6 +76,8 @@ use ice_grid, only : ice_grid_type
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
 use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_bgrid, only: SIS_B_dyn_CS
+use SIS_dyn_cgrid, only: SIS_C_dyn_CS
 use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : ice_transport_CS
@@ -87,9 +88,45 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_dynamics_trans, update_icebergs
+public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
 public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
 public :: SIS_slow_transport_CS, SIS_slow_sum_output_CS
+
+type dyn_trans_CS ; private
+  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+                       ! sea-ice dynamics.
+  real    :: dt_ice_dyn   ! The time step used for the slow ice dynamics, including
+                          ! stepping the continuity equation and interactions
+                          ! between the ice mass field and velocities, in s. If
+                          ! 0 or negative, the coupling time step will be used.
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
+  logical :: verbose      ! A flag to control the printing of an ice-diagnostic
+                          ! message.  When true, this will slow the model down.
+
+  integer :: ntrunc = 0   ! The number of times the velocity has been truncated
+                          ! since the last call to write_ice_statistics.
+
+  integer :: n_calls = 0  ! The number of times SIS_dynamics_trans has been called.
+  type(time_type) :: ice_stats_interval ! The interval between writes of the
+                          ! globally summed ice statistics and conservation checks.
+  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
+
+  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+                                   ! timing of diagnostic output.
+
+  integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
+  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
+  logical :: module_is_initialized = .false.
+end type dyn_trans_CS
 
 integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 

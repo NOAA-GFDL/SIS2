@@ -18,12 +18,8 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
-use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
-use ice_transport_mod, only: ice_transport_CS
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-! use ice_bergs, only: icebergs
 
 use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -49,10 +45,7 @@ public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: ice_diagnostics_init
 
-public :: fast_thermo_CS, slow_thermo_CS, dyn_trans_CS
-
-! real, parameter :: missing = -1e34
-! integer, parameter :: miss_int = -9999
+public :: fast_thermo_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -131,13 +124,6 @@ type ice_state_type
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
-!  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
-
-!  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
-!  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
-!  type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
-!   type(icebergs), pointer     :: icebergs => NULL()
-
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
@@ -159,101 +145,6 @@ type fast_thermo_CS ! To be made ; private
   integer :: n_fast = 0   ! The number of times update_ice_model_fast
                           ! has been called.
 end type fast_thermo_CS
-
-type slow_thermo_CS ! To be made ; private
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
-                         ! that is used to calculate the ocean salt flux.
-  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
-                         ! salinity of the water from which it formed, nondim.
-
-  logical :: filling_frazil  ! If true, apply frazil to fill as many categories
-                             ! as possible to fill in a uniform (minimum) amount
-                             ! of frazil in all the thinnest categories.
-                             ! Otherwise the frazil is always assigned to a
-                             ! single category with part size > 0.01.
-  real    :: fraz_fill_time  ! A timescale with which the filling frazil causes
-                             ! the thinest cells to attain similar thicknesses,
-                             ! or a negative number to apply the frazil flux
-                             ! uniformly, in s.
-
-  logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
-                            ! by applying a restorative heat flux.
-  real    :: ice_restore_timescale ! The time scale for restoring ice when
-                            ! do_ice_restore is true, in days.
-
-  logical :: do_ice_limit   ! Limit the sea ice thickness to max_ice_limit.
-  real    :: max_ice_limit  ! The maximum sea ice thickness, in m, when
-                            ! do_ice_limit is true.
-
-  logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
-  real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
-                              ! should be ice  covered in order to constrained the
-                              ! ice concentration to track observations.  A suggested
-                              ! value is of order 10000 W m-2.
-  real    :: nudge_stab_fac   ! A factor that determines whether the buoyancy
-                              ! flux associated with the sea ice nudging of
-                              ! warm water includes a freshwater flux so as to
-                              ! be destabilizing on net (<1), stabilizing (>1),
-                              ! or neutral (=1).  The default is 1.
-  real    :: nudge_conc_tol   ! The tolerance for mismatch in the sea ice concentations
-                              ! before nudging begins to be applied.
-
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
-
-  integer :: n_calls = 0  ! The number of times update_ice_model_slow_down
-                          ! has been called.
-
-  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
-                                   ! timing of diagnostic output.
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
-  type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
-
-  integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1
-  integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
-end type slow_thermo_CS
-
-type dyn_trans_CS ! To be made ; private
-  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.
-  real    :: dt_ice_dyn   ! The time step used for the slow ice dynamics, including
-                          ! stepping the continuity equation and interactions
-                          ! between the ice mass field and velocities, in s. If
-                          ! 0 or negative, the coupling time step will be used.
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
-  logical :: verbose      ! A flag to control the printing of an ice-diagnostic
-                          ! message.  When true, this will slow the model down.
-
-  integer :: ntrunc = 0   ! The number of times the velocity has been truncated
-                          ! since the last call to write_ice_statistics.
-
-  integer :: n_calls = 0  ! The number of times SIS_dynamics_trans has been called.
-  type(time_type) :: ice_stats_interval ! The interval between writes of the
-                          ! globally summed ice statistics and conservation checks.
-  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
-
-  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
-                                   ! timing of diagnostic output.
-
-  integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
-  type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
-  type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
-  type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
-  logical :: module_is_initialized = .false.
-end type dyn_trans_CS
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
 !! state as seen by the sea-ice or atmosphere, on the ice grid.
