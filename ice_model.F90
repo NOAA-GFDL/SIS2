@@ -1653,7 +1653,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-  call ice_diagnostics_init(Ice, IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IST%diag, IST%Time)
+  call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, IST%diag, IST%Time)
+  Ice%axes(1:2) = IST%diag%axesTc%handles(1:2)
 
   call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, IST%fast_thermo_CSp)
 

@@ -1360,27 +1360,29 @@ end subroutine ice_model_restart
 ! </SUBROUTINE>
 !=======================================================================
 
-subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, Rad, G, diag, Time)
-  type(ice_data_type),        intent(inout) :: Ice
+!> ice_diagnostics_init does the registration for a variety of sea-ice model
+!! diagnostics and saves several static diagnotic fields.
+subroutine ice_diagnostics_init(IST, IOF, OSS, FIA, Rad, G, IG, diag, Time)
   type(ice_state_type),       intent(inout) :: IST
   type(ice_ocean_flux_type),  intent(inout) :: IOF
   type(ocean_sfc_state_type), intent(inout) :: OSS
   type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_rad_type),         intent(inout) :: Rad
   type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(in)    :: IG
   type(SIS_diag_ctrl),        intent(in)    :: diag
   type(time_type),            intent(inout) :: Time
 
-  real, parameter       :: missing = -1e34
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp_diag ! A temporary diagnostic array
+  real                  :: I_area_Earth ! The inverse of the area of the sphere, in m-2.
+  real, parameter       :: missing = -1e34  ! The fill value for missing data.
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: sent
   integer :: i, j, k, isc, iec, jsc, jec, n, nLay
   character(len=8) :: nstr
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  nLay = Ice%IG%NkIce
-
-  Ice%axes(1:2) = diag%axesTc%handles(1:2)
+  nLay = IG%NkIce
 
   id_sin_rot   = register_static_field('ice_model', 'SINROT', diag%axesT1, &
                  '-SINROT,COSROT points north', 'none')
@@ -1555,9 +1557,14 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, Rad, G, diag, Time)
   if (id_cos_rot>0) call post_data(id_cos_rot, G%cos_rot, diag, is_static=.true.)
   if (id_geo_lon>0) call post_data(id_geo_lon, G%geoLonT, diag, is_static=.true.)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
-  if (id_cell_area>0) call post_data(id_cell_area, &
-            Ice%area / (16.0*atan(1.0)*G%Rad_Earth**2), diag, is_static=.true.)
-
+  if (id_cell_area>0) then
+    I_area_Earth = 1.0 / (16.0*atan(1.0)*G%Rad_Earth**2)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,I_area_Earth,tmp_diag)
+    do j=jsc,jec ; do i=isc,iec
+      tmp_diag(i,j) = (G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
+    enddo ; enddo
+    call post_data(id_cell_area, tmp_diag, diag, is_static=.true.)
+  endif
 
 end subroutine ice_diagnostics_init
 
