@@ -34,14 +34,8 @@ use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
-use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_types, only : IST_chksum, IST_bounds_check
-use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
-use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
-use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
-use SIS_types, only : ice_diagnostics_init
-
+use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
+use SIS_types, only : ice_ocean_flux_type, ocean_sfc_state_type
 use SIS_types, only : fast_thermo_CS, slow_thermo_CS, dyn_trans_CS
 
 implicit none ; private
@@ -54,19 +48,6 @@ public :: ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_ty
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
-
-public :: ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-public :: IST_chksum, IST_bounds_check
-public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
-public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
-public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
-public :: ice_diagnostics_init
-
-public :: fast_thermo_CS, slow_thermo_CS, dyn_trans_CS
-
-real, parameter :: missing = -1e34
-integer, parameter :: miss_int = -9999
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model data (some used by calling routines);  !

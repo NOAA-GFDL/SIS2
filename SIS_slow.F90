@@ -60,12 +60,10 @@ use time_manager_mod, only : time_type, time_type_to_real, get_date, get_time
 use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
-use ice_type_mod, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use ice_type_mod, only : ocean_sfc_state_type
-use ice_type_mod, only : dyn_trans_CS
-! use ice_type_mod, only : dealloc_IST_arrays, ice_state_register_restarts
-! use ice_type_mod, only : ice_diagnostics_init
-use ice_type_mod, only : IST_chksum,  IST_bounds_check
+use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_types, only : ocean_sfc_state_type
+use SIS_types, only : IST_chksum,  IST_bounds_check
+use SIS_types, only : dyn_trans_CS
 use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
 

@@ -75,19 +75,19 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, ice_state_type
-use ice_type_mod, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
-use ice_type_mod, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
-use ice_type_mod, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-use ice_type_mod, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
-use ice_type_mod, only : ice_model_restart, dealloc_ice_arrays, dealloc_IST_arrays
-use ice_type_mod, only : ice_data_type_register_restarts, ice_state_register_restarts
-use ice_type_mod, only : ice_diagnostics_init, ice_stock_pe
+use ice_type_mod, only : ice_data_type, dealloc_ice_arrays, ice_data_type_register_restarts
+use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
+use ice_type_mod, only : ice_model_restart, ice_stock_pe
 use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
-use ice_type_mod, only : IST_chksum, Ice_public_type_chksum
-use ice_type_mod, only : IST_bounds_check, Ice_public_type_bounds_check
+use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
+use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
+use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
+use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
+use SIS_types, only : ice_diagnostics_init
+use SIS_types, only : IST_chksum, IST_bounds_check
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed

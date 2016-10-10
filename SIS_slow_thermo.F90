@@ -40,9 +40,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
-! use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
-use MOM_domains,       only : pass_var !, pass_vector, AGRID, BGRID_NE, CGRID_NE
-! use MOM_domains,       only : fill_symmetric_edges !, MOM_domains_init, clone_MOM_domain
+use MOM_domains,       only : pass_var
 ! ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
@@ -51,8 +49,6 @@ use MOM_hor_index, only : hor_index_type
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use fms_mod, only : clock_flag_default
-! ! use fms_io_mod, only : restore_state, query_initialized
-! use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
@@ -61,10 +57,10 @@ use time_manager_mod, only : time_type, time_type_to_real! , get_date, get_time
 ! use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use data_override_mod, only : data_override
 
-use ice_type_mod, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use ice_type_mod, only : ocean_sfc_state_type
-use ice_type_mod, only : IST_chksum, IST_bounds_check
-use ice_type_mod, only : slow_thermo_CS
+use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_types, only : ocean_sfc_state_type
+use SIS_types, only : IST_chksum, IST_bounds_check
+use SIS_types, only : slow_thermo_CS
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
