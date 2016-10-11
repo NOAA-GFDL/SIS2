@@ -99,14 +99,15 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-use ice_thm_mod,   only : slab_ice_optics
-use SIS_slow_mod,  only : SIS_dynamics_trans, update_icebergs
-use SIS_slow_mod,  only : SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
-use SIS_slow_mod,  only : SIS_slow_transport_CS, SIS_slow_sum_output_CS
+use ice_thm_mod,     only : slab_ice_optics
+use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
+use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
+use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
+
 use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
 use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
@@ -1337,8 +1338,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! Ice%IOF has now been set and can be used.
   Ice%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
-  call SIS_slow_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                  Ice%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+  call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
+                              Ice%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
   call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
                               doc_file_dir = dirs%output_directory)
@@ -1661,13 +1662,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, Ice%slow_thermo_CSp, &
                             Ice%SIS_tracer_flow_CSp)
 
-  call SIS_slow_init(Ice%Time, G, IG, param_file, IST%diag, Ice%dyn_trans_CSp, &
-                     dirs%output_directory, Time_Init)
-!  IST%ice_transport_CSp => SIS_slow_transport_CS(Ice%dyn_trans_CSp)
+  call SIS_dyn_trans_init(Ice%Time, G, IG, param_file, IST%diag, &
+                          Ice%dyn_trans_CSp, dirs%output_directory, Time_Init)
+!  IST%ice_transport_CSp => SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp)
 
   call SIS_slow_thermo_set_ptrs(Ice%slow_thermo_CSp, &
-           transport_CSp=SIS_slow_transport_CS(Ice%dyn_trans_CSp), &
-           sum_out_CSp=SIS_slow_sum_output_CS(Ice%dyn_trans_CSp))
+           transport_CSp=SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp), &
+           sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
 
   !   Initialize any tracers that will be handled via tracer flow control.
   call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, Ice%SIS_tracer_flow_CSp, is_restart)
@@ -1712,7 +1713,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   call write_ice_statistics(IST, IST%Time, 0, G, IG, &
-                            SIS_slow_sum_output_CS(Ice%dyn_trans_CSp))
+                            SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
 
   call callTree_leave("ice_model_init()")
 
@@ -1732,7 +1733,7 @@ subroutine ice_model_end (Ice)
 
   !--- release memory ------------------------------------------------
 
-  call SIS_slow_end(Ice%dyn_trans_CSp)
+  call SIS_dyn_trans_end(Ice%dyn_trans_CSp)
 
   call SIS_slow_thermo_end(Ice%slow_thermo_CSp)
 

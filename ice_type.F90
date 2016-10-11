@@ -30,7 +30,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_slow_mod, only : dyn_trans_CS
+use SIS_dyn_trans, only : dyn_trans_CS
 use SIS_slow_thermo, only : slow_thermo_CS
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type

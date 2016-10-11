@@ -29,7 +29,7 @@
 ! scales of the couplng or the interactions with the ocean due to ice dynamics !
 ! and lateral transport.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_slow_mod
+module SIS_dyn_trans
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -39,7 +39,7 @@ use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 
-use mpp_domains_mod,  only  : domain2D !, mpp_get_compute_domain, CORNER, EAST, NORTH
+use mpp_domains_mod,  only  : domain2D
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges !, MOM_domains_init, clone_MOM_domain
 ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
@@ -50,7 +50,7 @@ use MOM_hor_index, only : hor_index_type ! , hor_index_init
 ! use MOM_string_functions, only : uppercase
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
-use fms_mod, only : clock_flag_default !, file_exist
+use fms_mod, only : clock_flag_default
 ! use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
@@ -68,17 +68,12 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
 
-! use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
-! use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
-! use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
-! use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
-
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
-use SIS_dyn_bgrid, only: SIS_B_dynamics, SIS_B_dyn_init, SIS_B_dyn_register_restarts, SIS_B_dyn_end
-use SIS_dyn_bgrid, only: SIS_B_dyn_CS
-use SIS_dyn_cgrid, only: SIS_C_dyn_CS
-use SIS_dyn_cgrid, only: SIS_C_dynamics, SIS_C_dyn_init, SIS_C_dyn_register_restarts, SIS_C_dyn_end
+use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
+use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
+use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : ice_transport_CS
 
@@ -89,8 +84,8 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
-public :: SIS_slow_register_restarts, SIS_slow_init, SIS_slow_end
-public :: SIS_slow_transport_CS, SIS_slow_sum_output_CS
+public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
+public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 
 type dyn_trans_CS ; private
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -639,13 +634,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   ! Thermodynamic state diagnostics
   !
   call mpp_clock_begin(iceClock9)
-  if (IST%id_cn>0) call post_data(IST%id_cn, IST%part_size(:,:,1:ncat), IST%diag)
+  if (IST%id_cn>0) call post_data(IST%id_cn, IST%part_size(:,:,1:ncat), CS%diag)
   ! TK Mod: 10/18/02
-  !  if (IST%id_obs_cn>0) call post_data(IST%id_obs_cn, Obs_cn_ice(:,:,2), IST%diag)
+  !  if (IST%id_obs_cn>0) call post_data(IST%id_obs_cn, Obs_cn_ice(:,:,2), CS%diag)
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later)
   !  if (IST%id_obs_hi>0) &
   !    call post_avg(IST%id_obs_hi, Obs_h_ice(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,1:), &
-  !                  IST%diag, G=G, wtd=.true.)
+  !                  CS%diag, G=G, wtd=.true.)
 
   !   Convert from ice and snow enthalpy back to temperature for diagnostic purposes.
   do_temp_diags = (IST%id_tsn > 0)
@@ -1021,9 +1016,9 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 end subroutine set_ocean_top_stress_Cgrid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_slow_register_restarts allocates and registers any variables for this 
+!> SIS_dyn_trans_register_restarts allocates and registers any variables for this 
 !!      module that need to be included in the restart files.
-subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, CS, &
+subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
   type(hor_index_type),    intent(in)    :: HI
@@ -1048,7 +1043,7 @@ subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, CS, &
 !  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (associated(CS)) then
-    call SIS_error(WARNING, "SIS_slow_register_restarts called with an "//&
+    call SIS_error(WARNING, "SIS_dyn_trans_register_restarts called with an "//&
                             "associated control structure.")
     return
   endif
@@ -1066,12 +1061,12 @@ subroutine SIS_slow_register_restarts(mpp_domain, HI, IG, param_file, CS, &
 !  call ice_transport_register_restarts(G, param_file, CS%ice_transport_CSp, &
 !                                       Ice_restart, restart_file)
 
-end subroutine SIS_slow_register_restarts
+end subroutine SIS_dyn_trans_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_slow_init - initializes ice model data, parameters and diagnostics       !
+! SIS_dyn_trans_init - initializes ice model data, parameters and diagnostics       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
+subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
   type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
@@ -1083,16 +1078,16 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_slow" ! This module's name.
+  character(len=40)  :: mod = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   real, parameter    :: missing = -1e34
 
-  call callTree_enter("SIS_slow_init(), SIS_slow.F90")
+  call callTree_enter("SIS_dyn_trans_init(), SIS_dyn_trans.F90")
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
-      "SIS_slow_init called with an unassociated control structure.")
+      "SIS_dyn_trans_init called with an unassociated control structure.")
   if (CS%module_is_initialized) then
-    call SIS_error(WARNING, "SIS_slow_init called with a control "// &
+    call SIS_error(WARNING, "SIS_dyn_trans_init called with a control "// &
                             "structure that has already been initialized.")
     return
   endif
@@ -1181,34 +1176,34 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
   iceClock8 = mpp_clock_id( '  Ice: slow: transport', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock9 = mpp_clock_id( '  Ice: slow: thermodyn diags', flags=clock_flag_default, grain=CLOCK_LOOP )
 
-  call callTree_leave("SIS_slow_init()")
+  call callTree_leave("SIS_dyn_trans_init()")
 
-end subroutine SIS_slow_init
+end subroutine SIS_dyn_trans_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!> SIS_dyn_trans_transport_CS returns a pointer to the ice_transport_CS type that
 !!  the dyn_trans_CS points to.
-function SIS_slow_transport_CS(CS) result(transport_CSp)
+function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
   type(dyn_trans_CS), pointer :: CS
   type(ice_transport_CS), pointer :: transport_CSp
 
   transport_CSp => CS%ice_transport_CSp
-end function SIS_slow_transport_CS
+end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_slow_transport_CS returns a pointer to the ice_transport_CS type that
+!> SIS_dyn_trans_transport_CS returns a pointer to the sum_out_CS type that
 !!  the dyn_trans_CS points to.
-function SIS_slow_sum_output_CS(CS) result(sum_out_CSp)
+function SIS_dyn_trans_sum_output_CS(CS) result(sum_out_CSp)
   type(dyn_trans_CS), pointer :: CS
   type(SIS_sum_out_CS), pointer :: sum_out_CSp
 
   sum_out_CSp => CS%sum_output_CSp
-end function SIS_slow_sum_output_CS
+end function SIS_dyn_trans_sum_output_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_slow_end - deallocates memory                                            !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_slow_end(CS)
+!> SIS_dyn_trans_end deallocates memory associated with the dyn_trans_CS type
+!! and calls similar routines for subsidiary modules.
+subroutine SIS_dyn_trans_end(CS)
   type(dyn_trans_CS), pointer :: CS
 
   if (CS%Cgrid_dyn) then
@@ -1218,6 +1213,8 @@ subroutine SIS_slow_end(CS)
   endif
   call ice_transport_end(CS%ice_transport_CSp)
 
-end subroutine SIS_slow_end
+  deallocate(CS)
 
-end module SIS_slow_mod
+end subroutine SIS_dyn_trans_end
+
+end module SIS_dyn_trans
