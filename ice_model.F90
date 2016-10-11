@@ -110,7 +110,7 @@ use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
 
 use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
-use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
+use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
 
@@ -259,7 +259,17 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG)
     Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
         (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
   enddo ; enddo ; enddo
-  if (IST%do_icebergs) call icebergs_incr_mass(Ice%icebergs, Ice%mi(:,:)) ! Add icebergs mass in kg/m^2
+
+  if (IST%do_icebergs .and. associated(IOF%mass_berg)) then
+    ! Note that the IOF berg fields and Ice fields are only allocated on the
+    ! computational domains, although they may use different indexing conventions.
+    Ice%mi(:,:) = Ice%mi(:,:) + IOF%mass_berg(:,:)
+    if  (IST%pass_iceberg_area_to_ocean) then
+      Ice%mass_berg(:,:) = IOF%mass_berg(:,:)
+      if (associated(IOF%ustar_berg)) Ice%ustar_berg(:,:) = IOF%ustar_berg(:,:)
+      if (associated(IOF%area_berg))  Ice%area_berg(:,:) = IOF%area_berg(:,:)
+    endif
+  endif
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
 !$OMP                           private(i2,j2)
@@ -1226,6 +1236,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "calculations.", units="m", default=0.0)
   call get_param(param_file, mod, "DO_ICEBERGS", IST%do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
+  if (IST%do_icebergs) then
+    call get_param(param_file, mod, "PASS_ICEBERG_AREA_TO_OCEAN", IST%pass_iceberg_area_to_ocean, &
+                 "If true, iceberg area is passed through coupler", default=.false.)
+  else ; IST%pass_iceberg_area_to_ocean = .false. ; endif
   call get_param(param_file, mod, "ADD_DIURNAL_SW", add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
                  "radiation.", default=.false.)
@@ -1320,7 +1334,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call alloc_ocean_sfc_state(Ice%OSS, HI, IST%Cgrid_dyn)
   Ice%OSS%kmelt = kmelt
 
-  call alloc_ice_ocean_flux(Ice%IOF, HI)
+  call alloc_ice_ocean_flux(Ice%IOF, HI, do_iceberg_fields=IST%do_icebergs)
   Ice%IOF%slp2ocean = slp2ocean
 
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)

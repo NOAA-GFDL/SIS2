@@ -104,6 +104,9 @@ type ice_data_type !  ice_public_type
     runoff => NULL(), &   ! Liquid runoff into the ocean, in kg m-2.
     calving => NULL(), &  ! Calving of ice or runoff of frozen fresh water into
                           ! the ocean, in kg m-2.
+    ustar_berg => NULL(), &  !ustar contribution below icebergs in m/s
+    area_berg => NULL(),  &  !fraction of grid cell covered by icebergs in m2/m2
+    mass_berg => NULL(),  &  !mass of icebergs in km/m^2
     runoff_hflx => NULL(), &  ! The heat flux associated with runoff, based on
                               ! the temperature difference relative to a
                               ! reference temperature, in ???.
@@ -300,6 +303,13 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
+  !Should only use if icebergs is on.
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0 !derived
+    allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0   !derived
+    allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0 !derived
+  endif
+
 
   ! Now register some of these arrays to be read from the restart files.
   idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
@@ -345,8 +355,13 @@ subroutine dealloc_Ice_arrays(Ice)
   deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif)
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif)
   deallocate(Ice%area, Ice%mi)
-end subroutine dealloc_Ice_arrays
 
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    deallocate(Ice%ustar_berg)
+    deallocate(Ice%area_berg)
+    deallocate(Ice%mass_berg)
+  endif
+end subroutine dealloc_Ice_arrays
 
 subroutine Ice_public_type_chksum(mesg, Ice)
   character(len=*),    intent(in) :: mesg
@@ -390,6 +405,11 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   call chksum(Ice%calving, trim(mesg)//" Ice%calving")
   call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
 
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
+    call chksum(Ice%area_berg, trim(mesg)//" Ice%area_berg")
+    call chksum(Ice%mass_berg, trim(mesg)//" Ice%mass_berg")
+  endif
 end subroutine Ice_public_type_chksum
 
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
@@ -587,6 +607,12 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
+
+  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+    write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg       )
+    write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg        )
+    write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg        )
+  endif
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &

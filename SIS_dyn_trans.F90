@@ -77,7 +77,7 @@ use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
 use ice_transport_mod, only : ice_transport_CS
 
-use ice_bergs,        only: icebergs, icebergs_run, icebergs_init, icebergs_end, icebergs_incr_mass
+use ice_bergs,     only: icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
 
@@ -116,6 +116,7 @@ type dyn_trans_CS ; private
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+  integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -160,7 +161,9 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
+            area_berg=IOF%area_berg )
   else
     call icebergs_run( icebergs_CS, IST%Time, &
             IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
@@ -170,7 +173,9 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
             IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger)
+            stress_stagger=IOF%flux_uv_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
+            mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
+            area_berg=IOF%area_berg )
   endif
 
 end subroutine update_icebergs
@@ -623,10 +628,24 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), CS%diag)
 
     if (CS%id_mib>0) then
-      if (IST%do_icebergs) call icebergs_incr_mass(icebergs_CS, mass(isc:iec,jsc:jec)) ! Add icebergs mass in kg/m^2
+      if (IST%do_icebergs .and. associated(IOF%mass_berg)) then
+        do j=jsc,jec ; do i=isc,iec
+          mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass in kg/m^2
+        enddo ; enddo
+      endif
       call post_data(CS%id_mib, mass(isc:iec,jsc:jec), CS%diag)
     endif
   endif
+  if (CS%id_ustar_berg>0 .and. associated(IOF%ustar_berg)) then
+    call post_data(CS%id_ustar_berg, IOF%ustar_berg, CS%diag)
+  endif
+  if (CS%id_area_berg>0 .and. associated(IOF%area_berg)) then
+    call post_data(CS%id_area_berg, IOF%area_berg, CS%diag)
+  endif
+  if (CS%id_mass_berg>0 .and. associated(IOF%mass_berg)) then
+    call post_data(CS%id_mass_berg, IOF%mass_berg, CS%diag)
+  endif
+
 
   call mpp_clock_end(iceClock8)
 
@@ -1168,6 +1187,13 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                'ice mass', 'kg/m^2', missing_value=missing)
   CS%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
                'ice + bergs mass', 'kg/m^2', missing_value=missing)
+  CS%id_ustar_berg  = register_diag_field('ice_model', 'USTAR_BERG', diag%axesT1, Time, &
+               'iceberg ustar', 'm/s', missing_value=missing)
+  CS%id_area_berg  = register_diag_field('ice_model', 'AREA_BERG', diag%axesT1, Time, &
+               'icebergs area', 'm2/m2', missing_value=missing)
+  CS%id_mass_berg  = register_diag_field('ice_model', 'MASS_BERG', diag%axesT1, Time, &
+               'icebergs mass', 'kg/m2', missing_value=missing)
+
 
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
