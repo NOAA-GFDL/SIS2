@@ -152,8 +152,8 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   if (Ice%Ice_state%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%IOF, Ice%FIA, &
-                         Ice%icebergs, Ice%G, Ice%IG)
+    call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%IOF, Ice%FIA, Ice%icebergs, &
+                         dt_slow, Ice%G, Ice%IG, Ice%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 

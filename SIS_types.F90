@@ -385,6 +385,9 @@ type ice_ocean_flux_type
   ! diagnostic IDs for ice-to-ocean fluxes.
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_saltf=-1
+  ! The following are diagnostic IDs for iceberg-related fields.  These are only
+  ! used if the iceberg code is activated.
+  integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
 end type ice_ocean_flux_type
 
 contains
@@ -1067,6 +1070,17 @@ subroutine ice_diagnostics_init(IST, IOF, OSS, FIA, Rad, G, IG, diag, Time)
 !  IST%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &
 !       'ice observed', '0 or 1', missing_value=missing)
 
+  ! Use whether the appropriate arrays are allocated to determine whether the
+  ! following iceberg diagnostics should be offered.
+  if (associated(IOF%ustar_berg)) &
+    IOF%id_ustar_berg  = register_SIS_diag_field('ice_model', 'USTAR_BERG', diag%axesT1, Time, &
+               'iceberg ustar', 'm/s', missing_value=missing)
+  if (associated(IOF%area_berg)) &
+    IOF%id_area_berg  = register_SIS_diag_field('ice_model', 'AREA_BERG', diag%axesT1, Time, &
+               'icebergs area', 'm2/m2', missing_value=missing)
+  if (associated(IOF%mass_berg)) &
+    IOF%id_mass_berg  = register_SIS_diag_field('ice_model', 'MASS_BERG', diag%axesT1, Time, &
+               'icebergs mass', 'kg/m2', missing_value=missing)
 
   IST%id_rdgr    = register_SIS_diag_field('ice_model','RDG_RATE' ,diag%axesT1, Time, &
                'ice ridging rate', '1/sec', missing_value=missing)

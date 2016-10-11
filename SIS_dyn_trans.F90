@@ -116,7 +116,6 @@ type dyn_trans_CS ; private
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
-  integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -128,14 +127,16 @@ integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
 contains
 
-subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
+subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
   type(fast_ice_avg_type),    intent(in)    :: FIA
   type(ice_ocean_flux_type),  intent(inout) :: IOF
+  real,                       intent(in)    :: dt_slow
+  type(icebergs),             pointer       :: icebergs_CS
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(inout) :: IG
-  type(icebergs),             pointer       :: icebergs_CS
+  type(dyn_trans_CS),         pointer       :: CS
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
@@ -153,7 +154,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
   !### I think that there is long-standing bug here, in that the old ice-ocean
   !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
   if (IST%Cgrid_dyn) then
-    call icebergs_run( icebergs_CS, IST%Time, &
+    call icebergs_run( icebergs_CS, CS%Time, &
             IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
@@ -165,7 +166,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   else
-    call icebergs_run( icebergs_CS, IST%Time, &
+    call icebergs_run( icebergs_CS, CS%Time, &
             IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
@@ -177,6 +178,18 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, G, IG)
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   endif
+
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  if (IOF%id_ustar_berg>0 .and. associated(IOF%ustar_berg)) then
+    call post_data(IOF%id_ustar_berg, IOF%ustar_berg, CS%diag)
+  endif
+  if (IOF%id_area_berg>0 .and. associated(IOF%area_berg)) then
+    call post_data(IOF%id_area_berg, IOF%area_berg, CS%diag)
+  endif
+  if (IOF%id_mass_berg>0 .and. associated(IOF%mass_berg)) then
+    call post_data(IOF%id_mass_berg, IOF%mass_berg, CS%diag)
+  endif
+  call disable_SIS_averaging(CS%diag)
 
 end subroutine update_icebergs
 
@@ -636,16 +649,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       call post_data(CS%id_mib, mass(isc:iec,jsc:jec), CS%diag)
     endif
   endif
-  if (CS%id_ustar_berg>0 .and. associated(IOF%ustar_berg)) then
-    call post_data(CS%id_ustar_berg, IOF%ustar_berg, CS%diag)
-  endif
-  if (CS%id_area_berg>0 .and. associated(IOF%area_berg)) then
-    call post_data(CS%id_area_berg, IOF%area_berg, CS%diag)
-  endif
-  if (CS%id_mass_berg>0 .and. associated(IOF%mass_berg)) then
-    call post_data(CS%id_mass_berg, IOF%mass_berg, CS%diag)
-  endif
-
 
   call mpp_clock_end(iceClock8)
 
@@ -1187,13 +1190,6 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                'ice mass', 'kg/m^2', missing_value=missing)
   CS%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
                'ice + bergs mass', 'kg/m^2', missing_value=missing)
-  CS%id_ustar_berg  = register_diag_field('ice_model', 'USTAR_BERG', diag%axesT1, Time, &
-               'iceberg ustar', 'm/s', missing_value=missing)
-  CS%id_area_berg  = register_diag_field('ice_model', 'AREA_BERG', diag%axesT1, Time, &
-               'icebergs area', 'm2/m2', missing_value=missing)
-  CS%id_mass_berg  = register_diag_field('ice_model', 'MASS_BERG', diag%axesT1, Time, &
-               'icebergs mass', 'kg/m2', missing_value=missing)
-
 
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
