@@ -100,6 +100,8 @@ type ice_state_type
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
+  logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
+                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
   ! SLOW THERMO (mostly)
   logical :: do_ridging     ! If true, use the ridging code
 
@@ -339,6 +341,11 @@ type ice_ocean_flux_type
                         ! facilitate the retention of sea ice, in kg m-2 s-1.
     flux_salt           ! The flux of salt out of the ocean in kg m-2.
 
+  !Iceberg fields
+  real, pointer, dimension(:,:)   :: &
+    ustar_berg =>NULL(), &  ! ustar contribution below icebergs in m/s
+    area_berg =>NULL(),  &  ! fraction of grid cell covered by icebergs in m2/m2
+    mass_berg =>NULL()      ! mass of icebergs in km/m^2
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &
@@ -531,11 +538,15 @@ end subroutine ice_rad_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
-subroutine alloc_ice_ocean_flux(IOF, HI)
+subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
   type(ice_ocean_flux_type), pointer    :: IOF
   type(hor_index_type),      intent(in) :: HI
+  logical,         optional, intent(in) :: do_iceberg_fields
 
   integer :: CatIce
+  logical :: alloc_bergs
+
+  alloc_bergs = .false. ; if (present(do_iceberg_fields)) alloc_bergs = do_iceberg_fields
 
   if (.not.associated(IOF)) allocate(IOF)
 
@@ -564,6 +575,15 @@ subroutine alloc_ice_ocean_flux(IOF, HI)
   allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0 !NR
   allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0 !NR
   allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+
+  !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.) 
+  ! Please note that these are only allocated on the computational domain so that they
+  ! can be passed conveniently to the iceberg code.
+  if (alloc_bergs) then
+    allocate(IOF%mass_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%mass_berg(:,:) = 0.0
+    allocate(IOF%ustar_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%ustar_berg(:,:) = 0.0
+    allocate(IOF%area_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%area_berg(:,:) = 0.0
+  endif
 
 end subroutine alloc_ice_ocean_flux
 
@@ -686,6 +706,11 @@ subroutine dealloc_ice_ocean_flux(IOF)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
   deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
+
+  !Deallocating iceberg fields
+  if (associated(IOF%mass_berg)) deallocate(IOF%mass_berg)
+  if (associated(IOF%ustar_berg)) deallocate(IOF%ustar_berg)
+  if (associated(IOF%area_berg)) deallocate(IOF%area_berg)
 
   deallocate(IOF)
 end subroutine dealloc_ice_ocean_flux
