@@ -39,6 +39,7 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
 use SIS_types, only : ice_ocean_flux_type, ocean_sfc_state_type
 use SIS_types, only : fast_thermo_CS
+use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
 
@@ -140,6 +141,9 @@ type ice_data_type !  ice_public_type
   ! The following are actually private to SIS2, and are not used elsewhere by
   ! other FMS modules.
       type(icebergs), pointer     :: icebergs => NULL()
+  type(SIS_fast_CS), pointer :: fCS => NULL()
+  type(SIS_slow_CS), pointer :: sCS => NULL()
+
   type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal

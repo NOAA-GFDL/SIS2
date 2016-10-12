@@ -86,7 +86,7 @@ use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_types, only : ice_diagnostics_init
+use SIS_ctrl_types, only : ice_diagnostics_init
 use SIS_types, only : IST_chksum, IST_bounds_check
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
@@ -1099,6 +1099,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                     "Ice%Ice_state structure. Model is already initialized.")
     return
   endif
+  ! This should only occur on PEs with fast ice dynamics
+  if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
+  ! This should only occur on PEs with slow ice dynamics
+  if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
+
   if (.not.associated(Ice%Ice_state)) allocate(Ice%Ice_state) ; IST => Ice%Ice_state
   if (.not.associated(Ice%G)) allocate(Ice%G)
   if (test_grid_copy) then ; allocate(G)
@@ -1668,6 +1673,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
+
   call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, IST%diag, IST%Time)
   Ice%axes(1:2) = IST%diag%axesTc%handles(1:2)
 
@@ -1719,6 +1725,38 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   !nullify_domain perhaps could be called somewhere closer to set_domain 
   !but it should be callled after restore_state() otherwise it causes a restart mismatch
   call nullify_domain()
+
+  ! Duplicate what is currently in IST in Ice%fCS and/or Ice%sCS.  This
+  ! will be moved up later.
+  Ice%fCS%IST => IST
+  Ice%fCS%diag => IST%diag
+
+  Ice%fCS%slab_ice = IST%slab_ice
+  Ice%fCS%Cgrid_dyn = IST%Cgrid_dyn
+  Ice%fCS%Rho_ice = IST%Rho_ice
+  Ice%fCS%Rho_snow = IST%Rho_snow
+  Ice%fCS%do_icebergs = IST%do_icebergs
+  Ice%fCS%pass_iceberg_area_to_ocean = IST%pass_iceberg_area_to_ocean
+  Ice%fCS%do_ridging = IST%do_ridging
+  Ice%fCS%specified_ice = IST%specified_ice
+  Ice%fCS%bounds_check = IST%bounds_check
+  Ice%fCS%debug = IST%debug
+
+  ! Duplicate what is currently in IST in Ice%fCS and/or Ice%sCS.  This
+  ! will be moved up later.
+  Ice%sCS%IST => IST
+  Ice%sCS%diag => IST%diag
+
+  Ice%sCS%slab_ice = IST%slab_ice
+  Ice%sCS%Cgrid_dyn = IST%Cgrid_dyn
+  Ice%sCS%Rho_ice = IST%Rho_ice
+  Ice%sCS%Rho_snow = IST%Rho_snow
+  Ice%sCS%do_icebergs = IST%do_icebergs
+  Ice%sCS%pass_iceberg_area_to_ocean = IST%pass_iceberg_area_to_ocean
+  Ice%sCS%do_ridging = IST%do_ridging
+  Ice%sCS%specified_ice = IST%specified_ice
+  Ice%sCS%bounds_check = IST%bounds_check
+  Ice%sCS%debug = IST%debug
 
 
   ! Do any error checking here.
@@ -1780,6 +1818,8 @@ subroutine ice_model_end (Ice)
   call SIS_diag_mediator_end(IST%Time, IST%diag)
 
   deallocate(Ice%Ice_state)
+  if (associated(Ice%fCS)) deallocate(Ice%fCS)
+  if (associated(Ice%sCS)) deallocate(Ice%sCS)
 
 end subroutine ice_model_end
 
