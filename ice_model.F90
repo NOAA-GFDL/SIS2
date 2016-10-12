@@ -77,10 +77,10 @@ use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over w
 
 use ice_type_mod, only : ice_data_type, dealloc_ice_arrays, ice_data_type_register_restarts
 use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
-use ice_type_mod, only : ice_model_restart, ice_stock_pe
-use ice_type_mod, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-use ice_type_mod, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
-use ice_type_mod, only : lnd_ice_bnd_type_chksum, ice_data_type_chksum
+use ice_type_mod, only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
+use ice_boundary_types, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
+use ice_boundary_types, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
+use ice_boundary_types, only : lnd_ice_bnd_type_chksum
 use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg

@@ -51,7 +51,7 @@ use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
-use ice_type_mod, only : atmos_ice_boundary_type! , land_ice_boundary_type
+use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_types, only : fast_thermo_CS
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
