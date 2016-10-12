@@ -98,17 +98,12 @@ type ice_state_type
 
   real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
-!  logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
-!                            ! modifies the calving field among other things.
-!  logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
-                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
-!  logical :: do_ridging     ! If true, use the ridging code
 
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
-  logical :: bounds_check    ! If true, check for sensible values of thicknesses
+!  logical :: bounds_check    ! If true, check for sensible values of thicknesses
                              ! temperatures, fluxes, etc.
-  logical :: debug           ! If true, write verbose checksums for debugging purposes.
+!  logical :: debug           ! If true, write verbose checksums for debugging purposes.
 
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
@@ -117,11 +112,6 @@ type ice_state_type
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_slp=-1
-  !### THESE DIAGNOSTICS ARE NEVER SENT!
-  ! integer :: id_ta=-1, id_obi=-1
-
-  !### THESE DIAGNOSTICS ARE NEVER SENT!
-  ! integer :: id_strna=-1
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 

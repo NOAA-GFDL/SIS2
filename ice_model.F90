@@ -144,7 +144,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%FIA, Ice%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
-  if (Ice%Ice_state%debug) then
+  if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
   endif
 
@@ -163,15 +163,15 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call SIS_dynamics_trans(Ice%Ice_state, Ice%OSS, Ice%FIA, Ice%IOF, &
                           dt_slow, Ice%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%IG)
 
-  if (Ice%Ice_state%debug) &
+  if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
   call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%IOF, Ice%G, Ice%IG, Ice%sCS)
 
-  if (Ice%Ice_state%debug) then
+  if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
   endif
-  if (Ice%Ice_state%bounds_check) then
+  if (Ice%sCS%bounds_check) then
     call Ice_public_type_bounds_check(Ice, Ice%G, "End update_ice_slow")
   endif
 
@@ -237,7 +237,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG, sCS)
   ncat = IG%CatIce ; NkIce = IG%NkIce
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
-  if (IST%debug) then
+  if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
   endif
 
@@ -331,7 +331,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG, sCS)
     enddo ; enddo
   enddo ; enddo
 
-  if (IST%debug) then
+  if (sCS%debug) then
     call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
   endif
 
@@ -349,8 +349,10 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%OSS, Ice%G, &
                            Ice%ocean_fields)
 
+  !### Exchange information from the slow ice processors to the fast ice processors.
+
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
-                             Ice%OSS, Ice%Rad, Ice%FIA, Ice%G, Ice%IG )
+                             Ice%OSS, Ice%Rad, Ice%FIA, Ice%G, Ice%IG, Ice%fCS )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -476,7 +478,7 @@ end subroutine unpack_ocn_ice_bdry
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
+subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG, fCS)
   type(ice_data_type),        intent(inout) :: Ice
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
@@ -484,6 +486,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
   type(fast_ice_avg_type),    intent(inout) :: FIA
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(in)    :: IG
+  type(SIS_fast_CS),          intent(in)    :: fCS
   real, dimension(G%isc:G%iec,G%jsc:G%jec), &
                               intent(in)    :: t_surf_ice_bot
 
@@ -514,10 +517,10 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
-  if (IST%bounds_check) &
+  if (fCS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", OSS=OSS)
 
-  if (IST%debug) then
+  if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
   endif
@@ -606,7 +609,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
     endif ; enddo ; enddo ; enddo
   endif
 
-  if (IST%bounds_check) &
+  if (fCS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
@@ -658,7 +661,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
     enddo ; enddo
   endif
 
-  if (IST%debug) then
+  if (fCS%debug) then
     call chksum(Ice%u_surf(:,:,1), "Intermed Ice%u_surf(1)")
     call chksum(Ice%v_surf(:,:,1), "Intermed Ice%v_surf(1)")
     call chksum(Ice%u_surf(:,:,2), "Intermed Ice%u_surf(2)")
@@ -687,7 +690,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
     Ice%u_surf(:,:,k2) = Ice%u_surf(:,:,2)  ! same ice flow on all ice partitions
     Ice%v_surf(:,:,k2) = Ice%v_surf(:,:,2)  !
   enddo
-  if (IST%debug) then
+  if (fCS%debug) then
     do k2=1,ncat+1
       call chksum(Ice%u_surf(:,:,k2), "End Ice%u_surf(k2)")
       call chksum(Ice%v_surf(:,:,k2), "End Ice%v_surf(k2)")
@@ -719,12 +722,12 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG)
   if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, IST%diag)
   call disable_SIS_averaging(IST%diag)
 
-  if (IST%debug) then
+  if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
     call Ice_public_type_chksum("End set_ice_surface_state", Ice)
   endif
 
-  if (IST%bounds_check) &
+  if (fCS%bounds_check) &
     call Ice_public_type_bounds_check(Ice, G, "End set_ice_surface_state")
 
 end subroutine set_ice_surface_state
@@ -741,7 +744,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
 
-  if (Ice%Ice_state%debug) &
+  if (Ice%fCS%debug) &
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
 
   dT_fast = Ice%Ice_state%Time_step_fast
@@ -766,9 +769,9 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
                                      Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
 
-  if (Ice%Ice_state%debug) &
+  if (Ice%fCS%debug) &
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
-  if (Ice%Ice_state%bounds_check) &
+  if (Ice%fCS%bounds_check) &
     call Ice_public_type_bounds_check(Ice, Ice%G, "End update_ice_fast")
 
   call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
@@ -1081,6 +1084,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
   logical :: do_ridging
+  logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
@@ -1207,13 +1211,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "IMBALANCE_TOLERANCE", imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", IST%bounds_check, &
+  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "DEBUG", IST%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
@@ -1758,8 +1762,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%fCS%Rho_ice = IST%Rho_ice
     Ice%fCS%Rho_snow = IST%Rho_snow
     Ice%fCS%specified_ice = IST%specified_ice
-    Ice%fCS%bounds_check = IST%bounds_check
-    Ice%fCS%debug = IST%debug
+    Ice%fCS%bounds_check = bounds_check
+    Ice%fCS%debug = debug
   endif
 
   ! Duplicate what is currently in IST in Ice%fCS and/or Ice%sCS.  This
@@ -1773,12 +1777,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%sCS%Rho_ice = IST%Rho_ice
     Ice%sCS%Rho_snow = IST%Rho_snow
     Ice%sCS%specified_ice = IST%specified_ice
-    Ice%sCS%bounds_check = IST%bounds_check
-    Ice%sCS%debug = IST%debug
+    Ice%sCS%bounds_check = bounds_check
+    Ice%sCS%debug = debug
   endif
 
   ! Do any error checking here.
-  if (IST%debug) then
+  if (debug) then
     call ice_grid_chksum(G, haloshift=2)
   endif
 
