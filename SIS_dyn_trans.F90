@@ -94,6 +94,10 @@ type dyn_trans_CS ; private
                           ! stepping the continuity equation and interactions
                           ! between the ice mass field and velocities, in s. If
                           ! 0 or negative, the coupling time step will be used.
+  logical :: do_ridging   !   If true, apply a ridging scheme to the convergent
+                          ! ice.  The original SIS2 implementation is based on
+                          ! work by Torge Martin.  Otherwise, ice is compressed
+                          ! proportionately if the concentration exceeds 1.
   logical :: debug        ! If true, write verbose checksums for debugging purposes.
   logical :: column_check ! If true, enable the heat check column by column.
   real    :: imb_tol      ! The tolerance for imbalances to be flagged by
@@ -510,7 +514,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       call mpp_clock_begin(iceClocka)
       call SIS_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                         OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
-                        str_x_ice_ocn_B, str_y_ice_ocn_B, IST%do_ridging, &
+                        str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
                         rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
@@ -641,7 +645,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), CS%diag)
 
     if (CS%id_mib>0) then
-      if (IST%do_icebergs .and. associated(IOF%mass_berg)) then
+      if (associated(IOF%mass_berg)) then
         do j=jsc,jec ; do i=isc,iec
           mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass in kg/m^2
         enddo ; enddo
@@ -757,7 +761,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
   !     in each category; IST%rdg_mice is ridged ice mass per unit total
   !     area throughout the code.
-  if (IST%do_ridging) then
+  if (CS%do_ridging) then
     call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
 !     if (IST%id_rdgf>0) then
@@ -1130,6 +1134,11 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
+  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+                 "If true, apply a ridging scheme to the convergent ice. \n"//&
+                 "Otherwise, ice is compressed proportionately if the \n"//&
+                 "concentration exceeds 1.  The original SIS2 implementation \n"//&
+                 "is based on work by Torge Martin.", default=.false.)
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &

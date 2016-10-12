@@ -1114,7 +1114,10 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "mass conservation in the sea-ice transport code.  This \n"//&
                  "is expensive and should be used sparingly.", default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
-                 "Apply a ridging scheme as imported by Torge Martin.", default=.false.)
+                 "If true, apply a ridging scheme to the convergent ice. \n"//&
+                 "Otherwise, ice is compressed proportionately if the \n"//&
+                 "concentration exceeds 1.  The original SIS2 implementation \n"//&
+                 "is based on work by Torge Martin.", default=.false.)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
   call get_param(param_file, mod, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &

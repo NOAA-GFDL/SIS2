@@ -140,7 +140,7 @@ type ice_data_type !  ice_public_type
 
   ! The following are actually private to SIS2, and are not used elsewhere by
   ! other FMS modules.
-      type(icebergs), pointer     :: icebergs => NULL()
+  type(icebergs),    pointer :: icebergs => NULL()
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
@@ -304,15 +304,14 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
   allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
 
-  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0 !derived
+  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
-  !Should only use if icebergs is on.
-  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
-    allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0 !derived
-    allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0   !derived
-    allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0 !derived
-  endif
+  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
+    allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0
+    allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0
+    allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0
+  endif ; endif
 
 
   ! Now register some of these arrays to be read from the restart files.
@@ -360,11 +359,11 @@ subroutine dealloc_Ice_arrays(Ice)
   deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif)
   deallocate(Ice%area, Ice%mi)
 
-  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     deallocate(Ice%ustar_berg)
     deallocate(Ice%area_berg)
     deallocate(Ice%mass_berg)
-  endif
+  endif ; endif
 end subroutine dealloc_Ice_arrays
 
 subroutine Ice_public_type_chksum(mesg, Ice)
@@ -409,11 +408,11 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   call chksum(Ice%calving, trim(mesg)//" Ice%calving")
   call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
 
-  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
     call chksum(Ice%area_berg, trim(mesg)//" Ice%area_berg")
     call chksum(Ice%mass_berg, trim(mesg)//" Ice%mass_berg")
-  endif
+  endif ; endif
 end subroutine Ice_public_type_chksum
 
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
@@ -563,7 +562,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   end select
 
-  if (IST%do_icebergs) then
+  if (associated(Ice%icebergs)) then
     call icebergs_stock_pe(Ice%icebergs, index, icebergs_value)
     value = value + icebergs_value
   endif
@@ -612,11 +611,11 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
   write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
 
-  if ((Ice%Ice_state%do_icebergs) .and. (Ice%Ice_state%pass_iceberg_area_to_ocean)) then
+  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg       )
     write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg        )
     write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg        )
-  endif
+  endif ; endif
 
   do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
     write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &

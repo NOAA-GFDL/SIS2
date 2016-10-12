@@ -88,15 +88,20 @@ type slow_thermo_CS ; private
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed, nondim.
 
-  logical :: filling_frazil  ! If true, apply frazil to fill as many categories
-                             ! as possible to fill in a uniform (minimum) amount
-                             ! of frazil in all the thinnest categories.
-                             ! Otherwise the frazil is always assigned to a
-                             ! single category with part size > 0.01.
-  real    :: fraz_fill_time  ! A timescale with which the filling frazil causes
-                             ! the thinest cells to attain similar thicknesses,
-                             ! or a negative number to apply the frazil flux
-                             ! uniformly, in s.
+  logical :: filling_frazil ! If true, apply frazil to fill as many categories
+                            ! as possible to fill in a uniform (minimum) amount
+                            ! of frazil in all the thinnest categories.
+                            ! Otherwise the frazil is always assigned to a
+                            ! single category with part size > 0.01.
+  real    :: fraz_fill_time ! A timescale with which the filling frazil causes
+                            ! the thinest cells to attain similar thicknesses,
+                            ! or a negative number to apply the frazil flux
+                            ! uniformly, in s.
+
+  logical :: do_ridging     !   If true, apply a ridging scheme to the convergent
+                            ! ice.  The original SIS2 implementation is based on
+                            ! work by Torge Martin.  Otherwise, ice is compressed
+                            ! proportionately if the concentration exceeds 1.
 
   logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
                             ! by applying a restorative heat flux.
@@ -314,7 +319,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     
     !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
     !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-    if (IST%do_ridging) then
+    if (CS%do_ridging) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
 !$OMP                          private(tmp3)
       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -345,7 +350,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
     !TOM> calculate partial ice growth for ridging and aging.
-    if (IST%do_ridging) then
+    if (CS%do_ridging) then
       !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
       !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
@@ -1154,6 +1159,11 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
   call log_version(param_file, mod, version, &
      "This module calculates the slow evolution of the ice mass, heat, and salt budgets.")
 
+  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+                 "If true, apply a ridging scheme to the convergent ice. \n"//&
+                 "Otherwise, ice is compressed proportionately if the \n"//&
+                 "concentration exceeds 1.  The original SIS2 implementation \n"//&
+                 "is based on work by Torge Martin.", default=.false.)
   call get_param(param_file, mod, "ICE_BULK_SALINITY", CS%ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", units = "g/kg", default=4.0)
   call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", CS%ice_rel_salin, &
