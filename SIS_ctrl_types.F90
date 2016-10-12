@@ -69,6 +69,8 @@ type SIS_fast_CS
 !  type(ice_thermo_type), pointer  :: ITV => NULL()
 !  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
   type(SIS_diag_ctrl), pointer     :: diag ! A structure that regulates diagnostics.
+                    ! diag here might point to its own structure, or it might point
+                    ! to the same structure as is used by SIS_slow_CS.
 end type SIS_fast_CS
 
 
@@ -91,7 +93,6 @@ type SIS_slow_CS
                             ! modifies the calving field among other things.
   logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
                            ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
-!  logical :: do_ridging     ! If true, use the ridging code
 
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
@@ -104,7 +105,7 @@ type SIS_slow_CS
   type(ice_state_type), pointer   :: IST => NULL()
 !  type(ice_thermo_type), pointer  :: ITV => NULL()
 !  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
-  type(SIS_diag_ctrl), pointer      :: diag ! A structure that regulates diagnostics.
+  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 end type SIS_slow_CS
 
 

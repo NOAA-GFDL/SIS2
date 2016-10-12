@@ -697,24 +697,24 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   dt_slow = time_type_to_real(IST%Time_step_slow)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
-  call enable_SIS_averaging(dt_slow, IST%Time, IST%diag)
+  call enable_SIS_averaging(dt_slow, IST%Time, fCS%diag)
   if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
-                     IST%part_size(isc:iec,jsc:jec,:), IST%diag)
-  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, IST%diag)
-  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, IST%diag)
-  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, IST%diag)
+                     IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, fCS%diag)
+  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, fCS%diag)
+  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, fCS%diag)
   if (IST%Cgrid_dyn) then
-    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, IST%diag)
-    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, IST%diag)
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, fCS%diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, fCS%diag)
   else
-    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, IST%diag)
-    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, IST%diag)
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, fCS%diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, fCS%diag)
   endif
   if (OSS%id_frazil>0) &
-    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, IST%diag)
+    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, fCS%diag)
 
-  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, IST%diag)
-  call disable_SIS_averaging(IST%diag)
+  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, fCS%diag)
+  call disable_SIS_averaging(fCS%diag)
 
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
@@ -756,7 +756,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
 
   call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
-                                  Ice%G, Ice%IG, Time_start, Time_end)
+                                  Ice%G, Ice%IG, Ice%fCS, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
@@ -857,13 +857,14 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 end subroutine set_ocean_albedo
 
 
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Time_end)
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(ice_data_type),           intent(in)    :: Ice
-  type(ice_state_type),          intent(inout) :: IST
-  type(ice_rad_type),            intent(inout) :: Rad
-  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_state_type),          intent(in)    :: IST
+  type(ice_rad_type),            intent(in)    :: Rad
+  type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
+  type(SIS_fast_CS),             intent(inout) :: CS
   type(time_type),               intent(in)    :: Time_start, Time_end
 
   real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
@@ -880,27 +881,27 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Tim
 
   dt_diag = time_type_to_real(Time_end - Time_start)
 
-  call enable_SIS_averaging(dt_diag, Time_end, IST%diag)
+  call enable_SIS_averaging(dt_diag, Time_end, CS%diag)
 
   if (Rad%id_alb_vis_dir>0) call post_avg(Rad%id_alb_vis_dir, Ice%albedo_vis_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_vis_dif>0) call post_avg(Rad%id_alb_vis_dif, Ice%albedo_vis_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_nir_dir>0) call post_avg(Rad%id_alb_nir_dir, Ice%albedo_nir_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_nir_dif>0) call post_avg(Rad%id_alb_nir_dif, Ice%albedo_nir_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), IST%diag)
+                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
 
   if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
+                                   IST%part_size(:,:,1:), CS%diag, G=G)
   if (Rad%id_sw_abs_snow>0) call post_avg(Rad%id_sw_abs_snow, Rad%sw_abs_snow, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
+                                   IST%part_size(:,:,1:), CS%diag, G=G)
   do m=1,NkIce
     if (Rad%id_sw_abs_ice(m)>0) call post_avg(Rad%id_sw_abs_ice(m), Rad%sw_abs_ice(:,:,:,m), &
-                                     IST%part_size(:,:,1:), IST%diag, G=G)
+                                     IST%part_size(:,:,1:), CS%diag, G=G)
   enddo
   if (Rad%id_sw_abs_ocn>0) call post_avg(Rad%id_sw_abs_ocn, Rad%sw_abs_ocn, &
-                                   IST%part_size(:,:,1:), IST%diag, G=G)
+                                   IST%part_size(:,:,1:), CS%diag, G=G)
 
   if (Rad%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
@@ -909,7 +910,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Tim
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                      (Rad%sw_abs_ocn(i,j,k) + Rad%sw_abs_int(i,j,k))
     enddo ; enddo ; enddo
-    call post_data(Rad%id_sw_pen, tmp_diag, IST%diag)
+    call post_data(Rad%id_sw_pen, tmp_diag, CS%diag)
   endif
 
   if (Rad%id_lwdn > 0) then
@@ -920,7 +921,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Tim
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                            (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
     endif ; enddo ; enddo ; enddo
-    call post_data(Rad%id_lwdn, tmp_diag, IST%diag)
+    call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
 
   if (Rad%id_swdn > 0) then
@@ -936,12 +937,12 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, Time_start, Tim
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
     endif ; enddo ; enddo ; enddo
-    call post_data(Rad%id_swdn, tmp_diag, IST%diag)
+    call post_data(Rad%id_swdn, tmp_diag, CS%diag)
   endif
 
-  if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, IST%diag)
+  if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, CS%diag)
 
-  call disable_SIS_averaging(IST%diag)
+  call disable_SIS_averaging(CS%diag)
 
 end subroutine fast_radiation_diagnostics
 
@@ -1377,9 +1378,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
                               Ice%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
-  call SIS_diag_mediator_init(G, IG, param_file, IST%diag, component="SIS", &
-                              doc_file_dir = dirs%output_directory)
-  call set_SIS_axes_info(G, IG, param_file, IST%diag)
+  if (slow_ice_PE) then
+    call SIS_diag_mediator_init(G, IG, param_file, Ice%sCS%diag, component="SIS", &
+                                doc_file_dir = dirs%output_directory)
+    if (fast_ice_PE) Ice%fCS%diag => Ice%sCS%diag
+    call set_SIS_axes_info(G, IG, param_file, Ice%sCS%diag)
+  elseif (fast_ice_PE) then
+    allocate(Ice%fCS%diag)
+    call SIS_diag_mediator_init(G, IG, param_file, Ice%fCS%diag, component="SIS", &
+                                doc_file_dir = dirs%output_directory)
+    call set_SIS_axes_info(G, IG, param_file, Ice%fCS%diag)
+  endif
 
   nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
   call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
@@ -1402,8 +1411,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   !   Register any tracers that will be handled via tracer flow control for 
   ! restarts and advection.
-  call SIS_call_tracer_register(G, IG, param_file, Ice%SIS_tracer_flow_CSp, &
-                                IST%diag, IST%TrReg, Ice%Ice_restart, restart_file)
+  if (slow_ice_PE) then
+    call SIS_call_tracer_register(G, IG, param_file, Ice%SIS_tracer_flow_CSp, &
+                                  Ice%sCS%diag, IST%TrReg, Ice%Ice_restart, restart_file)
+  endif
 
   ! Redefine the computational domain sizes to use the ice model's indexing convention.
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
@@ -1691,18 +1702,24 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   enddo ; enddo ; enddo
 
 
-  call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, IST%diag, IST%Time)
-  Ice%axes(1:2) = IST%diag%axesTc%handles(1:2)
+  if (slow_ice_PE) then
+    call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, &
+                              Ice%sCS%diag, IST%Time)
+    Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
+  else
+    !### Does there need to be a fast_ice_diagnostics_init?
+    Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
+  endif
 
   if (fast_ice_PE) then
-    call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, IST%diag, Ice%fast_thermo_CSp)
+    call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, Ice%fCS%diag, Ice%fast_thermo_CSp)
   endif
 
   if (slow_ice_PE) then
-    call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, IST%diag, Ice%slow_thermo_CSp, &
+    call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, Ice%sCS%diag, Ice%slow_thermo_CSp, &
                               Ice%SIS_tracer_flow_CSp)
 
-    call SIS_dyn_trans_init(Ice%Time, G, IG, param_file, IST%diag, &
+    call SIS_dyn_trans_init(Ice%Time, G, IG, param_file, Ice%sCS%diag, &
                             Ice%dyn_trans_CSp, dirs%output_directory, Time_Init)
   !  IST%ice_transport_CSp => SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp)
 
@@ -1751,7 +1768,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! will be moved up later.
   if (fast_ice_PE) then
     Ice%fCS%IST => IST
-    Ice%fCS%diag => IST%diag
 
     Ice%fCS%slab_ice = IST%slab_ice
     Ice%fCS%Cgrid_dyn = IST%Cgrid_dyn
@@ -1766,7 +1782,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! will be moved up later.
   if (slow_ice_PE) then
     Ice%sCS%IST => IST
-    Ice%sCS%diag => IST%diag
 
     Ice%sCS%slab_ice = IST%slab_ice
     Ice%sCS%Cgrid_dyn = IST%Cgrid_dyn
@@ -1841,7 +1856,11 @@ subroutine ice_model_end (Ice)
 
   call dealloc_ice_rad(Ice%Rad)
 
-  call SIS_diag_mediator_end(IST%Time, IST%diag)
+  if (slow_ice_PE) then
+    call SIS_diag_mediator_end(IST%Time, Ice%sCS%diag)
+  else
+    call SIS_diag_mediator_end(IST%Time, Ice%fCS%diag)
+  endif
 
   deallocate(Ice%Ice_state)
   if (associated(Ice%fCS)) deallocate(Ice%fCS)
