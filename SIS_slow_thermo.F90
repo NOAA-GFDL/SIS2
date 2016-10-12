@@ -185,6 +185,9 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                  CS%diag, G=G)
   if (FIA%id_evap>0) call post_avg(FIA%id_evap, FIA%flux_q_top, IST%part_size, &
                                  CS%diag, G=G)
+  if (FIA%id_slp>0) &
+    call post_data(FIA%id_slp, FIA%p_atm_surf, IST%diag)
+
   if (FIA%id_sw>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec

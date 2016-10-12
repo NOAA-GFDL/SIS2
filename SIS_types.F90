@@ -43,9 +43,6 @@ public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
-! public :: ice_diagnostics_init
-
-public :: fast_thermo_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -111,31 +108,12 @@ type ice_state_type
   
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
-  integer :: id_slp=-1
-
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 end type ice_state_type
-
-type fast_thermo_CS ! To be made ; private
-  ! These two arrarys are used with column_check when evaluating the enthalpy
-  ! conservation with the fast thermodynamics code. 
-  real, pointer, dimension(:,:,:) :: &
-    enth_prev, heat_in
-
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
-
-  integer :: n_fast = 0   ! The number of times update_ice_model_fast
-                          ! has been called.
-end type fast_thermo_CS
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
 !! state as seen by the sea-ice or atmosphere, on the ice grid.
@@ -222,6 +200,7 @@ type fast_ice_avg_type
                    ! categories on an A-grid, in Pa.
     WindStr_y  , & ! The meridional wind stress averaged over the
                    ! ice categories on an A-grid, in Pa.
+    p_atm_surf , & ! The atmospheric pressure at the top of the ice, in Pa.
     ice_free   , & ! The fractional open water used in calculating
                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
     ice_cover      ! The fractional ice coverage, summed across all
@@ -234,7 +213,7 @@ type fast_ice_avg_type
                    ! sea ice.
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
-  integer :: id_sh=-1, id_lh=-1, id_sw=-1
+  integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
@@ -469,27 +448,28 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
 
   FIA%avg_count = 0
-  allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0 !NR
-  allocate(FIA%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0 !NR
-  allocate(FIA%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_t_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%flux_q_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0 !NI
-  allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0 !NI
-  allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0 !NI
-  allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0 !NI
+  allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0
+  allocate(FIA%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0
+  allocate(FIA%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_t_top(:,:,:) = 0.0
+  allocate(FIA%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_q_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
+  allocate(FIA%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0
+  allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
+  allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
+  allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
 
-  allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0 !NR
-  allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0 !NI
-  allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0 !NR
-  allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0 !NR
-  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0 !NI
-  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0 !NI
-  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0 !NI
-  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 !NI
+  allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0
+  allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0
+  allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0
+  allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0
+  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0
+  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0
+  allocate(FIA%p_atm_surf(SZI_(HI), SZJ_(HI))) ; FIA%p_atm_surf(:,:) = 0.0
+  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0
+  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 
 
   allocate(FIA%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
@@ -654,8 +634,8 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
-  deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%ice_free, FIA%ice_cover)
-  deallocate(FIA%sw_abs_ocn)
+  deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
+  deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg

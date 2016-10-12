@@ -52,7 +52,6 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
-use SIS_types, only : fast_thermo_CS
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -66,7 +65,24 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
-public :: avg_top_quantities
+public :: fast_thermo_CS, avg_top_quantities
+
+type fast_thermo_CS ; private
+  ! These two arrarys are used with column_check when evaluating the enthalpy
+  ! conservation with the fast thermodynamics code. 
+  real, pointer, dimension(:,:,:) :: &
+    enth_prev, heat_in
+
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
+
+  integer :: n_fast = 0   ! The number of times update_ice_model_fast
+                          ! has been called.
+end type fast_thermo_CS
 
 contains
 

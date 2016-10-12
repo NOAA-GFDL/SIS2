@@ -166,7 +166,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%IOF, Ice%G, Ice%IG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%IOF, Ice%FIA, Ice%G, Ice%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
@@ -222,10 +222,11 @@ end subroutine set_ice_ocean_fluxes
 !> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
 !!  tracers from the ice model's internal state to the public ice data type
 !!  for use by the ocean model.
-subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG, sCS)
+subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
   type(ice_data_type),       intent(inout) :: Ice
   type(ice_state_type),      intent(inout) :: IST
   type(ice_ocean_flux_type), intent(in)    :: IOF
+  type(fast_ice_avg_type),   intent(in)    :: FIA
   type(SIS_hor_grid_type),   intent(inout) :: G
   type(ice_grid_type),       intent(in)    :: IG
   type(SIS_slow_CS),         intent(in)    :: sCS
@@ -279,13 +280,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG, sCS)
     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-! ### This call seems out of place here.
-  if (IST%id_slp>0) then
-    call enable_SIS_averaging(real(time_type_to_real(IST%Time_step_slow)), IST%Time, IST%diag)
-    call post_data(IST%id_slp, Ice%p_surf, IST%diag)
-    call disable_SIS_averaging(IST%diag)
-  endif
-
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
@@ -309,7 +303,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, G, IG, sCS)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
 
     if (IOF%slp2ocean) then
-      Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
     else
       Ice%p_surf(i2,j2) = 0.0
     endif
@@ -767,7 +761,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
   call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
-                                     Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
+                                     Ice%FIA, Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
@@ -778,11 +772,13 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
 end subroutine update_ice_model_fast
 
-subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, G, IG, Time_start, Time_end)
+subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
+                                          G, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_data_type),           intent(inout) :: Ice
   type(ice_state_type),          intent(inout) :: IST
   type(ice_rad_type),            intent(inout) :: Rad
+  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
@@ -803,9 +799,9 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, G, IG, 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,Atmos_boundary,io_A,jo_A,io_I,jo_I ) &
 !$OMP                           private(i2,j2,i3,j3)
   do j=jsc,jec ; do i=isc,iec
-    i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A
+    i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
-    Ice%p_surf(i2,j2) = Atmos_boundary%p(i3,j3,1)
+    FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
 !$OMP                           private(i2,j2,k2)

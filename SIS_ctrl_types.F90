@@ -282,7 +282,7 @@ subroutine ice_diagnostics_init(IST, IOF, OSS, FIA, Rad, G, IG, diag, Time)
 !### THIS DIAGNOSTIC IS MISSING.
 ! IST%id_ta    = register_SIS_diag_field('ice_model', 'TA', diag%axesT1, Time, &
 !            'surface air temperature', 'C', missing_value=missing)
-  IST%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
+  FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
              'sea level pressure', 'Pa', missing_value=missing)
   OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
              'sea surface temperature', 'deg-C', missing_value=missing)
