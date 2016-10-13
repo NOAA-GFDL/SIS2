@@ -90,6 +90,8 @@ public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 type dyn_trans_CS ; private
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
+  logical :: specified_ice  ! If true, the sea ice is specified and there is
+                            ! no need for ice dynamics.
   real    :: dt_ice_dyn   ! The time step used for the slow ice dynamics, including
                           ! stepping the continuity equation and interactions
                           ! between the ice mass field and velocities, in s. If
@@ -144,6 +146,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
+  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
 
@@ -151,7 +154,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
+  H_to_m_ice = IG%H_to_kg_m2 / rho_ice
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
 
@@ -249,6 +253,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow ! The nominal density of snow in kg m-3.
 
   real :: dt_slow_dyn
   integer :: ndyn_steps
@@ -280,7 +286,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
-  if (IST%specified_ice) then
+  if (CS%specified_ice) then
     ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
   else
     ndyn_steps = 1
@@ -617,8 +623,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   ! Add snow volume dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
+!  call get_SIS2_thermo_coefs(IST%ITV, rho_snow=rho_snow)
 !  if (CS%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j)*(IST%Rho_snow/dt_slow)
+!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j)*(Rho_snow/dt_slow)
 !  enddo ; enddo ; enddo ; endif
 
   call mpp_clock_begin(iceClock8)
@@ -672,6 +679,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   do_temp_diags = (IST%id_tsn > 0)
   do m=1,NkIce ; if (IST%id_t(m)>0) do_temp_diags = .true. ; enddo
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
+                             rho_ice=rho_ice, rho_snow=rho_snow, &
                              specified_thermo_salinity=spec_thermo_sal)
   I_enth_units = 1.0 / enth_units
 
@@ -709,10 +717,10 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                                  scale=IG%H_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
   if (IST%id_hs>0) call post_avg(IST%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
-                                 scale=IG%H_to_kg_m2/IST%Rho_snow, wtd=.true.)
+                                 scale=IG%H_to_kg_m2/Rho_snow, wtd=.true.)
   if (IST%id_hi>0) call post_avg(IST%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
-                                 scale=IG%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
+                                 scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (IST%id_tsfc>0) call post_avg(IST%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
                                  CS%diag, G=G, offset=-T_0degC, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, temp_snow, IST%part_size(:,:,1:), &
@@ -769,7 +777,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 ! !$OMP                          private(tmp3)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !         tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-!         if (tmp3*IG%H_to_kg_m2 > IST%Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
+!         if (tmp3*IG%H_to_kg_m2 > Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
 !           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
 !         else
 !           rdg_frac(i,j,k) = 0.0
@@ -1124,6 +1132,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, &
      "This module updates the ice momentum and does ice transport.")
+  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+                 "If true, the ice is specified and there is no dynamics.", &
+                 default=.false.)
   call get_param(param_file, mod, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice \n"//&
                  "dynamics; if false use a B-grid discretization.", &

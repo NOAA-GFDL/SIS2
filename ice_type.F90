@@ -440,7 +440,7 @@ subroutine ice_stock_pe(Ice, index, value)
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
               value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                              (kg_H * IST%mH_ice(i,j,1)) * LI
+                              (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
       else

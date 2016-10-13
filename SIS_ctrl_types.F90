@@ -54,9 +54,6 @@ type SIS_fast_CS
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
-  real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
-  real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
-
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
@@ -87,15 +84,11 @@ type SIS_slow_CS
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
-  real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
-  real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
   logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
                            ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
 
-  logical :: specified_ice  ! If true, the sea ice is specified and there is
-                            ! no need for ice dynamics.
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
   logical :: debug          ! If true, write verbose checksums for debugging purposes.

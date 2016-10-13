@@ -161,8 +161,15 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
-  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+  if ( CS%specified_ice ) then
+    CS%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  endif
   call get_param(param_file, mod, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
                  "An angle by which to rotate the velocities at the air- \n"//&
                  "water boundary in calculating stresses.", units="degrees", &

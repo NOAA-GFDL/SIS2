@@ -91,12 +91,6 @@ type ice_state_type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
-  real :: Rho_ice      ! The nominal density of sea ice, in kg m-3.
-  real :: Rho_snow     ! The nominal density of snow on sea ice, in kg m-3.
-
-  logical :: specified_ice  ! If true, the sea ice is specified and there is
-                            ! no need for ice dynamics.
-
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1

@@ -1738,11 +1738,12 @@ end function energy_melt_enthS
 ! get_thermo_coefs - return various thermodynamic coefficients.                !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
-                                 Cp_SeaWater, Latent_fusion, Latent_vapor, &
+                                 Cp_SeaWater, rho_ice, rho_snow, Latent_fusion, Latent_vapor, &
                                  EOS, specified_thermo_salinity)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real, dimension(:), optional, intent(out) :: ice_salinity
   real,           optional, intent(out) :: Cp_Ice, enthalpy_units, Cp_SeaWater
+  real,           optional, intent(out) :: rho_ice, rho_snow
   real,           optional, intent(out) :: Latent_fusion
   real,           optional, intent(out) :: Latent_vapor
   type(EOS_type), optional, pointer     :: EOS
@@ -1767,6 +1768,8 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
   if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
   if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
+  if (present(rho_ice)) rho_ice = ITV%rho_ice
+  if (present(rho_snow)) rho_snow = ITV%rho_snow
   if (present(Latent_fusion)) Latent_fusion = ITV%LI
   if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
   if (present(EOS)) then

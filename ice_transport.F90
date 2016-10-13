@@ -1071,10 +1071,16 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
     call log_param(param_file, mod, "NSTEPS_ADV", CS%adv_sub_steps, &
                  "The number of advective iterations for each slow time \n"//&
                  "step.  With SPECIFIED_ICE this is always 0.")
+    CS%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
   else
     call get_param(param_file, mod, "NSTEPS_ADV", CS%adv_sub_steps, &
                  "The number of advective iterations for each slow time \n"//&
                  "step.", default=1)
+    call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+                 "If true, use the very old slab-style ice.", default=.false.)
   endif
 
   call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &
@@ -1107,8 +1113,6 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "the horizontal floe aspect ratio.  Sensible values are \n"//&
                  "0 (no rolling) or larger than 1.", units="Nondim",default=1.0)
 
-  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
-                 "If true, use the very old slab-style ice.", default=.false.)
   call get_param(param_file, mod, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow \n"//&
                  "mass conservation in the sea-ice transport code.  This \n"//&

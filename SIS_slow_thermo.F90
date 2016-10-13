@@ -83,6 +83,8 @@ public :: slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
 
 type slow_thermo_CS ; private
+  logical :: specified_ice  ! If true, the sea ice is specified and there is
+                            ! no need for ice dynamics.
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
@@ -270,6 +272,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(SZI_(G),SZJ_(G))   :: &
     h_ice_input         ! The specified ice thickness, with specified_ice, in m.
 
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: Idt_slow
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
@@ -307,12 +310,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   !
   ! Thermodynamics
   !
-  if (IST%specified_ice) then   ! over-write changes with specifications.
+  if (CS%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
     call get_sea_surface(CS%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,:), &
                          h_ice_input(isc:iec,jsc:jec))
+    call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
     do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * IST%Rho_ice)
+      IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
     call pass_var(IST%part_size, G%Domain)
 
@@ -445,6 +449,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(EOS_type), pointer :: EOS
   real :: Cp_water
   real :: drho_dT(1), drho_dS(1), pres_0(1)
+  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
 
   real :: Idt_slow    ! The inverse of the thermodynamic step, in s-1.
   real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
@@ -485,8 +490,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             specified_thermo_salinity=spec_thermo_sal, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
+                   rho_ice=rho_ice, specified_thermo_salinity=spec_thermo_sal, &
+                   Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
   S_col0(0) = 0.0 ; do m=1,NkIce ; S_col0(m) = S_col(m) ; enddo
   call calculate_T_Freeze(S_col0(0:NkIce), Tfr_col0(0:NkIce), IST%ITV)
   I_enth_units = 1.0 / enth_units
@@ -561,7 +566,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
           enddo ; endif
         endif
       enddo
-      qflx_res_ice(i,j) = -(LatHtFus*IST%Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
+      qflx_res_ice(i,j) = -(LatHtFus*Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
                            (86400.0*CS%ice_restore_timescale)
       if (qflx_res_ice(i,j) < 0.0) then
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
@@ -983,8 +988,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
          mtot_ice = mtot_ice + IST%part_size(i,j,k) * IG%H_to_kg_m2 * &
                      (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
       enddo
-      if (mtot_ice > CS%max_ice_limit*IST%Rho_ice) then
-        frac_keep = CS%max_ice_limit*IST%Rho_ice / mtot_ice
+      if (mtot_ice > CS%max_ice_limit*Rho_ice) then
+        frac_keep = CS%max_ice_limit*Rho_ice / mtot_ice
         frac_melt = 1.0 - frac_keep
         salt_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0
         enth_to_melt = 0.0 ; enth_ice_to_ocn = 0.0
@@ -1162,6 +1167,9 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
   call log_version(param_file, mod, version, &
      "This module calculates the slow evolution of the ice mass, heat, and salt budgets.")
 
+  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+                 "If true, the ice is specified and there is no dynamics.", &
+                 default=.false.)
   call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&

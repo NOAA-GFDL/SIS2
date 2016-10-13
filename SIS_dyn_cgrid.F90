@@ -264,8 +264,15 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
-  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+  if ( CS%specified_ice ) then
+    CS%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  endif
   call get_param(param_file, mod, "U_TRUNC_FILE", CS%u_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to zonal velocity truncations are written. \n"//&

@@ -489,6 +489,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   real :: u, v
   real :: area_pt
   real :: I_Nk
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow ! The nominal density of snow in kg m-3.
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
   real :: dt_slow  ! The thermodynamic step, in s.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
@@ -504,10 +506,11 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   I_Nk = 1.0 / IG%NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
-  H_to_m_snow = IG%H_to_kg_m2 / IST%Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / IST%Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
+  H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
-  if (.not. IST%specified_ice) then
+  if (.not. fCS%specified_ice) then
     IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
   endif
 
@@ -1067,6 +1070,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
+  real :: rho_ice        ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow       ! The nominal density of snow in kg m-3.
   real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
   real :: kmelt          ! A constant that is used in the calculation of the
                          ! ocean/ice basal heat flux, in W m-2 K-1.  This could
@@ -1081,6 +1086,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
   logical :: do_ridging
+  logical :: specified_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: write_geom_files  ! If true, write out the grid geometry files.
@@ -1130,15 +1136,22 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "SPECIFIED_ICE", IST%specified_ice, &
+  call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   call get_param(param_file, mod, "CGRID_ICE_DYNAMICS", IST%Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice \n"//&
                  "dynamics; if false use a B-grid discretization.", &
                  default=.false.)
-  call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
+  if (specified_ice) then
+    IST%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", IST%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  endif
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
@@ -1163,10 +1176,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_param(param_file, mod, "RHO_OCEAN", Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", IST%Rho_ice, &
+  call get_param(param_file, mod, "RHO_ICE", Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", IST%Rho_snow, &
+  call get_param(param_file, mod, "RHO_SNOW", Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
 
@@ -1293,8 +1306,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
-  if (IST%specified_ice) IST%slab_ice = .true.
-
   ! Set up the ice-specific grid describing categories and ice layers.
   nCat_dflt = 5 ; if (IST%slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
   call set_ice_grid(Ice%IG, param_file, nCat_dflt)
@@ -1309,7 +1320,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     enddo
   endif
   do k=1,IG%CatIce+1
-    IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (IST%Rho_ice*IG%kg_m2_to_H)
+    IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (Rho_ice*IG%kg_m2_to_H)
   enddo
 
   ! Set up the domains and lateral grids.
@@ -1605,8 +1616,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     if (IG%H_to_kg_m2 == -1.0) then
       ! This is an older restart file, and the snow and ice thicknesses are in
       ! m, and not a mass coordinate.
-      H_rescale_ice = IST%Rho_ice / H_to_kg_m2_tmp
-      H_rescale_snow = IST%Rho_snow / H_to_kg_m2_tmp
+      H_rescale_ice = Rho_ice / H_to_kg_m2_tmp
+      H_rescale_snow = Rho_snow / H_to_kg_m2_tmp
     elseif (IG%H_to_kg_m2 /= H_to_kg_m2_tmp) then
       H_rescale_ice = IG%H_to_kg_m2 / H_to_kg_m2_tmp
       H_rescale_snow = H_rescale_ice
@@ -1657,7 +1668,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
                          h_ice_input, ice_domain=Ice%domain )
     do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(IST%Rho_ice*IG%kg_m2_to_H)
+      IST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*IG%kg_m2_to_H)
     enddo ; enddo
 
     !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
@@ -1771,9 +1782,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     Ice%fCS%slab_ice = IST%slab_ice
     Ice%fCS%Cgrid_dyn = IST%Cgrid_dyn
-    Ice%fCS%Rho_ice = IST%Rho_ice
-    Ice%fCS%Rho_snow = IST%Rho_snow
-    Ice%fCS%specified_ice = IST%specified_ice
+    Ice%fCS%specified_ice = specified_ice
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
   endif
@@ -1785,9 +1794,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     Ice%sCS%slab_ice = IST%slab_ice
     Ice%sCS%Cgrid_dyn = IST%Cgrid_dyn
-    Ice%sCS%Rho_ice = IST%Rho_ice
-    Ice%sCS%Rho_snow = IST%Rho_snow
-    Ice%sCS%specified_ice = IST%specified_ice
     Ice%sCS%bounds_check = bounds_check
     Ice%sCS%debug = debug
   endif
