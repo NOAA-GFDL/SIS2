@@ -22,6 +22,7 @@ use SIS_types, only : fast_ice_avg_type, ice_rad_type
 
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
+use SIS_optics, only : SIS_optics_CS
 
 use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
@@ -65,6 +66,7 @@ type SIS_fast_CS
   type(ice_state_type), pointer   :: IST => NULL()
 !  type(ice_thermo_type), pointer  :: ITV => NULL()
 !  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
+  type(SIS_optics_CS), pointer     :: optics_CSp => NULL()
   type(SIS_diag_ctrl), pointer     :: diag ! A structure that regulates diagnostics.
                     ! diag here might point to its own structure, or it might point
                     ! to the same structure as is used by SIS_slow_CS.

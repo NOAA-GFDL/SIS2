@@ -107,8 +107,9 @@ use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
+use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
-use SIS2_ice_thm,  only : ice_temp_SIS2, ice_optics_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
 use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
@@ -590,7 +591,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
                sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               IST%ice_thm_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
+               fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
 
       do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -1724,6 +1725,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (fast_ice_PE) then
     call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, Ice%fCS%diag, Ice%fast_thermo_CSp)
+    call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
   endif
 
   if (slow_ice_PE) then
@@ -1830,6 +1832,8 @@ subroutine ice_model_end (Ice)
 
   if (fast_ice_PE) then
     call SIS_fast_thermo_end(Ice%fast_thermo_CSp)
+
+    call SIS_optics_end(Ice%fCS%optics_CSp)
   endif
 
   if (slow_ice_PE) then

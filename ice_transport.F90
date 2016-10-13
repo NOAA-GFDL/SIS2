@@ -58,7 +58,6 @@ type, public :: ice_transport_CS ; private
   real    :: chan_visc  = 0.     ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
   real    :: smag_ocn           = 0.15   ! Smagorinksy coefficient for viscosity (dimensionless)
   real    :: chan_cfl_limit     = 0.25   ! CFL limit for channel viscosity parameterization (dimensionless)
-  real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
                               ! kg m-3.
@@ -1095,9 +1094,6 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "viscous transport in single-point channels.", &
                  units="Nondim", default=0.25)
 
-  call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
-                 "The nominal density of sea water as used by SIS.", &
-                 units="kg m-3", default=1030.0)
   call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
