@@ -87,9 +87,7 @@ type ice_state_type
     rdg_mice    ! A diagnostic of the ice load that was formed by
                 ! ridging, in H (usually kg m-2).
 
-  ! State type
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
-  ! State type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
@@ -98,9 +96,6 @@ type ice_state_type
 
   logical :: specified_ice  ! If true, the sea ice is specified and there is
                             ! no need for ice dynamics.
-!  logical :: bounds_check    ! If true, check for sensible values of thicknesses
-                             ! temperatures, fluxes, etc.
-!  logical :: debug           ! If true, write verbose checksums for debugging purposes.
 
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
@@ -112,7 +107,6 @@ type ice_state_type
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
-  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
