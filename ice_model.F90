@@ -110,7 +110,8 @@ use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
+use SIS2_ice_thm,  only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
+use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S, T_freeze
 use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
@@ -1403,8 +1404,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
-  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp, IST%ITV, &
-                         init_EOS=nudge_sea_ice)
+  call ice_thermo_init(param_file, IST%ITV, init_EOS=nudge_sea_ice)
+
+  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
 
@@ -1841,7 +1843,8 @@ subroutine ice_model_end (Ice)
 
     call SIS_slow_thermo_end(Ice%slow_thermo_CSp)
 
-    call SIS2_ice_thm_end(IST%ice_thm_CSp, IST%ITV)
+    call ice_thermo_end(IST%ITV)
+    call SIS2_ice_thm_end(IST%ice_thm_CSp)
 
     ! End icebergs
     if (Ice%sCS%do_icebergs) call icebergs_end(Ice%icebergs)

@@ -106,9 +106,10 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 
 implicit none ; private
 
-public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
-public :: SIS2_ice_thm_init, ice_temp_SIS2
+public :: SIS2_ice_thm_init, SIS2_ice_thm_end, ice_temp_SIS2
 public :: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
+
+public :: get_SIS2_thermo_coefs, ice_thermo_init, ice_thermo_end
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
 public :: e_to_melt_TS, energy_melt_enthS
@@ -181,9 +182,71 @@ end type SIS2_ice_thm_CS
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_thm_param - set ice thermodynamic parameters                             !
+!> SIS2_ice_thm_init initializes the control structure for the ice thermodynamic
+!! update code.
+subroutine SIS2_ice_thm_init(param_file, CS)
+
+  type(param_file_type), intent(in)    :: param_file
+  type(SIS2_ice_thm_CS), pointer :: CS
+
+! This include declares and sets the variable "version".
+#include "version_variable.h"
+  character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
+
+  if (.not.associated(CS)) allocate(CS)
+
+  call log_version(param_file, mod, version, &
+     "This module does updates of the sea-ice due to thermodynamic changes "//&
+     "and calculates ice thermodynamic quantities.")
+
+  call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
+                 "The conductivity of heat in snow.", units="W m-1 K-1", &
+                 default=0.31)
+  call get_param(param_file, mod, "ICE_CONDUCTIVITY", CS%Ki, &
+                 "The conductivity of heat in ice.", units="W m-1 K-1", &
+                 default=2.03)
+  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", CS%h_lo_lim, &
+                 "The minimum ice thickness at which to do temperature \n"//&
+                 "calculations.", units="m", default=0.0)
+
+  call get_param(param_file, mod, "DO_POND", CS%do_pond, &
+                 "If true, calculate melt ponds and use them for\n"//&
+                 "shortwave radiation calculation.", default=.false.)
+  call get_param(param_file, mod, "TDRAIN", CS%tdrain, &
+                 "Melt ponds drain to sea level when ice average temp.\n"//&
+                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8)
+  call get_param(param_file, mod, "R_MIN_POND", CS%r_min_pond, &
+                 "Minimum retention rate of surface water sources in melt pond\n"//&
+                 "(retention scales linearly with ice cover)", default=0.15)
+  call get_param(param_file, mod, "R_MAX_POND", CS%r_max_pond, &
+                 "Maximum retention rate of surface water sources in melt pond\n"//&
+                 "(retention scales linearly with ice cover)", default=0.9)
+  call get_param(param_file, mod, "MIN_POND_FRAC", CS%min_pond_frac, &
+                 "Minimum melt pond cover (by ponds at sea level)\n"//&
+                 "pond drains to this when ice is porous.", default=0.2)
+  call get_param(param_file, mod, "MAX_POND_FRAC", CS%max_pond_frac, &
+                 "Maximum melt pond cover - associated with pond volume\n"//&
+                 "that suppresses ice top to waterline", default=0.5)
+  call get_param(param_file, mod, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
+                 "An estimate of the range of snow and ice temperatures \n"//&
+                 "that is used to evaluate whether an explicit diffusive \n"//&
+                 "form of the heat fluxes or an inversion based on the \n"//&
+                 "layer heat budget is more likely to be more accurate. \n"//&
+                 "Setting this to 0 causes the explicit diffusive form. \n"//&
+                 "to always be used.", units="degC", default=40.0)
+  CS%temp_range_est = abs(CS%temp_range_est)
+
+  call get_param(param_file, mod, "OLD_ICE_HEAT_CAPACITY", CS%old_heat_cap, &
+                 "If true, use an older linearization of the sea ice heat \n"//&
+                 "capacity for temperatures above the freezing point in the \n"//&
+                 "calculation of the initial ice temperature estimate.", default=.false.)
+
+end subroutine SIS2_ice_thm_init
+
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
+!> ice_thermo_init initializes the sea-ice ice thermodynamics parameter structure.
+subroutine ice_thermo_init(param_file, ITV, init_EOS )
 
   type(param_file_type), intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
@@ -194,7 +257,6 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
 
-  if (.not.associated(CS)) allocate(CS)
   if (.not.associated(ITV)) allocate(ITV)
 
   call log_version(param_file, mod, version, &
@@ -251,53 +313,11 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
                  units="J kg-1", default=1.0)
   if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
 
-  call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
-                 "The conductivity of heat in snow.", units="W m-1 K-1", &
-                 default=0.31)
-  call get_param(param_file, mod, "ICE_CONDUCTIVITY", CS%Ki, &
-                 "The conductivity of heat in ice.", units="W m-1 K-1", &
-                 default=2.03)
-  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", CS%h_lo_lim, &
-                 "The minimum ice thickness at which to do temperature \n"//&
-                 "calculations.", units="m", default=0.0)
-
-  call get_param(param_file, mod, "DO_POND", CS%do_pond, &
-                 "If true, calculate melt ponds and use them for\n"//&
-                 "shortwave radiation calculation.", default=.false.)
-  call get_param(param_file, mod, "TDRAIN", CS%tdrain, &
-                 "Melt ponds drain to sea level when ice average temp.\n"//&
-                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8)
-  call get_param(param_file, mod, "R_MIN_POND", CS%r_min_pond, &
-                 "Minimum retention rate of surface water sources in melt pond\n"//&
-                 "(retention scales linearly with ice cover)", default=0.15)
-  call get_param(param_file, mod, "R_MAX_POND", CS%r_max_pond, &
-                 "Maximum retention rate of surface water sources in melt pond\n"//&
-                 "(retention scales linearly with ice cover)", default=0.9)
-  call get_param(param_file, mod, "MIN_POND_FRAC", CS%min_pond_frac, &
-                 "Minimum melt pond cover (by ponds at sea level)\n"//&
-                 "pond drains to this when ice is porous.", default=0.2)
-  call get_param(param_file, mod, "MAX_POND_FRAC", CS%max_pond_frac, &
-                 "Maximum melt pond cover - associated with pond volume\n"//&
-                 "that suppresses ice top to waterline", default=0.5)
-  call get_param(param_file, mod, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
-                 "An estimate of the range of snow and ice temperatures \n"//&
-                 "that is used to evaluate whether an explicit diffusive \n"//&
-                 "form of the heat fluxes or an inversion based on the \n"//&
-                 "layer heat budget is more likely to be more accurate. \n"//&
-                 "Setting this to 0 causes the explicit diffusive form. \n"//&
-                 "to always be used.", units="degC", default=40.0)
-  CS%temp_range_est = abs(CS%temp_range_est)
-
-  call get_param(param_file, mod, "OLD_ICE_HEAT_CAPACITY", CS%old_heat_cap, &
-                 "If true, use an older linearization of the sea ice heat \n"//&
-                 "capacity for temperatures above the freezing point in the \n"//&
-                 "calculation of the initial ice temperature estimate.", default=.false.)
-
   if (present(init_EOS)) then ; if (init_EOS) then
     if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
   endif ; endif
 
-end subroutine SIS2_ice_thm_init
+end subroutine ice_thermo_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -2027,13 +2047,20 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
 
 end subroutine rebalance_ice_layers
 
-subroutine SIS2_ice_thm_end(CS, ITV)
-  type(SIS2_ice_thm_CS), pointer :: CS
-  type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
+!> SIS2_ice_thm_end deallocates an SIS2_ice_thm_CS type and any sub-types.
+subroutine SIS2_ice_thm_end(CS)
+  type(SIS2_ice_thm_CS), pointer :: CS !< A pointer to the SIS2_ice_thm control structure.
+
+  deallocate(CS)
+end subroutine SIS2_ice_thm_end
+
+!> ice_thermo_end deallocates an ice_thermo_type and any sub-types.
+subroutine ice_thermo_end(ITV)
+  type(ice_thermo_type), pointer :: ITV !< A pointer to the ice thermodynamic parameter structure.
 
   if (associated(ITV%EOS)) call EOS_end(ITV%EOS)
   deallocate(ITV)
-  deallocate(CS)
-end subroutine SIS2_ice_thm_end
+
+end subroutine ice_thermo_end
 
 end module SIS2_ice_thm
