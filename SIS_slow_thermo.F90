@@ -68,10 +68,11 @@ use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 
-use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
-use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
+use SIS2_ice_thm, only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
+use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
+use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm, only : T_freeze, enthalpy_liquid, calculate_T_freeze
 use ice_transport_mod, only : adjust_ice_categories, ice_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
@@ -140,6 +141,10 @@ type slow_thermo_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
+
+  ! These are pointers to the control structures for subsidiary modules.
+  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
+
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
@@ -730,7 +735,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                    FIA%lprec_top(i,j,k)*dt_slow, FIA%flux_q_top(i,j,k)*dt_slow, &
                    FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                   snow_to_ice(i,j,k), salt_to_ice, IST%ITV, IST%ice_thm_CSp, bablt, &
+                   snow_to_ice(i,j,k), salt_to_ice, IST%ITV, CS%ice_thm_CSp, bablt, &
                    enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
 
       IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
@@ -920,7 +925,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, frazil_cat(k), &
                    T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
-                   IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
+                   CS%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
 
@@ -1272,6 +1277,8 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                'nudging freshwater flux', 'kg/(m^2*s)', missing_value=missing)
   endif
 
+  call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
+
   iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
@@ -1297,6 +1304,10 @@ end subroutine SIS_slow_thermo_set_ptrs
 !> SIS_slow_thermo_end deallocates any memory associated with this module.
 subroutine SIS_slow_thermo_end (CS)
   type(slow_thermo_CS), pointer :: CS
+
+  call SIS2_ice_thm_end(CS%ice_thm_CSp)
+
+  if (associated(CS)) deallocate(CS)
 
 end subroutine SIS_slow_thermo_end
 

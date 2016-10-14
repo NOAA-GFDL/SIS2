@@ -57,6 +57,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
 
+use SIS2_ice_thm,  only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_temp_SIS2
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
 
@@ -82,6 +83,9 @@ type fast_thermo_CS ; private
 
   integer :: n_fast = 0   ! The number of times update_ice_model_fast
                           ! has been called.
+
+  ! These are pointers to the control structures for subsidiary modules.
+  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 end type fast_thermo_CS
 
 contains
@@ -454,7 +458,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, CS, G, 
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                          T_Freeze_surf, FIA%bheat(i,j), ts_new, &
                          dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                         IST%ice_thm_CSp, IST%ITV, CS%column_check)
+                         CS%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -551,6 +555,8 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
 
+  call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
+
   if (CS%column_check) then
     allocate(CS%enth_prev(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
     allocate(CS%heat_in(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
@@ -565,6 +571,8 @@ end subroutine SIS_fast_thermo_init
 !> SIS_fast_thermo_end deallocates any memory associated with this module.
 subroutine SIS_fast_thermo_end(CS)
   type(fast_thermo_CS), pointer :: CS
+
+  call SIS2_ice_thm_end(CS%ice_thm_CSp)
 
   if (associated(CS)) deallocate(CS)
 

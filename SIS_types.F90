@@ -100,7 +100,6 @@ type ice_state_type
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
-  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface

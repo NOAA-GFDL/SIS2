@@ -1406,8 +1406,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
   call ice_thermo_init(param_file, IST%ITV, init_EOS=nudge_sea_ice)
 
-  call SIS2_ice_thm_init(param_file, IST%ice_thm_CSp)
-
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
 
   ! Register tracers that will be advected around.
@@ -1844,7 +1842,6 @@ subroutine ice_model_end (Ice)
     call SIS_slow_thermo_end(Ice%slow_thermo_CSp)
 
     call ice_thermo_end(IST%ITV)
-    call SIS2_ice_thm_end(IST%ice_thm_CSp)
 
     ! End icebergs
     if (Ice%sCS%do_icebergs) call icebergs_end(Ice%icebergs)

@@ -191,13 +191,12 @@ subroutine SIS2_ice_thm_init(param_file, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
+  character(len=40)  :: mod = "SIS2_ice_thm (updates)" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
 
   call log_version(param_file, mod, version, &
-     "This module does updates of the sea-ice due to thermodynamic changes "//&
-     "and calculates ice thermodynamic quantities.")
+     "This sub-module does updates of the sea-ice due to thermodynamic changes.")
 
   call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
@@ -1576,13 +1575,12 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
+  character(len=40)  :: mod = "SIS2_ice_thm (thermo)" ! This module's name.
 
   if (.not.associated(ITV)) allocate(ITV)
 
   call log_version(param_file, mod, version, &
-     "This module does updates of the sea-ice due to thermodynamic changes "//&
-     "and calculates ice thermodynamic quantities.")
+     "This sub-module calculates ice thermodynamic quantities.")
   call get_param(param_file, mod, "LATENT_HEAT_FUSION", ITV%LI, &
                  "The latent heat of fusion as used by SIS.", &
                  units="J kg-1", default=3.34e5)
