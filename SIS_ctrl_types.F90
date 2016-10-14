@@ -48,8 +48,9 @@ public :: ice_diagnostics_init
 !! SIS2 solver. Typically, this control structure and everything under it is
 !! found on the atmospheric processors.
 type SIS_fast_CS
-!  type(time_type) :: Time_Init, Time
-!  type(time_type) :: Time_step_fast, Time_step_slow
+!  type(time_type) :: Time
+  type(time_type) :: Time_step_fast
+  type(time_type) :: Time_step_slow
 
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -79,7 +80,8 @@ end type SIS_fast_CS
 !! coupling, or they may be on the ocean processors with the new embedded-ice
 !! approach.
 type SIS_slow_CS
-!  type(time_type) :: Time, Time_step_slow
+!  type(time_type) :: Time
+  type(time_type) :: Time_step_slow
 
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the

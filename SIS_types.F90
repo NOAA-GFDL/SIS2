@@ -50,8 +50,7 @@ public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 ! use different indexing conventions than other components.                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_state_type
-  type(time_type) :: Time_Init, Time
-  type(time_type) :: Time_step_fast, Time_step_slow
+  type(time_type) :: Time
 
   ! The 8 of the following 10 variables constitute the sea-ice state.
   real, allocatable, dimension(:,:,:) :: &

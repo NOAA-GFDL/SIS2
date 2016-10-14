@@ -655,7 +655,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
   endif
 
-  if (CS%Time + (IST%Time_step_slow/2) > CS%write_ice_stats_time) then
+  if (CS%Time + set_time(int(floor(0.5*dt_slow+0.5))) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then

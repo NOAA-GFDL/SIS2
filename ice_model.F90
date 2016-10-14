@@ -141,7 +141,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   real :: dt_slow  ! The time step over which to advance the model.
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
-  dt_slow = time_type_to_real(Ice%Ice_state%Time_step_slow)
+  dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%FIA, Ice%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
@@ -559,8 +559,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
 
   ! Set the initial ocean albedos, either using coszen_nextrad or a 
   ! synthetic sun angle.
-  dT_r = IST%Time_step_slow
-  if (Rad%frequent_albedo_update) dT_r = IST%Time_step_fast
+  dT_r = fCS%Time_step_slow
+  if (Rad%frequent_albedo_update) dT_r = fCS%Time_step_fast
   call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, IST%Time, &
                         IST%Time + dT_r, Rad%coszen_nextrad)
 
@@ -699,7 +699,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   !
   ! Pre-timestep diagnostics
   !
-  dt_slow = time_type_to_real(IST%Time_step_slow)
+  dt_slow = time_type_to_real(fCS%Time_step_slow)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   call enable_SIS_averaging(dt_slow, IST%Time, fCS%diag)
@@ -746,7 +746,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%fCS%debug) &
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
 
-  dT_fast = Ice%Ice_state%Time_step_fast
+  dT_fast = Ice%fCS%Time_step_fast
   Time_start = Ice%Ice_state%Time
   Time_end = Time_start + dT_fast
 
@@ -754,7 +754,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
   call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%Rad, &
-                                Ice%FIA, Ice%fast_thermo_CSp, &
+                                Ice%FIA, dT_fast, Ice%fast_thermo_CSp, &
                                 Ice%G, Ice%IG )
 
   Ice%Time = Ice%Ice_state%Time
@@ -1467,9 +1467,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   Ice%Time           = Time
   IST%Time           = Time
-  IST%Time_Init      = Time_Init
-  IST%Time_step_fast = Time_step_fast
-  IST%Time_step_slow = Time_step_slow
 
 !  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) then
 !    call set_domain(G%Domain%mpp_domain)
@@ -1726,9 +1723,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (fast_ice_PE) then
     call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, Ice%fCS%diag, Ice%fast_thermo_CSp)
     call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
+
+    Ice%fCS%Time_step_fast = Time_step_fast
+    Ice%fCS%Time_step_slow = Time_step_slow
   endif
 
   if (slow_ice_PE) then
+    Ice%sCS%Time_step_slow = Time_step_slow
+
     call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, Ice%sCS%diag, Ice%slow_thermo_CSp, &
                               Ice%SIS_tracer_flow_CSp)
 

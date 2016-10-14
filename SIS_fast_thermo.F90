@@ -293,13 +293,14 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
   type(ocean_sfc_state_type),    intent(in)    :: OSS
   type(ice_rad_type),            intent(in)    :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
   type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -408,7 +409,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, CS, G, 
   !
   ! implicit update of ice surface temperature
   !
-  dt_fast = time_type_to_real(IST%Time_step_fast)
+  dt_fast = time_type_to_real(Time_step)
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
@@ -500,7 +501,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, CS, G, 
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
-  IST%Time = IST%Time + IST%Time_step_fast ! advance time
+  IST%Time = IST%Time + Time_step ! advance time
 
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
