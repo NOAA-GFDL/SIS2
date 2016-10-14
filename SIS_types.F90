@@ -31,7 +31,6 @@ use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 

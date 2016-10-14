@@ -38,6 +38,7 @@ use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 ! use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 ! use SIS_tracer_registry, only : SIS_tracer_registry_type
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
@@ -105,6 +106,10 @@ type SIS_slow_CS
   type(ice_state_type), pointer :: IST => NULL()
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL()
+  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
+
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
+                               ! the ice to the ocean that are calculated by the ice model.
 
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 end type SIS_slow_CS

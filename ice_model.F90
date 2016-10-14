@@ -158,25 +158,25 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
   endif
 
-  call set_ice_ocean_fluxes(Ice%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
+  call set_ice_ocean_fluxes(Ice%sCS%IOF, Ice, Land_boundary, Ice%G, Ice%IG)
 
   if (Ice%sCS%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%IOF, Ice%FIA, Ice%icebergs, &
+    call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%sCS%IOF, Ice%FIA, Ice%icebergs, &
                          dt_slow, Ice%G, Ice%IG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
   call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%sCS%slow_thermo_CSp, &
-                           Ice%OSS, Ice%FIA, Ice%IOF, Ice%G, Ice%IG)
+                           Ice%OSS, Ice%FIA, Ice%sCS%IOF, Ice%G, Ice%IG)
 
-  call SIS_dynamics_trans(Ice%Ice_state, Ice%OSS, Ice%FIA, Ice%IOF, &
+  call SIS_dynamics_trans(Ice%Ice_state, Ice%OSS, Ice%FIA, Ice%sCS%IOF, &
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%IOF, Ice%FIA, Ice%G, Ice%IG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, Ice%Ice_state, Ice%sCS%IOF, Ice%FIA, Ice%G, Ice%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
@@ -1381,8 +1381,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   Ice%OSS%kmelt = kmelt
 
   if (slow_ice_PE) then
-    call alloc_ice_ocean_flux(Ice%IOF, HI, do_iceberg_fields=Ice%sCS%do_icebergs)
-    Ice%IOF%slp2ocean = slp2ocean
+    call alloc_ice_ocean_flux(Ice%sCS%IOF, HI, do_iceberg_fields=Ice%sCS%do_icebergs)
+    Ice%sCS%IOF%slp2ocean = slp2ocean
   endif
 
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)
@@ -1397,8 +1397,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   !###   Ice%Rad%frequent_albedo_update = Ice%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
   !### However this changes answers in coupled models.  I don't understand why. -RWH
 
-  ! Ice%IOF has now been set and can be used.
-  Ice%IOF%flux_uv_stagger = Ice%flux_uv_stagger
+  ! Ice%sCS%IOF has now been set and can be used.
+  Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
   call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
                               Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
@@ -1436,7 +1436,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   !   Register any tracers that will be handled via tracer flow control for 
   ! restarts and advection.
   if (slow_ice_PE) then
-    call SIS_call_tracer_register(G, IG, param_file, Ice%SIS_tracer_flow_CSp, &
+    call SIS_call_tracer_register(G, IG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
                                   Ice%sCS%diag, IST%TrReg, Ice%Ice_restart, restart_file)
   endif
 
@@ -1731,7 +1731,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 
   if (slow_ice_PE) then
-    call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, &
+    call ice_diagnostics_init(IST, Ice%sCS%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, &
                               Ice%sCS%diag, Ice%sCS%Time)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
@@ -1752,7 +1752,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%sCS%Time_step_slow = Time_step_slow
 
     call SIS_slow_thermo_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
-                              Ice%sCS%slow_thermo_CSp, Ice%SIS_tracer_flow_CSp)
+                              Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
 
     call SIS_dyn_trans_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
                             Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init)
@@ -1763,7 +1763,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   !   Initialize any tracers that will be handled via tracer flow control.
     call SIS_tracer_flow_control_init(Ice%sCS%Time, G, IG, param_file, &
-                                      Ice%SIS_tracer_flow_CSp, is_restart)
+                                      Ice%sCS%SIS_tracer_flow_CSp, is_restart)
   endif
 
   call close_param_file(param_file)
@@ -1867,19 +1867,19 @@ subroutine ice_model_end (Ice)
 
     ! End icebergs
     if (Ice%sCS%do_icebergs) call icebergs_end(Ice%icebergs)
+
+    call SIS_tracer_flow_control_end(Ice%sCS%SIS_tracer_flow_CSp)
+
+    call dealloc_ice_ocean_flux(Ice%sCS%IOF)
   endif
 
   call SIS_hor_grid_end(Ice%G)
   call ice_grid_end(Ice%IG)
   call dealloc_Ice_arrays(Ice)
 
-  call SIS_tracer_flow_control_end(Ice%SIS_tracer_flow_CSp)
-
   call dealloc_ocean_sfc_state(Ice%OSS)
 
   call dealloc_fast_ice_avg(Ice%FIA)
-
-  call dealloc_ice_ocean_flux(Ice%IOF)
 
   call dealloc_IST_arrays(IST)
   deallocate(Ice%Ice_restart)

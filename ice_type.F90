@@ -32,10 +32,9 @@ use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
-use SIS_types, only : ice_ocean_flux_type, ocean_sfc_state_type
+use SIS_types, only : ocean_sfc_state_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
@@ -142,8 +141,6 @@ type ice_data_type !  ice_public_type
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
-                               ! the ice to the ocean that are calculated by the ice model.
   type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
                                ! that describe the ocean's surface state, as it is revealed
                                ! to the ice model.
@@ -153,7 +150,6 @@ type ice_data_type !  ice_public_type
   type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
                                ! the absorption, reflection and transmission of
                                ! shortwave radiation.
-  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
   type(restart_file_type), pointer :: Ice_restart => NULL()
 end type ice_data_type !  ice_public_type
