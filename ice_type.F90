@@ -30,9 +30,6 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_dyn_trans, only : dyn_trans_CS
-use SIS_fast_thermo, only : fast_thermo_CS
-use SIS_slow_thermo, only : slow_thermo_CS
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
@@ -156,9 +153,6 @@ type ice_data_type !  ice_public_type
   type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
                                ! the absorption, reflection and transmission of
                                ! shortwave radiation.
-  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
-  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
-  type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
   type(restart_file_type), pointer :: Ice_restart => NULL()

@@ -263,7 +263,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0; mca_pond(:,:,:) = 0.0
   ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,mH_ice,mca_ice,part_sz, &
-!$OMP                                  mca_snow,mH_snow,ice_cover,mHi_avg,nCat)
+!$OMP                                  mca_snow,mH_snow,mca_pond,mH_pond,ice_cover, &
+!$OMP                                  mHi_avg,nCat)
   do j=jsc,jec
     do k=1,nCat ; do i=isc,iec
       if (mH_ice(i,j,k)>0.0) then
@@ -758,10 +759,12 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
-!$OMP                                  mca_ice,mca_snow,mH_ice,mH_snow,CS,TrReg,nCat) &
+!$OMP                                  mca_ice,mca_snow,mca_pond,mH_ice,mH_snow,mH_pond,&
+!$OMP                                  CS,TrReg,nCat) &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
-!$OMP                                  compression_ratio,Icompress_here, &
-!$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old)
+!$OMP                                  mca0_pond,trans_pond,compression_ratio,Icompress_here, &
+!$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old, &
+!$OMP                                  pond_trans,pond_old)
   do j=jsc,jec
     do i=isc,iec
       if (part_sz(i,j,0) < 0.0) then

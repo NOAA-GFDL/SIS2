@@ -163,15 +163,15 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   if (Ice%sCS%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
     call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%IOF, Ice%FIA, Ice%icebergs, &
-                         dt_slow, Ice%G, Ice%IG, Ice%dyn_trans_CSp)
+                         dt_slow, Ice%G, Ice%IG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
-  call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%slow_thermo_CSp, &
+  call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%sCS%slow_thermo_CSp, &
                            Ice%OSS, Ice%FIA, Ice%IOF, Ice%G, Ice%IG)
 
   call SIS_dynamics_trans(Ice%Ice_state, Ice%OSS, Ice%FIA, Ice%IOF, &
-                          dt_slow, Ice%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%IG)
+                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%IG)
 
   if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%Ice_state, Ice%G, Ice%IG)
@@ -290,7 +290,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,i_off,j_off,G) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
@@ -589,7 +589,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
     endif ; enddo ; enddo ; enddo
   else
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,IG,i_off,j_off, &
-!$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
+!$OMP                                  H_to_m_snow,H_to_m_ice,OSS,Rad,fCS) &
 !$OMP                          private(i2,j2,k2,sw_abs_lay)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -762,7 +762,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
   call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%Rad, &
-                                Ice%FIA, dT_fast, Ice%fast_thermo_CSp, &
+                                Ice%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
                                 Ice%G, Ice%IG )
 
   ! Advance the master sea-ice time.
@@ -811,8 +811,9 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! Update publicly visible ice_data_type variables..
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,Atmos_boundary,io_A,jo_A,io_I,jo_I ) &
-!$OMP                           private(i2,j2,i3,j3)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,Atmos_boundary,Rad,&
+!$OMP                                  FIA,io_A,jo_A,io_I,jo_I ) &
+!$OMP                          private(i3,j3)
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
@@ -920,7 +921,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start,
 
   if (Rad%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,tmp_diag)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,tmp_diag)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                      (Rad%sw_abs_ocn(i,j,k) + Rad%sw_abs_int(i,j,k))
@@ -1400,7 +1401,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   Ice%IOF%flux_uv_stagger = Ice%flux_uv_stagger
 
   call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
-                              Ice%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+                              Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_init(G, IG, param_file, Ice%sCS%diag, component="SIS", &
@@ -1740,7 +1741,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (fast_ice_PE) then
     call SIS_fast_thermo_init(Ice%fCS%Time, G, IG, param_file, Ice%fCS%diag, &
-                              Ice%fast_thermo_CSp)
+                              Ice%fCS%fast_thermo_CSp)
     call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
 
     Ice%fCS%Time_step_fast = Time_step_fast
@@ -1751,15 +1752,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%sCS%Time_step_slow = Time_step_slow
 
     call SIS_slow_thermo_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
-                              Ice%slow_thermo_CSp, Ice%SIS_tracer_flow_CSp)
+                              Ice%sCS%slow_thermo_CSp, Ice%SIS_tracer_flow_CSp)
 
     call SIS_dyn_trans_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
-                            Ice%dyn_trans_CSp, dirs%output_directory, Time_Init)
-  !  IST%ice_transport_CSp => SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp)
+                            Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init)
 
-    call SIS_slow_thermo_set_ptrs(Ice%slow_thermo_CSp, &
-             transport_CSp=SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp), &
-             sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
+    call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
+             transport_CSp=SIS_dyn_trans_transport_CS(Ice%sCS%dyn_trans_CSp), &
+             sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
 
   !   Initialize any tracers that will be handled via tracer flow control.
     call SIS_tracer_flow_control_init(Ice%sCS%Time, G, IG, param_file, &
@@ -1828,7 +1828,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   call write_ice_statistics(IST, Ice%sCS%Time, 0, G, IG, &
-                            SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
+                            SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
 
   call callTree_leave("ice_model_init()")
 
@@ -1853,15 +1853,15 @@ subroutine ice_model_end (Ice)
   !--- release memory ------------------------------------------------
 
   if (fast_ice_PE) then
-    call SIS_fast_thermo_end(Ice%fast_thermo_CSp)
+    call SIS_fast_thermo_end(Ice%fCS%fast_thermo_CSp)
 
     call SIS_optics_end(Ice%fCS%optics_CSp)
   endif
 
   if (slow_ice_PE) then
-    call SIS_dyn_trans_end(Ice%dyn_trans_CSp)
+    call SIS_dyn_trans_end(Ice%sCS%dyn_trans_CSp)
 
-    call SIS_slow_thermo_end(Ice%slow_thermo_CSp)
+    call SIS_slow_thermo_end(Ice%sCS%slow_thermo_CSp)
 
     call ice_thermo_end(IST%ITV)
 

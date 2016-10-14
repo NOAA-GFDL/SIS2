@@ -213,7 +213,8 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
   divid = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA) private(u,v)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
+!$OMP                          private(u,v)
   do j=jsc,jec
     do k=0,ncat ;  do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
@@ -418,7 +419,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,CS)      &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,Rad,CS)  &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
