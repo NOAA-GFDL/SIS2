@@ -91,12 +91,6 @@ type ice_state_type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
-  integer, dimension(:), allocatable :: id_t, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
-  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
-  
-  integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
-
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
