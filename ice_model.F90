@@ -144,7 +144,15 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   ! average fluxes from update_ice_model_fast
+  !   In the case where fast and slow ice PEs are not the same, this call would
+  ! need to be replaced by a routine that does inter-processor receives.
   call avg_top_quantities(Ice%FIA, Ice%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
+
+  if (.not.associated(Ice%fCS)) then
+    ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be advanced.
+    Ice%sCS%Time = Ice%sCS%Time + Ice%sCS%Time_step_slow
+    Ice%Time = Ice%sCS%Time
+  endif
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
@@ -561,8 +569,8 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   ! synthetic sun angle.
   dT_r = fCS%Time_step_slow
   if (Rad%frequent_albedo_update) dT_r = fCS%Time_step_fast
-  call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, IST%Time, &
-                        IST%Time + dT_r, Rad%coszen_nextrad)
+  call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, fCS%Time, &
+                        fCS%Time + dT_r, Rad%coszen_nextrad)
 
   if (IST%slab_ice) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
@@ -702,9 +710,9 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   dt_slow = time_type_to_real(fCS%Time_step_slow)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
-  call enable_SIS_averaging(dt_slow, IST%Time, fCS%diag)
+  call enable_SIS_averaging(dt_slow, fCS%Time, fCS%diag)
   if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
-                     IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
+                                  IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
   if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, fCS%diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, fCS%diag)
   if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, fCS%diag)
@@ -747,7 +755,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
 
   dT_fast = Ice%fCS%Time_step_fast
-  Time_start = Ice%Ice_state%Time
+  Time_start = Ice%fCS%Time
   Time_end = Time_start + dT_fast
 
   if (Ice%Rad%add_diurnal_sw) &
@@ -757,8 +765,10 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
                                 Ice%FIA, dT_fast, Ice%fast_thermo_CSp, &
                                 Ice%G, Ice%IG )
 
-  Ice%Time = Ice%Ice_state%Time
-  Time_end = Ice%Ice_state%Time ! Probably there is no change to Time_end.
+  ! Advance the master sea-ice time.
+  Ice%fCS%Time = Ice%fCS%Time + dT_fast
+
+  Ice%Time = Ice%fCS%Time
 
   call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
                                   Ice%G, Ice%IG, Ice%fCS, Time_start, Time_end)
@@ -1083,6 +1093,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   integer :: idr, id_sal
   integer :: write_geom
+  type(time_type), pointer :: Time_ptr => NULL()
   logical :: test_grid_copy = .false.
   logical :: nudge_sea_ice
   logical :: atmos_winds, slp2ocean
@@ -1466,7 +1477,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   enddo ; enddo
 
   Ice%Time           = Time
-  IST%Time           = Time
+  if (fast_ice_PE) then
+    Ice%fCS%Time = Time
+    Time_ptr => Ice%fCS%Time
+    if (slow_ice_PE) Ice%sCS%Time => Ice%fCS%Time
+  elseif (slow_ice_PE) then
+    allocate(Ice%sCS%Time) ; Ice%sCS%Time = Time
+    Time_ptr => Ice%sCS%Time
+  endif
 
 !  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) then
 !    call set_domain(G%Domain%mpp_domain)
@@ -1604,7 +1622,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
         rad = acos(-1.)/180.
         allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
         call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                   IST%Time, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
+                   Time_ptr, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
                    rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
@@ -1663,7 +1681,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     enddo
 
     allocate(h_ice_input(G%isc:G%iec,G%jsc:G%jec))
-    call get_sea_surface(IST%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
+    call get_sea_surface(Time_ptr, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,0:1), &
                          h_ice_input, ice_domain=Ice%domain )
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*IG%kg_m2_to_H)
@@ -1696,7 +1714,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       rad = acos(-1.)/180.
       allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
       call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                         IST%Time, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
+                         Time_ptr, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
                          rrsun=rrsun, dt_time=dT_rad)
       deallocate(dummy)
     endif
@@ -1713,7 +1731,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (slow_ice_PE) then
     call ice_diagnostics_init(IST, Ice%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, &
-                              Ice%sCS%diag, IST%Time)
+                              Ice%sCS%diag, Ice%sCS%Time)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
     !### Does there need to be a fast_ice_diagnostics_init?
@@ -1721,7 +1739,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   if (fast_ice_PE) then
-    call SIS_fast_thermo_init(Ice%Time, G, IG, param_file, Ice%fCS%diag, Ice%fast_thermo_CSp)
+    call SIS_fast_thermo_init(Ice%fCS%Time, G, IG, param_file, Ice%fCS%diag, &
+                              Ice%fast_thermo_CSp)
     call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
 
     Ice%fCS%Time_step_fast = Time_step_fast
@@ -1731,10 +1750,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (slow_ice_PE) then
     Ice%sCS%Time_step_slow = Time_step_slow
 
-    call SIS_slow_thermo_init(Ice%Time, G, IG, param_file, Ice%sCS%diag, Ice%slow_thermo_CSp, &
-                              Ice%SIS_tracer_flow_CSp)
+    call SIS_slow_thermo_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
+                              Ice%slow_thermo_CSp, Ice%SIS_tracer_flow_CSp)
 
-    call SIS_dyn_trans_init(Ice%Time, G, IG, param_file, Ice%sCS%diag, &
+    call SIS_dyn_trans_init(Ice%sCS%Time, G, IG, param_file, Ice%sCS%diag, &
                             Ice%dyn_trans_CSp, dirs%output_directory, Time_Init)
   !  IST%ice_transport_CSp => SIS_dyn_trans_transport_CS(Ice%dyn_trans_CSp)
 
@@ -1743,7 +1762,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
              sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
 
   !   Initialize any tracers that will be handled via tracer flow control.
-    call SIS_tracer_flow_control_init(Ice%Time, G, IG, param_file, Ice%SIS_tracer_flow_CSp, is_restart)
+    call SIS_tracer_flow_control_init(Ice%sCS%Time, G, IG, param_file, &
+                                      Ice%SIS_tracer_flow_CSp, is_restart)
   endif
 
   call close_param_file(param_file)
@@ -1807,7 +1827,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call ice_grid_chksum(G, haloshift=2)
   endif
 
-  call write_ice_statistics(IST, IST%Time, 0, G, IG, &
+  call write_ice_statistics(IST, Ice%sCS%Time, 0, G, IG, &
                             SIS_dyn_trans_sum_output_CS(Ice%dyn_trans_CSp))
 
   call callTree_leave("ice_model_init()")
@@ -1869,9 +1889,10 @@ subroutine ice_model_end (Ice)
   call dealloc_ice_rad(Ice%Rad)
 
   if (slow_ice_PE) then
-    call SIS_diag_mediator_end(IST%Time, Ice%sCS%diag)
+    call SIS_diag_mediator_end(Ice%sCS%Time, Ice%sCS%diag)
+    if (.not. fast_ice_PE) deallocate(Ice%sCS%Time)
   else
-    call SIS_diag_mediator_end(IST%Time, Ice%fCS%diag)
+    call SIS_diag_mediator_end(Ice%fCS%Time, Ice%fCS%diag)
   endif
 
   deallocate(Ice%Ice_state)

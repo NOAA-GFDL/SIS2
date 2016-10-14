@@ -501,8 +501,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
 
-  IST%Time = IST%Time + Time_step ! advance time
-
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
