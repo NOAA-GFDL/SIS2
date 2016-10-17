@@ -75,6 +75,22 @@ type SIS_fast_CS
   type(SIS_diag_ctrl), pointer     :: diag ! A structure that regulates diagnostics.
                     ! diag here might point to its own structure, or it might point
                     ! to the same structure as is used by SIS_slow_CS.
+
+  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
+                             ! the absorption, reflection and transmission of
+                             ! shortwave radiation.
+
+!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+!  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
+!  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
+!                               ! representation of the ice state.
+!!!  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
+!                               ! that describe the ocean's surface state, as it is revealed
+!                               ! to the ice model.
+!!!  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
+!                               ! fields that are calculated during the fast ice step but
+!                               ! stored for later use by the slow ice step or the ocean.
+
 end type SIS_fast_CS
 
 
@@ -112,12 +128,26 @@ type SIS_slow_CS
                                ! the ice to the ocean that are calculated by the ice model.
 
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
+
+!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+!  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
+!  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
+!                               ! representation of the ice state.
+!!!  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
+!                               ! that describe the ocean's surface state, as it is revealed
+!                               ! to the ice model.
+!!!  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
+!                               ! fields that are calculated during the fast ice step but
+!                               ! stored for later use by the slow ice step or the ocean.
+
 end type SIS_slow_CS
 
 
 contains
 
 !=======================================================================
+
+!### THIS NEEDS TO BE SPLIT INTO THE FAST AND SLOW PE OUTPUT.
 
 !> ice_diagnostics_init does the registration for a variety of sea-ice model
 !! diagnostics and saves several static diagnotic fields.

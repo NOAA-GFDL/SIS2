@@ -33,7 +33,7 @@ use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 
-use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
+use SIS_types, only : ice_state_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
@@ -147,9 +147,6 @@ type ice_data_type !  ice_public_type
   type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
                                ! fields that are calculated during the fast ice step but
                                ! stored for later use by the slow ice step or the ocean.
-  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
-                               ! the absorption, reflection and transmission of
-                               ! shortwave radiation.
 
   type(restart_file_type), pointer :: Ice_restart => NULL()
 end type ice_data_type !  ice_public_type

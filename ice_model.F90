@@ -146,7 +146,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! average fluxes from update_ice_model_fast
   !   In the case where fast and slow ice PEs are not the same, this call would
   ! need to be replaced by a routine that does inter-processor receives.
-  call avg_top_quantities(Ice%FIA, Ice%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
+  call avg_top_quantities(Ice%FIA, Ice%fCS%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
   if (.not.associated(Ice%fCS)) then
     ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be advanced.
@@ -356,7 +356,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   !### Exchange information from the slow ice processors to the fast ice processors.
 
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
-                             Ice%OSS, Ice%Rad, Ice%FIA, Ice%G, Ice%IG, Ice%fCS )
+                             Ice%OSS, Ice%fCS%Rad, Ice%FIA, Ice%G, Ice%IG, Ice%fCS )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -758,10 +758,10 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Time_start = Ice%fCS%Time
   Time_end = Time_start + dT_fast
 
-  if (Ice%Rad%add_diurnal_sw) &
+  if (Ice%fCS%Rad%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%Rad, &
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%fCS%Rad, &
                                 Ice%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
                                 Ice%G, Ice%IG )
 
@@ -770,12 +770,12 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   Ice%Time = Ice%fCS%Time
 
-  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%Ice_state, Ice%fCS%Rad, &
                                   Ice%G, Ice%IG, Ice%fCS, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
-  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%Rad, &
+  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%Ice_state, Ice%fCS%Rad, &
                                      Ice%FIA, Ice%G, Ice%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
@@ -1389,12 +1389,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   Ice%FIA%atmos_winds = atmos_winds
 
   call ice_rad_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                 Ice%Rad, Ice%Ice_restart, restart_file)
-  Ice%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
-  Ice%Rad%add_diurnal_sw = add_diurnal_sw
-  Ice%Rad%frequent_albedo_update = .true.
+                                 Ice%fCS%Rad, Ice%Ice_restart, restart_file)
+  Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
+  Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
+  Ice%fCS%Rad%frequent_albedo_update = .true.
   !### Instead perhaps this could be
-  !###   Ice%Rad%frequent_albedo_update = Ice%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
+  !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
   !### However this changes answers in coupled models.  I don't understand why. -RWH
 
   ! Ice%sCS%IOF has now been set and can be used.
@@ -1487,11 +1487,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Time_ptr => Ice%sCS%Time
   endif
 
-!  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) then
+  if (fast_ice_PE) then
+!  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
 !    call set_domain(G%Domain%mpp_domain)
     call astronomy_init
 !    call nullify_domain()
 !  endif
+  endif
 
   !
   ! Read the restart file, if it exists.
@@ -1618,12 +1620,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     if (.not.query_initialized(Ice%Ice_restart, 'coszen')) then
       if (coszen_IC >= 0.0) then
-        Ice%Rad%coszen_nextrad(:,:) = coszen_IC
+        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
       else
         rad = acos(-1.)/180.
         allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
         call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                   Time_ptr, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
+                   Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
                    rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
@@ -1710,12 +1712,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
 
     if (coszen_IC >= 0.0) then
-      Ice%Rad%coszen_nextrad(:,:) = coszen_IC
+      Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
     else
       rad = acos(-1.)/180.
       allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
       call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                         Time_ptr, cosz=Ice%Rad%coszen_nextrad, fracday=dummy, &
+                         Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
                          rrsun=rrsun, dt_time=dT_rad)
       deallocate(dummy)
     endif
@@ -1731,7 +1733,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 
   if (slow_ice_PE) then
-    call ice_diagnostics_init(IST, Ice%sCS%IOF, Ice%OSS, Ice%FIA, Ice%Rad, G, IG, &
+    call ice_diagnostics_init(IST, Ice%sCS%IOF, Ice%OSS, Ice%FIA, Ice%fCS%Rad, G, IG, &
                               Ice%sCS%diag, Ice%sCS%Time)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
@@ -1856,6 +1858,10 @@ subroutine ice_model_end (Ice)
     call SIS_fast_thermo_end(Ice%fCS%fast_thermo_CSp)
 
     call SIS_optics_end(Ice%fCS%optics_CSp)
+
+    if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) call astronomy_end
+
+    call dealloc_ice_rad(Ice%fCS%Rad)
   endif
 
   if (slow_ice_PE) then
@@ -1884,9 +1890,6 @@ subroutine ice_model_end (Ice)
   call dealloc_IST_arrays(IST)
   deallocate(Ice%Ice_restart)
 
-  if (Ice%Rad%add_diurnal_sw .or. Ice%Rad%do_sun_angle_for_alb) call astronomy_end
-
-  call dealloc_ice_rad(Ice%Rad)
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_end(Ice%sCS%Time, Ice%sCS%diag)
