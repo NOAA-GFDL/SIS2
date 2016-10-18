@@ -75,7 +75,8 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, dealloc_ice_arrays, ice_data_type_register_restarts
+use ice_type_mod, only : ice_data_type, dealloc_ice_arrays
+use ice_type_mod, only : ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
 use ice_type_mod, only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
 use ice_boundary_types, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
@@ -1025,8 +1026,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, nCat_dflt
   logical :: spec_thermo_sal
-  character(len=120) :: restart_file
-  character(len=240) :: restart_path
+  character(len=120) :: restart_file, fast_rest_file
+  character(len=240) :: restart_path, fast_rest_path
   character(len=40)  :: mod = "ice_model" ! This module's name.
   character(len=8)   :: nstr
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
@@ -1136,6 +1137,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (test_grid_copy) then ; allocate(G)
   else ; G => Ice%G ; endif
   if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
+
+  !### Change this later.
+  Ice%Ice_fast_restart => Ice%Ice_restart
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1294,6 +1298,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call get_param(param_file, mod, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
+  fast_rest_file = restart_file
 
   call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
@@ -1389,8 +1394,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call set_domain(G%Domain%mpp_domain)
   ! Allocate and register fields for restarts.
-  call ice_data_type_register_restarts(G%domain%mpp_domain, CatIce, &
-                         param_file, Ice, Ice%Ice_restart, restart_file)
+  call ice_type_fast_reg_restarts(G%domain%mpp_domain, CatIce, &
+                    param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
+  call ice_type_slow_reg_restarts(G%domain%mpp_domain, CatIce, &
+                    param_file, Ice, Ice%Ice_restart, restart_file)
 
   call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                    IST, Ice%Ice_restart, restart_file)
@@ -1407,7 +1414,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   Ice%FIA%atmos_winds = atmos_winds
 
   call ice_rad_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                 Ice%fCS%Rad, Ice%Ice_restart, restart_file)
+                                 Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
   Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
   Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
   Ice%fCS%Rad%frequent_albedo_update = .true.
@@ -1522,6 +1529,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 !  restart_path = 'INPUT/'//trim(restart_file)
   restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
+  fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
   if (file_exist(restart_path)) then
     ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
     ! file to be detected, and its difference from the value in this run to
@@ -1636,19 +1644,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
-    if (.not.query_initialized(Ice%Ice_restart, 'coszen')) then
-      if (coszen_IC >= 0.0) then
-        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
-      else
-        rad = acos(-1.)/180.
-        allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
-        call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                   Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
-                   rrsun=rrsun, dt_time=dT_rad)
-        deallocate(dummy)
-      endif
-    endif
-
     H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
     if (IG%H_to_kg_m2 == -1.0) then
       ! This is an older restart file, and the snow and ice thicknesses are in
@@ -1682,6 +1677,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
     else
       call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
+    endif
+
+
+    if (.not.query_initialized(Ice%Ice_fast_restart, 'coszen')) then
+      if (coszen_IC >= 0.0) then
+        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
+      else
+        rad = acos(-1.)/180.
+        allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
+        call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
+                   Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
+                   rrsun=rrsun, dt_time=dT_rad)
+        deallocate(dummy)
+      endif
     endif
 
   else ! no restart implies initialization with no ice
