@@ -69,10 +69,10 @@ type SIS_fast_CS
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
-  type(ice_state_type), pointer   :: IST => NULL()
-  type(fast_thermo_CS), pointer   :: fast_thermo_CSp => NULL()
-  type(SIS_optics_CS), pointer     :: optics_CSp => NULL()
-  type(SIS_diag_ctrl), pointer     :: diag ! A structure that regulates diagnostics.
+  type(ice_state_type), pointer :: IST => NULL()
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
+  type(SIS_optics_CS), pointer  :: optics_CSp => NULL()
+  type(SIS_diag_ctrl), pointer  :: diag ! A structure that regulates diagnostics.
                     ! diag here might point to its own structure, or it might point
                     ! to the same structure as is used by SIS_slow_CS.
 
@@ -81,7 +81,7 @@ type SIS_fast_CS
                              ! shortwave radiation.
 
 !  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-!  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
+  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
 !  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
 !                               ! representation of the ice state.
 !!!  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
@@ -130,7 +130,7 @@ type SIS_slow_CS
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 
 !  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-!  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
+  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
 !  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
 !                               ! representation of the ice state.
 !!!  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays

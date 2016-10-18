@@ -138,7 +138,7 @@ type ice_data_type !  ice_public_type
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
   type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
+!   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
   type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
@@ -333,8 +333,9 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   real    :: t_min, t_max
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+  ncat = SIZE(Ice%t_surf,3) - 1
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
@@ -406,8 +407,17 @@ subroutine ice_stock_pe(Ice, index, value)
   value = 0.0
   if(.not.Ice%pe) return
 
-  IST => Ice%Ice_state
-  IG => Ice%IG
+  if (associated(Ice%sCS)) then
+    IST => Ice%Ice_state
+    IG => Ice%sCS%IG
+  elseif (associated(Ice%fCS)) then
+    IST => Ice%Ice_state
+    IG => Ice%fCS%IG
+  else
+    call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
+                   "without either sCS or fCS associated")
+    return
+  endif
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce
