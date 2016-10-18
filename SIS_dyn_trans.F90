@@ -86,6 +86,7 @@ implicit none ; private
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
+public :: post_ocean_sfc_diagnostics, post_ice_state_diagnostics
 
 type dyn_trans_CS ; private
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -598,8 +599,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                          CS%ice_transport_CSp, IST%rdg_mice, &
                          snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
-!   call disable_SIS_averaging(CS%diag)
-
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
@@ -635,7 +634,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
-  call post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, CS%diag, &
+  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, CS%diag, &
                                   h2o_chg_xprt=h2o_chg_xprt, rdg_rate=rdg_rate)
 
   call disable_SIS_averaging(CS%diag)
@@ -666,10 +665,10 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
 end subroutine SIS_dynamics_trans
 
-subroutine  post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, diag, &
+subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
                                        h2o_chg_xprt, rdg_rate)
   type(ice_state_type),       intent(inout) :: IST
-!  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ocean_sfc_state_type), intent(in)    :: OSS
 !  type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(in)    :: IOF
   real,                       intent(in)    :: dt_slow
@@ -692,6 +691,7 @@ subroutine  post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, diag, &
   real :: rho_snow ! The nominal density of snow in kg m-3.
   real :: enth_units, I_enth_units
   real :: I_Nk        ! The inverse of the number of layers in the ice.
+  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   logical :: do_temp_diags
@@ -700,6 +700,7 @@ subroutine  post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, diag, &
 !  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; 
   NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   ! Sum the concentration weighted mass for diagnostics.
   if (CS%id_mi>0 .or. CS%id_mib>0) then
@@ -793,6 +794,9 @@ subroutine  post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, diag, &
   if (CS%id_S_iceav>0) call post_avg(CS%id_S_iceav, IST%sal_ice, IST%part_size(:,:,1:), &
                                     diag, G=G, wtd=.true.)
 
+  ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
+  ! These fields do not change over the course of the sea-ice time stepping.
+   call post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
 
   if (CS%id_xprt>0 .and. present(h2o_chg_xprt)) then
     call post_data(CS%id_xprt, h2o_chg_xprt(isc:iec,jsc:jec)*864e2*365/dt_slow, &
@@ -848,6 +852,32 @@ subroutine  post_ice_state_diagnostics(CS, IST, IOF, dt_slow, G, IG, diag, &
   endif
 
 end subroutine post_ice_state_diagnostics
+
+subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  real,                       intent(in)    :: dt_slow
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(SIS_diag_ctrl),        pointer       :: diag
+
+  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
+
+  ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
+  ! These fields do not change over the course of the sea-ice time stepping.
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, diag)
+  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, diag)
+  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, diag)
+  if (allocated(OSS%u_ocn_C)) then
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, diag)
+  else
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, diag)
+  endif
+  if (OSS%id_frazil>0) &
+    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, diag)
+
+end subroutine post_ocean_sfc_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!

@@ -81,12 +81,13 @@ use ice_type_mod, only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
 use ice_boundary_types, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_boundary_types, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_boundary_types, only : lnd_ice_bnd_type_chksum
+use SIS_ctrl_types, only : SIS_slow_CS, SIS_fast_CS
+use SIS_ctrl_types, only : ice_diagnostics_init, ice_diags_fast_init
 use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_ctrl_types, only : ice_diagnostics_init, SIS_slow_CS, SIS_fast_CS
 use SIS_types, only : IST_chksum, IST_bounds_check
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
@@ -714,20 +715,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   call enable_SIS_averaging(dt_slow, fCS%Time+fCS%Time_step_slow, fCS%diag)
   if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
                                   IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
-  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, fCS%diag)
-  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, fCS%diag)
-  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, fCS%diag)
-  if (IST%Cgrid_dyn) then
-    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, fCS%diag)
-    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, fCS%diag)
-  else
-    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, fCS%diag)
-    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, fCS%diag)
-  endif
-  if (OSS%id_frazil>0) &
-    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, fCS%diag)
 
-  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, fCS%diag)
   call disable_SIS_averaging(fCS%diag)
 
   if (fCS%debug) then
@@ -913,10 +901,11 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start,
                                    IST%part_size(:,:,1:), CS%diag, G=G)
   if (Rad%id_sw_abs_snow>0) call post_avg(Rad%id_sw_abs_snow, Rad%sw_abs_snow, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
+! if (allocated(Rad%id_sw_abs_ice)) then ;   ! ### Add this for extra safety?
   do m=1,NkIce
     if (Rad%id_sw_abs_ice(m)>0) call post_avg(Rad%id_sw_abs_ice(m), Rad%sw_abs_ice(:,:,:,m), &
                                      IST%part_size(:,:,1:), CS%diag, G=G)
-  enddo
+  enddo ! ; endif
   if (Rad%id_sw_abs_ocn>0) call post_avg(Rad%id_sw_abs_ocn, Rad%sw_abs_ocn, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
 
@@ -1734,15 +1723,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 
   if (slow_ice_PE) then
-    call ice_diagnostics_init(IST, Ice%sCS%IOF, Ice%OSS, Ice%FIA, Ice%fCS%Rad, G, IG, &
-                              Ice%sCS%diag, Ice%sCS%Time)
+    call ice_diagnostics_init(Ice%sCS%IOF, Ice%OSS, Ice%FIA, G, IG, &
+                              Ice%sCS%diag, Ice%sCS%Time, Cgrid=IST%Cgrid_dyn)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
-    !### Does there need to be a fast_ice_diagnostics_init?
     Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
   endif
 
   if (fast_ice_PE) then
+    call ice_diags_fast_init(Ice%fCS%Rad, G, IG, Ice%fCS%diag, Ice%fCS%Time)
+
     call SIS_fast_thermo_init(Ice%fCS%Time, G, IG, param_file, Ice%fCS%diag, &
                               Ice%fCS%fast_thermo_CSp)
     call SIS_optics_init(param_file, Ice%fCS%optics_CSp)

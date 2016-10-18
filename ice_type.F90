@@ -116,7 +116,7 @@ type ice_data_type !  ice_public_type
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
-             ! eventually from h_ice outside the ice module.
+             ! h_ice outside the ice module.
   integer, dimension(3)    :: axes
   type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -220,10 +220,12 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
 
 
   ! Now register some of these arrays to be read from the restart files.
+  ! These are used by the atmospheric model, and need to be in the fast PE restarts.
   idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
 
+  ! These are used by the ocean model, and need to be in the slow PE restarts.
   idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
   idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
