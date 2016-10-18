@@ -149,7 +149,8 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   call avg_top_quantities(Ice%FIA, Ice%fCS%Rad, Ice%Ice_state%part_size, Ice%G, Ice%IG)
 
   if (.not.associated(Ice%fCS)) then
-    ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be advanced.
+    ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be
+    ! advanced to give the end time of the slow timestep.
     Ice%sCS%Time = Ice%sCS%Time + Ice%sCS%Time_step_slow
     Ice%Time = Ice%sCS%Time
   endif
@@ -710,7 +711,7 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   dt_slow = time_type_to_real(fCS%Time_step_slow)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
-  call enable_SIS_averaging(dt_slow, fCS%Time, fCS%diag)
+  call enable_SIS_averaging(dt_slow, fCS%Time+fCS%Time_step_slow, fCS%diag)
   if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
                                   IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
   if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, fCS%diag)

@@ -598,6 +598,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                          CS%ice_transport_CSp, IST%rdg_mice, &
                          snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
+!   call disable_SIS_averaging(CS%diag)
+
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)

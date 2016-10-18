@@ -359,8 +359,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     ! masses-per-unit area and enthalpies.
     call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
     !TOM> calculate partial ice growth for ridging and aging.
     if (CS%do_ridging) then
       !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
