@@ -1095,6 +1095,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: specified_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
+  logical :: init_coszen
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -1106,6 +1107,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
   logical :: read_aux_restart
+  logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
 
@@ -1136,10 +1138,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (.not.associated(Ice%G)) allocate(Ice%G)
   if (test_grid_copy) then ; allocate(G)
   else ; G => Ice%G ; endif
-  if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
-
-  !### Change this later.
-  Ice%Ice_fast_restart => Ice%Ice_restart
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1298,7 +1296,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call get_param(param_file, mod, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
-  fast_rest_file = restart_file
+  if (fast_ice_PE.eqv.slow_ice_PE) then
+    call get_param(param_file, mod, "FAST_ICE_RESTARTFILE", fast_rest_file, &
+                   "The name of the restart file for those elements of the \n"//&
+                   "the sea ice that are handled by the fast ice PEs.", &
+                   default=restart_file)
+  else
+    call get_param(param_file, mod, "FAST_ICE_RESTARTFILE", fast_rest_file, &
+                   "The name of the restart file for those elements of the \n"//&
+                   "the sea ice that are handled by the fast ice PEs.", &
+                   default="ice_model_fast.res.nc")
+  endif
 
   call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
@@ -1394,6 +1402,28 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   call set_domain(G%Domain%mpp_domain)
   ! Allocate and register fields for restarts.
+  split_restart_files = (trim(restart_file) /= trim(fast_rest_file))
+  if ((fast_ice_PE.neqv.slow_ice_PE) .and. .not.split_restart_files) then
+    call SIS_error(FATAL, "The fast ice restart file must be separate from the "//&
+           "standard ice restart file when there are separate fast and slow ice PEs. "//&
+           "Choose different values of RESTARTFILE and FAST_ICE_RESTARTFILE.")
+  endif
+
+  if (slow_ice_PE) then
+    if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
+  endif
+
+  if (fast_ice_PE) then
+    if (split_restart_files) then
+      if (.not.associated(Ice%Ice_fast_restart)) allocate(Ice%Ice_fast_restart)
+    else
+      Ice%Ice_fast_restart => Ice%Ice_restart
+    endif
+  endif
+
+  ! These allocation routines are called on all PEs; whether or not the variables
+  ! they allocate are registered for inclusion in restart files is determined by
+  ! whether the Ice%Ice...restart types are associated.
   call ice_type_fast_reg_restarts(G%domain%mpp_domain, CatIce, &
                     param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
   call ice_type_slow_reg_restarts(G%domain%mpp_domain, CatIce, &
@@ -1530,7 +1560,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 !  restart_path = 'INPUT/'//trim(restart_file)
   restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
   fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
-  if (file_exist(restart_path)) then
+
+  if (slow_ice_PE) then ; if (file_exist(restart_path)) then
     ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
     ! file to be detected, and its difference from the value in this run to
     ! be corrected for.
@@ -1679,19 +1710,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
     endif
 
-
-    if (.not.query_initialized(Ice%Ice_fast_restart, 'coszen')) then
-      if (coszen_IC >= 0.0) then
-        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
-      else
-        rad = acos(-1.)/180.
-        allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
-        call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                   Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
-                   rrsun=rrsun, dt_time=dT_rad)
-        deallocate(dummy)
-      endif
-    endif
+    if (fast_ice_PE .and. .not.split_restart_files) &
+      init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
 
   else ! no restart implies initialization with no ice
     IST%part_size(:,:,:) = 0.0
@@ -1738,6 +1758,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call pass_var(IST%part_size, G%Domain, complete=.true. )
     call pass_var(IST%mH_ice, G%Domain, complete=.true. )
 
+    init_coszen = .true.
+
+  endif ; endif ! file_exist(restart_path) and slow_ice_pe
+  deallocate(S_col)
+
+  if (fast_ice_PE) then
+    if ((.not.slow_ice_PE) .or. split_restart_files) then
+      if (file_exist(fast_rest_path)) then
+        call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
+        init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+      else
+        init_coszen = .true.
+      endif
+    endif
+  endif
+
+  if (fast_ice_PE .and. init_coszen) then
     if (coszen_IC >= 0.0) then
       Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
     else
@@ -1748,9 +1785,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                          rrsun=rrsun, dt_time=dT_rad)
       deallocate(dummy)
     endif
-
-  endif ! file_exist(restart_path)
-  deallocate(S_col)
+  endif
 
   do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1

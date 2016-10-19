@@ -732,12 +732,12 @@ end function sigII
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(param_file_type),   intent(in)    :: param_file
-  type(SIS_B_dyn_CS),      pointer       :: CS
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain
+  type(hor_index_type),    intent(in) :: HI
+  type(param_file_type),   intent(in) :: param_file
+  type(SIS_B_dyn_CS),      pointer    :: CS
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -762,12 +762,14 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   allocate(CS%sig11(isd:ied, jsd:jed)) ; CS%sig11(:,:) = 0.0
   allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
   allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
-  id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                              domain=mpp_domain, mandatory=.false.)
+  if (associated(Ice_restart)) then
+    id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
+                                domain=mpp_domain, mandatory=.false.)
+  endif
 end subroutine SIS_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

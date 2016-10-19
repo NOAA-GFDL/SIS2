@@ -348,7 +348,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
-  type(restart_file_type), intent(inout) :: Ice_restart
+  type(restart_file_type), pointer       :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
   integer :: CatIce, NkIce, idr, n
@@ -356,7 +356,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0 !  mw/new
+  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0
   allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
@@ -370,43 +370,45 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
     allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
   endif
 
-  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
 
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
 
   ! Now register some of these arrays to be read from the restart files.
-  idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
-                               domain=mpp_domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
-                               domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
-                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
-                               domain=mpp_domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
-                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
-                               longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
-                               no_domain=.true., mandatory=.false.)
+  if (associated(Ice_restart)) then
+    idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
+    idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
+                                 domain=mpp_domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
+                                 domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
+                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
+                                 domain=mpp_domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
+                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
+                                 longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
+                                 no_domain=.true., mandatory=.false.)
 
-  idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
-                               domain=mpp_domain, mandatory=.false., units="J kg-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
-                               domain=mpp_domain, mandatory=.false., units="kg/kg")
+    idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
+                                 domain=mpp_domain, mandatory=.false., units="J kg-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
+                                 domain=mpp_domain, mandatory=.false., units="kg/kg")
 
-  if (IST%Cgrid_dyn) then
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
-                                 domain=mpp_domain, position=EAST, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
-                                 domain=mpp_domain, position=NORTH, mandatory=.false.)
-  else
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
-                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
-                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
+    if (IST%Cgrid_dyn) then
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
+                                   domain=mpp_domain, position=EAST, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
+                                   domain=mpp_domain, position=NORTH, mandatory=.false.)
+    else
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
+                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
+                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+    endif
   endif
 
 end subroutine ice_state_register_restarts

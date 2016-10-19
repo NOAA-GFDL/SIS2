@@ -1111,13 +1111,13 @@ end subroutine set_ocean_top_stress_Cgrid
 !!      module that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG     ! The sea-ice grid type
-  type(param_file_type),   intent(in)    :: param_file
-  type(dyn_trans_CS),      pointer       :: CS
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain
+  type(hor_index_type),    intent(in) :: HI
+  type(ice_grid_type),     intent(in) :: IG     ! The sea-ice grid type
+  type(param_file_type),   intent(in) :: param_file
+  type(dyn_trans_CS),      pointer    :: CS
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
