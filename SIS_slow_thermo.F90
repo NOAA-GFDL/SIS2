@@ -302,6 +302,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of SIS_slow_thermo", OSS=OSS)
 
+  !   Set the frazil heat flux that remains to be applied.  This might need
+  ! to be moved earlier in the algorithm, if there ever to be multiple calls to
+  ! slow_thermodynamics per coupling timestep.
+  do j=jsc,jec ; do i=isc,iec
+    FIA%frazil_left(i,j) = OSS%frazil(i,j)
+  enddo ; enddo
+
   !
   ! conservation checks: top fluxes
   !

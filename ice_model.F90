@@ -166,15 +166,15 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   if (Ice%sCS%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%Ice_state, Ice%OSS, Ice%sCS%IOF, Ice%FIA, Ice%icebergs, &
+    call update_icebergs(Ice%Ice_state, Ice%sCS%OSS, Ice%sCS%IOF, Ice%FIA, Ice%icebergs, &
                          dt_slow, Ice%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
   call slow_thermodynamics(Ice%Ice_state, dt_slow, Ice%sCS%slow_thermo_CSp, &
-                           Ice%OSS, Ice%FIA, Ice%sCS%IOF, Ice%G, Ice%sCS%IG)
+                           Ice%sCS%OSS, Ice%FIA, Ice%sCS%IOF, Ice%G, Ice%sCS%IG)
 
-  call SIS_dynamics_trans(Ice%Ice_state, Ice%OSS, Ice%FIA, Ice%sCS%IOF, &
+  call SIS_dynamics_trans(Ice%Ice_state, Ice%sCS%OSS, Ice%FIA, Ice%sCS%IOF, &
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%sCS%IG)
 
   if (Ice%sCS%debug) &
@@ -352,19 +352,13 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
   type(ice_data_type),           intent(inout) :: Ice
 
-  integer :: i, j
-
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%OSS, Ice%G, &
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%G, &
                            Ice%ocean_fields)
 
   !### Exchange information from the slow ice processors to the fast ice processors.
-  call copy_OSS_to_sOSS(Ice%OSS, Ice%fcs%sOSS, Ice%G, Ice%Ice_state%ITV)
-
-  do j=Ice%G%jsc,Ice%G%jec ; do i=Ice%G%isc,Ice%G%iec
-    Ice%FIA%frazil_left(i,j) = Ice%OSS%frazil(i,j)
-  enddo ; enddo
+  call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%G, Ice%Ice_state%ITV)
 
   call set_ice_surface_state(Ice, Ice%Ice_state, Ocean_boundary%t, &
                              Ice%fcs%sOSS, Ice%fCS%Rad, Ice%FIA, Ice%G, Ice%fCS%IG, Ice%fCS )
@@ -791,7 +785,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%fCS%Rad%add_diurnal_sw) &
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
-  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%OSS, Ice%fCS%Rad, &
+  call do_update_ice_model_fast(Atmos_boundary, Ice%Ice_state, Ice%fCS%sOSS, Ice%fCS%Rad, &
                                 Ice%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
                                 Ice%G, Ice%fCS%IG )
 
@@ -1472,10 +1466,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call ice_state_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
                                    IST, Ice%Ice_restart, restart_file)
 
-  call alloc_ocean_sfc_state(Ice%OSS, HI, IST%Cgrid_dyn)
-  Ice%OSS%kmelt = kmelt
-
   if (slow_ice_PE) then
+    call alloc_ocean_sfc_state(Ice%sCS%OSS, HI, IST%Cgrid_dyn)
+    Ice%sCS%OSS%kmelt = kmelt
+
     call alloc_ice_ocean_flux(Ice%sCS%IOF, HI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
@@ -1833,7 +1827,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 
   if (slow_ice_PE) then
-    call ice_diagnostics_init(Ice%sCS%IOF, Ice%OSS, Ice%FIA, G, IG, &
+    call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%FIA, G, IG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=IST%Cgrid_dyn)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
@@ -1991,13 +1985,13 @@ subroutine ice_model_end (Ice)
 
     call dealloc_ice_ocean_flux(Ice%sCS%IOF)
 
+    call dealloc_ocean_sfc_state(Ice%sCS%OSS)
+
     call ice_grid_end(Ice%sCS%IG)
   endif
 
   call SIS_hor_grid_end(Ice%G)
   call dealloc_Ice_arrays(Ice)
-
-  call dealloc_ocean_sfc_state(Ice%OSS)
 
   call dealloc_fast_ice_avg(Ice%FIA)
 

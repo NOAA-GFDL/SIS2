@@ -50,7 +50,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
+use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -294,11 +294,11 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_step, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
-  type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(simple_OSS_type),         intent(in)    :: sOSS
   type(ice_rad_type),            intent(in)    :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
@@ -419,12 +419,12 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,Rad,CS)  &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    T_Freeze_surf = T_Freeze(OSS%s_surf(i,j), IST%ITV)
+    T_Freeze_surf = T_Freeze(sOSS%s_surf(i,j), IST%ITV)
     if (IST%mH_ice(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
@@ -506,7 +506,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "End of update_ice_fast", OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "End of update_ice_fast") !, OSS=OSS)
 
 end subroutine do_update_ice_model_fast
 

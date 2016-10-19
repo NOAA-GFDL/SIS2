@@ -16,10 +16,7 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
-use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
-use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
+use SIS2_ice_thm, only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -27,14 +24,10 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
+use SIS_diag_mediator, only : register_SIS_diag_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_sum_output_type, only : SIS_sum_out_CS
-use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 use SIS_types, only : ice_state_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
@@ -141,9 +134,6 @@ type ice_data_type !  ice_public_type
   type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
                                ! representation of the ice state.
-  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
-                               ! that describe the ocean's surface state, as it is revealed
-                               ! to the ice model.
   type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
                                ! fields that are calculated during the fast ice step but
                                ! stored for later use by the slow ice step or the ocean.
