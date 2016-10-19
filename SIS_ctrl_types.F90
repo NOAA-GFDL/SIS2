@@ -22,7 +22,7 @@ use SIS_slow_thermo, only : slow_thermo_CS
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, ocean_sfc_state_type
-use SIS_types, only : fast_ice_avg_type, ice_rad_type 
+use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type 
 
 ! use SIS2_ice_thm, only : ice_thermo_type !, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 ! use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
@@ -84,9 +84,9 @@ type SIS_fast_CS
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
 !  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
 !                               ! representation of the ice state.
-!!!  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
-!                               ! that describe the ocean's surface state, as it is revealed
-!                               ! to the ice model.
+  type(simple_OSS_type), pointer :: sOSS => NULL() ! A structure containing the arrays
+                             ! that describe the ocean's surface state, as it is revealed
+                             ! to the atmosphere or the fast ice thermodynamics modules.
 !!!  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
 !                               ! fields that are calculated during the fast ice step but
 !                               ! stored for later use by the slow ice step or the ocean.

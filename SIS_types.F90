@@ -42,6 +42,7 @@ public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
+public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -93,9 +94,9 @@ type ice_state_type
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
-!! state as seen by the sea-ice or atmosphere, on the ice grid.
+!! state as seen by the slowly evolving sea-ice, on the ice grid.
 type ocean_sfc_state_type
-  ! 5 of the following 7 variables describe the ocean state as seen by the sea ice.
+  ! 6 of the following 8 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     t_ocn  , &  ! The ocean's bulk surface temperature in degC.
@@ -121,10 +122,29 @@ type ocean_sfc_state_type
                 ! an array reflecting the turbulence in the under-ice ocean
                 ! boundary layer and the effective depth of the reported value
                 ! of t_ocn.
+
+  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+                       ! sea-ice dynamics.
  
   ! diagnostic IDs for ocean surface  properties.
   integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1
 end type ocean_sfc_state_type
+
+!> simple_OSS_type contains variables that describe the ocean's surface
+!! state as seen by the fast sea-ice or atmosphere, on the ice grid.
+type simple_OSS_type
+  ! The following 5 variables describe the ocean state as seen by the 
+  ! atmosphere and use for the rapid thermodynamic sea ice changes.
+  real, allocatable, dimension(:,:) :: &
+    s_surf , &  ! The ocean's surface salinity in g/kg.
+    t_ocn  , &  ! The ocean's bulk surface temperature in degC.
+    u_ocn_A, &  ! The ocean's zonal velocity on A-grid points in m s-1.
+    v_ocn_A, &  ! The ocean's meridional velocity on A-grid points in m s-1.
+    bheat       ! The upward diffusive heat flux from the ocean
+                ! to the ice at the base of the ice, in W m-2.
+
+end type simple_OSS_type
+
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
 !! atmosphere and the ice or that have been accumlated over fast thermodynamic
@@ -552,7 +572,6 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
-
   if (Cgrid_dyn) then
     allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0
     allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI))) ; OSS%v_ocn_C(:,:) = 0.0
@@ -561,7 +580,27 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
     allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%v_ocn_B(:,:) = 0.0
   endif
 
+  OSS%Cgrid_dyn = Cgrid_dyn
+
 end subroutine alloc_ocean_sfc_state
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_simple_ocean_sfc_state allocates and zeros out the arrays in a
+!! simple_OSS_type.
+subroutine alloc_simple_OSS(OSS, HI)
+  type(simple_OSS_type), pointer    :: OSS
+  type(hor_index_type),  intent(in) :: HI
+
+  if (.not.associated(OSS)) allocate(OSS)
+
+  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
+  allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
+  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%u_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ocn_A(:,:) = 0.0
+  allocate(OSS%v_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ocn_A(:,:) = 0.0
+
+end subroutine alloc_simple_OSS
 
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
@@ -595,6 +634,22 @@ subroutine dealloc_ocean_sfc_state(OSS)
 
   deallocate(OSS)
 end subroutine dealloc_ocean_sfc_state
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_simple_OSS deallocates the arrays in a simple_OSS_type.
+subroutine dealloc_simple_OSS(OSS)
+  type(simple_OSS_type), pointer :: OSS
+
+  if (.not.associated(OSS)) then
+    call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
+    return
+  endif
+
+  deallocate(OSS%s_surf, OSS%t_ocn, OSS%bheat)
+  deallocate(OSS%u_ocn_A, OSS%v_ocn_A)
+
+  deallocate(OSS)
+end subroutine dealloc_simple_OSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_fast_ice_avg deallocates the arrays in a fast_ice_avg_type.
