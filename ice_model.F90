@@ -1438,25 +1438,27 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (slow_ice_PE) then
     call alloc_ice_ocean_flux(Ice%sCS%IOF, HI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
+    Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
   endif
 
   call alloc_fast_ice_avg(Ice%FIA, HI, IG)
   Ice%FIA%atmos_winds = atmos_winds
 
-  call ice_rad_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
-                                 Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
-  Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
-  Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
-  Ice%fCS%Rad%frequent_albedo_update = .true.
-  !### Instead perhaps this could be
-  !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
-  !### However this changes answers in coupled models.  I don't understand why. -RWH
+  if (fast_ice_PE) then
+    call ice_rad_register_restarts(G%domain%mpp_domain, HI, IG, param_file, &
+                                   Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
+    Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
+    Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
+    Ice%fCS%Rad%frequent_albedo_update = .true.
+    !### Instead perhaps this could be
+    !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
+    !### However this changes answers in coupled models.  I don't understand why. -RWH
+  endif
 
-  ! Ice%sCS%IOF has now been set and can be used.
-  Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-
-  call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
-                              Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+  if (slow_ice_PE) then
+    call SIS_dyn_trans_register_restarts(G%domain%mpp_domain, HI, IG, param_file,&
+                                Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+  endif
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_init(G, IG, param_file, Ice%sCS%diag, component="SIS", &
@@ -1473,24 +1475,24 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
   call ice_thermo_init(param_file, IST%ITV, init_EOS=nudge_sea_ice)
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
+  if (slow_ice_PE) then
+    call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_unit)
 
-  ! Register tracers that will be advected around.
-  call register_SIS_tracer_pair(IST%enth_ice, NkIce, "enth_ice", &
-                                IST%enth_snow, 1, "enth_snow", &
-                                G, IG, param_file, IST%TrReg, &
-                                massless_iceval=massless_ice_enth*enth_unit, &
-                                massless_snowval=massless_snow_enth*enth_unit)
+    ! Register tracers that will be advected around.
+    call register_SIS_tracer_pair(IST%enth_ice, NkIce, "enth_ice", &
+                                  IST%enth_snow, 1, "enth_snow", &
+                                  G, IG, param_file, IST%TrReg, &
+                                  massless_iceval=massless_ice_enth*enth_unit, &
+                                  massless_snowval=massless_snow_enth*enth_unit)
 
-  if (ice_rel_salin > 0.0) then
-    call register_SIS_tracer(IST%sal_ice, G, IG, NkIce, "salin_ice", param_file, &
-                             IST%TrReg, snow_tracer=.false., &
-                             massless_val=massless_ice_salin)
-  endif
+    if (ice_rel_salin > 0.0) then
+      call register_SIS_tracer(IST%sal_ice, G, IG, NkIce, "salin_ice", param_file, &
+                               IST%TrReg, snow_tracer=.false., &
+                               massless_val=massless_ice_salin)
+    endif
 
   !   Register any tracers that will be handled via tracer flow control for 
   ! restarts and advection.
-  if (slow_ice_PE) then
     call SIS_call_tracer_register(G, IG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
                                   Ice%sCS%diag, IST%TrReg, Ice%Ice_restart, restart_file)
   endif
@@ -1532,7 +1534,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%area(i2,j2) = G%areaT(i,j) * G%mask2dT(i,j)
   enddo ; enddo
 
-  Ice%Time           = Time
+  Ice%Time = Time
   if (fast_ice_PE) then
     Ice%fCS%Time = Time
     Time_ptr => Ice%fCS%Time
@@ -1557,9 +1559,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_unit, &
                              specified_thermo_salinity=spec_thermo_sal)
 
-!  restart_path = 'INPUT/'//trim(restart_file)
   restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
-  fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
 
   if (slow_ice_PE) then ; if (file_exist(restart_path)) then
     ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
@@ -1765,6 +1765,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (fast_ice_PE) then
     if ((.not.slow_ice_PE) .or. split_restart_files) then
+      fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
       if (file_exist(fast_rest_path)) then
         call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
@@ -1772,26 +1773,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
         init_coszen = .true.
       endif
     endif
-  endif
 
-  if (fast_ice_PE .and. init_coszen) then
-    if (coszen_IC >= 0.0) then
-      Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
-    else
-      rad = acos(-1.)/180.
-      allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
-      call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
-                         Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
-                         rrsun=rrsun, dt_time=dT_rad)
-      deallocate(dummy)
+    if (init_coszen) then
+      if (coszen_IC >= 0.0) then
+        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
+      else
+        rad = acos(-1.)/180.
+        allocate(dummy(G%isd:G%ied,G%jsd:G%jed))
+        call diurnal_solar(G%geoLatT(:,:)*rad, G%geoLonT(:,:)*rad, &
+                           Time_ptr, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
+                           rrsun=rrsun, dt_time=dT_rad)
+        deallocate(dummy)
+      endif
     endif
   endif
-
-  do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
-    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
 
 
   if (slow_ice_PE) then
@@ -1886,6 +1881,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%sCS%bounds_check = bounds_check
     Ice%sCS%debug = debug
   endif
+
+  !### I think that these might not be needed here.  A test of this should
+  !### include coupled models started from a restart file.
+  do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
   ! Do any error checking here.
   if (debug) then
