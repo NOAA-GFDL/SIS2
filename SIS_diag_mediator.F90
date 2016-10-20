@@ -128,12 +128,13 @@ end type SIS_diag_ctrl
 
 contains
 
-subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
+subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_name)
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(inout) :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(SIS_diag_ctrl),     intent(inout) :: diag_cs
-  logical, optional,       intent(in)    :: set_vertical
+  logical,          optional, intent(in)    :: set_vertical
+  character(len=*), optional, intent(in)    :: axes_set_name
 !   This subroutine sets up the grid and axis information for use by SIS.
 !
 ! Arguments: G - The ocean's grid structure.
@@ -142,16 +143,18 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
 !                         model parameter values.
 !  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
+!  (in,opt)  axes_set_name - A name to use for this set of axes.  The default is "ice".
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
   integer :: k
   real :: zlev_ice(IG%NkIce), zinter_ice(IG%NkIce+1)
   logical :: set_vert, Cartesian_grid
-  character(len=80) :: grid_config, units_temp
+  character(len=80) :: grid_config, units_temp, set_name
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
 
   set_vert = .true. ; if (present(set_vertical)) set_vert = set_vertical
+  set_name = "ice" ; if (present(axes_set_name)) set_name = trim(axes_set_name)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod, version)
@@ -186,38 +189,38 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical)
   endif
 
   id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
-            'Boundary point nominal longitude',set_name='ice', &
+            'Boundary point nominal longitude',set_name=set_name, &
              Domain2=G%Domain%mpp_domain)
   id_yq = diag_axis_init('yB', G%gridLatB(G%jsgB:G%jegB), G%y_axis_units, 'y', &
-            'Boundary point nominal latitude', set_name='ice', &
+            'Boundary point nominal latitude', set_name=set_name, &
              Domain2=G%Domain%mpp_domain)
 
   id_xhe = diag_axis_init('xTe', G%gridLonB(G%isg-1:G%ieg), G%x_axis_units, 'x', &
-            'T-cell edge nominal longitude', set_name='ice', &
+            'T-cell edge nominal longitude', set_name=set_name, &
              Domain2=G%Domain%mpp_domain)
   id_yhe = diag_axis_init('yTe', G%gridLatB(G%jsg-1:G%jeg), G%y_axis_units, 'y', &
-            'T-cell edge nominal latitude', set_name='ice', &
+            'T-cell edge nominal latitude', set_name=set_name, &
             Domain2=G%Domain%mpp_domain)
   id_xh = diag_axis_init('xT', G%gridLonT(G%isg:G%ieg), G%x_axis_units, 'x', &
-              'T point nominal longitude', set_name='ice', edges=id_xhe, &
+              'T point nominal longitude', set_name=set_name, edges=id_xhe, &
               Domain2=G%Domain%mpp_domain)
   id_yh = diag_axis_init('yT', G%gridLatT(G%jsg:G%jeg), G%y_axis_units, 'y', &
-              'T point nominal latitude', set_name='ice', edges=id_yhe, &
+              'T point nominal latitude', set_name=set_name, edges=id_yhe, &
               Domain2=G%Domain%mpp_domain)
 
   if (set_vert) then
     do k=1,IG%NkIce+1 ; zinter_ice(k) = real(k-1) / real(IG%NkIce) ; enddo
     do k=1,IG%NkIce ; zlev_ice(k) = (k-0.5) / real(IG%NkIce) ; enddo
     id_zl = diag_axis_init('zl', zlev_ice, 'layer', 'z', 'Cell depth', &
-                           set_name='ice')
+                           set_name=set_name)
     id_zi = diag_axis_init('zi', zinter_ice, 'interface', 'z', &
-                           'Cell interface depth', set_name='ice')
+                           'Cell interface depth', set_name=set_name)
   else
     id_zl = -1 ; id_zi = -1
   endif
 
   id_ct = diag_axis_init('ct', IG%cat_thick_lim(1:IG%CatIce), 'meters', 'n', & ! 'z',?
-                         'Ice thickness category bounds', set_name='ice')
+                         'Ice thickness category bounds', set_name=set_name)
 
   ! Note that there are no 4-d spatial axis groupings yet.  Ferret only started
   ! allowing for 5-d data with version 6.8, which is later than the default for
