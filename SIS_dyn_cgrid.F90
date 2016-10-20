@@ -264,8 +264,15 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
-  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+  if ( CS%specified_ice ) then
+    CS%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  endif
   call get_param(param_file, mod, "U_TRUNC_FILE", CS%u_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to zonal velocity truncations are written. \n"//&
@@ -1536,12 +1543,12 @@ end subroutine find_sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                                        Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(param_file_type),   intent(in)    :: param_file
-  type(SIS_C_dyn_CS),      pointer       :: CS
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain
+  type(hor_index_type),    intent(in) :: HI
+  type(param_file_type),   intent(in) :: param_file
+  type(SIS_C_dyn_CS),      pointer    :: CS
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -1566,12 +1573,14 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
   allocate(CS%str_d(isd:ied, jsd:jed)) ; CS%str_d(:,:) = 0.0
   allocate(CS%str_t(isd:ied, jsd:jed)) ; CS%str_t(:,:) = 0.0
   allocate(CS%str_s(HI%IsdB:HI%IedB, HI%JsdB:HI%JedB)) ; CS%str_s(:,:) = 0.0
-  id = register_restart_field(Ice_restart, restart_file, 'str_d', CS%str_d, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'str_t', CS%str_t, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
-                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+  if (associated(Ice_restart)) then
+    id = register_restart_field(Ice_restart, restart_file, 'str_d', CS%str_d, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'str_t', CS%str_t, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
+                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+   endif
 end subroutine SIS_C_dyn_register_restarts
 
 

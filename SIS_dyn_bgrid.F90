@@ -161,8 +161,15 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
                  "If true, write out verbose debugging data.", default=.false.)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
-  call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+  if ( CS%specified_ice ) then
+    CS%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
+  endif
   call get_param(param_file, mod, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
                  "An angle by which to rotate the velocities at the air- \n"//&
                  "water boundary in calculating stresses.", units="degrees", &
@@ -725,12 +732,12 @@ end function sigII
 !      module that need to be included in the restart files.                   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(param_file_type),   intent(in)    :: param_file
-  type(SIS_B_dyn_CS),      pointer       :: CS
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain
+  type(hor_index_type),    intent(in) :: HI
+  type(param_file_type),   intent(in) :: param_file
+  type(SIS_B_dyn_CS),      pointer    :: CS
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -755,12 +762,14 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   allocate(CS%sig11(isd:ied, jsd:jed)) ; CS%sig11(:,:) = 0.0
   allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
   allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
-  id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                              domain=mpp_domain, mandatory=.false.)
-  id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                              domain=mpp_domain, mandatory=.false.)
+  if (associated(Ice_restart)) then
+    id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
+                                domain=mpp_domain, mandatory=.false.)
+    id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
+                                domain=mpp_domain, mandatory=.false.)
+  endif
 end subroutine SIS_B_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

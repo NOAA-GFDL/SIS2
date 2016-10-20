@@ -49,15 +49,15 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type
 
-use ice_type_mod, only : ice_state_type, IST_chksum, IST_bounds_check
-use ice_type_mod, only : fast_ice_avg_type, ocean_sfc_state_type
-use ice_type_mod, only : atmos_ice_boundary_type, land_ice_boundary_type
-use ice_type_mod, only : fast_thermo_CS
+use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
+use SIS_types, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
+use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
 
+use SIS2_ice_thm,  only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_temp_SIS2
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
 
@@ -66,7 +66,29 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
-public :: avg_top_quantities, do_update_ice_atm_deposition_flux
+public :: do_update_ice_atm_deposition_flux
+public :: fast_thermo_CS, avg_top_quantities
+
+type fast_thermo_CS ; private
+  ! These two arrarys are used with column_check when evaluating the enthalpy
+  ! conservation with the fast thermodynamics code. 
+  real, pointer, dimension(:,:,:) :: &
+    enth_prev, heat_in
+
+  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: column_check ! If true, enable the heat check column by column.
+  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
+                          ! column_check, nondim.
+  logical :: bounds_check ! If true, check for sensible values of thicknesses
+                          ! temperatures, fluxes, etc.
+
+  integer :: n_fast = 0   ! The number of times update_ice_model_fast
+                          ! has been called.
+
+  ! These are pointers to the control structures for subsidiary modules.
+  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
+end type fast_thermo_CS
+>>>>>>> dev/master
 
 contains
 
@@ -167,8 +189,9 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> avg_top_quantities determines time average fluxes for later use by the
 !!    slow ice physics and by the ocean.
-subroutine avg_top_quantities(FIA, part_size, G, IG)
+subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA
+  type(ice_rad_type),      intent(in)    :: Rad
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
@@ -193,7 +216,8 @@ subroutine avg_top_quantities(FIA, part_size, G, IG)
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
   divid = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA) private(u,v)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
+!$OMP                          private(u,v)
   do j=jsc,jec
     do k=0,ncat ;  do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
@@ -210,6 +234,9 @@ subroutine avg_top_quantities(FIA, part_size, G, IG)
       FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
       FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
       FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
+      
+      ! Copy radiation fields from the fast to the slow states.
+      if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
       if ((k>0) .and. (FIA%flux_q_top(i,j,k) < 0.0)) then
         FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
@@ -270,12 +297,14 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
   type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(ice_rad_type),            intent(in)    :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
   type(fast_thermo_CS),          pointer       :: CS
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
@@ -331,6 +360,18 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
   CS%n_fast = CS%n_fast + 1
 
+  if (CS%column_check .and. (FIA%avg_count==0)) then
+    CS%heat_in(:,:,:) = 0.0
+    CS%enth_prev(:,:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,k)>0.0) then
+      CS%enth_prev(i,j,k) = (IST%mH_snow(i,j,k)*IG%H_to_kg_m2) * IST%enth_snow(i,j,k,1)
+      do m=1,IG%NkIce
+        CS%enth_prev(i,j,k) = CS%enth_prev(i,j,k) + &
+                               (IST%mH_ice(i,j,k)*kg_H_Nk) * IST%enth_ice(i,j,k,m)
+      enddo
+    endif ; enddo ; enddo ; enddo
+  endif
+
   if (CS%debug) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
@@ -372,7 +413,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
   !
   ! implicit update of ice surface temperature
   !
-  dt_fast = time_type_to_real(IST%Time_step_fast)
+  dt_fast = time_type_to_real(Time_step)
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
@@ -381,7 +422,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,CS)      &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,Rad,CS)  &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
@@ -406,20 +447,23 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
 
       dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-              (flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw)) - &
+              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
              dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
 
-      SW_abs_col(0) = IST%sw_abs_snow(i,j,k)*flux_sw
-      do m=1,NkIce ; SW_abs_col(m) = IST%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
+      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*flux_sw
+      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
       ! actually lose or gain any mass from freezing or melting.
-      call ice_temp_SIS2(IST%mH_snow(i,j,k)*IG%H_to_kg_m2, IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
-                        enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                        T_Freeze_surf, FIA%bheat(i,j), ts_new, &
-                        dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                        IST%ice_thm_CSp, IST%ITV, CS%column_check)
+      ! mw/new - pass melt pond (surface temp fixed at freezing when present)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
+                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
+                         T_Freeze_surf, FIA%bheat(i,j), ts_new, &
+                         dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
+                         CS%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -433,22 +477,22 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
       if (CS%column_check) then
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
-        IST%heat_in(i,j,k) = IST%heat_in(i,j,k) + dt_fast * &
-          ((flux_lw(i,j,k) + IST%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
+        CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
+          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
            FIA%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*kg_H_Nk) * enth_col(m)
         enddo
-        tot_heat_in = enth_units * (IST%heat_in(i,j,k) - &
+        tot_heat_in = enth_units * (CS%heat_in(i,j,k) - &
                                     (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
-        enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
+        enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > CS%imb_tol * (abs(enth_here) + &
-                  abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
+                  abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
           norm_enth_imb = enth_imb / (abs(enth_here) + &
-                  abs(IST%enth_prev(i,j,k)) + abs(tot_heat_in))
-          enth_imb = enth_here - (IST%enth_prev(i,j,k) + tot_heat_in)
+                  abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in))
+          enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         endif
       endif
 
@@ -460,8 +504,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, FIA, CS, G, IG )
   call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_lw, lprec, fprec, flux_lh, G, IG )
-
-  IST%Time = IST%Time + IST%Time_step_fast ! advance time
 
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
@@ -545,6 +587,13 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
 
+  call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
+
+  if (CS%column_check) then
+    allocate(CS%enth_prev(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
+    allocate(CS%heat_in(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
+  endif
+
   call callTree_leave("SIS_fast_thermo_init()")
 
 end subroutine SIS_fast_thermo_init
@@ -554,6 +603,8 @@ end subroutine SIS_fast_thermo_init
 !> SIS_fast_thermo_end deallocates any memory associated with this module.
 subroutine SIS_fast_thermo_end(CS)
   type(fast_thermo_CS), pointer :: CS
+
+  call SIS2_ice_thm_end(CS%ice_thm_CSp)
 
   if (associated(CS)) deallocate(CS)
 
