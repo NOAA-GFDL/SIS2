@@ -477,20 +477,20 @@ subroutine ice_stock_pe(Ice, index, value)
   if(.not.Ice%pe) return
 
   if (associated(Ice%sCS)) then
-    IST => Ice%Ice_state
+    IST => Ice%sCS%IST
     ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
   elseif (associated(Ice%fCS)) then
-    IST => Ice%Ice_state
+    IST => Ice%fCS%IST
     ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
-                   "without either sCS or fCS associated")
+                   "without either sCS or fCS associated.")
     return
   endif
 
   isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
-  call get_SIS2_thermo_coefs(Ice%Ice_State%ITV, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
   select case (index)
 
