@@ -101,7 +101,7 @@ end type SIS_fast_CS
 !! coupling, or they may be on the ocean processors with the new embedded-ice
 !! approach.
 type SIS_slow_CS
-  type(time_type), pointer :: Time => NULL()
+  type(time_type) :: Time
   type(time_type) :: Time_step_slow
 
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
