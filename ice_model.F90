@@ -1166,28 +1166,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                     "Ice%sCS%Ice_state structure. Model is already initialized.")
     return
   endif ; endif
-  ! For now, both fast and slow processes occur on all sea-ice PEs.
-  fast_ice_PE = .true. ; slow_ice_PE = .true.
 
   if (.not.associated(Ice%G)) allocate(Ice%G)
   if (test_grid_copy) then ; allocate(G)
   else ; G => Ice%G ; endif
 
-  single_IST = .false. ! .true.
-
-  if (fast_ice_PE) then
-    if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
-    if (.not.associated(Ice%fCS%IG)) allocate(Ice%fCS%IG)
-!    if ((.not.slow_ice_PE) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
-    if ((.not.single_IST) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
-  endif
-  if (slow_ice_PE) then
-    if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
-    if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
-    if (.not.associated(Ice%sCS%IST)) allocate(Ice%sCS%IST) ! ; IST => Ice%sCS%IST
-    
-    if (fast_ice_PE .and. single_IST) Ice%fCS%IST => Ice%sCS%IST
-  endif
+  ! For now, both fast and slow processes occur on all sea-ice PEs.
+  fast_ice_PE = .true. ; slow_ice_PE = .true.
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1212,6 +1197,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call get_param(param_file, mod, "USE_SLAB_ICE", slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
+  call get_param(param_file, mod, "SINGLE_ICE_STATE_TYPE", single_IST, &
+                 "If true, the fast and slow portions of the ice use a \n"//&
+                 "single common ice_state_type.  Otherwise they point to \n"//&
+                 "different ice_state_types that need to be explicitly \n"//&
+                 "copied back and forth.", default=.true.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
@@ -1224,11 +1214,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "returned to the coupler.  Valid values include \n"//&
                  "'A', 'B', or 'C', with a default that follows the \n"//&
                  "value of CGRID_ICE_DYNAMICS.", default=dflt_stagger)
-  if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
-  elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
-  elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
-  else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
-                        trim(stagger)//" is invalid.") ; endif
 
   ! Rho_ocean is not actually used here, but it used from later get_param
   ! calls in other modules.  This call is here to avoid changing the order of
@@ -1304,7 +1289,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
 
-!  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", Ice%FIA%atmos_winds, &
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
@@ -1330,10 +1314,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call get_param(param_file, mod, "PASS_ICEBERG_AREA_TO_OCEAN", pass_iceberg_area_to_ocean, &
                  "If true, iceberg area is passed through coupler", default=.false.)
   else ; pass_iceberg_area_to_ocean = .false. ; endif
-  if (slow_ice_PE) then
-    Ice%sCS%do_icebergs = do_icebergs
-    Ice%sCS%pass_iceberg_area_to_ocean = pass_iceberg_area_to_ocean
-  endif
   
   call get_param(param_file, mod, "ADD_DIURNAL_SW", add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
@@ -1377,7 +1357,32 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
+
+  if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
+  elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
+  elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
+  else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
+                        trim(stagger)//" is invalid.") ; endif
+
+  if (fast_ice_PE) then
+    if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
+    if (.not.associated(Ice%fCS%IG)) allocate(Ice%fCS%IG)
+!    if ((.not.slow_ice_PE) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
+    if ((.not.single_IST) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
+  endif
+
   if (slow_ice_PE) then
+    if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
+    if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
+    if (.not.associated(Ice%sCS%IST)) allocate(Ice%sCS%IST) ! ; IST => Ice%sCS%IST
+    
+    if (fast_ice_PE .and. single_IST) Ice%fCS%IST => Ice%sCS%IST
+  endif
+
+  if (slow_ice_PE) then
+    Ice%sCS%do_icebergs = do_icebergs
+    Ice%sCS%pass_iceberg_area_to_ocean = pass_iceberg_area_to_ocean
+
     Ice%sCS%IST%slab_ice = slab_ice ; Ice%sCS%IST%Cgrid_dyn = Cgrid_dyn
 
     Ice%sCS%slab_ice = slab_ice
@@ -1397,7 +1402,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   ! Set up the ice-specific grid describing categories and ice layers.
-  nCat_dflt = 5 ; if (slab_ice)  nCat_dflt = 1 ! open water and ice ... but never in same place
+  nCat_dflt = 5 ; if (slab_ice) nCat_dflt = 1 ! open water and ice ... but never in same place
   if (slow_ice_PE) then
     call set_ice_grid(Ice%sCS%IG, param_file, nCat_dflt)
     if (slab_ice) Ice%sCS%IG%CatIce = 1 ! open water and ice ... but never in same place
