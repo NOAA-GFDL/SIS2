@@ -152,7 +152,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   !### Copy fCS%FIA to sCS%FIA.
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
+    ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
     call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%G%HI, Ice%G%HI, Ice%fCS%IG)
   endif
 
@@ -367,7 +367,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%G, Ice%sCS%IST%ITV)
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
+    ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%G%HI, Ice%G%HI, Ice%sCS%IG)
   endif
 
@@ -1151,6 +1151,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                                ! of the run via calls to set_first_direction.
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
+  logical :: single_IST        ! If true, fCS%IST and sCS%IST point to the same structure.
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
@@ -1172,17 +1173,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (test_grid_copy) then ; allocate(G)
   else ; G => Ice%G ; endif
 
+  single_IST = .false. ! .true.
+
   if (fast_ice_PE) then
     if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
     if (.not.associated(Ice%fCS%IG)) allocate(Ice%fCS%IG)
-    if ((.not.slow_ice_PE) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
+!    if ((.not.slow_ice_PE) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
+    if ((.not.single_IST) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
   endif
   if (slow_ice_PE) then
     if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
     if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
     if (.not.associated(Ice%sCS%IST)) allocate(Ice%sCS%IST) ! ; IST => Ice%sCS%IST
     
-    if (fast_ice_PE) Ice%fCS%IST => Ice%sCS%IST
+    if (fast_ice_PE .and. single_IST) Ice%fCS%IST => Ice%sCS%IST
   endif
 
   ! Open the parameter file.
@@ -1489,15 +1493,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   ! These allocation routines are called on all PEs; whether or not the variables
   ! they allocate are registered for inclusion in restart files is determined by
   ! whether the Ice%Ice...restart types are associated.
-  call ice_type_fast_reg_restarts(G%domain%mpp_domain, CatIce, &
-                    param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
-  call ice_type_slow_reg_restarts(G%domain%mpp_domain, CatIce, &
-                    param_file, Ice, Ice%Ice_restart, restart_file)
+  if (fast_ice_PE) then
+    call ice_type_fast_reg_restarts(G%domain%mpp_domain, CatIce, &
+                      param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
+  endif
 
-  call ice_state_register_restarts(G%domain%mpp_domain, HI, Ice%sCS%IG, param_file, &
-                                   Ice%sCS%IST, Ice%Ice_restart, restart_file)
-  ! ### Add a second call to ice_state_register_restarts for Ice%fCS%IST if it
-  ! ### does not point to Ice%sCS%IST.
+  if (slow_ice_PE) then
+    call ice_type_slow_reg_restarts(G%domain%mpp_domain, CatIce, &
+                      param_file, Ice, Ice%Ice_restart, restart_file)
+
+    call ice_state_register_restarts(G%domain%mpp_domain, HI, Ice%sCS%IG, param_file, &
+                                     Ice%sCS%IST, Ice%Ice_restart, restart_file)
+  endif
+
+  if (fast_ice_PE .and. (.not.single_IST))  then
+    call ice_state_register_restarts(G%domain%mpp_domain, HI, Ice%fCS%IG, param_file, &
+                                     Ice%fCS%IST)
+  endif
 
   if (slow_ice_PE) then
     call alloc_ocean_sfc_state(Ice%sCS%OSS, HI, Ice%sCS%IST%Cgrid_dyn)
@@ -1549,7 +1561,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
   if (slow_ice_PE) then
     call ice_thermo_init(param_file, Ice%sCS%IST%ITV, init_EOS=nudge_sea_ice)
-  elseif (fast_ice_PE) then
+    if (fast_ice_PE) then ; if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+      call ice_thermo_init(param_file, Ice%fCS%IST%ITV, init_EOS=nudge_sea_ice)
+    endif ; endif
+  else
     call ice_thermo_init(param_file, Ice%fCS%IST%ITV, init_EOS=nudge_sea_ice)
   endif
 
@@ -1875,7 +1890,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (slow_ice_PE .and. fast_ice_PE) then
     if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-      call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
+      ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, G%HI, G%HI, Ice%sCS%IG)
     endif
   endif

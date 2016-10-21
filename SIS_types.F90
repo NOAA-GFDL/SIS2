@@ -368,8 +368,8 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
-  type(restart_file_type), pointer       :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(restart_file_type), optional, pointer    :: Ice_restart
+  character(len=*),        optional, intent(in) :: restart_file
 
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
@@ -397,7 +397,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
 
 
   ! Now register some of these arrays to be read from the restart files.
-  if (associated(Ice_restart)) then
+  if (present(Ice_restart)) then ; if (associated(Ice_restart)) then
     idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
     idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
                                  domain=mpp_domain)
@@ -429,7 +429,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
       idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
                                    domain=mpp_domain, position=CORNER, mandatory=.false.)
     endif
-  endif
+  endif ; endif
 
 end subroutine ice_state_register_restarts
 
@@ -625,12 +625,17 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
                           "decompositions of the two ice types.")
   endif
 
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  !### FOR SOME REASON, THE ENTIRE ARRAY NEEDS TO BE COPIED.  PROBABLY EXTRA
+  !### HALO UPDATES ARE NEEDED.
+
+!  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
     IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
     IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
     IST_out%mH_pond(i,j,k) = IST_in%mH_pond(i,j,k)
     IST_out%mH_snow(i,j,k) = IST_in%mH_snow(i,j,k)
     IST_out%mH_ice(i,j,k) = IST_in%mH_ice(i,j,k)
@@ -638,7 +643,8 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%enth_snow(i,j,k,1) = IST_in%enth_snow(i,j,k,1)
   enddo ; enddo ; enddo
 
-  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do m=1,NkIce ; do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
     IST_out%enth_ice(i,j,k,m) = IST_in%enth_ice(i,j,k,m)
     IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
@@ -647,10 +653,12 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   ! case of non-symmetric memory and no halos properly.
   if (IST_in%Cgrid_dyn) then
     if (min(lbound(IST_in%u_ice_C,1),lbound(IST_out%u_ice_C,1)) <= isc-1) then
-      do j=jsc,jec ; do I=isc-1,iec
+!      do j=jsc,jec ; do I=isc-1,iec
+      do j=HI_in%jsd,HI_in%jed ; do I=HI_in%IsdB,HI_in%IedB
         IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
       enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
+!      do J=jsc-1,jec ; do i=isc,iec
+      do J=HI_in%JsdB,HI_in%JedB ; do i=HI_in%isd,HI_in%ied
         IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
       enddo ; enddo
     else ! One of the arrays is non-symmetric and has no halos.
@@ -661,7 +669,8 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     endif
   else
     if (min(lbound(IST_in%u_ice_B,1),lbound(IST_out%u_ice_B,1)) <= isc-1) then
-      do J=jsc-1,jec ; do I=isc-1,iec
+!      do J=jsc-1,jec ; do I=isc-1,iec
+      do J=HI_in%JsdB,HI_in%JedB ; do I=HI_in%IsdB,HI_in%IedB
         IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
         IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
       enddo ; enddo
