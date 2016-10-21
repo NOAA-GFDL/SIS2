@@ -88,7 +88,6 @@ type fast_thermo_CS ; private
   ! These are pointers to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 end type fast_thermo_CS
->>>>>>> dev/master
 
 contains
 

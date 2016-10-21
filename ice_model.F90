@@ -1951,7 +1951,7 @@ subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
   type(ice_data_type),           intent(inout) :: Ice
   type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
 
-  call do_update_ice_atm_deposition_flux( Atmos_boundary, Ice%FIA, Ice%G, Ice%IG )
+  call do_update_ice_atm_deposition_flux( Atmos_boundary, Ice%FIA, Ice%G, Ice%fCS%IG )
 
 end subroutine update_ice_atm_deposition_flux
 
