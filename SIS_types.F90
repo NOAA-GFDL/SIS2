@@ -37,7 +37,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-public :: IST_chksum, IST_bounds_check
+public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
@@ -602,6 +602,86 @@ subroutine alloc_simple_OSS(OSS, HI)
 
 end subroutine alloc_simple_OSS
 
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_IST_to_IST copies the computational domain of one ice state type into
+!! the computational domain of another ice_state_type.  Both must use the same
+!! domain decomposition and indexing convention (for now), but they may have
+!! different halo sizes.
+subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
+  type(ice_state_type), intent(in)    :: IST_in
+  type(ice_state_type), intent(inout) :: IST_out
+  type(hor_index_type), intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),  intent(in)    :: IG
+
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
+      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+    call SIS_error(FATAL, "copy_IST_to_IST called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
+    IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
+  enddo ; enddo ; enddo
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%mH_pond(i,j,k) = IST_in%mH_pond(i,j,k)
+    IST_out%mH_snow(i,j,k) = IST_in%mH_snow(i,j,k)
+    IST_out%mH_ice(i,j,k) = IST_in%mH_ice(i,j,k)
+
+    IST_out%enth_snow(i,j,k,1) = IST_in%enth_snow(i,j,k,1)
+  enddo ; enddo ; enddo
+
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%enth_ice(i,j,k,m) = IST_in%enth_ice(i,j,k,m)
+    IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
+  enddo ; enddo ; enddo ; enddo
+
+  ! These copies of the staggered velocity points include tests that handle the
+  ! case of non-symmetric memory and no halos properly.
+  if (IST_in%Cgrid_dyn) then
+    if (min(lbound(IST_in%u_ice_C,1),lbound(IST_out%u_ice_C,1)) <= isc-1) then
+      do j=jsc,jec ; do I=isc-1,iec
+        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
+      enddo ; enddo
+    else ! One of the arrays is non-symmetric and has no halos.
+      do j=jsc,jec ; do i=isc,iec
+        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
+        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
+      enddo ; enddo
+    endif
+  else
+    if (min(lbound(IST_in%u_ice_B,1),lbound(IST_out%u_ice_B,1)) <= isc-1) then
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
+        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
+      enddo ; enddo
+    else
+      do J=jsc,jec ; do I=isc,iec
+        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
+        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
+      enddo ; enddo
+    endif
+  endif
+
+  IST_out%Cgrid_dyn = IST_in%Cgrid_dyn
+  IST_out%slab_ice = IST_in%slab_ice
+
+  ! rdg_mice, TrReg, and ITV are deliberately not being copied.
+
+end subroutine copy_IST_to_IST
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_IST_arrays deallocates the arrays in an ice_state_type.
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
 

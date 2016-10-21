@@ -90,7 +90,7 @@ use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_av
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_types, only : IST_chksum, IST_bounds_check
+use SIS_types, only : IST_chksum, IST_bounds_check, copy_IST_to_IST
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -150,7 +150,11 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! need to be replaced by a routine that does inter-processor receives.
   call avg_top_quantities(Ice%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, Ice%G, Ice%fCS%IG)
 
-  !### Copy fCS%FIA to sCS%FIA and (optionally) fCS%IST to sCS%IST.
+  !### Copy fCS%FIA to sCS%FIA.
+  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+    call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
+    call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%G%HI, Ice%G%HI, Ice%fCS%IG)
+  endif
 
   ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be
   ! advanced to give the end time of the slow timestep.
@@ -361,7 +365,11 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
   !### Exchange information from the slow ice processors to the fast ice processors.
   call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%G, Ice%sCS%IST%ITV)
-  !### Copy sCS%IST to fCS%IST.
+
+  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+    call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
+    call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%G%HI, Ice%G%HI, Ice%sCS%IG)
+  endif
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ocean_boundary%t, &
                              Ice%fCS%sOSS, Ice%fCS%Rad, Ice%FIA, Ice%G, Ice%fCS%IG, Ice%fCS )
@@ -1154,13 +1162,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
-                    "Ice%Ice_state structure. Model is already initialized.")
+                    "Ice%sCS%Ice_state structure. Model is already initialized.")
     return
   endif ; endif
   ! For now, both fast and slow processes occur on all sea-ice PEs.
   fast_ice_PE = .true. ; slow_ice_PE = .true.
 
-  if (.not.associated(Ice%Ice_state)) allocate(Ice%Ice_state) ! ; IST => Ice%Ice_state
   if (.not.associated(Ice%G)) allocate(Ice%G)
   if (test_grid_copy) then ; allocate(G)
   else ; G => Ice%G ; endif
@@ -1168,12 +1175,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (fast_ice_PE) then
     if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
     if (.not.associated(Ice%fCS%IG)) allocate(Ice%fCS%IG)
-    Ice%fCS%IST => Ice%Ice_state
+    if ((.not.slow_ice_PE) .and. (.not.associated(Ice%fCS%IST))) allocate(Ice%fCS%IST)
   endif
   if (slow_ice_PE) then
     if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
     if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
-    Ice%sCS%IST => Ice%Ice_state
+    if (.not.associated(Ice%sCS%IST)) allocate(Ice%sCS%IST) ! ; IST => Ice%sCS%IST
+    
+    if (fast_ice_PE) Ice%fCS%IST => Ice%sCS%IST
   endif
 
   ! Open the parameter file.
@@ -1864,7 +1873,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     endif
   endif
 
-  !### Copy sCS%IST to fCS%IST if the latter does not point to the former.
+  if (slow_ice_PE .and. fast_ice_PE) then
+    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+      call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
+      call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, G%HI, G%HI, Ice%sCS%IG)
+    endif
+  endif
 
   if (slow_ice_PE) then
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%FIA, G, Ice%sCS%IG, &
@@ -1989,6 +2003,14 @@ subroutine ice_model_end (Ice)
     call dealloc_simple_OSS(Ice%fCS%sOSS)
 
     call ice_grid_end(Ice%fCS%IG)
+    
+    if (.not.associated(Ice%sCS)) then
+      call dealloc_IST_arrays(Ice%fCS%IST)
+      deallocate(Ice%fCS%IST)
+    elseif (.not.associated(Ice%fCS%IST,Ice%sCS%IST)) then
+      call dealloc_IST_arrays(Ice%fCS%IST)
+      deallocate(Ice%fCS%IST)
+    endif
   endif
 
   if (slow_ice_PE) then
@@ -2008,6 +2030,9 @@ subroutine ice_model_end (Ice)
     call dealloc_ocean_sfc_state(Ice%sCS%OSS)
 
     call ice_grid_end(Ice%sCS%IG)
+
+    call dealloc_IST_arrays(Ice%sCS%IST)
+    deallocate(Ice%sCS%IST)
   endif
 
   call SIS_hor_grid_end(Ice%G)
@@ -2015,7 +2040,6 @@ subroutine ice_model_end (Ice)
 
   call dealloc_fast_ice_avg(Ice%FIA)
 
-  call dealloc_IST_arrays(Ice%Ice_state)
   deallocate(Ice%Ice_restart)
 
 
@@ -2025,7 +2049,6 @@ subroutine ice_model_end (Ice)
     call SIS_diag_mediator_end(Ice%fCS%Time, Ice%fCS%diag)
   endif
 
-  deallocate(Ice%Ice_state)
   if (associated(Ice%fCS)) deallocate(Ice%fCS)
   if (associated(Ice%sCS)) deallocate(Ice%sCS)
 
