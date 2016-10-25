@@ -87,9 +87,9 @@ type SIS_fast_CS
   type(simple_OSS_type), pointer :: sOSS => NULL() ! A structure containing the arrays
                              ! that describe the ocean's surface state, as it is revealed
                              ! to the atmosphere or the fast ice thermodynamics modules.
-!!!  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-!                               ! fields that are calculated during the fast ice step but
-!                               ! stored for later use by the slow ice step or the ocean.
+  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
+                             ! fields that are calculated during the fast ice step but
+                             ! stored for later use by the slow ice step or the ocean.
 
 end type SIS_fast_CS
 
@@ -136,9 +136,9 @@ type SIS_slow_CS
   type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
                              ! that describe the ocean's surface state, as it is revealed
                              ! to the ice model.
-!!!  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-!                               ! fields that are calculated during the fast ice step but
-!                               ! stored for later use by the slow ice step or the ocean.
+  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
+                             ! fields that are calculated during the fast ice step but
+                             ! stored for later use by the slow ice step or the ocean.
 
 end type SIS_slow_CS
 

@@ -40,7 +40,7 @@ public :: ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
 public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
-public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 
@@ -152,17 +152,18 @@ end type simple_OSS_type
 !! of these are diagnostics, while others are averages of fluxes taken during
 !! the fast ice thermodynamics and used during the slow ice thermodynamics or dynamics.
 type fast_ice_avg_type
-  ! These are the arrays that are averaged over the fast thermodynamics.  They
-  ! are either used to communicate to the slow thermodynamics or diagnostics or
-  ! both.
+!FAST ONLY
   integer :: avg_count  ! The number of times that surface fluxes to the ice
                         ! have been incremented.
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
+  ! These are the arrays that are averaged over the fast thermodynamics.  They
+  ! are either used to communicate to the slow thermodynamics or diagnostics or
+  ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     flux_u_top         , & ! The downward flux of zonal and meridional
-    flux_v_top         , & ! momentum on an A-grid in ???.
+    flux_v_top         , & ! momentum on an A-grid in Pa.
     flux_t_top         , & ! The upward sensible heat flux at the ice top
                            ! in W m-2.
     flux_q_top         , & ! The upward evaporative moisture flux at
@@ -189,10 +190,6 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:) :: &
     bheat      , & ! The upward diffusive heat flux from the ocean
                    ! to the ice at the base of the ice, in W m-2.
-    frazil_left, & ! The frazil heat flux that has not yet been
-                   ! consumed in making ice, in J m-2. This array
-                   ! is decremented by the ice model as the heat
-                   ! flux is used up.
     WindStr_x  , & ! The zonal wind stress averaged over the ice
                    ! categories on an A-grid, in Pa.
     WindStr_y  , & ! The meridional wind stress averaged over the
@@ -210,6 +207,13 @@ type fast_ice_avg_type
                    ! sea ice.
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
+!SLOW ONLY
+  real, allocatable, dimension(:,:) :: &
+    frazil_left    ! The frazil heat flux that has not yet been
+                   ! consumed in making ice, in J m-2. This array
+                   ! is decremented by the ice model as the heat
+                   ! flux is used up.
+!SLOW ONLY
   integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
@@ -626,7 +630,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   endif
 
   !### FOR SOME REASON, THE ENTIRE ARRAY NEEDS TO BE COPIED.  PROBABLY EXTRA
-  !### HALO UPDATES ARE NEEDED.
+  !### HALO UPDATES ARE NEEDED.  THIS CAN BE TESTED WITH A 5 DAY BALTIC RUN.
 
 !  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
   do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
@@ -688,6 +692,93 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   ! rdg_mice, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
+!! the computational domain of another fast_ice_avg_type.  Both must use the same
+!! domain decomposition and indexing convention (for now), but they may have
+!! different halo sizes.
+subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
+  type(fast_ice_avg_type), intent(in)    :: FIA_in
+  type(fast_ice_avg_type), intent(inout) :: FIA_out
+  type(hor_index_type),    intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),     intent(in)    :: IG
+
+  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
+      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+    call SIS_error(FATAL, "copy_IST_to_IST called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+
+!  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+    FIA_out%flux_u_top(i,j,k) = FIA_in%flux_u_top(i,j,k)
+    FIA_out%flux_v_top(i,j,k) = FIA_in%flux_v_top(i,j,k)
+    FIA_out%flux_t_top(i,j,k) = FIA_in%flux_t_top(i,j,k)
+    FIA_out%flux_q_top(i,j,k) = FIA_in%flux_q_top(i,j,k)
+    FIA_out%flux_sw_vis_dir_top(i,j,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
+    FIA_out%flux_sw_vis_dif_top(i,j,k) = FIA_in%flux_sw_vis_dif_top(i,j,k)
+    FIA_out%flux_sw_nir_dir_top(i,j,k) = FIA_in%flux_sw_nir_dir_top(i,j,k)
+    FIA_out%flux_sw_nir_dif_top(i,j,k) = FIA_in%flux_sw_nir_dif_top(i,j,k)
+    FIA_out%flux_lw_top(i,j,k) = FIA_in%flux_lw_top(i,j,k)
+    FIA_out%flux_lh_top(i,j,k) = FIA_in%flux_lh_top(i,j,k)
+    FIA_out%lprec_top(i,j,k) = FIA_in%lprec_top(i,j,k)
+    FIA_out%fprec_top(i,j,k) = FIA_in%fprec_top(i,j,k)
+  enddo ; enddo ; enddo
+
+!  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+    FIA_out%tmelt(i,j,k) = FIA_in%tmelt(i,j,k)
+    FIA_out%bmelt(i,j,k) = FIA_in%bmelt(i,j,k)
+    FIA_out%sw_abs_ocn(i,j,k) = FIA_in%sw_abs_ocn(i,j,k)
+  enddo ; enddo ; enddo
+
+!  do j=jsc,jec ; do i=isc,iec
+  do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+    FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
+    FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
+    FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)
+    FIA_out%p_atm_surf(i,j) = FIA_in%p_atm_surf(i,j)
+    FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
+    FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
+  enddo ; enddo
+  ! FIA%frazil_left is deliberately not being copied.
+
+  if (FIA_in%num_tr_fluxes >= 0) then
+!$OMP SINGLE
+    if (FIA_out%num_tr_fluxes < 0) then
+      ! Allocate the tr_flux_top arrays to accommodate the size of the input
+      ! fluxes.  This only occurs the first time FIA_out is copied from a fully
+      ! initialized FIA_in.
+      FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
+      if (FIA_out%num_tr_fluxes > 0) then
+        allocate(FIA_out%tr_flux_top(SZI_(HI_out), SZJ_(HI_out), 0:ncat, FIA_out%num_tr_fluxes))
+        FIA_out%tr_flux_top(:,:,:,:) = 0.0
+
+        allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
+                                       size(FIA_in%tr_flux_index,2)))
+        FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
+      endif
+    endif
+
+    if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
+      call SIS_error(FATAL, "copy_FIA_to_FIA called with different num_tr_fluxes.")
+!$OMP END SINGLE
+
+    do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      FIA_out%tr_flux_top(i,j,k,n) = FIA_in%tr_flux_top(i,j,k,n)
+    enddo ; enddo ; enddo ; enddo
+  endif
+
+  ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
+end subroutine copy_FIA_to_FIA
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_IST_arrays deallocates the arrays in an ice_state_type.

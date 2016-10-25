@@ -90,7 +90,7 @@ use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_av
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_types, only : IST_chksum, IST_bounds_check, copy_IST_to_IST
+use SIS_types, only : IST_chksum, IST_bounds_check, copy_IST_to_IST, copy_FIA_to_FIA
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -148,16 +148,20 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! average fluxes from update_ice_model_fast
   !   In the case where fast and slow ice PEs are not the same, this call would
   ! need to be replaced by a routine that does inter-processor receives.
-  call avg_top_quantities(Ice%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, Ice%G, Ice%fCS%IG)
+  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, Ice%G, Ice%fCS%IG)
 
-  !### Copy fCS%FIA to sCS%FIA.
+  if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
+    ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
+    call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%G%HI, Ice%G%HI, Ice%fCS%IG)
+  endif
+
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
     call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%G%HI, Ice%G%HI, Ice%fCS%IG)
   endif
 
-  ! This is a slow ice PE, but not a fast ice PE, so the clocks need to be
-  ! advanced to give the end time of the slow timestep.
+  ! Advance the slow PE clock to give the end time of the slow timestep.  There
+  ! is a separate clock inside the fCS that is advanced elsewhere.
   Ice%sCS%Time = Ice%sCS%Time + Ice%sCS%Time_step_slow
   if (.not.associated(Ice%fCS)) then
     Ice%Time = Ice%sCS%Time
@@ -172,21 +176,21 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   if (Ice%sCS%do_icebergs) then
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%FIA, Ice%icebergs, &
+    call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
                          dt_slow, Ice%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
   endif
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
-                           Ice%sCS%OSS, Ice%FIA, Ice%sCS%IOF, Ice%G, Ice%sCS%IG)
+                           Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, Ice%G, Ice%sCS%IG)
 
-  call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%FIA, Ice%sCS%IOF, &
+  call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%G, Ice%sCS%IG)
 
   if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%G, Ice%sCS%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%FIA, Ice%G, Ice%sCS%IG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%sCS%FIA, Ice%G, Ice%sCS%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
@@ -372,7 +376,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   endif
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ocean_boundary%t, &
-                             Ice%fCS%sOSS, Ice%fCS%Rad, Ice%FIA, Ice%G, Ice%fCS%IG, Ice%fCS )
+                             Ice%fCS%sOSS, Ice%fCS%Rad, Ice%fCS%FIA, Ice%G, Ice%fCS%IG, Ice%fCS )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -601,7 +605,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
       else
         FIA%bheat(i,j) = 0.0
       endif
-!      FIA%frazil_left(i,j) = OSS%frazil(i,j)
     enddo
   enddo
 
@@ -797,7 +800,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
     call add_diurnal_sw(Atmos_boundary, Ice%G, Time_start, Time_end)
 
   call do_update_ice_model_fast(Atmos_boundary, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
-                                Ice%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
+                                Ice%fCS%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
                                 Ice%G, Ice%fCS%IG )
 
   ! Advance the master sea-ice time.
@@ -811,7 +814,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
   call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, &
-                                     Ice%FIA, Ice%G, Ice%fCS%IG, Time_end, Time_end + dT_fast)
+                                     Ice%fCS%FIA, Ice%G, Ice%fCS%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
@@ -1523,15 +1526,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call alloc_ice_ocean_flux(Ice%sCS%IOF, HI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
+    call alloc_fast_ice_avg(Ice%sCS%FIA, HI, Ice%sCS%IG)
   endif
 
-  call alloc_fast_ice_avg(Ice%FIA, HI, Ice%sCS%IG)
-  Ice%FIA%atmos_winds = atmos_winds
-
-
   if (fast_ice_PE) then
-!    call alloc_fast_ice_avg(Ice%fCS%FIA, HI, Ice%fCS%IG)
-!    Ice%fCS%FIA%atmos_winds = atmos_winds
+    if (single_IST) then
+      Ice%fCS%FIA => Ice%sCS%FIA
+    else
+      call alloc_fast_ice_avg(Ice%fCS%FIA, HI, Ice%fCS%IG)
+    endif
+    Ice%fCS%FIA%atmos_winds = atmos_winds
+
 
     call ice_rad_register_restarts(G%domain%mpp_domain, HI, Ice%fCS%IG, param_file, &
                                    Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
@@ -1901,7 +1906,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   if (slow_ice_PE) then
-    call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%FIA, G, Ice%sCS%IG, &
+    call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, G, Ice%sCS%IG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=Ice%sCS%IST%Cgrid_dyn)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
   else
@@ -2031,6 +2036,13 @@ subroutine ice_model_end (Ice)
       call dealloc_IST_arrays(Ice%fCS%IST)
       deallocate(Ice%fCS%IST)
     endif
+
+    if (.not.associated(Ice%sCS)) then
+      call dealloc_fast_ice_avg(Ice%fCS%FIA)
+    elseif (.not.associated(Ice%fCS%FIA,Ice%sCS%FIA)) then
+      call dealloc_fast_ice_avg(Ice%fCS%FIA)
+    endif
+
   endif
 
   if (slow_ice_PE) then
@@ -2053,12 +2065,12 @@ subroutine ice_model_end (Ice)
 
     call dealloc_IST_arrays(Ice%sCS%IST)
     deallocate(Ice%sCS%IST)
+
+    call dealloc_fast_ice_avg(Ice%sCS%FIA)
   endif
 
   call SIS_hor_grid_end(Ice%G)
   call dealloc_Ice_arrays(Ice)
-
-  call dealloc_fast_ice_avg(Ice%FIA)
 
   deallocate(Ice%Ice_restart)
 

@@ -132,9 +132,6 @@ type ice_data_type !  ice_public_type
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
   type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-                               ! fields that are calculated during the fast ice step but
-                               ! stored for later use by the slow ice step or the ocean.
 
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
