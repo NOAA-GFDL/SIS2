@@ -277,8 +277,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       else
         FIA%ice_free(i,j) = 1.0 ; FIA%ice_cover(i,j) = 0.0
         FIA%WindStr_x(i,j) = FIA%flux_u_top(i,j,0)
-!### THERE IS A BUG HERE - I DON'T THINK IT DOES ANYTHING!
-        FIA%WindStr_y(i,j) = FIA%flux_u_top(i,j,0)
+        FIA%WindStr_y(i,j) = FIA%flux_v_top(i,j,0)
       endif
     enddo
   enddo
