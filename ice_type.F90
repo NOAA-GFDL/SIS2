@@ -131,8 +131,6 @@ type ice_data_type !  ice_public_type
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
-!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
 end type ice_data_type !  ice_public_type
