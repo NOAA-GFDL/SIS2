@@ -80,7 +80,7 @@ type SIS_fast_CS
                              ! the absorption, reflection and transmission of
                              ! shortwave radiation.
 
-!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
 !  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
 !                               ! representation of the ice state.
@@ -129,7 +129,7 @@ type SIS_slow_CS
 
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 
-!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
   type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
 !  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
 !                               ! representation of the ice state.

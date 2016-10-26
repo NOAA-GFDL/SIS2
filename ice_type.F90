@@ -131,7 +131,7 @@ type ice_data_type !  ice_public_type
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
-  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
+!  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
 
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
@@ -467,15 +467,18 @@ subroutine ice_stock_pe(Ice, index, value)
   real :: icebergs_value
   real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  type(SIS_hor_grid_type), pointer :: G => NULL()
 
   value = 0.0
   if(.not.Ice%pe) return
 
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST
+    G => Ice%sCS%G
     ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
   elseif (associated(Ice%fCS)) then
     IST => Ice%fCS%IST
+    G => Ice%fCS%G
     ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
@@ -483,7 +486,8 @@ subroutine ice_stock_pe(Ice, index, value)
     return
   endif
 
-  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
   call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
@@ -493,7 +497,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -501,13 +505,13 @@ subroutine ice_stock_pe(Ice, index, value)
       if (IST%slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-              value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+              value = value - (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                               (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
       else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          part_wt = (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
@@ -523,7 +527,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !There is no salt in the snow.
       value = 0.0
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
+        value = value + (IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 
