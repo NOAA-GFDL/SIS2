@@ -330,16 +330,15 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                               FIA%ice_cover(i,j)*FIA%WindStr_x(i,j)) / ice_cover(i,j)
           WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_y(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_y(i,j)) / ice_cover(i,j)
-!### THIS IS THE CORRECT FORM, BUT IT WILL CHANGE ANSWERS IF ndyn_steps > 1.
-!        else
-!          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
-!          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-!        endif
-!        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-!          WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
-!          WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
-!        else
-        elseif (ice_free(i,j) > FIA%ice_free(i,j)) then
+        else
+          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+        endif
+
+        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
+          WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+          WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+        else
           WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
                               FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
           WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
