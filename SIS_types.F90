@@ -194,6 +194,8 @@ type fast_ice_avg_type
                    ! categories on an A-grid, in Pa.
     WindStr_y  , & ! The meridional wind stress averaged over the
                    ! ice categories on an A-grid, in Pa.
+    WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
+    WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
     p_atm_surf , & ! The atmospheric pressure at the top of the ice, in Pa.
     ice_free   , & ! The fractional open water used in calculating
                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
@@ -470,6 +472,8 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0
   allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0
   allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_x(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_y(:,:) = 0.0
   allocate(FIA%p_atm_surf(SZI_(HI), SZJ_(HI))) ; FIA%p_atm_surf(:,:) = 0.0
   allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0
   allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 
@@ -712,8 +716,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
 !  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
   do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
-    FIA_out%flux_u_top(i,j,k) = FIA_in%flux_u_top(i,j,k)
-    FIA_out%flux_v_top(i,j,k) = FIA_in%flux_v_top(i,j,k)
+!    FIA_out%flux_u_top(i,j,k) = FIA_in%flux_u_top(i,j,k)
+!    FIA_out%flux_v_top(i,j,k) = FIA_in%flux_v_top(i,j,k)
     FIA_out%flux_t_top(i,j,k) = FIA_in%flux_t_top(i,j,k)
     FIA_out%flux_q_top(i,j,k) = FIA_in%flux_q_top(i,j,k)
     FIA_out%flux_sw_vis_dir_top(i,j,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
@@ -725,6 +729,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%lprec_top(i,j,k) = FIA_in%lprec_top(i,j,k)
     FIA_out%fprec_top(i,j,k) = FIA_in%fprec_top(i,j,k)
   enddo ; enddo ; enddo
+  ! FIA%flux_u_top and flux_v_top are deliberately not being copied.
 
 !  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
   do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
@@ -738,6 +743,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
     FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
     FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)
+    FIA_out%WindStr_ocn_x(i,j) = FIA_in%WindStr_ocn_x(i,j)
+    FIA_out%WindStr_ocn_y(i,j) = FIA_in%WindStr_ocn_y(i,j)
     FIA_out%p_atm_surf(i,j) = FIA_in%p_atm_surf(i,j)
     FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
     FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
@@ -843,6 +850,7 @@ subroutine dealloc_fast_ice_avg(FIA)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
+  deallocate(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y)
   deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn)
 
   deallocate(FIA)

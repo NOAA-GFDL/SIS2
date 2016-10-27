@@ -257,6 +257,8 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
       FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
       FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
+      FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
+      FIA%WindStr_ocn_y(i,j) = FIA%flux_v_top(i,j,0)
     enddo ; enddo
     do i=isd,ied
       if (FIA%ice_cover(i,j) > 0.0) then

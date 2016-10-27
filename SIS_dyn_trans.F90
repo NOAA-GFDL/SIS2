@@ -296,13 +296,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     ! Store values to determine the ice and snow mass change due to transport.
     h2o_chg_xprt(:,:) = 0.0
   endif
+
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
 !$OMP                                  WindStr_y_ocn_A,FIA)
   do j=jsd,jed
     do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-      WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
 
       ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
       WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
@@ -325,23 +326,24 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         ice_free(i,j) = IST%part_size(i,j,0)
 
         if (ice_cover(i,j) > FIA%ice_cover(i,j)) then
-          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_u_top(i,j,0) + &
+          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_x(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_x(i,j)) / ice_cover(i,j)
-          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_v_top(i,j,0) + &
+          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_y(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_y(i,j)) / ice_cover(i,j)
+!### THIS IS THE CORRECT FORM, BUT IT WILL CHANGE ANSWERS IF ndyn_steps > 1.
 !        else
 !          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
 !          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
 !        endif
 !        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-!          WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-!          WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
+!          WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+!          WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
 !        else
         elseif (ice_free(i,j) > FIA%ice_free(i,j)) then
           WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_u_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
           WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_v_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
         endif
       enddo
     enddo

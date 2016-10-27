@@ -155,6 +155,11 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
     call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
   endif
+  call pass_vector(Ice%sCS%FIA%WindStr_x, Ice%sCS%FIA%WindStr_y, &
+                   Ice%sCS%G%Domain, stagger=AGRID, complete=.false.)
+  call pass_vector(Ice%sCS%FIA%WindStr_ocn_x, Ice%sCS%FIA%WindStr_ocn_y, &
+                   Ice%sCS%G%Domain, stagger=AGRID)
+  call pass_var(Ice%sCS%FIA%ice_cover, Ice%sCS%G%Domain)
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
