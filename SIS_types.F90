@@ -629,17 +629,15 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
                           "decompositions of the two ice types.")
   endif
 
-  !### FOR SOME REASON, THE ENTIRE ARRAY NEEDS TO BE COPIED.  PROBABLY EXTRA
-  !### HALO UPDATES ARE NEEDED.  THIS CAN BE TESTED WITH A 5 DAY BALTIC RUN.
+  !### EXTRA HALO UPDATES ARE NEEDED LATER WHEN UPDATING fCS%part_size.
+  !###   THIS CAN BE TESTED WITH A 5 DAY BALTIC RUN.
 
-!  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-  do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
     IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
-!  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-  do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST_out%mH_pond(i,j,k) = IST_in%mH_pond(i,j,k)
     IST_out%mH_snow(i,j,k) = IST_in%mH_snow(i,j,k)
     IST_out%mH_ice(i,j,k) = IST_in%mH_ice(i,j,k)
@@ -647,8 +645,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%enth_snow(i,j,k,1) = IST_in%enth_snow(i,j,k,1)
   enddo ; enddo ; enddo
 
-!  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-  do m=1,NkIce ; do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     IST_out%enth_ice(i,j,k,m) = IST_in%enth_ice(i,j,k,m)
     IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
@@ -657,12 +654,10 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   ! case of non-symmetric memory and no halos properly.
   if (IST_in%Cgrid_dyn) then
     if (min(lbound(IST_in%u_ice_C,1),lbound(IST_out%u_ice_C,1)) <= isc-1) then
-!      do j=jsc,jec ; do I=isc-1,iec
-      do j=HI_in%jsd,HI_in%jed ; do I=HI_in%IsdB,HI_in%IedB
+      do j=jsc,jec ; do I=isc-1,iec
         IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
       enddo ; enddo
-!      do J=jsc-1,jec ; do i=isc,iec
-      do J=HI_in%JsdB,HI_in%JedB ; do i=HI_in%isd,HI_in%ied
+      do J=jsc-1,jec ; do i=isc,iec
         IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
       enddo ; enddo
     else ! One of the arrays is non-symmetric and has no halos.
@@ -673,8 +668,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     endif
   else
     if (min(lbound(IST_in%u_ice_B,1),lbound(IST_out%u_ice_B,1)) <= isc-1) then
-!      do J=jsc-1,jec ; do I=isc-1,iec
-      do J=HI_in%JsdB,HI_in%JedB ; do I=HI_in%IsdB,HI_in%IedB
+      do J=jsc-1,jec ; do I=isc-1,iec
         IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
         IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
       enddo ; enddo
