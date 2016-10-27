@@ -1235,9 +1235,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 
   call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
-                 "stress to the icebergs in place of the current air-ice \n"//&
+                 "stress to the icebergs in place of the current air-ocean \n"//&
                  "stress.  This option is here for backward compatibility, \n"//&
-                 "but should be avoided.  The default should be False.", default=.true.)
+                 "but should be avoided.", default=.false.)
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
