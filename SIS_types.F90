@@ -714,10 +714,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
                           "decompositions of the two ice types.")
   endif
 
-!  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-  do k=0,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
-!    FIA_out%flux_u_top(i,j,k) = FIA_in%flux_u_top(i,j,k)
-!    FIA_out%flux_v_top(i,j,k) = FIA_in%flux_v_top(i,j,k)
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     FIA_out%flux_t_top(i,j,k) = FIA_in%flux_t_top(i,j,k)
     FIA_out%flux_q_top(i,j,k) = FIA_in%flux_q_top(i,j,k)
     FIA_out%flux_sw_vis_dir_top(i,j,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
@@ -731,15 +728,14 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   enddo ; enddo ; enddo
   ! FIA%flux_u_top and flux_v_top are deliberately not being copied.
 
-!  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-  do k=1,ncat ; do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     FIA_out%tmelt(i,j,k) = FIA_in%tmelt(i,j,k)
     FIA_out%bmelt(i,j,k) = FIA_in%bmelt(i,j,k)
     FIA_out%sw_abs_ocn(i,j,k) = FIA_in%sw_abs_ocn(i,j,k)
   enddo ; enddo ; enddo
 
-!  do j=jsc,jec ; do i=isc,iec
-  do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
+  do j=jsc,jec ; do i=isc,iec
+!  do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
     FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
     FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
     FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)

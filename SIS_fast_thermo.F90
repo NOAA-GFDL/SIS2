@@ -247,20 +247,19 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
   ! Determine the fractional ice coverage and the wind stresses averaged
-  ! across all the ice thickness categories on an A-grid.  This is done
-  ! over the entire data domain for safety.
+  ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA,part_size) &
 !$OMP                           private(I_wts)
-  do j=jsd,jed
-    do k=1,ncat ; do i=isd,ied
+  do j=jsc,jec
+    do k=1,ncat ; do i=isc,iec
       FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
       FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
       FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
       FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
       FIA%WindStr_ocn_y(i,j) = FIA%flux_v_top(i,j,0)
     enddo ; enddo
-    do i=isd,ied
+    do i=isc,iec
       if (FIA%ice_cover(i,j) > 0.0) then
         I_wts = 1.0 / FIA%ice_cover(i,j)
         FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) * I_wts
