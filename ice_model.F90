@@ -381,7 +381,6 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
-    call pass_var(Ice%fCS%IST%part_size, Ice%fCS%G%Domain)
   endif
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ocean_boundary%t, &
@@ -1950,7 +1949,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
       ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, sHI, fHI, Ice%sCS%IG)
-      call pass_var(Ice%fCS%IST%part_size, Ice%fCS%G%Domain)
     endif
   endif
 

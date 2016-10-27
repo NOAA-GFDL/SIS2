@@ -633,9 +633,6 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
                           "decompositions of the two ice types.")
   endif
 
-  !### EXTRA HALO UPDATES ARE NEEDED LATER WHEN UPDATING fCS%part_size.
-  !###   THIS CAN BE TESTED WITH A 5 DAY BALTIC RUN.
-
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
     IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
@@ -726,7 +723,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%lprec_top(i,j,k) = FIA_in%lprec_top(i,j,k)
     FIA_out%fprec_top(i,j,k) = FIA_in%fprec_top(i,j,k)
   enddo ; enddo ; enddo
-  ! FIA%flux_u_top and flux_v_top are deliberately not being copied.
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     FIA_out%tmelt(i,j,k) = FIA_in%tmelt(i,j,k)
@@ -735,7 +731,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   enddo ; enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
-!  do j=HI_in%jsd,HI_in%jed ; do i=HI_in%isd,HI_in%ied
     FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
     FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
     FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)
@@ -745,7 +740,10 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
     FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
   enddo ; enddo
-  ! FIA%frazil_left is deliberately not being copied.
+  !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
+  ! are only needed on the fast_ice_PEs
+  !   FIA%frazil_left is deliberately not being copied, as it is only valid on
+  ! the slow_ice_PEs.
 
   if (FIA_in%num_tr_fluxes >= 0) then
 !$OMP SINGLE
