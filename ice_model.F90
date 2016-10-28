@@ -1945,12 +1945,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     endif
   endif
 
-  if (slow_ice_PE .and. fast_ice_PE) then
-    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-      ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
-      call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, sHI, fHI, Ice%sCS%IG)
-    endif
-  endif
+! if (slow_ice_PE .and. fast_ice_PE) then
+!   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+!     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
+!     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, sHI, fHI, Ice%sCS%IG)
+!   endif
+! endif
 
   if (slow_ice_PE) then
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, Ice%sCS%IG, &
