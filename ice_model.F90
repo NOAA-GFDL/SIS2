@@ -152,6 +152,8 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   ! need to be replaced by a routine that does inter-processor receives.
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, Ice%fCS%G, Ice%fCS%IG)
 
+  call unpack_land_ice_bdry(Ice%fCS%FIA, Land_boundary, Ice%fCS%G)
+
   if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
     ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
     call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
@@ -180,13 +182,11 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
   endif
 
-  call set_ice_ocean_fluxes(Ice%sCS%IOF, Ice, Land_boundary, Ice%sCS%G, Ice%sCS%IG)
-
   ! Store some diagnostic fluxes...
 !$OMP parallel do default(none) shared(Ice)
   do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
-    Ice%sCS%IOF%calving_preberg(i,j) = Ice%sCS%IOF%calving(i,j)
-    Ice%sCS%IOF%calving_hflx_preberg(i,j) = Ice%sCS%IOF%calving_hflx(i,j)
+    Ice%sCS%FIA%calving_preberg(i,j) = Ice%sCS%FIA%calving(i,j)
+    Ice%sCS%FIA%calving_hflx_preberg(i,j) = Ice%sCS%FIA%calving_hflx(i,j)
   enddo ; enddo
 
   if (Ice%sCS%do_icebergs) then
@@ -232,17 +232,15 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 end subroutine update_ice_model_slow_dn
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_ice_ocean_fluxes copies the ice surface fluxes and any other fields into
-!! the ice_ocean_flux_type.
-subroutine set_ice_ocean_fluxes(IOF, Ice, LIB, G, IG)
-  type(ice_ocean_flux_type),    intent(inout) :: IOF
-  type(ice_data_type),          intent(in)    :: Ice
+!> unpack_land_ice_bdry converts the information in a publicly visible
+!! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
+subroutine unpack_land_ice_bdry(FIA, LIB, G)
+  type(fast_ice_avg_type),      intent(inout) :: FIA
   type(land_ice_boundary_type), intent(in)    :: LIB
   type(SIS_hor_grid_type),      intent(in)    :: G
-  type(ice_grid_type),          intent(in)    :: IG
 
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
@@ -250,13 +248,13 @@ subroutine set_ice_ocean_fluxes(IOF, Ice, LIB, G, IG)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    IOF%runoff(i,j)  = LIB%runoff(i2,j2)
-    IOF%calving(i,j) = LIB%calving(i2,j2)
-    IOF%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
-    IOF%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+    FIA%runoff(i,j)  = LIB%runoff(i2,j2)
+    FIA%calving(i,j) = LIB%calving(i2,j2)
+    FIA%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
+    FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
   enddo ; enddo
 
-end subroutine set_ice_ocean_fluxes
+end subroutine unpack_land_ice_bdry
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
@@ -336,10 +334,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     Ice%flux_lh(i2,j2) = IOF%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = IOF%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = IOF%lprec_ocn_top(i,j)
-    Ice%runoff(i2,j2)  = IOF%runoff(i,j)
-    Ice%calving(i2,j2) = IOF%calving(i,j)
-    Ice%runoff_hflx(i2,j2)  = IOF%runoff_hflx(i,j)
-    Ice%calving_hflx(i2,j2) = IOF%calving_hflx(i,j)
+    Ice%runoff(i2,j2)  = FIA%runoff(i,j)
+    Ice%calving(i2,j2) = FIA%calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
 
     if (IOF%slp2ocean) then

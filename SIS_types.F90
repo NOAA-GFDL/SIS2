@@ -197,6 +197,22 @@ type fast_ice_avg_type
     WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
     WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
     p_atm_surf , & ! The atmospheric pressure at the top of the ice, in Pa.
+    runoff, &           ! Liquid runoff into the ocean, in kg m-2.
+    calving, &          ! Calving of ice or runoff of frozen fresh
+                        ! water into the ocean, in kg m-2.
+    calving_preberg, &  ! Calving of ice or runoff of frozen fresh
+                        ! water into the ocean, exclusive of any
+                        ! iceberg contributions, in kg m-2.
+    runoff_hflx, &      ! The heat flux associated with runoff, based
+                        ! on the temperature difference relative to a
+                        ! reference temperature, in ???.
+    calving_hflx, &     ! The heat flux associated with calving, based
+                        ! on the temperature difference relative to a
+                        ! reference temperature, in ???.
+    calving_hflx_preberg, & ! The heat flux associated with calving,
+                        ! exclusive of any iceberg contributions, based on
+                        ! the temperature difference relative to a
+                        ! reference temperature, in ???.
     ice_free   , & ! The fractional open water used in calculating
                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
     ice_cover      ! The fractional ice coverage, summed across all
@@ -220,6 +236,7 @@ type fast_ice_avg_type
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
   integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
+  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
 
 end type fast_ice_avg_type
@@ -285,22 +302,6 @@ type ice_ocean_flux_type
                         ! the ocean surface, in kg m-2 s-1.
     fprec_ocn_top, &    ! The downward flux of frozen precipitation at
                         ! the ocean surface, in kg m-2 s-1.
-    runoff, &           ! Liquid runoff into the ocean, in kg m-2.
-    calving, &          ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, in kg m-2.
-    calving_preberg, &  ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, exclusive of any
-                        ! iceberg contributions, in kg m-2.
-    runoff_hflx, &      ! The heat flux associated with runoff, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
-    calving_hflx, &     ! The heat flux associated with calving, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
-    calving_hflx_preberg, & ! The heat flux associated with calving,
-                        ! exclusive of any iceberg contributions, based on
-                        ! the temperature difference relative to a
-                        ! reference temperature, in ???.
     flux_u_ocn, &       ! The flux of x-momentum into the ocean, in Pa,
                         ! at locations determined by flux_uv_stagger,
                         ! but allocated as though on an A-grid.
@@ -354,7 +355,6 @@ type ice_ocean_flux_type
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
   ! diagnostic IDs for ice-to-ocean fluxes.
-  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_saltf=-1
   ! The following are diagnostic IDs for iceberg-related fields.  These are only
   ! used if the iceberg code is activated.
@@ -465,6 +465,12 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
   allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
   allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
+  allocate(FIA%runoff(SZI_(HI), SZJ_(HI))) ; FIA%runoff(:,:) = 0.0 !NI
+  allocate(FIA%calving(SZI_(HI), SZJ_(HI))) ; FIA%calving(:,:) = 0.0 !NI
+  allocate(FIA%calving_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_preberg(:,:) = 0.0 !NI, diag
+  allocate(FIA%runoff_hflx(SZI_(HI), SZJ_(HI))) ; FIA%runoff_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx_preberg(:,:) = 0.0 !NI, diag
 
   allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0
   allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0
@@ -529,12 +535,6 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
 
   if (.not.associated(IOF)) allocate(IOF)
 
-  allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
-  allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
-  allocate(IOF%calving_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_preberg(:,:) = 0.0 !NI, diag
-  allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx_preberg(:,:) = 0.0 !NI, diag
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
 
   allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
@@ -737,6 +737,10 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%WindStr_ocn_x(i,j) = FIA_in%WindStr_ocn_x(i,j)
     FIA_out%WindStr_ocn_y(i,j) = FIA_in%WindStr_ocn_y(i,j)
     FIA_out%p_atm_surf(i,j) = FIA_in%p_atm_surf(i,j)
+    FIA_out%runoff(i,j) = FIA_in%runoff(i,j)
+    FIA_out%calving(i,j) =  FIA_in%calving(i,j)
+    FIA_out%runoff_hflx(i,j) = FIA_in%runoff_hflx(i,j)
+    FIA_out%calving_hflx(i,j) =  FIA_in%calving_hflx(i,j)
     FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
     FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
   enddo ; enddo
@@ -744,6 +748,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   ! are only needed on the fast_ice_PEs
   !   FIA%frazil_left is deliberately not being copied, as it is only valid on
   ! the slow_ice_PEs.
+  !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
+  ! being copied over.
 
   if (FIA_in%num_tr_fluxes >= 0) then
 !$OMP SINGLE
@@ -841,6 +847,8 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
   deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
+  deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
+  deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
@@ -882,8 +890,6 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_sw_vis_dir_ocn, IOF%flux_sw_vis_dif_ocn)
   deallocate(IOF%flux_sw_nir_dir_ocn, IOF%flux_sw_nir_dif_ocn)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
-  deallocate(IOF%runoff, IOF%calving, IOF%runoff_hflx, IOF%calving_hflx)
-  deallocate(IOF%calving_preberg, IOF%calving_hflx_preberg)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)

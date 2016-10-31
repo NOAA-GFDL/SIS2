@@ -175,14 +175,14 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
-  if (IOF%id_runoff>0) &
-    call post_data(IOF%id_runoff, IOF%runoff, CS%diag)
-  if (IOF%id_calving>0) &
-    call post_data(IOF%id_calving, IOF%calving_preberg, CS%diag)
-  if (IOF%id_runoff_hflx>0) &
-    call post_data(IOF%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
-  if (IOF%id_calving_hflx>0) &
-    call post_data(IOF%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
+  if (FIA%id_runoff>0) &
+    call post_data(FIA%id_runoff, FIA%runoff, CS%diag)
+  if (FIA%id_calving>0) &
+    call post_data(FIA%id_calving, FIA%calving_preberg, CS%diag)
+  if (FIA%id_runoff_hflx>0) &
+    call post_data(FIA%id_runoff_hflx, FIA%runoff_hflx, CS%diag)
+  if (FIA%id_calving_hflx>0) &
+    call post_data(FIA%id_calving_hflx, FIA%calving_hflx_preberg, CS%diag)
   ! The frazil diagnostic is with the other ocean surface diagnostics.
   ! if (IST%id_frazil>0) &
   !   call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
