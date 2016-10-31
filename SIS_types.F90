@@ -707,7 +707,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
   if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
       (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
-    call SIS_error(FATAL, "copy_IST_to_IST called with inconsistent domain "//&
+    call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
                           "decompositions of the two ice types.")
   endif
 

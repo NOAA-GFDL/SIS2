@@ -373,7 +373,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%ocean_fields)
+                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
 
   !### Exchange information from the slow ice processors to the fast ice processors.
   call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
@@ -383,9 +383,8 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
   endif
 
-  call set_ice_surface_state(Ice, Ice%fCS%IST, Ocean_boundary%t, &
-                             Ice%fCS%sOSS, Ice%fCS%Rad, Ice%fCS%FIA, &
-                             Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
+  call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
+                             Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
@@ -394,11 +393,15 @@ end subroutine update_ice_model_slow_up
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
-subroutine unpack_ocn_ice_bdry(OIB, OSS, G, ocean_fields)
+subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB
   type(ocean_sfc_state_type),    intent(inout) :: OSS
   type(SIS_hor_grid_type),       intent(inout) :: G
-  type(coupler_3d_bc_type),      intent(inout) :: ocean_fields
+  real, dimension(SZI_(G),SZJ_(G)), &
+                                 intent(inout) :: t_surf_ocn_K  ! The ocean surface temperature in Kelvin.
+  logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
+  type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
+                                                                ! related to passive tracers.
 
   real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -416,6 +419,15 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, ocean_fields)
     OSS%frazil(i,j) = OIB%frazil(i2,j2)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
   enddo ; enddo
+
+  ! Pass the ocean state through ice on partition 0, unless using specified ice.
+  if (.not. specified_ice) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,t_surf_ocn_K,OIB,i_off,j_off) &
+!$OMP                           private(i2,j2)
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      t_surf_ocn_K(i,j) = OIB%t(i2,j2)
+    enddo ; enddo
+  endif
 
   Cgrid_ocn = (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C))
 
@@ -549,7 +561,7 @@ end subroutine copy_OSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG, fCS)
+subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   type(ice_data_type),        intent(inout) :: Ice
   type(ice_state_type),       intent(inout) :: IST
   type(simple_OSS_type),      intent(in)    :: OSS
@@ -558,8 +570,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(in)    :: IG
   type(SIS_fast_CS),          intent(inout) :: fCS
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
-                              intent(in)    :: t_surf_ice_bot
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(IG%NkIce) :: sw_abs_lay
@@ -586,10 +596,6 @@ subroutine set_ice_surface_state(Ice, IST, t_surf_ice_bot, OSS, Rad, FIA, G, IG,
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
-  ! Pass the ocean state through ice on partition 0, unless using specified ice.
-  if (.not. fCS%specified_ice) then
-    IST%t_surf(isc:iec,jsc:jec,0) = t_surf_ice_bot(isc:iec,jsc:jec)
-  endif
 
   if (fCS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state") !, OSS=OSS)
@@ -1398,7 +1404,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     Ice%fCS%slab_ice = slab_ice
     Ice%fCS%Cgrid_dyn = Cgrid_dyn
-    Ice%fCS%specified_ice = specified_ice
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
   endif
@@ -1415,6 +1420,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%sCS%do_icebergs = do_icebergs
     Ice%sCS%pass_iceberg_area_to_ocean = pass_iceberg_area_to_ocean
     Ice%sCS%slab_ice = slab_ice
+    Ice%sCS%specified_ice = specified_ice
     Ice%sCS%Cgrid_dyn = Cgrid_dyn
     Ice%sCS%bounds_check = bounds_check
     Ice%sCS%debug = debug
@@ -1945,13 +1951,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     endif
   endif
 
-! if (slow_ice_PE .and. fast_ice_PE) then
-!   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-!     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in ice_model_init.")
-!     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, sHI, fHI, Ice%sCS%IG)
-!   endif
-! endif
-
   if (slow_ice_PE) then
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, Ice%sCS%IG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=Ice%sCS%IST%Cgrid_dyn)
@@ -2013,17 +2012,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 
   if (slow_ice_PE) then
-  !### I think that these might not be needed here.  A test of this should
-  !### include coupled models started from a restart file.
+  !###  At least part_size appears to need to be set, on the fast PEs.  Rats!
+  !### Perhaps part_size could be set to 
+  !### A test of this should include coupled models started from a restart file.
 
     ! Set the computational domain sizes using the ice model's indexing convention.
     isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
     i_off = LBOUND(Ice%t_surf,1) - sHI%isc ; j_off = LBOUND(Ice%t_surf,2) - sHI%jsc
     do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%t_surf(i2,j2,k2) = Ice%sCS%IST%t_surf(i,j,k)
+ ! ### THIS IS NOT NECESSARY!
+ !     Ice%t_surf(i2,j2,k2) = Ice%sCS%IST%t_surf(i,j,k)
       Ice%part_size(i2,j2,k2) = Ice%sCS%IST%part_size(i,j,k)
     enddo ; enddo ; enddo
+    ! ### PROBABLY THIS WOULD WORK?
+    ! Ice%part_size(:,:,1) = 1.0 ; Ice%part_size(:,:,2:) = 0.0
 
     ! Do any error checking here.
     if (debug) call ice_grid_chksum(sG, haloshift=2)
