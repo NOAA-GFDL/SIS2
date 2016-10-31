@@ -143,6 +143,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   type(ice_data_type),           intent(inout) :: Ice
 
   real :: dt_slow  ! The time step over which to advance the model.
+  integer :: i, j, i2, j2, i_off, j_off
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
 
@@ -181,7 +182,26 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call set_ice_ocean_fluxes(Ice%sCS%IOF, Ice, Land_boundary, Ice%sCS%G, Ice%sCS%IG)
 
+  ! Store some diagnostic fluxes...
+!$OMP parallel do default(none) shared(Ice)
+  do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
+    Ice%sCS%IOF%calving_preberg(i,j) = Ice%sCS%IOF%calving(i,j)
+    Ice%sCS%IOF%calving_hflx_preberg(i,j) = Ice%sCS%IOF%calving_hflx(i,j)
+  enddo ; enddo
+
   if (Ice%sCS%do_icebergs) then
+    if (Ice%sCS%berg_windstress_bug) then
+      ! This code is only required to reproduce an old bug.
+      i_off = LBOUND(Ice%flux_t,1) - Ice%sCS%G%isc
+      j_off = LBOUND(Ice%flux_t,2) - Ice%sCS%G%jsc
+!$OMP parallel do default(none) shared(Ice,i_off,j_off) private(i2,j2)
+      do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
+        i2 = i+i_off ; j2 = j+j_off
+        Ice%sCS%IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
+        Ice%sCS%IOF%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
+      enddo ; enddo
+    endif
+
     call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
     call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
                          dt_slow, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
@@ -234,18 +254,6 @@ subroutine set_ice_ocean_fluxes(IOF, Ice, LIB, G, IG)
     IOF%calving(i,j) = LIB%calving(i2,j2)
     IOF%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     IOF%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
-    ! diagnostic fluxes...
-    IOF%calving_preberg(i,j) = IOF%calving(i,j)
-    IOF%calving_hflx_preberg(i,j) = IOF%calving_hflx(i,j)
-  enddo ; enddo
-
-  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF,Ice,i_off,j_off) &
-!$OMP                          private(i2,j2)
-  do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off
-    IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
-    IOF%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
   enddo ; enddo
 
 end subroutine set_ice_ocean_fluxes
@@ -1987,6 +1995,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! Initialize icebergs
   if (slow_ice_PE) then ; if (Ice%sCS%do_icebergs) then
+    call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", Ice%sCS%berg_windstress_bug, &
+                 "If true, use older code that applied an old ice-ocean \n"//&
+                 "stress to the icebergs in place of the current air-ocean \n"//&
+                 "stress.  This option is here for backward compatibility, \n"//&
+                 "but should be avoided.", default=.false.)
+
     isc = sG%isc ; iec = sG%iec ; jsc = sG%jsc ; jec = sG%jec
     
     if (ASSOCIATED(sGD%maskmap)) then
