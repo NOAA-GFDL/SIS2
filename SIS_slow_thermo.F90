@@ -40,7 +40,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
-use MOM_domains,       only : pass_var
+! use MOM_domains,       only : pass_var
 ! ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
@@ -330,7 +330,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
-    call pass_var(IST%part_size, G%Domain)
 
   else ! Do not use specified ice.
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
@@ -393,9 +392,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                 message="      Post_thermo A", check_column=.true.)
     call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
                                IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
-    call pass_var(IST%part_size, G%Domain)
-    call pass_var(IST%mH_ice, G%Domain, complete=.false.)
-    call pass_var(IST%mH_snow, G%Domain, complete=.true.)
 
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &

@@ -158,12 +158,6 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
     ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
     call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
   endif
-  call pass_vector(Ice%sCS%FIA%WindStr_x, Ice%sCS%FIA%WindStr_y, &
-                   Ice%sCS%G%Domain, stagger=AGRID, complete=.false.)
-  call pass_vector(Ice%sCS%FIA%WindStr_ocn_x, Ice%sCS%FIA%WindStr_ocn_y, &
-                   Ice%sCS%G%Domain, stagger=AGRID)
-  call pass_var(Ice%sCS%FIA%ice_cover, Ice%sCS%G%Domain, complete=.false.)
-  call pass_var(Ice%sCS%FIA%ice_free,  Ice%sCS%G%Domain)
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
@@ -210,6 +204,20 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
                            Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, Ice%sCS%G, Ice%sCS%IG)
+
+  ! Do halo updates on the forcing fields, as necessary.  This must occur before
+  ! the call to SIS_dynamics_trans, because update_icebergs does its own halo
+  ! updates, and slow_thermodynamics only works on the computational domain.
+  call pass_vector(Ice%sCS%FIA%WindStr_x, Ice%sCS%FIA%WindStr_y, &
+                   Ice%sCS%G%Domain, stagger=AGRID, complete=.false.)
+  call pass_vector(Ice%sCS%FIA%WindStr_ocn_x, Ice%sCS%FIA%WindStr_ocn_y, &
+                   Ice%sCS%G%Domain, stagger=AGRID)
+  call pass_var(Ice%sCS%FIA%ice_cover, Ice%sCS%G%Domain, complete=.false.)
+  call pass_var(Ice%sCS%FIA%ice_free,  Ice%sCS%G%Domain, complete=.true.)
+  call pass_var(Ice%sCS%IST%part_size, Ice%sCS%G%Domain)
+  call pass_var(Ice%sCS%IST%mH_ice, Ice%sCS%G%Domain, complete=.false.)
+  call pass_var(Ice%sCS%IST%mH_pond, Ice%sCS%G%Domain, complete=.false.)
+  call pass_var(Ice%sCS%IST%mH_snow, Ice%sCS%G%Domain, complete=.true.)
 
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, Ice%sCS%IG)
@@ -452,7 +460,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
       do J=jsc-1,jec ; do i=isc,iec
         OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
       enddo ; enddo
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
       do J=jsc-1,jec ; do I=isc-1,iec
         OSS%u_ocn_B(I,J) = 0.25*((u_nonsym(i,j) + u_nonsym(i+1,j+1)) + &
@@ -460,16 +467,15 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
         OSS%v_ocn_B(I,J) = 0.25*((v_nonsym(i,j) + v_nonsym(i+1,j+1)) + &
                                (v_nonsym(i+1,j) + v_nonsym(i,j+1)))
       enddo ; enddo
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
 
   elseif (OIB%stagger == BGRID_NE) then
     if (Cgrid_ocn) then
-        u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
-        do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-          u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
-        enddo ; enddo
-        call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
+      u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
+      do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+        u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
+      enddo ; enddo
+      call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
 
       do j=jsc,jec ; do I=isc-1,iec
         OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
@@ -477,7 +483,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
       do J=jsc-1,jec ; do i=isc,iec
         OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
       enddo ; enddo
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
       do J=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
         OSS%u_ocn_B(I,J) = OIB%u(i2,j2)
@@ -485,8 +490,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
       enddo ; enddo
       if (G%symmetric) &
         call fill_symmetric_edges(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
-
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
 
   elseif (OIB%stagger == CGRID_NE) then
@@ -499,8 +502,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
       enddo ; enddo
       if (G%symmetric) &
         call fill_symmetric_edges(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
-
-      call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
     else
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
@@ -511,12 +512,17 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
         OSS%u_ocn_B(I,J) = 0.5*(u_nonsym(I,j) + u_nonsym(I,j+1))
         OSS%v_ocn_B(I,J) = 0.5*(v_nonsym(i,J) + v_nonsym(i+1,J))
       enddo ; enddo
-      call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
     endif
   else
     call SIS_error(FATAL, "unpack_ocn_ice_bdry: Unrecognized OIB%stagger.")
   endif
 
+  ! Fill in the halo values.
+  if (Cgrid_ocn) then
+    call pass_vector(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
+  else
+    call pass_vector(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
+  endif
   call pass_var(OSS%sea_lev, G%Domain)
 
 ! Transfer the ocean state for extra tracer fluxes.

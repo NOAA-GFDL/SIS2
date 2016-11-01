@@ -31,12 +31,11 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_fast_thermo
 
-use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
-use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
+use SIS_diag_mediator, only : SIS_diag_ctrl
+! ! use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
+! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
-use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -52,7 +51,6 @@ use coupler_types_mod, only : coupler_3d_bc_type
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
-use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
@@ -244,7 +242,6 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       enddo
     enddo ; enddo
   enddo
-  call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
   ! Determine the fractional ice coverage and the wind stresses averaged
   ! across all the ice thickness categories on an A-grid.
