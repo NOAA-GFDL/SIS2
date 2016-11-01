@@ -249,7 +249,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   ! Determine the fractional ice coverage and the wind stresses averaged
   ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA,part_size) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,part_size) &
 !$OMP                           private(I_wts)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
