@@ -1115,7 +1115,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...CatIce
   real :: enth_spec_snow, enth_spec_ice
   real, allocatable :: S_col(:)
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
@@ -1422,6 +1421,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
 
+  Ice%Time = Time
+
   !   Now that all top-level sea-ice parameters have been read, allocate the
   ! various structures and register fields for restarts.
   if (fast_ice_PE) then
@@ -1441,7 +1442,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     Ice%fCS%debug = debug
   endif
 
-  Ice%Time = Time
   if (slow_ice_PE) then
     if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
     if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
@@ -1466,40 +1466,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (slow_ice_PE) then
     call set_ice_grid(Ice%sCS%IG, param_file, nCat_dflt)
     if (slab_ice) Ice%sCS%IG%CatIce = 1 ! open water and ice ... but never in same place
-    CatIce = Ice%sCS%IG%CatIce
-    NkIce = Ice%sCS%IG%NkIce
+    CatIce = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce
 
-    ! Initialize Ice%sCS%IG%cat_thick_lim here.  ###This needs to be extended to add more options.
-    do k=1,min(CatIce+1,size(hlim_dflt(:)))
-      Ice%sCS%IG%cat_thick_lim(k) = hlim_dflt(k)
-    enddo
-    if ((CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
-      do k=min(CatIce+1,size(hlim_dflt(:))) + 1, CatIce+1
-        Ice%sCS%IG%cat_thick_lim(k) =  2.0*Ice%sCS%IG%cat_thick_lim(k-1) - Ice%sCS%IG%cat_thick_lim(k-2)
-      enddo
-    endif
-    do k=1,Ice%sCS%IG%CatIce+1
-      Ice%sCS%IG%mH_cat_bound(k) = Ice%sCS%IG%cat_thick_lim(k) * (Rho_ice*Ice%sCS%IG%kg_m2_to_H)
-    enddo
+    call initialize_ice_categories(Ice%sCS%IG, Rho_ice, param_file)
   endif
   if (fast_ice_PE) then
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
     if (slab_ice) Ice%fCS%IG%CatIce = 1 ! open water and ice ... but never in same place
-    CatIce = Ice%fCS%IG%CatIce
-    NkIce = Ice%fCS%IG%NkIce
+    CatIce = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
 
-    ! Initialize Ice%fCS%IG%cat_thick_lim here.  ###This needs to be extended to add more options.
-    do k=1,min(CatIce+1,size(hlim_dflt(:)))
-      Ice%fCS%IG%cat_thick_lim(k) = hlim_dflt(k)
-    enddo
-    if ((CatIce+1 > size(hlim_dflt(:))) .and. (size(hlim_dflt(:)) > 1)) then
-      do k=min(CatIce+1,size(hlim_dflt(:))) + 1, CatIce+1
-        Ice%fCS%IG%cat_thick_lim(k) =  2.0*Ice%fCS%IG%cat_thick_lim(k-1) - Ice%fCS%IG%cat_thick_lim(k-2)
-      enddo
-    endif
-    do k=1,CatIce+1
-      Ice%fCS%IG%mH_cat_bound(k) = Ice%fCS%IG%cat_thick_lim(k) * (Rho_ice*Ice%fCS%IG%kg_m2_to_H)
-    enddo
+    call initialize_ice_categories(Ice%fCS%IG, Rho_ice, param_file)
   endif
 
   ! Set up the domains and lateral grids.
@@ -2096,6 +2072,42 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   call callTree_leave("ice_model_init()")
 
 end subroutine ice_model_init
+
+
+!> initialize_ice_categories sets the bounds of the ice thickness categories.
+subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
+  type(ice_grid_type),          intent(inout) :: IG
+  real,                         intent(in)    :: Rho_ice 
+  type(param_file_type),        intent(in)    :: param_file
+  real, dimension(:), optional, intent(in)    :: hLim_vals
+
+  ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
+  !  ###This subroutine should be extended to add more options.
+
+  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...CatIce
+  integer :: k, CatIce, list_size
+
+  CatIce = IG%CatIce
+  list_size = -1
+  if (present(hLim_vals)) then ; if (size(hLim_vals(:)) > 1) then
+    list_size = size(hlim_vals(:))
+    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_vals(k) ; enddo
+  endif ; endif
+  if (list_size < 2) then  ! Use the default categories.
+    list_size = size(hlim_dflt(:))
+    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_dflt(k) ; enddo
+  endif
+
+  if ((CatIce+1 > list_size) .and. (list_size > 1)) then
+    do k=list_size+1, CatIce+1
+      IG%cat_thick_lim(k) =  2.0*IG%cat_thick_lim(k-1) - IG%cat_thick_lim(k-2)
+    enddo
+  endif
+
+  do k=1,IG%CatIce+1
+    IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (Rho_ice*IG%kg_m2_to_H)
+  enddo
+end subroutine initialize_ice_categories
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_end - writes the restart file and deallocates memory               !
