@@ -196,7 +196,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
 
   if ((FIA%id_sw>0) .or. (FIA%id_albedo>0)) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,net_sw,IST,FIA)
     do j=jsc,jec
       do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
