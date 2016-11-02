@@ -836,7 +836,8 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   Ice%Time = Ice%fCS%Time
 
   call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, &
-                                  Ice%fCS%G, Ice%fCS%IG, Ice%fCS, Time_start, Time_end)
+                                  Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS, &
+                                  Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
@@ -938,17 +939,19 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 end subroutine set_ocean_albedo
 
 
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start, Time_end)
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
+                                      Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(ice_data_type),           intent(in)    :: Ice
   type(ice_state_type),          intent(in)    :: IST
   type(ice_rad_type),            intent(in)    :: Rad
+  type(fast_ice_avg_type),       intent(inout) :: FIA
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
   type(SIS_fast_CS),             intent(inout) :: CS
   type(time_type),               intent(in)    :: Time_start, Time_end
 
-  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
+  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag, sw_dn, net_sw, avg_alb
   real :: dt_diag
   real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
                     ! strictly diagnostic purposes.
@@ -977,11 +980,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start,
                                    IST%part_size(:,:,1:), CS%diag, G=G)
   if (Rad%id_sw_abs_snow>0) call post_avg(Rad%id_sw_abs_snow, Rad%sw_abs_snow, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
-! if (allocated(Rad%id_sw_abs_ice)) then ;   ! ### Add this for extra safety?
-  do m=1,NkIce
+  if (allocated(Rad%id_sw_abs_ice)) then ; do m=1,NkIce
     if (Rad%id_sw_abs_ice(m)>0) call post_avg(Rad%id_sw_abs_ice(m), Rad%sw_abs_ice(:,:,:,m), &
                                      IST%part_size(:,:,1:), CS%diag, G=G)
-  enddo ! ; endif
+  enddo ; endif
   if (Rad%id_sw_abs_ocn>0) call post_avg(Rad%id_sw_abs_ocn, Rad%sw_abs_ocn, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
 
@@ -1006,21 +1008,40 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, G, IG, CS, Time_start,
     call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
 
-  if (Rad%id_swdn > 0) then
-    tmp_diag(:,:) = 0.0
+  sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,ABT, &
 !$OMP                                  io_I,jo_I,io_A,jo_A,tmp_diag) &
 !$OMP                          private(i2,j2,k2,i3,j3)
-    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-      i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
-      tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * ( &
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
+    sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
              ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
-    endif ; enddo ; enddo ; enddo
-    call post_data(Rad%id_swdn, tmp_diag, CS%diag)
+
+    net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
+          (ABT%sw_flux_vis_dir(i3,j3,k2) + ABT%sw_flux_vis_dif(i3,j3,k2)) + &
+          (ABT%sw_flux_nir_dir(i3,j3,k2) + ABT%sw_flux_nir_dif(i3,j3,k2)) )
+    avg_alb(i,j) = avg_alb(i,j) + IST%part_size(i,j,k) * 0.25 * ( &
+            (Ice%albedo_vis_dir(i2,j2,k2) + Ice%albedo_vis_dif(i2,j2,k2)) + &
+            (Ice%albedo_nir_dir(i2,j2,k2) + Ice%albedo_nir_dif(i2,j2,k2)) )
+  endif ; enddo ; enddo ; enddo
+
+  if (Rad%id_swdn > 0) call post_data(Rad%id_swdn, sw_dn, CS%diag)
+
+  if (Rad%id_alb > 0) then
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      if (sw_dn(i,j) > 0.0) &
+        avg_alb(i,j) = (sw_dn(i,j) - net_sw(i,j)) / sw_dn(i,j)
+      ! Otherwise keep the simple average that was set above.
+    endif ; enddo ; enddo
+    call post_data(Rad%id_alb, avg_alb, CS%diag)
   endif
+
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j) + sw_dn(i,j)
+  endif ; enddo ; enddo
 
   if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, CS%diag)
 
@@ -1627,14 +1648,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   if (slow_ice_PE) then
     call SIS_diag_mediator_init(sG, Ice%sCS%IG, param_file, Ice%sCS%diag, component="SIS", &
                                 doc_file_dir = dirs%output_directory)
-    if (fast_ice_PE) Ice%fCS%diag => Ice%sCS%diag
+!    if (fast_ice_PE) Ice%fCS%diag => Ice%sCS%diag
     call set_SIS_axes_info(sG, Ice%sCS%IG, param_file, Ice%sCS%diag)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
-  elseif (fast_ice_PE) then
+  endif
+  
+  if (fast_ice_PE) then
     allocate(Ice%fCS%diag)
     call SIS_diag_mediator_init(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, component="SIS_fast", &
                                 doc_file_dir = dirs%output_directory)
     call set_SIS_axes_info(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, axes_set_name="ice_fast")
+  endif
+
+  if (slow_ice_PE) then
+    Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
+  else
     Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
   endif
 
@@ -1969,7 +1997,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   endif
 
   if (fast_ice_PE) then
-    call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, Ice%fCS%Time)
+    call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
+                             Ice%fCS%Time, component="ice_model_fast")
 
     call SIS_fast_thermo_init(Ice%fCS%Time, fG, Ice%fCS%IG, param_file, Ice%fCS%diag, &
                               Ice%fCS%fast_thermo_CSp)

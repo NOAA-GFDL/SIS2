@@ -145,6 +145,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
+    FIA%flux_sw_dn(:,:) = 0.0
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
 
@@ -166,6 +167,8 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   + fprec(i,j,k)
     FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
+  ! FIA%flux_sw_dn is accumulated where the fast radiation diagnostics are output
+  ! because it depends on arrays that are stored in the public ice_data_type.
 
   do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = FIA%tr_flux_index(m,n)
@@ -214,7 +217,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
 !$OMP                          private(u,v)
   do j=jsc,jec
-    do k=0,ncat ;  do i=isc,iec
+    do k=0,ncat ; do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
       v = FIA%flux_v_top(i,j,k) * (sign*divid)
       FIA%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
@@ -241,6 +244,9 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
+    do i=isc,iec
+      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*divid
+    enddo
   enddo
 
   ! Determine the fractional ice coverage and the wind stresses averaged

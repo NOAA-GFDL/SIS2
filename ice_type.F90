@@ -79,7 +79,7 @@ type ice_data_type !  ice_public_type
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
     flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  ! The sensible heat flux out of the ocean, in W m-2.
+    flux_lw => NULL(), &  ! The longwave flux out of the ocean, in W m-2.
     flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
     flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
     flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all

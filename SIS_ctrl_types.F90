@@ -151,8 +151,6 @@ contains
 
 !=======================================================================
 
-!### THIS NEEDS TO BE SPLIT INTO THE FAST AND SLOW PE OUTPUT.
-
 !> ice_diagnostics_init does the registration for a variety of sea-ice model
 !! diagnostics and saves several static diagnotic fields.
 subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
@@ -195,9 +193,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   FIA%id_lh       = register_SIS_diag_field('ice_model','LH' ,diag%axesT1, Time, &
                'latent heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw       = register_SIS_diag_field('ice_model','SW' ,diag%axesT1, Time, &
-               'short wave heat flux', 'W/m^2', missing_value=missing)
+               'shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_lw       = register_SIS_diag_field('ice_model','LW' ,diag%axesT1, Time, &
-               'long wave heat flux over ice', 'W/m^2', missing_value=missing)
+               'longwave heat flux over ice', 'W/m^2', missing_value=missing)
   FIA%id_snofl    = register_SIS_diag_field('ice_model','SNOWFL' ,diag%axesT1, Time, &
                'rate of snow fall', 'kg/(m^2*s)', missing_value=missing)
   FIA%id_rain     = register_SIS_diag_field('ice_model','RAIN' ,diag%axesT1, Time, &
@@ -226,20 +224,24 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 !  XYZ%id_strna    = register_SIS_diag_field('ice_model','STRAIN_ANGLE', diag%axesT1,Time, &
 !               'strain angle', 'none', missing_value=missing)
 
+  FIA%id_sw_dn   = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
+               'Downward shortwave heat flux at the bottom of the atmosphere', 'W/m^2', missing_value=missing)
+  FIA%id_albedo  = register_SIS_diag_field('ice_model','ALB' ,diag%axesT1, Time, &
+               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', missing_value=missing)
   FIA%id_sw_vis   = register_SIS_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time, &
-               'visible short wave heat flux', 'W/m^2', missing_value=missing)
+               'visible shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
-               'direct short wave heat flux', 'W/m^2', missing_value=missing)
+               'direct shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_dif   = register_SIS_diag_field('ice_model','SW_DIF' ,diag%axesT1, Time, &
-               'diffuse short wave heat flux', 'W/m^2', missing_value=missing)
+               'diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_vis_dir = register_SIS_diag_field('ice_model','SW_VIS_DIR' ,diag%axesT1, Time, &
-               'visible direct short wave heat flux', 'W/m^2', missing_value=missing)
+               'visible direct shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_vis_dif = register_SIS_diag_field('ice_model','SW_VIS_DIF' ,diag%axesT1, Time, &
-               'visible diffuse short wave heat flux', 'W/m^2', missing_value=missing)
+               'visible diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_nir_dir = register_SIS_diag_field('ice_model','SW_NIR_DIR' ,diag%axesT1, Time, &
-               'near IR direct short wave heat flux', 'W/m^2', missing_value=missing)
+               'near IR direct shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
-               'near IR diffuse short wave heat flux', 'W/m^2', missing_value=missing)
+               'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
 
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
@@ -302,54 +304,58 @@ end subroutine ice_diagnostics_init
 
 !> ice_diags_fast_init does the registration for a variety of sea-ice model
 !! diagnostics associated with the rapid physics updates.
-subroutine ice_diags_fast_init(Rad, G, IG, diag, Time)
+subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   type(ice_rad_type),         intent(inout) :: Rad
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(in)    :: IG
   type(SIS_diag_ctrl),        intent(in)    :: diag
   type(time_type),            intent(inout) :: Time
+  character(len=*), optional, intent(in)    :: component
 
   real, parameter       :: missing = -1e34  ! The fill value for missing data.
   integer :: i, j, k, isc, iec, jsc, jec, n, nLay
   character(len=8) :: nstr
+  character(len=40) :: comp_name  ! The name for this component in the diag tables.
+
+  comp_name = "ice_model" ; if (present(component)) comp_name = component
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nLay = IG%NkIce
 
-  Rad%id_swdn  = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
+  Rad%id_swdn  = register_SIS_diag_field(trim(comp_name),'SWDN' ,diag%axesT1, Time, &
              'downward shortwave flux', 'W/m^2', missing_value=missing)
-  Rad%id_lwdn  = register_SIS_diag_field('ice_model','LWDN' ,diag%axesT1, Time, &
+  Rad%id_lwdn  = register_SIS_diag_field(trim(comp_name),'LWDN' ,diag%axesT1, Time, &
              'downward longwave flux', 'W/m^2', missing_value=missing)
 
-  Rad%id_alb      = register_SIS_diag_field('ice_model','ALB',diag%axesT1, Time, &
+  Rad%id_alb      = register_SIS_diag_field(trim(comp_name),'ALB',diag%axesT1, Time, &
                'surface albedo','0-1', missing_value=missing )
-  Rad%id_coszen   = register_SIS_diag_field('ice_model','coszen',diag%axesT1, Time, &
+  Rad%id_coszen   = register_SIS_diag_field(trim(comp_name),'coszen',diag%axesT1, Time, &
                'cosine of the solar zenith angle for the next radiation step','-1:1', missing_value=missing )
-  Rad%id_sw_abs_sfc= register_SIS_diag_field('ice_model','sw_abs_sfc',diag%axesT1, Time, &
-               'SW frac. abs. at the ice surface','0:1', missing_value=missing )
-  Rad%id_sw_abs_snow= register_SIS_diag_field('ice_model','sw_abs_snow',diag%axesT1, Time, &
-               'SW frac. abs. in snow','0:1', missing_value=missing )
+  Rad%id_sw_abs_sfc= register_SIS_diag_field(trim(comp_name),'sw_abs_sfc',diag%axesT1, Time, &
+               'SW frac. abs. at the ice surface','0-1', missing_value=missing )
+  Rad%id_sw_abs_snow= register_SIS_diag_field(trim(comp_name),'sw_abs_snow',diag%axesT1, Time, &
+               'SW frac. abs. in snow','0-1', missing_value=missing )
 
   call safe_alloc_ids_1d(Rad%id_sw_abs_ice, nLay)
   do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-    Rad%id_sw_abs_ice(n) = register_SIS_diag_field('ice_model','sw_abs_ice'//trim(nstr), &
+    Rad%id_sw_abs_ice(n) = register_SIS_diag_field(trim(comp_name),'sw_abs_ice'//trim(nstr), &
                  diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
                  '0:1', missing_value=missing )
   enddo
-  Rad%id_sw_pen= register_SIS_diag_field('ice_model','sw_pen',diag%axesT1, Time, &
+  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name),'sw_pen',diag%axesT1, Time, &
                'SW frac. pen. surf.','0:1', missing_value=missing )
-  Rad%id_sw_abs_ocn= register_SIS_diag_field('ice_model','sw_abs_ocn',diag%axesT1, Time, &
+  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name),'sw_abs_ocn',diag%axesT1, Time, &
                'SW frac. sent to the ocean','0:1', missing_value=missing )
 
 
-  Rad%id_alb_vis_dir = register_SIS_diag_field('ice_model','alb_vis_dir',diag%axesT1, Time, &
+  Rad%id_alb_vis_dir = register_SIS_diag_field(trim(comp_name),'alb_vis_dir',diag%axesT1, Time, &
                'ice surface albedo vis_dir','0-1', missing_value=missing )
-  Rad%id_alb_vis_dif = register_SIS_diag_field('ice_model','alb_vis_dif',diag%axesT1, Time, &
+  Rad%id_alb_vis_dif = register_SIS_diag_field(trim(comp_name),'alb_vis_dif',diag%axesT1, Time, &
                'ice surface albedo vis_dif','0-1', missing_value=missing )
-  Rad%id_alb_nir_dir = register_SIS_diag_field('ice_model','alb_nir_dir',diag%axesT1, Time, &
+  Rad%id_alb_nir_dir = register_SIS_diag_field(trim(comp_name),'alb_nir_dir',diag%axesT1, Time, &
                'ice surface albedo nir_dir','0-1', missing_value=missing )
-  Rad%id_alb_nir_dif = register_SIS_diag_field('ice_model','alb_nir_dif',diag%axesT1, Time, &
+  Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name),'alb_nir_dif',diag%axesT1, Time, &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
 
 end subroutine ice_diags_fast_init

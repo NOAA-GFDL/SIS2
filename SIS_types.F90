@@ -188,36 +188,39 @@ type fast_ice_avg_type
                     !  and the ice_rad_type because it is used as a part of the slow
                     !  thermodynamic updates.
   real, allocatable, dimension(:,:) :: &
-    bheat      , & ! The upward diffusive heat flux from the ocean
-                   ! to the ice at the base of the ice, in W m-2.
-    WindStr_x  , & ! The zonal wind stress averaged over the ice
-                   ! categories on an A-grid, in Pa.
-    WindStr_y  , & ! The meridional wind stress averaged over the
-                   ! ice categories on an A-grid, in Pa.
+    bheat      , &   ! The upward diffusive heat flux from the ocean
+                     ! to the ice at the base of the ice, in W m-2.
+    WindStr_x  , &   ! The zonal wind stress averaged over the ice
+                     ! categories on an A-grid, in Pa.
+    WindStr_y  , &   ! The meridional wind stress averaged over the
+                     ! ice categories on an A-grid, in Pa.
     WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
     WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
-    p_atm_surf , & ! The atmospheric pressure at the top of the ice, in Pa.
-    runoff, &           ! Liquid runoff into the ocean, in kg m-2.
-    calving, &          ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, in kg m-2.
+    p_atm_surf , &   ! The atmospheric pressure at the top of the ice, in Pa.
+    flux_sw_dn, &    ! The total downward shortwave flux, summed across all
+                     ! wavelengths and averaged across all thickness categories
+                     ! in W m-2.  
+    runoff, &        ! Liquid runoff into the ocean, in kg m-2.
+    calving, &       ! Calving of ice or runoff of frozen fresh
+                     ! water into the ocean, in kg m-2.
+    runoff_hflx, &   ! The heat flux associated with runoff, based
+                     ! on the temperature difference relative to a
+                     ! reference temperature, in ???.
+    calving_hflx, &  ! The heat flux associated with calving, based
+                     ! on the temperature difference relative to a
+                     ! reference temperature, in ???.
     calving_preberg, &  ! Calving of ice or runoff of frozen fresh
                         ! water into the ocean, exclusive of any
                         ! iceberg contributions, in kg m-2.
-    runoff_hflx, &      ! The heat flux associated with runoff, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
-    calving_hflx, &     ! The heat flux associated with calving, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
     calving_hflx_preberg, & ! The heat flux associated with calving,
                         ! exclusive of any iceberg contributions, based on
                         ! the temperature difference relative to a
                         ! reference temperature, in ???.
-    ice_free   , & ! The fractional open water used in calculating
-                   ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ice_cover      ! The fractional ice coverage, summed across all
-                   ! thickness categories, used in calculating
-                   ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_free   , &   ! The fractional open water used in calculating
+                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_cover        ! The fractional ice coverage, summed across all
+                     ! thickness categories, used in calculating
+                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
@@ -235,7 +238,7 @@ type fast_ice_avg_type
   integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
-  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
+  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1, id_sw_dn=-1, id_albedo=-1
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
 
@@ -484,6 +487,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0
   allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 
 
+  allocate(FIA%flux_sw_dn(SZI_(HI), SZJ_(HI)))  ; FIA%flux_sw_dn(:,:) = 0.0
   allocate(FIA%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
 end subroutine alloc_fast_ice_avg
@@ -743,6 +747,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%calving_hflx(i,j) =  FIA_in%calving_hflx(i,j)
     FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
     FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
+    FIA_out%flux_sw_dn(i,j) = FIA_in%flux_sw_dn(i,j)
   enddo ; enddo
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
   ! are only needed on the fast_ice_PEs

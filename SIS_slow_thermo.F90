@@ -169,7 +169,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(ice_grid_type),       intent(in) :: IG
   real,                      intent(in) :: Idt_slow
 
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -195,17 +195,32 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_slp>0) &
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
 
-  if (FIA%id_sw>0) then
+  if ((FIA%id_sw>0) .or. (FIA%id_albedo>0)) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec
-      do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
+      do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
-        tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
+        net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
               FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k) + &
               FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
       enddo ; enddo
     enddo
-    call post_data(FIA%id_sw, tmp2d, CS%diag)
+    if (FIA%id_sw>0) call post_data(FIA%id_sw, net_sw, CS%diag)
+    if (FIA%id_albedo>0) then
+      do j=jsc,jec ; do i=isc,iec
+        if (G%mask2dT(i,j)<=0.5) then
+          tmp2d(i,j) = -1.0 ! This is land.
+        elseif ((FIA%flux_sw_dn(i,j) > 0.0)) then
+          ! The 10.0 below is deliberate.  An albedo of down to -9 can be reported
+          ! for detecting inconsistent net_sw and sw_dn.
+          tmp2d(i,j) = (FIA%flux_sw_dn(i,j) - min(net_sw(i,j), 10.0*FIA%flux_sw_dn(i,j))) / &
+                       FIA%flux_sw_dn(i,j)
+        else
+          tmp2d(i,j) = 0.0 ! What does the albedo mean at night?
+        endif
+      enddo ; enddo
+      call post_data(FIA%id_albedo, tmp2d, CS%diag)
+    endif
   endif
   if (FIA%id_lw>0) call post_avg(FIA%id_lw, FIA%flux_lw_top, &
                                  IST%part_size, CS%diag, G=G)
@@ -213,6 +228,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                     IST%part_size, CS%diag, G=G)
   if (FIA%id_rain>0) call post_avg(FIA%id_rain, FIA%lprec_top, &
                                    IST%part_size, CS%diag, G=G)
+  if (FIA%id_sw_dn>0) call post_data(FIA%id_sw_dn, FIA%flux_sw_dn, CS%diag)
   if (FIA%id_sw_vis>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec
