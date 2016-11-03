@@ -1423,6 +1423,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
            "Choose different values of RESTARTFILE and FAST_ICE_RESTARTFILE.")
   endif
 
+  if (fast_ice_PE.neqv.slow_ice_PE) single_IST = .false.
+
   if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
   elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
@@ -1554,17 +1556,24 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   endif ! slow_ice_PE
 
+  !   Allocate the various structures and register fields for restarts connected
+  ! to the fast ice processes.  This is interspersed between the slow ice
+  ! registration calls and the actual reading of the restart files because there
+  ! might be a single common restart file being used, and because the fast ice
+  ! state might use some structures that point to their counterparts in the slow
+  ! ice state.
   if (fast_ice_PE) then
     if (.not.associated(Ice%fCS)) allocate(Ice%fCS)
     if (.not.associated(Ice%fCS%IG)) allocate(Ice%fCS%IG)
     Ice%fCS%Time = Time
 
-    if (single_IST .and. slow_ice_PE) then
+    if (single_IST) then
       Ice%fCS%IST => Ice%sCS%IST
       Ice%fCS%G => Ice%sCS%G
       fG => Ice%fCS%G
       fGD => Ice%fCS%G%Domain
       fHI = sHI
+      Ice%fCS%FIA => Ice%sCS%FIA
     else
       ! Set up the domains and lateral grids.
       if (.not.associated(Ice%fCS%IST)) allocate(Ice%fCS%IST)
@@ -1611,7 +1620,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
     call initialize_ice_categories(Ice%fCS%IG, Rho_ice, param_file)
 
-
   ! Allocate and register fields for restarts.
 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
@@ -1627,9 +1635,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
 
-    if (single_IST) then
-      Ice%fCS%FIA => Ice%sCS%FIA
-    else
+    if (.not.single_IST) then
+      ! This call just does the allocations of the arrays in the ice state type.
       call ice_state_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
                                        Ice%fCS%IST)
       call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
@@ -1652,10 +1659,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                                 doc_file_dir = dirs%output_directory)
     call set_SIS_axes_info(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, axes_set_name="ice_fast")
 
-    if ((.not.slow_ice_PE) .or. (.not.single_IST)) &
+    if (.not.single_IST) then
       call ice_thermo_init(param_file, Ice%fCS%IST%ITV, init_EOS=nudge_sea_ice)
 
-    if (.not.single_IST) then
       ! Set a few final things to complete the setup of the grid. 
       fG%g_Earth = g_Earth
       call set_first_direction(fG, first_direction)
@@ -1670,17 +1676,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       endif
     endif
 
-    isc = fHI%isc ; iec = fHI%iec ; jsc = fHI%jsc ; jec = fHI%jec
-    i_off = LBOUND(Ice%t_surf,1) - fHI%isc ; j_off = LBOUND(Ice%t_surf,2) - fHI%jsc
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
-    enddo ; enddo
-
-!  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
-!    call set_domain(fGD%mpp_domain)
-    call astronomy_init
-!    call nullify_domain()
-!  endif
   endif
 
 
@@ -1900,57 +1895,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
     endif ! file_exist(restart_path)
 
     deallocate(S_col)
-  endif ! Slow_ice_PE
-
-  if (fast_ice_PE) then
-    ! Read the fast restart file, if it exists.
-    if ((.not.slow_ice_PE) .or. split_restart_files) then
-      fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
-      if (file_exist(fast_rest_path)) then
-        call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
-        init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
-      else
-        init_coszen = .true.
-      endif
-    endif
-
-    if (init_coszen) then
-      if (coszen_IC >= 0.0) then
-        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
-      else
-        rad = acos(-1.)/180.
-        allocate(dummy(fG%isd:fG%ied,fG%jsd:fG%jed))
-        call diurnal_solar(fG%geoLatT(:,:)*rad, fG%geoLonT(:,:)*rad, &
-                           Ice%fCS%Time, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
-                           rrsun=rrsun, dt_time=dT_rad)
-        deallocate(dummy)
-      endif
-    endif
-  endif
 
   ! The restart files have now been read or the variables that would have been
   ! in the restart files have been initialized.  Now call the initialization
   ! routines for any dependent sub-modules.
 
-  if (slow_ice_PE) then
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, Ice%sCS%IG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=Ice%sCS%IST%Cgrid_dyn)
     Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
-  endif
 
-  if (fast_ice_PE) then
-    call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
-                             Ice%fCS%Time, component="ice_model_fast")
-
-    call SIS_fast_thermo_init(Ice%fCS%Time, fG, Ice%fCS%IG, param_file, Ice%fCS%diag, &
-                              Ice%fCS%fast_thermo_CSp)
-    call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
-
-    Ice%fCS%Time_step_fast = Time_step_fast
-    Ice%fCS%Time_step_slow = Time_step_slow
-  endif
-
-  if (slow_ice_PE) then
     Ice%sCS%Time_step_slow = Time_step_slow
 
     call SIS_slow_thermo_init(Ice%sCS%Time, sG, Ice%sCS%IG, param_file, Ice%sCS%diag, &
@@ -2017,15 +1970,67 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                    SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
   endif  ! slow_ice_PE
 
+
+
+  if (fast_ice_PE) then
+    ! Read the fast_restart file and initialize the subsidiary modules of the
+    ! fast ice processes.
+
+    if ((.not.slow_ice_PE) .or. split_restart_files) then
+      ! Read the fast restart file, if it exists.
+      fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
+      if (file_exist(fast_rest_path)) then
+        call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
+        init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+      else
+        init_coszen = .true.
+      endif
+    endif
+
+!  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
+!    call set_domain(fGD%mpp_domain)
+    call astronomy_init
+!    call nullify_domain()
+!  endif
+
+    if (init_coszen) then
+      if (coszen_IC >= 0.0) then
+        Ice%fCS%Rad%coszen_nextrad(:,:) = coszen_IC
+      else
+        rad = acos(-1.)/180.
+        allocate(dummy(fG%isd:fG%ied,fG%jsd:fG%jed))
+        call diurnal_solar(fG%geoLatT(:,:)*rad, fG%geoLonT(:,:)*rad, &
+                           Ice%fCS%Time, cosz=Ice%fCS%Rad%coszen_nextrad, fracday=dummy, &
+                           rrsun=rrsun, dt_time=dT_rad)
+        deallocate(dummy)
+      endif
+    endif
+
+    call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
+                             Ice%fCS%Time, component="ice_model_fast")
+
+    call SIS_fast_thermo_init(Ice%fCS%Time, fG, Ice%fCS%IG, param_file, Ice%fCS%diag, &
+                              Ice%fCS%fast_thermo_CSp)
+    call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
+
+    Ice%fCS%Time_step_fast = Time_step_fast
+    Ice%fCS%Time_step_slow = Time_step_slow
+
+    isc = fHI%isc ; iec = fHI%iec ; jsc = fHI%jsc ; jec = fHI%jec
+    i_off = LBOUND(Ice%t_surf,1) - fHI%isc ; j_off = LBOUND(Ice%t_surf,2) - fHI%jsc
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
+    enddo ; enddo
+    if (.not.slow_ice_PE) then
+      Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
+    endif
+  endif ! fast_ice_PE
+
   !nullify_domain perhaps could be called somewhere closer to set_domain 
   !but it should be called after restore_state() otherwise it causes a restart mismatch
   call nullify_domain()
 
   call close_param_file(param_file)
-
-  if (.not.slow_ice_PE) then
-    Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
-  endif
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
