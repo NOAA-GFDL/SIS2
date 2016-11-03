@@ -1189,6 +1189,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: CatIce, NkIce, isd, ied, jsd, jed
   integer :: idr, id_sal
   integer :: write_geom
+  logical :: Verona_coupler
   logical :: nudge_sea_ice
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
@@ -1341,6 +1342,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
+  call get_param(param_file, mod, "VERONA_COUPLER", Verona_coupler, &
+                 "If true, carry out all of the seaice calls so that SIS2 \n"//&
+                 "will work with the Verona and earlier releases of the \n"//&
+                 "FMS coupler code in configurations that use the exchange \n"//&
+                 "grid to communicate with the atmosphere or land.", default=.true.)
 
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
@@ -1958,17 +1964,24 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       endif
     endif
 
-  !###  Ice%part_size needs to be set on the fast PEs.  Rats!  The coupler code
-  !### is being rearranged to avoid this.
-  !### A test of this needs to include coupled models started from a restart file.
+    if (Verona_coupler) then
+      !   The Verona and earlier versions of the coupler code make calls to set
+      ! up the exchange grid right at the start of the coupled timestep, before
+      ! information about the part_size distribution can be copied from the slow
+      ! processors to the fast processors.  This will cause coupled models with
 
-    ! Set the computational domain sizes using the ice model's indexing convention.
-    isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
-    i_off = LBOUND(Ice%t_surf,1) - sHI%isc ; j_off = LBOUND(Ice%t_surf,2) - sHI%jsc
-    do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%part_size(i2,j2,k2) = sIST%part_size(i,j,k)
-    enddo ; enddo ; enddo
+      ! Set the computational domain sizes using the ice model's indexing convention.
+      isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
+      i_off = LBOUND(Ice%t_surf,1) - sHI%isc ; j_off = LBOUND(Ice%t_surf,2) - sHI%jsc
+      do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
+        i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+        Ice%part_size(i2,j2,k2) = sIST%part_size(i,j,k)
+      enddo ; enddo ; enddo
+
+      if (.not.fast_ice_PE) call SIS_error(FATAL, &
+          "The Verona coupler will not work unless the fast and slow portions "//&
+          "of SIS2 use the same PEs and layout.")
+    endif
 
     ! Do any error checking here.
     if (debug) call ice_grid_chksum(sG, haloshift=2)
