@@ -335,13 +335,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif
 !$OMP END SINGLE
 !$OMP do
-      do n=1,FIA%num_tr_fluxes
+      do m=1,FIA%num_tr_fluxes
         do j=jsc,jec ; do i=isc,iec
-          IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
+          IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
         enddo ; enddo
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
-                     IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
+          IOF%tr_flux_ocn_top(i,j,m) = IOF%tr_flux_ocn_top(i,j,m) + &
+                     IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,m)
         enddo ; enddo ; enddo
       enddo
     endif
