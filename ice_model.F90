@@ -128,6 +128,7 @@ public :: update_ice_model_slow_up, update_ice_model_slow_dn
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
+public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice
 
 integer :: iceClock, iceClock1, iceCLock2, iceCLock3
 
@@ -379,22 +380,46 @@ end subroutine set_ocean_top_fluxes
 
 !
 ! Coupler interface to provide ocean surface data to atmosphere.
-!
-subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
-  type(ocean_ice_boundary_type), intent(inout) :: Ocean_boundary
-  type(ice_data_type),           intent(inout) :: Ice
+!> update_ice_model_slow_up prepares the ice surface data for forcing the atmosphere
+!! and may also unpack the data from the ocean and share it between the fast and
+!! slow processors.
+subroutine update_ice_model_slow_up ( Ocean_boundary, Ice, Verona_coupler )
+  type(ocean_ice_boundary_type), &
+    optional, intent(inout) :: Ocean_boundary  !< A structure containing information about
+                                   !! the ocean that is being shared with the sea-ice.  If
+                                   !! this argument is not present, it is assumed that this
+                                   !! information has already been exchanged.
+  type(ice_data_type), &
+    optional, intent(inout) :: Ice !< The publicly visible ice data type; this must always be
+                                   !! present, but is optional because of an unfortunate
+                                   !! order of arguments.
+  logical, &
+    optional, intent(in)    :: Verona_coupler !< If missing or true, make the extra calls that
+                                   !! are needed with the Verona and earlier versions of the
+                                   !! FMS coupler.
+
+  logical :: Verona
+  
+  ! These two checks give two different ways to disable the Verona and earlier coupling calls.
+  Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
+  if (.not.present(Ocean_boundary)) Verona = .false.
+
+  if (.not.present(Ice)) call SIS_error(FATAL, &
+      "Ice must be present in the call to update_ice_model_slow_up")
+  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS must be associated in update_ice_model_slow_up.")
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  !### Exchange information from the slow ice processors to the fast ice processors.
-  call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+  if (Verona) then
+    if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+        "The pointer to Ice%sCS must be associated with the Verona-compatible "//&
+        "version of update_ice_model_slow_up.")
+    call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
+                             Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
-    call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
+    call exchange_slow_to_fast_ice(Ice)
   endif
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
@@ -403,6 +428,44 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow_up
+
+!> This subroutine copies information from the slow part of the sea-ice to the
+!! fast part of the sea ice.
+subroutine exchange_slow_to_fast_ice(Ice)
+  type(ice_data_type), &
+    intent(inout) :: Ice            !< The publicly visible ice data type whose slow
+                                    !! part is to be exchanged with the fast part.
+
+  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+      "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
+
+  call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+
+  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+    ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
+    call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
+  endif
+
+end subroutine exchange_slow_to_fast_ice
+
+!> This subroutine copies information from an ocean_ice_boundary_type into the
+!! slow part of an ice_data type, using a coupler-friendly interface.
+subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
+  type(ocean_ice_boundary_type), &
+    intent(inout) :: Ocean_boundary !< A structure containing information about
+                                    !! the ocean that is being shared with the sea-ice.
+  type(ice_data_type), &
+    intent(inout) :: Ice            !< The publicly visible ice data type in the slow part
+                                    !! of which the ocean surface information is to be stored.
+
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary.")
+
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
+                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+
+end subroutine unpack_ocean_ice_boundary
 
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
