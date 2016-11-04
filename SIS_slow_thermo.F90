@@ -319,6 +319,34 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
     call pass_var(IST%part_size, G%Domain)
+    
+    if (FIA%num_tr_fluxes>0) then
+!It is necessary and sufficient that only one OMP thread goes through the following block
+!since IOF is shared between the threads (hence the block is not thread-safe).
+!$OMP SINGLE
+      if (IOF%num_tr_fluxes < 0) then
+        ! This is the first call, and the IOF arrays need to be allocated.
+        IOF%num_tr_fluxes = FIA%num_tr_fluxes
+
+        allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
+        IOF%tr_flux_ocn_top(:,:,:) = 0.0
+        allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
+        IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
+      endif
+!$OMP END SINGLE
+!$OMP do
+      do n=1,FIA%num_tr_fluxes
+        do j=jsc,jec ; do i=isc,iec
+          IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
+        enddo ; enddo
+        do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+          IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
+                     IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
+        enddo ; enddo ; enddo
+      enddo
+    endif
+!$OMP end parallel
+  
 
   else ! Do not use specified ice.
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
