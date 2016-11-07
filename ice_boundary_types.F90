@@ -47,12 +47,14 @@ type atmos_ice_boundary_type
                          ! to the ocean or ice in each category, discretized on an A-grid,
                          ! and _not_ rotated to align with the model grid, in Pa.
     u_star  => NULL(), & ! The atmospheric friction velocity on an A-grid, in Pa.
-    t_flux  => NULL(), & ! The sensible heat flux flux from the ocean or ice into the
+    t_flux  => NULL(), & ! The net sensible heat flux flux from the ocean or ice into the
                          ! atmosphere at the surface, in W m-2.
     q_flux  => NULL(), & ! The flux of moisture from the ice or ocean to the
                          ! atmosphere due to evaporation or sublimation, in kg m-2 s-1.
-    lw_flux => NULL(), & ! The flux longwave radiation from the atmosphere into the
+    lw_flux => NULL(), & ! The net flux of longwave radiation from the atmosphere into the
                          ! ice or ocean, in W m-2.
+    ! sw_flux_tot_down => NULL(), & ! The total downward flux of shortwave radiation
+    !                      ! at ths surface of the ice or ocean, in W m-2.                      
     sw_flux_vis_dir => NULL(), &  ! The visible (_vis) or near-infrared (_nir),
     sw_flux_vis_dif => NULL(), &  ! direct (_dir) or diffuse (_dif) shortwave
     sw_flux_nir_dir => NULL(), &  ! radiation fluxes from the atmosphere into
@@ -61,11 +63,11 @@ type atmos_ice_boundary_type
                          ! atmosphere or ice in each thickness category, in kg m-2 s-1.
                          ! Rain falling on snow is currently assumed to pass or drain
                          ! directly through the ice into the ocean; this should be
-                         ! revisitied!
+                         ! revisited!
     fprec   => NULL(), & ! The frozen precipitation (snowfall) from the atmosphere
                          ! to the ice or ocean, in kg m-2 s-1.  Currently in SIS2
                          ! all frozen precipitation, including snow, sleet, hail
-                         ! or graupel, are all treated as snow.
+                         ! and graupel, are all treated as snow.
     dhdt    => NULL(), & ! The derivative of the upward sensible heat flux with the
                          ! surface temperature in W m-2 K-1.
     dedt    => NULL(), & ! The derivative of the sublimation and evaporation rate

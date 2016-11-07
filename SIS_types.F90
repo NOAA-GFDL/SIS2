@@ -31,18 +31,18 @@ use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 use SIS_error_checking, only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
 public :: ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-public :: IST_chksum, IST_bounds_check
+public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
-public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
+public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -50,9 +50,6 @@ public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 ! use different indexing conventions than other components.                    !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_state_type
-  type(time_type) :: Time_Init, Time
-  type(time_type) :: Time_step_fast, Time_step_slow
-
   ! The 8 of the following 10 variables constitute the sea-ice state.
   real, allocatable, dimension(:,:,:) :: &
     part_size   ! The fractional coverage of a grid cell by each ice
@@ -91,22 +88,15 @@ type ice_state_type
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
-  integer, dimension(:), allocatable :: id_t, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
-  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
-  
-  integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
-
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
   type(ice_thermo_type), pointer  :: ITV => NULL()
-  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
-!! state as seen by the sea-ice or atmosphere, on the ice grid.
+!! state as seen by the slowly evolving sea-ice, on the ice grid.
 type ocean_sfc_state_type
-  ! 5 of the following 7 variables describe the ocean state as seen by the sea ice.
+  ! 6 of the following 8 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     t_ocn  , &  ! The ocean's bulk surface temperature in degC.
@@ -132,10 +122,29 @@ type ocean_sfc_state_type
                 ! an array reflecting the turbulence in the under-ice ocean
                 ! boundary layer and the effective depth of the reported value
                 ! of t_ocn.
+
+  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+                       ! sea-ice dynamics.
  
   ! diagnostic IDs for ocean surface  properties.
   integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1
 end type ocean_sfc_state_type
+
+!> simple_OSS_type contains variables that describe the ocean's surface
+!! state as seen by the fast sea-ice or atmosphere, on the ice grid.
+type simple_OSS_type
+  ! The following 5 variables describe the ocean state as seen by the 
+  ! atmosphere and use for the rapid thermodynamic sea ice changes.
+  real, allocatable, dimension(:,:) :: &
+    s_surf , &  ! The ocean's surface salinity in g/kg.
+    t_ocn  , &  ! The ocean's bulk surface temperature in degC.
+    u_ocn_A, &  ! The ocean's zonal velocity on A-grid points in m s-1.
+    v_ocn_A, &  ! The ocean's meridional velocity on A-grid points in m s-1.
+    bheat       ! The upward diffusive heat flux from the ocean
+                ! to the ice at the base of the ice, in W m-2.
+
+end type simple_OSS_type
+
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
 !! atmosphere and the ice or that have been accumlated over fast thermodynamic
@@ -143,17 +152,18 @@ end type ocean_sfc_state_type
 !! of these are diagnostics, while others are averages of fluxes taken during
 !! the fast ice thermodynamics and used during the slow ice thermodynamics or dynamics.
 type fast_ice_avg_type
-  ! These are the arrays that are averaged over the fast thermodynamics.  They
-  ! are either used to communicate to the slow thermodynamics or diagnostics or
-  ! both.
+!FAST ONLY
   integer :: avg_count  ! The number of times that surface fluxes to the ice
                         ! have been incremented.
   logical :: atmos_winds ! The wind stresses come directly from the atmosphere
                          ! model and have the wrong sign.
+  ! These are the arrays that are averaged over the fast thermodynamics.  They
+  ! are either used to communicate to the slow thermodynamics or diagnostics or
+  ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
     flux_u_top         , & ! The downward flux of zonal and meridional
-    flux_v_top         , & ! momentum on an A-grid in ???.
+    flux_v_top         , & ! momentum on an A-grid in Pa.
     flux_t_top         , & ! The upward sensible heat flux at the ice top
                            ! in W m-2.
     flux_q_top         , & ! The upward evaporative moisture flux at
@@ -178,22 +188,39 @@ type fast_ice_avg_type
                     !  and the ice_rad_type because it is used as a part of the slow
                     !  thermodynamic updates.
   real, allocatable, dimension(:,:) :: &
-    bheat      , & ! The upward diffusive heat flux from the ocean
-                   ! to the ice at the base of the ice, in W m-2.
-    frazil_left, & ! The frazil heat flux that has not yet been
-                   ! consumed in making ice, in J m-2. This array
-                   ! is decremented by the ice model as the heat
-                   ! flux is used up.
-    WindStr_x  , & ! The zonal wind stress averaged over the ice
-                   ! categories on an A-grid, in Pa.
-    WindStr_y  , & ! The meridional wind stress averaged over the
-                   ! ice categories on an A-grid, in Pa.
-    p_atm_surf , & ! The atmospheric pressure at the top of the ice, in Pa.
-    ice_free   , & ! The fractional open water used in calculating
-                   ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ice_cover      ! The fractional ice coverage, summed across all
-                   ! thickness categories, used in calculating
-                   ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    bheat      , &   ! The upward diffusive heat flux from the ocean
+                     ! to the ice at the base of the ice, in W m-2.
+    WindStr_x  , &   ! The zonal wind stress averaged over the ice
+                     ! categories on an A-grid, in Pa.
+    WindStr_y  , &   ! The meridional wind stress averaged over the
+                     ! ice categories on an A-grid, in Pa.
+    WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
+    WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
+    p_atm_surf , &   ! The atmospheric pressure at the top of the ice, in Pa.
+    flux_sw_dn, &    ! The total downward shortwave flux, summed across all
+                     ! wavelengths and averaged across all thickness categories
+                     ! in W m-2.  
+    runoff, &        ! Liquid runoff into the ocean, in kg m-2.
+    calving, &       ! Calving of ice or runoff of frozen fresh
+                     ! water into the ocean, in kg m-2.
+    runoff_hflx, &   ! The heat flux associated with runoff, based
+                     ! on the temperature difference relative to a
+                     ! reference temperature, in ???.
+    calving_hflx, &  ! The heat flux associated with calving, based
+                     ! on the temperature difference relative to a
+                     ! reference temperature, in ???.
+    calving_preberg, &  ! Calving of ice or runoff of frozen fresh
+                        ! water into the ocean, exclusive of any
+                        ! iceberg contributions, in kg m-2.
+    calving_hflx_preberg, & ! The heat flux associated with calving,
+                        ! exclusive of any iceberg contributions, based on
+                        ! the temperature difference relative to a
+                        ! reference temperature, in ???.
+    ice_free   , &   ! The fractional open water used in calculating
+                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_cover        ! The fractional ice coverage, summed across all
+                     ! thickness categories, used in calculating
+                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
@@ -201,10 +228,18 @@ type fast_ice_avg_type
                    ! sea ice.
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
+!SLOW ONLY
+  real, allocatable, dimension(:,:) :: &
+    frazil_left    ! The frazil heat flux that has not yet been
+                   ! consumed in making ice, in J m-2. This array
+                   ! is decremented by the ice model as the heat
+                   ! flux is used up.
+!SLOW ONLY
   integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
   integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
-  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1
+  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1, id_sw_dn=-1, id_albedo=-1
+  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
 
 end type fast_ice_avg_type
@@ -270,22 +305,6 @@ type ice_ocean_flux_type
                         ! the ocean surface, in kg m-2 s-1.
     fprec_ocn_top, &    ! The downward flux of frozen precipitation at
                         ! the ocean surface, in kg m-2 s-1.
-    runoff, &           ! Liquid runoff into the ocean, in kg m-2.
-    calving, &          ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, in kg m-2.
-    calving_preberg, &  ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, exclusive of any
-                        ! iceberg contributions, in kg m-2.
-    runoff_hflx, &      ! The heat flux associated with runoff, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
-    calving_hflx, &     ! The heat flux associated with calving, based
-                        ! on the temperature difference relative to a
-                        ! reference temperature, in ???.
-    calving_hflx_preberg, & ! The heat flux associated with calving,
-                        ! exclusive of any iceberg contributions, based on
-                        ! the temperature difference relative to a
-                        ! reference temperature, in ???.
     flux_u_ocn, &       ! The flux of x-momentum into the ocean, in Pa,
                         ! at locations determined by flux_uv_stagger,
                         ! but allocated as though on an A-grid.
@@ -339,7 +358,6 @@ type ice_ocean_flux_type
   integer, allocatable, dimension(:,:) :: tr_flux_index
 
   ! diagnostic IDs for ice-to-ocean fluxes.
-  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_saltf=-1
   ! The following are diagnostic IDs for iceberg-related fields.  These are only
   ! used if the iceberg code is activated.
@@ -359,15 +377,15 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   type(ice_grid_type),     intent(in)    :: IG
   type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(restart_file_type), optional, pointer    :: Ice_restart
+  character(len=*),        optional, intent(in) :: restart_file
 
   integer :: CatIce, NkIce, idr, n
   character(len=8) :: nstr
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0 !  mw/new
+  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0
   allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
   allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
   allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
@@ -381,44 +399,46 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
     allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
   endif
 
-  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0 !X
+  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
 
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
 
   ! Now register some of these arrays to be read from the restart files.
-  idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
-  idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
-                               domain=mpp_domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
-                               domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
-                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
-                               domain=mpp_domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
-                               domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
-                               longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
-                               no_domain=.true., mandatory=.false.)
+  if (present(Ice_restart)) then ; if (associated(Ice_restart)) then
+    idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
+    idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
+                                 domain=mpp_domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
+                                 domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
+                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
+                                 domain=mpp_domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
+                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
+                                 longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
+                                 no_domain=.true., mandatory=.false.)
 
-  idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
-                               domain=mpp_domain, mandatory=.false., units="J kg-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
-                               domain=mpp_domain, mandatory=.false., units="kg/kg")
+    idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
+                                 domain=mpp_domain, mandatory=.false., units="J kg-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
+                                 domain=mpp_domain, mandatory=.false., units="kg/kg")
 
-  if (IST%Cgrid_dyn) then
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
-                                 domain=mpp_domain, position=EAST, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
-                                 domain=mpp_domain, position=NORTH, mandatory=.false.)
-  else
-    idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
-                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
-                                 domain=mpp_domain, position=CORNER, mandatory=.false.)
-  endif
+    if (IST%Cgrid_dyn) then
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
+                                   domain=mpp_domain, position=EAST, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
+                                   domain=mpp_domain, position=NORTH, mandatory=.false.)
+    else
+      idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
+                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
+                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+    endif
+  endif ; endif
 
 end subroutine ice_state_register_restarts
 
@@ -448,6 +468,12 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
   allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
   allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
+  allocate(FIA%runoff(SZI_(HI), SZJ_(HI))) ; FIA%runoff(:,:) = 0.0 !NI
+  allocate(FIA%calving(SZI_(HI), SZJ_(HI))) ; FIA%calving(:,:) = 0.0 !NI
+  allocate(FIA%calving_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_preberg(:,:) = 0.0 !NI, diag
+  allocate(FIA%runoff_hflx(SZI_(HI), SZJ_(HI))) ; FIA%runoff_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx_preberg(:,:) = 0.0 !NI, diag
 
   allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0
   allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0
@@ -455,10 +481,13 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0
   allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0
   allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_x(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_y(:,:) = 0.0
   allocate(FIA%p_atm_surf(SZI_(HI), SZJ_(HI))) ; FIA%p_atm_surf(:,:) = 0.0
   allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0
   allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 
 
+  allocate(FIA%flux_sw_dn(SZI_(HI), SZJ_(HI)))  ; FIA%flux_sw_dn(:,:) = 0.0
   allocate(FIA%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
 end subroutine alloc_fast_ice_avg
@@ -510,12 +539,6 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
 
   if (.not.associated(IOF)) allocate(IOF)
 
-  allocate(IOF%runoff(SZI_(HI), SZJ_(HI))) ; IOF%runoff(:,:) = 0.0 !NI
-  allocate(IOF%calving(SZI_(HI), SZJ_(HI))) ; IOF%calving(:,:) = 0.0 !NI
-  allocate(IOF%calving_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_preberg(:,:) = 0.0 !NI, diag
-  allocate(IOF%runoff_hflx(SZI_(HI), SZJ_(HI))) ; IOF%runoff_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx(:,:) = 0.0 !NI
-  allocate(IOF%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; IOF%calving_hflx_preberg(:,:) = 0.0 !NI, diag
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
 
   allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
@@ -561,7 +584,6 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
-
   if (Cgrid_dyn) then
     allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0
     allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI))) ; OSS%v_ocn_C(:,:) = 0.0
@@ -570,8 +592,202 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
     allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%v_ocn_B(:,:) = 0.0
   endif
 
+  OSS%Cgrid_dyn = Cgrid_dyn
+
 end subroutine alloc_ocean_sfc_state
 
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_simple_ocean_sfc_state allocates and zeros out the arrays in a
+!! simple_OSS_type.
+subroutine alloc_simple_OSS(OSS, HI)
+  type(simple_OSS_type), pointer    :: OSS
+  type(hor_index_type),  intent(in) :: HI
+
+  if (.not.associated(OSS)) allocate(OSS)
+
+  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
+  allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
+  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%u_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ocn_A(:,:) = 0.0
+  allocate(OSS%v_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ocn_A(:,:) = 0.0
+
+end subroutine alloc_simple_OSS
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_IST_to_IST copies the computational domain of one ice state type into
+!! the computational domain of another ice_state_type.  Both must use the same
+!! domain decomposition and indexing convention (for now), but they may have
+!! different halo sizes.
+subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
+  type(ice_state_type), intent(in)    :: IST_in
+  type(ice_state_type), intent(inout) :: IST_out
+  type(hor_index_type), intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),  intent(in)    :: IG
+
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
+      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+    call SIS_error(FATAL, "copy_IST_to_IST called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
+    IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
+  enddo ; enddo ; enddo
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%mH_pond(i,j,k) = IST_in%mH_pond(i,j,k)
+    IST_out%mH_snow(i,j,k) = IST_in%mH_snow(i,j,k)
+    IST_out%mH_ice(i,j,k) = IST_in%mH_ice(i,j,k)
+
+    IST_out%enth_snow(i,j,k,1) = IST_in%enth_snow(i,j,k,1)
+  enddo ; enddo ; enddo
+
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    IST_out%enth_ice(i,j,k,m) = IST_in%enth_ice(i,j,k,m)
+    IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
+  enddo ; enddo ; enddo ; enddo
+
+  ! These copies of the staggered velocity points include tests that handle the
+  ! case of non-symmetric memory and no halos properly.
+  if (IST_in%Cgrid_dyn) then
+    if (min(lbound(IST_in%u_ice_C,1),lbound(IST_out%u_ice_C,1)) <= isc-1) then
+      do j=jsc,jec ; do I=isc-1,iec
+        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
+      enddo ; enddo
+    else ! One of the arrays is non-symmetric and has no halos.
+      do j=jsc,jec ; do i=isc,iec
+        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
+        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
+      enddo ; enddo
+    endif
+  else
+    if (min(lbound(IST_in%u_ice_B,1),lbound(IST_out%u_ice_B,1)) <= isc-1) then
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
+        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
+      enddo ; enddo
+    else
+      do J=jsc,jec ; do I=isc,iec
+        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
+        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
+      enddo ; enddo
+    endif
+  endif
+
+  IST_out%Cgrid_dyn = IST_in%Cgrid_dyn
+  IST_out%slab_ice = IST_in%slab_ice
+
+  ! rdg_mice, TrReg, and ITV are deliberately not being copied.
+
+end subroutine copy_IST_to_IST
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
+!! the computational domain of another fast_ice_avg_type.  Both must use the same
+!! domain decomposition and indexing convention (for now), but they may have
+!! different halo sizes.
+subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
+  type(fast_ice_avg_type), intent(in)    :: FIA_in
+  type(fast_ice_avg_type), intent(inout) :: FIA_out
+  type(hor_index_type),    intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),     intent(in)    :: IG
+
+  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
+      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+    call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    FIA_out%flux_t_top(i,j,k) = FIA_in%flux_t_top(i,j,k)
+    FIA_out%flux_q_top(i,j,k) = FIA_in%flux_q_top(i,j,k)
+    FIA_out%flux_sw_vis_dir_top(i,j,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
+    FIA_out%flux_sw_vis_dif_top(i,j,k) = FIA_in%flux_sw_vis_dif_top(i,j,k)
+    FIA_out%flux_sw_nir_dir_top(i,j,k) = FIA_in%flux_sw_nir_dir_top(i,j,k)
+    FIA_out%flux_sw_nir_dif_top(i,j,k) = FIA_in%flux_sw_nir_dif_top(i,j,k)
+    FIA_out%flux_lw_top(i,j,k) = FIA_in%flux_lw_top(i,j,k)
+    FIA_out%flux_lh_top(i,j,k) = FIA_in%flux_lh_top(i,j,k)
+    FIA_out%lprec_top(i,j,k) = FIA_in%lprec_top(i,j,k)
+    FIA_out%fprec_top(i,j,k) = FIA_in%fprec_top(i,j,k)
+  enddo ; enddo ; enddo
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    FIA_out%tmelt(i,j,k) = FIA_in%tmelt(i,j,k)
+    FIA_out%bmelt(i,j,k) = FIA_in%bmelt(i,j,k)
+    FIA_out%sw_abs_ocn(i,j,k) = FIA_in%sw_abs_ocn(i,j,k)
+  enddo ; enddo ; enddo
+
+  do j=jsc,jec ; do i=isc,iec
+    FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
+    FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
+    FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)
+    FIA_out%WindStr_ocn_x(i,j) = FIA_in%WindStr_ocn_x(i,j)
+    FIA_out%WindStr_ocn_y(i,j) = FIA_in%WindStr_ocn_y(i,j)
+    FIA_out%p_atm_surf(i,j) = FIA_in%p_atm_surf(i,j)
+    FIA_out%runoff(i,j) = FIA_in%runoff(i,j)
+    FIA_out%calving(i,j) =  FIA_in%calving(i,j)
+    FIA_out%runoff_hflx(i,j) = FIA_in%runoff_hflx(i,j)
+    FIA_out%calving_hflx(i,j) =  FIA_in%calving_hflx(i,j)
+    FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
+    FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
+    FIA_out%flux_sw_dn(i,j) = FIA_in%flux_sw_dn(i,j)
+  enddo ; enddo
+  !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
+  ! are only needed on the fast_ice_PEs
+  !   FIA%frazil_left is deliberately not being copied, as it is only valid on
+  ! the slow_ice_PEs.
+  !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
+  ! being copied over.
+
+  if (FIA_in%num_tr_fluxes >= 0) then
+!$OMP SINGLE
+    if (FIA_out%num_tr_fluxes < 0) then
+      ! Allocate the tr_flux_top arrays to accommodate the size of the input
+      ! fluxes.  This only occurs the first time FIA_out is copied from a fully
+      ! initialized FIA_in.
+      FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
+      if (FIA_out%num_tr_fluxes > 0) then
+        allocate(FIA_out%tr_flux_top(SZI_(HI_out), SZJ_(HI_out), 0:ncat, FIA_out%num_tr_fluxes))
+        FIA_out%tr_flux_top(:,:,:,:) = 0.0
+
+        allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
+                                       size(FIA_in%tr_flux_index,2)))
+        FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
+      endif
+    endif
+
+    if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
+      call SIS_error(FATAL, "copy_FIA_to_FIA called with different num_tr_fluxes.")
+!$OMP END SINGLE
+
+    do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      FIA_out%tr_flux_top(i,j,k,n) = FIA_in%tr_flux_top(i,j,k,n)
+    enddo ; enddo ; enddo ; enddo
+  endif
+
+  ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
+end subroutine copy_FIA_to_FIA
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_IST_arrays deallocates the arrays in an ice_state_type.
 subroutine dealloc_IST_arrays(IST)
   type(ice_state_type), intent(inout) :: IST
 
@@ -606,6 +822,22 @@ subroutine dealloc_ocean_sfc_state(OSS)
 end subroutine dealloc_ocean_sfc_state
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_simple_OSS deallocates the arrays in a simple_OSS_type.
+subroutine dealloc_simple_OSS(OSS)
+  type(simple_OSS_type), pointer :: OSS
+
+  if (.not.associated(OSS)) then
+    call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
+    return
+  endif
+
+  deallocate(OSS%s_surf, OSS%t_ocn, OSS%bheat)
+  deallocate(OSS%u_ocn_A, OSS%v_ocn_A)
+
+  deallocate(OSS)
+end subroutine dealloc_simple_OSS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_fast_ice_avg deallocates the arrays in a fast_ice_avg_type.
 subroutine dealloc_fast_ice_avg(FIA)
   type(fast_ice_avg_type), pointer    :: FIA
@@ -620,9 +852,12 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
   deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
   deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
+  deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
+  deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
+  deallocate(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y)
   deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn)
 
   deallocate(FIA)
@@ -660,8 +895,6 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_sw_vis_dir_ocn, IOF%flux_sw_vis_dif_ocn)
   deallocate(IOF%flux_sw_nir_dir_ocn, IOF%flux_sw_nir_dif_ocn)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
-  deallocate(IOF%runoff, IOF%calving, IOF%runoff_hflx, IOF%calving_hflx)
-  deallocate(IOF%calving_preberg, IOF%calving_hflx_preberg)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)

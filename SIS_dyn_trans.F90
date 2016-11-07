@@ -86,6 +86,7 @@ implicit none ; private
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
+public :: post_ocean_sfc_diagnostics, post_ice_state_diagnostics
 
 type dyn_trans_CS ; private
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
@@ -100,6 +101,11 @@ type dyn_trans_CS ; private
                           ! ice.  The original SIS2 implementation is based on
                           ! work by Torge Martin.  Otherwise, ice is compressed
                           ! proportionately if the concentration exceeds 1.
+  logical :: berg_windstress_bug  ! If true, use older code that applied an old
+                          ! ice-ocean stress to the icebergs in place of the
+                          ! current air-ice stress.  This option is here for
+                          ! backward compatibility, but should be avoided.
+
   logical :: debug        ! If true, write verbose checksums for debugging purposes.
   logical :: column_check ! If true, enable the heat check column by column.
   real    :: imb_tol      ! The tolerance for imbalances to be flagged by
@@ -122,6 +128,13 @@ type dyn_trans_CS ; private
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+
+  ! These are the diagnostic ids for describing the ice state.
+  integer, dimension(:), allocatable :: id_t, id_sal
+  integer :: id_cn=-1, id_hi=-1, id_hp = -1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
+  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
+  integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
+
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -136,7 +149,7 @@ contains
 subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(inout) :: IOF
   real,                       intent(in)    :: dt_slow
   type(icebergs),             pointer       :: icebergs_CS
@@ -146,11 +159,14 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
+  real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
+    windstr_x, &      ! The area-weighted average ice thickness, in Pa.
+    windstr_y         ! The area-weighted average ice thickness, in Pa.
   real :: rho_ice     ! The nominal density of sea ice in kg m-3.
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
-
-  integer :: isc, iec, jsc, jec
+  integer :: stress_stagger
+  integer :: i, j, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -159,30 +175,42 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
 
-  !### I think that there is long-standing bug here, in that the old ice-ocean
-  !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
+  if (CS%berg_windstress_bug) then
+    !  This code reproduces a long-standing bug, in that the old ice-ocean
+    !   stresses are being passed in place of the wind stresses on the icebergs.
+    do j=jsc,jec ; do i=isc,iec
+      windstr_x(i,j) = IOF%flux_u_ocn(i,j)
+      windstr_y(i,j) = IOF%flux_v_ocn(i,j)
+    enddo ; enddo
+    stress_stagger = IOF%flux_uv_stagger
+  else
+    do j=jsc,jec ; do i=isc,iec
+      windstr_x(i,j) = FIA%WindStr_ocn_x(i,j)
+      windstr_y(i,j) = FIA%WindStr_ocn_y(i,j)
+    enddo ; enddo
+    stress_stagger = AGRID
+  endif
+  
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, CS%Time, &
-            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-            IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   else
     call icebergs_run( icebergs_CS, CS%Time, &
-            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   endif
@@ -216,11 +244,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   type(dyn_trans_CS),         pointer       :: CS
   type(icebergs),             pointer       :: icebergs_CS
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
-  real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
-    temp_ice    ! A diagnostic array with the ice temperature in degC.
-  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-    temp_snow   ! A diagnostic array with the snow temperature in degC.
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt
   real, dimension(SZI_(G),SZJ_(G))   :: &
     ms_sum, mi_sum, &   ! Masses of snow and ice per unit total area, in kg m-2.
     ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
@@ -246,44 +270,34 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
   real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
 
-  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
 
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
 
   real :: dt_slow_dyn
   integer :: ndyn_steps
   real :: Idt_slow
-  real :: I_Nk        ! The inverse of the number of layers in the ice.
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
   integer :: isd, ied, jsd, jed
-  integer ::iyr, imon, iday, ihr, imin, isec
+  integer :: iyr, imon, iday, ihr, imin, isec
 
-  real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
-                                     ! ice layer if spec_thermo_sal is true.
-  logical :: spec_thermo_sal
-  logical :: do_temp_diags
-  real :: enth_units, I_enth_units
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac    ! fraction of ridged ice per category
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_open, & ! formation rate of open water due to ridging
-    rdg_vosh, & ! rate of ice volume shifted from level to ridged ice
-!!   rdg_s2o, &  ! snow volume [m] dumped into ocean during ridging
+    rdg_vosh, & ! rate of ice mass shifted from level to ridged ice
+!!   rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! Niki: Where should this come from?
     snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
-  I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   if (CS%specified_ice) then
@@ -302,13 +316,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     ! Store values to determine the ice and snow mass change due to transport.
     h2o_chg_xprt(:,:) = 0.0
   endif
+
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
 !$OMP                                  WindStr_y_ocn_A,FIA)
   do j=jsd,jed
     do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-      WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
 
       ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
       WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
@@ -331,23 +346,23 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         ice_free(i,j) = IST%part_size(i,j,0)
 
         if (ice_cover(i,j) > FIA%ice_cover(i,j)) then
-          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_u_top(i,j,0) + &
+          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_x(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_x(i,j)) / ice_cover(i,j)
-          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_v_top(i,j,0) + &
+          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_y(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_y(i,j)) / ice_cover(i,j)
-!        else
-!          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
-!          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-!        endif
-!        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-!          WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-!          WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
-!        else
-        elseif (ice_free(i,j) > FIA%ice_free(i,j)) then
+        else
+          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+        endif
+
+        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
+          WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+          WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+        else
           WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_u_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
           WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_v_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
         endif
       enddo
     enddo
@@ -621,16 +636,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G%HI)
 
-  ! Add snow volume dumped into ocean to flux of frozen precipitation:
+  ! Add snow mass dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
-!  call get_SIS2_thermo_coefs(IST%ITV, rho_snow=rho_snow)
 !  if (CS%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j)*(Rho_snow/dt_slow)
+!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j)/dt_slow
 !  enddo ; enddo ; enddo ; endif
 
-  call mpp_clock_begin(iceClock8)
-
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call mpp_clock_begin(iceClock9)
 
   ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
@@ -641,6 +653,76 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
 
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+
+  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, CS%diag, &
+                                  h2o_chg_xprt=h2o_chg_xprt, rdg_rate=rdg_rate)
+
+  call disable_SIS_averaging(CS%diag)
+
+  if (CS%verbose) then
+    call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
+    call get_time(CS%Time-set_date(iyr,1,1,0,0,0),isec,iday)
+    call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
+                              IST%t_surf(:,:,0)-T_0degC, G)
+  endif
+
+  call mpp_clock_end(iceClock9)
+
+  if (CS%debug) then
+    call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
+  endif
+
+  if (CS%bounds_check) then
+    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
+  endif
+
+  if (CS%Time + set_time(int(floor(0.5*dt_slow+0.5))) > CS%write_ice_stats_time) then
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
+  elseif (CS%column_check) then
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+  endif
+
+end subroutine SIS_dynamics_trans
+
+subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
+                                       h2o_chg_xprt, rdg_rate)
+  type(ice_state_type),       intent(inout) :: IST
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+!  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(ice_ocean_flux_type),  intent(in)    :: IOF
+  real,                       intent(in)    :: dt_slow
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(inout) :: IG
+  type(dyn_trans_CS),         pointer       :: CS
+  type(SIS_diag_ctrl),        pointer       :: diag
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), optional, intent(in) :: h2o_chg_xprt
+  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate
+
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, tmp2d
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
+    temp_ice    ! A diagnostic array with the ice temperature in degC.
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    temp_snow   ! A diagnostic array with the snow temperature in degC.
+  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
+  real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
+                                     ! ice layer if spec_thermo_sal is true.
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: enth_units, I_enth_units
+  real :: I_Nk        ! The inverse of the number of layers in the ice.
+  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical :: spec_thermo_sal
+  logical :: do_temp_diags
+  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; 
+  NkIce = IG%NkIce
+  I_Nk = 1.0 / NkIce
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
+
   ! Sum the concentration weighted mass for diagnostics.
   if (CS%id_mi>0 .or. CS%id_mib>0) then
     mass(:,:) = 0.0
@@ -649,7 +731,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       mass(i,j) = mass(i,j) + (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))) * &
                   IST%part_size(i,j,k)
     enddo ; enddo ; enddo
-    if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), CS%diag)
+    if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), diag)
 
     if (CS%id_mib>0) then
       if (associated(IOF%mass_berg)) then
@@ -657,27 +739,24 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
           mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass in kg/m^2
         enddo ; enddo
       endif
-      call post_data(CS%id_mib, mass(isc:iec,jsc:jec), CS%diag)
+      call post_data(CS%id_mib, mass(isc:iec,jsc:jec), diag)
     endif
   endif
-
-  call mpp_clock_end(iceClock8)
 
   !
   ! Thermodynamic state diagnostics
   !
-  call mpp_clock_begin(iceClock9)
-  if (IST%id_cn>0) call post_data(IST%id_cn, IST%part_size(:,:,1:ncat), CS%diag)
+  if (CS%id_cn>0) call post_data(CS%id_cn, IST%part_size(:,:,1:ncat), diag)
   ! TK Mod: 10/18/02
-  !  if (IST%id_obs_cn>0) call post_data(IST%id_obs_cn, Obs_cn_ice(:,:,2), CS%diag)
+  !  if (CS%id_obs_cn>0) call post_data(CS%id_obs_cn, Obs_cn_ice(:,:,2), diag)
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later)
-  !  if (IST%id_obs_hi>0) &
-  !    call post_avg(IST%id_obs_hi, Obs_h_ice(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,1:), &
-  !                  CS%diag, G=G, wtd=.true.)
+  !  if (CS%id_obs_hi>0) &
+  !    call post_avg(CS%id_obs_hi, Obs_h_ice(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,1:), &
+  !                  diag, G=G, wtd=.true.)
 
   !   Convert from ice and snow enthalpy back to temperature for diagnostic purposes.
-  do_temp_diags = (IST%id_tsn > 0)
-  do m=1,NkIce ; if (IST%id_t(m)>0) do_temp_diags = .true. ; enddo
+  do_temp_diags = (CS%id_tsn > 0)
+  do m=1,NkIce ; if (CS%id_t(m)>0) do_temp_diags = .true. ; enddo
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              rho_ice=rho_ice, rho_snow=rho_snow, &
                              specified_thermo_salinity=spec_thermo_sal)
@@ -705,43 +784,46 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     enddo ; enddo ; enddo
   endif
 
-  if (IST%id_ext>0) then
+  if (CS%id_ext>0) then
     diagVar(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec
       if (IST%part_size(i,j,0) < 0.85) diagVar(i,j) = 1.0
     enddo ; enddo
-    call post_data(IST%id_ext, diagVar, CS%diag)
+    call post_data(CS%id_ext, diagVar, diag)
   endif
-  if (IST%id_hp>0) call post_avg(IST%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
-                                 CS%diag, G=G, &
+  if (CS%id_hp>0) call post_avg(CS%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
+                                 diag, G=G, &
                                  scale=IG%H_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
-  if (IST%id_hs>0) call post_avg(IST%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 CS%diag, G=G, &
+  if (CS%id_hs>0) call post_avg(CS%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
+                                 diag, G=G, &
                                  scale=IG%H_to_kg_m2/Rho_snow, wtd=.true.)
-  if (IST%id_hi>0) call post_avg(IST%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 CS%diag, G=G, &
+  if (CS%id_hi>0) call post_avg(CS%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
+                                 diag, G=G, &
                                  scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (IST%id_tsfc>0) call post_avg(IST%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 CS%diag, G=G, offset=-T_0degC, wtd=.true.)
-  if (IST%id_tsn>0) call post_avg(IST%id_tsn, temp_snow, IST%part_size(:,:,1:), &
-                                 CS%diag, G=G, wtd=.true.)
+  if (CS%id_tsfc>0) call post_avg(CS%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
+                                 diag, G=G, offset=-T_0degC, wtd=.true.)
+  if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
+                                 diag, G=G, wtd=.true.)
   do m=1,NkIce
-    if (IST%id_t(m)>0) call post_avg(IST%id_t(m), temp_ice(:,:,:,m), IST%part_size(:,:,1:), &
-                                   CS%diag, G=G, wtd=.true.)
-    if (IST%id_sal(m)>0) call post_avg(IST%id_sal(m), IST%sal_ice(:,:,:,m), IST%part_size(:,:,1:), &
-                                   CS%diag, G=G, wtd=.true.)
+    if (CS%id_t(m)>0) call post_avg(CS%id_t(m), temp_ice(:,:,:,m), IST%part_size(:,:,1:), &
+                                   diag, G=G, wtd=.true.)
+    if (CS%id_sal(m)>0) call post_avg(CS%id_sal(m), IST%sal_ice(:,:,:,m), IST%part_size(:,:,1:), &
+                                   diag, G=G, wtd=.true.)
   enddo
-  if (IST%id_t_iceav>0) call post_avg(IST%id_t_iceav, temp_ice, IST%part_size(:,:,1:), &
-                                    CS%diag, G=G, wtd=.true.)
-  if (IST%id_S_iceav>0) call post_avg(IST%id_S_iceav, IST%sal_ice, IST%part_size(:,:,1:), &
-                                    CS%diag, G=G, wtd=.true.)
+  if (CS%id_t_iceav>0) call post_avg(CS%id_t_iceav, temp_ice, IST%part_size(:,:,1:), &
+                                    diag, G=G, wtd=.true.)
+  if (CS%id_S_iceav>0) call post_avg(CS%id_S_iceav, IST%sal_ice, IST%part_size(:,:,1:), &
+                                    diag, G=G, wtd=.true.)
 
+  ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
+  ! These fields do not change over the course of the sea-ice time stepping.
+   call post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
 
-  if (CS%id_xprt>0) then
+  if (CS%id_xprt>0 .and. present(h2o_chg_xprt)) then
     call post_data(CS%id_xprt, h2o_chg_xprt(isc:iec,jsc:jec)*864e2*365/dt_slow, &
-                   CS%diag)
+                   diag)
   endif
-  if (IST%id_e2m>0) then
+  if (CS%id_e2m>0) then
     tmp2d(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,tmp2d,I_enth_units, &
 !$OMP                                  spec_thermo_sal,NkIce,I_Nk,S_col,IG)
@@ -759,20 +841,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
                          IST%enth_ice(i,j,k,m)) * I_enth_units)
       enddo ; endif
     endif ; enddo ; enddo ; enddo
-    call post_data(IST%id_e2m,  tmp2d(:,:), CS%diag)
+    call post_data(CS%id_e2m,  tmp2d(:,:), diag)
   endif
-  call disable_SIS_averaging(CS%diag)
 
-  !
-  ! Ridging diagnostics
-  !
-  !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
-  !     in each category; IST%rdg_mice is ridged ice mass per unit total
-  !     area throughout the code.
   if (CS%do_ridging) then
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
-!     if (IST%id_rdgf>0) then
+  !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
+  !     in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
+!     if (CS%id_rdgf>0) then
 ! !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,rdg_frac,IG) &
 ! !$OMP                          private(tmp3)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -783,44 +858,47 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 !           rdg_frac(i,j,k) = 0.0
 !         endif
 !       enddo ; enddo ; enddo
-!       call post_data(IST%id_rdgf, rdg_frac(isc:iec,jsc:jec), CS%diag)
+!       call post_data(CS%id_rdgf, rdg_frac(isc:iec,jsc:jec), diag)
 !     endif
 
-    if (IST%id_rdgr>0) call post_data(IST%id_rdgr, rdg_rate(isc:iec,jsc:jec), CS%diag)
-!    if (IST%id_rdgo>0) call post_data(IST%id_rdgo, rdg_open(isc:iec,jsc:jec), CS%diag)
-!    if (IST%id_rdgv>0) then
+    if (CS%id_rdgr>0 .and. present(rdg_rate)) &
+      call post_data(CS%id_rdgr, rdg_rate(isc:iec,jsc:jec), diag)
+!    if (CS%id_rdgo>0) call post_data(CS%id_rdgo, rdg_open(isc:iec,jsc:jec), diag)
+!    if (CS%id_rdgv>0) then
 !      do j=jsc,jec ; do i=isc,iec
 !        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
 !      enddo ; enddo
-!      call post_data(IST%id_rdgv, tmp2d, CS%diag)
+!      call post_data(CS%id_rdgv, tmp2d, diag)
 !    endif
   endif
 
-  if (CS%verbose) then
-    call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
-    call get_time(CS%Time-set_date(iyr,1,1,0,0,0),isec,iday)
-    call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                              IST%t_surf(:,:,0)-T_0degC, G)
+end subroutine post_ice_state_diagnostics
+
+subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  real,                       intent(in)    :: dt_slow
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(SIS_diag_ctrl),        pointer       :: diag
+
+  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
+
+  ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
+  ! These fields do not change over the course of the sea-ice time stepping.
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, diag)
+  if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, diag)
+  if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, diag)
+  if (allocated(OSS%u_ocn_C)) then
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_C, diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_C, diag)
+  else
+    if (OSS%id_uo>0) call post_data(OSS%id_uo, OSS%u_ocn_B, diag)
+    if (OSS%id_vo>0) call post_data(OSS%id_vo, OSS%v_ocn_B, diag)
   endif
+  if (OSS%id_frazil>0) &
+    call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, diag)
 
-  call mpp_clock_end(iceClock9)
-
-  if (CS%debug) then
-    call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-  endif
-
-  if (CS%bounds_check) then
-    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
-  endif
-
-  if (CS%Time + (IST%Time_step_slow/2) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
-  elseif (CS%column_check) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-  endif
-
-end subroutine SIS_dynamics_trans
+end subroutine post_ocean_sfc_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
@@ -1054,13 +1132,13 @@ end subroutine set_ocean_top_stress_Cgrid
 !!      module that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG     ! The sea-ice grid type
-  type(param_file_type),   intent(in)    :: param_file
-  type(dyn_trans_CS),      pointer       :: CS
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain
+  type(hor_index_type),    intent(in) :: HI
+  type(ice_grid_type),     intent(in) :: IG     ! The sea-ice grid type
+  type(param_file_type),   intent(in) :: param_file
+  type(dyn_trans_CS),      pointer    :: CS
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -1114,7 +1192,11 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
+  character(len=8) :: nstr
+  integer :: n, nLay
   real, parameter    :: missing = -1e34
+
+  nLay = IG%NkIce
 
   call callTree_enter("SIS_dyn_trans_init(), SIS_dyn_trans.F90")
 
@@ -1150,6 +1232,12 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
+
+  call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
+                 "If true, use older code that applied an old ice-ocean \n"//&
+                 "stress to the icebergs in place of the current air-ocean \n"//&
+                 "stress.  This option is here for backward compatibility, \n"//&
+                 "but should be avoided.", default=.false.)
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
@@ -1190,9 +1278,41 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
       (1 + (Time - Time_init) / CS%ice_stats_interval)
 
-  !
-  ! diagnostics that are specific to C-grid dynamics of the ice model
-  !
+
+  ! Ice state diagnostics.
+  CS%id_ext = register_diag_field('ice_model', 'EXT', diag%axesT1, Time, &
+               'ice modeled', '0 or 1', missing_value=missing)
+  CS%id_cn       = register_diag_field('ice_model', 'CN', diag%axesTc, Time, &
+               'ice concentration', '0-1', missing_value=missing)
+  CS%id_hp       = register_diag_field('ice_model', 'HP', diag%axesT1, Time, &
+               'pond thickness', 'm-pond', missing_value=missing) ! mw/new
+  CS%id_hs       = register_diag_field('ice_model', 'HS', diag%axesT1, Time, &
+               'snow thickness', 'm-snow', missing_value=missing)
+  CS%id_tsn      = register_diag_field('ice_model', 'TSN', diag%axesT1, Time, &
+               'snow layer temperature', 'C',  missing_value=missing)
+  CS%id_hi       = register_diag_field('ice_model', 'HI', diag%axesT1, Time, &
+               'ice thickness', 'm-ice', missing_value=missing)
+
+  CS%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice temperature', 'C', missing_value=missing)
+  CS%id_s_iceav = register_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
+               'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
+  call safe_alloc_ids_1d(CS%id_t, nLay)
+  call safe_alloc_ids_1d(CS%id_sal, nLay)
+  do n=1,nLay
+    write(nstr, '(I4)') n ; nstr = adjustl(nstr)
+    CS%id_t(n)   = register_diag_field('ice_model', 'T'//trim(nstr), &
+                 diag%axesT1, Time, 'ice layer '//trim(nstr)//' temperature', &
+                 'C',  missing_value=missing)
+    CS%id_sal(n)   = register_diag_field('ice_model', 'Sal'//trim(nstr), &
+               diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
+               'g/kg',  missing_value=missing)
+  enddo
+  CS%id_tsfc     = register_diag_field('ice_model', 'TS', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+
+
+  ! Diagnostics that are specific to C-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
                'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
@@ -1210,6 +1330,21 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                'ice mass', 'kg/m^2', missing_value=missing)
   CS%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
                'ice + bergs mass', 'kg/m^2', missing_value=missing)
+  CS%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
+               'heat needed to melt ice', 'J/m^2', missing_value=missing)
+
+  CS%id_rdgr    = register_diag_field('ice_model','RDG_RATE' ,diag%axesT1, Time, &
+               'ice ridging rate', '1/sec', missing_value=missing)
+!### THESE DIAGNOSTICS DO NOT EXIST YET.
+!  CS%id_rdgf    = register_diag_field('ice_model','RDG_FRAC' ,diag%axesT1, Time, &
+!               'ridged ice fraction', '0-1', missing_value=missing)
+!  CS%id_rdgo    = register_diag_field('ice_model','RDG_OPEN' ,diag%axesT1, Time, &
+!               'opening due to ridging', '1/s', missing_value=missing)
+!  CS%id_rdgv    = register_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
+!               'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
+!### THIS DIAGNOSTIC IS MISSING.
+!  CS%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &
+!            'surface air temperature', 'C', missing_value=missing)
 
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
@@ -1221,6 +1356,15 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   call callTree_leave("SIS_dyn_trans_init()")
 
 end subroutine SIS_dyn_trans_init
+
+subroutine safe_alloc_ids_1d(ids, nids)
+  integer, allocatable :: ids(:)
+  integer, intent(in)  :: nids
+
+  if (.not.ALLOCATED(ids)) then
+    allocate(ids(nids)) ; ids(:) = -1
+  endif
+end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_transport_CS returns a pointer to the ice_transport_CS type that

@@ -40,7 +40,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
-use MOM_domains,       only : pass_var
+! use MOM_domains,       only : pass_var
 ! ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
@@ -68,10 +68,11 @@ use ice_spec_mod, only : get_sea_surface
 
 use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
 
-use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
-use SIS2_ice_thm,  only: T_freeze, enthalpy_liquid, calculate_T_freeze
+use SIS2_ice_thm, only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
+use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
+use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm, only : T_freeze, enthalpy_liquid, calculate_T_freeze
 use ice_transport_mod, only : adjust_ice_categories, ice_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
@@ -140,6 +141,10 @@ type slow_thermo_CS ; private
   type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
+
+  ! These are pointers to the control structures for subsidiary modules.
+  type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
+
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
@@ -164,20 +169,20 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(ice_grid_type),       intent(in) :: IG
   real,                      intent(in) :: Idt_slow
 
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
-  if (IOF%id_runoff>0) &
-    call post_data(IOF%id_runoff, IOF%runoff, CS%diag)
-  if (IOF%id_calving>0) &
-    call post_data(IOF%id_calving, IOF%calving_preberg, CS%diag)
-  if (IOF%id_runoff_hflx>0) &
-    call post_data(IOF%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
-  if (IOF%id_calving_hflx>0) &
-    call post_data(IOF%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
+  if (FIA%id_runoff>0) &
+    call post_data(FIA%id_runoff, FIA%runoff, CS%diag)
+  if (FIA%id_calving>0) &
+    call post_data(FIA%id_calving, FIA%calving_preberg, CS%diag)
+  if (FIA%id_runoff_hflx>0) &
+    call post_data(FIA%id_runoff_hflx, FIA%runoff_hflx, CS%diag)
+  if (FIA%id_calving_hflx>0) &
+    call post_data(FIA%id_calving_hflx, FIA%calving_hflx_preberg, CS%diag)
   ! The frazil diagnostic is with the other ocean surface diagnostics.
   ! if (IST%id_frazil>0) &
   !   call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
@@ -190,17 +195,32 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_slp>0) &
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
 
-  if (FIA%id_sw>0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
+  if ((FIA%id_sw>0) .or. (FIA%id_albedo>0)) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,net_sw,IST,FIA)
     do j=jsc,jec
-      do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
+      do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
-        tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
+        net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
               FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k) + &
               FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
       enddo ; enddo
     enddo
-    call post_data(FIA%id_sw, tmp2d, CS%diag)
+    if (FIA%id_sw>0) call post_data(FIA%id_sw, net_sw, CS%diag)
+    if (FIA%id_albedo>0) then
+      do j=jsc,jec ; do i=isc,iec
+        if (G%mask2dT(i,j)<=0.5) then
+          tmp2d(i,j) = -1.0 ! This is land.
+        elseif ((FIA%flux_sw_dn(i,j) > 0.0)) then
+          ! The 10.0 below is deliberate.  An albedo of down to -9 can be reported
+          ! for detecting inconsistent net_sw and sw_dn.
+          tmp2d(i,j) = (FIA%flux_sw_dn(i,j) - min(net_sw(i,j), 10.0*FIA%flux_sw_dn(i,j))) / &
+                       FIA%flux_sw_dn(i,j)
+        else
+          tmp2d(i,j) = 0.0 ! What does the albedo mean at night?
+        endif
+      enddo ; enddo
+      call post_data(FIA%id_albedo, tmp2d, CS%diag)
+    endif
   endif
   if (FIA%id_lw>0) call post_avg(FIA%id_lw, FIA%flux_lw_top, &
                                  IST%part_size, CS%diag, G=G)
@@ -208,6 +228,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                     IST%part_size, CS%diag, G=G)
   if (FIA%id_rain>0) call post_avg(FIA%id_rain, FIA%lprec_top, &
                                    IST%part_size, CS%diag, G=G)
+  if (FIA%id_sw_dn>0) call post_data(FIA%id_sw_dn, FIA%flux_sw_dn, CS%diag)
   if (FIA%id_sw_vis>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec
@@ -297,6 +318,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of SIS_slow_thermo", OSS=OSS)
 
+  !   Set the frazil heat flux that remains to be applied.  This might need
+  ! to be moved earlier in the algorithm, if there ever to be multiple calls to
+  ! slow_thermodynamics per coupling timestep.
+  do j=jsc,jec ; do i=isc,iec
+    FIA%frazil_left(i,j) = OSS%frazil(i,j)
+  enddo ; enddo
+
   !
   ! conservation checks: top fluxes
   !
@@ -347,7 +375,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     endif
 !$OMP end parallel
   
-
   else ! Do not use specified ice.
     !TOM> Store old ice mass per unit area for calculating partial ice growth.  
     mi_old = IST%mH_ice
@@ -382,8 +409,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     ! masses-per-unit area and enthalpies.
     call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
     !TOM> calculate partial ice growth for ridging and aging.
     if (CS%do_ridging) then
       !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
@@ -411,9 +436,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                 message="      Post_thermo A", check_column=.true.)
     call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
                                IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
-    call pass_var(IST%part_size, G%Domain)
-    call pass_var(IST%mH_ice, G%Domain, complete=.false.)
-    call pass_var(IST%mH_snow, G%Domain, complete=.true.)
 
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -758,7 +780,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                    FIA%lprec_top(i,j,k)*dt_slow, FIA%flux_q_top(i,j,k)*dt_slow, &
                    FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                   snow_to_ice(i,j,k), salt_to_ice, IST%ITV, IST%ice_thm_CSp, bablt, &
+                   snow_to_ice(i,j,k), salt_to_ice, IST%ITV, CS%ice_thm_CSp, bablt, &
                    enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
 
       IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
@@ -948,7 +970,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, frazil_cat(k), &
                    T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
-                   IST%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
+                   CS%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
 
@@ -1006,7 +1028,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,G,I_enth_units,   &
 !$OMP                                  spec_thermo_sal,kg_H_Nk,S_col,Obs_h_ice,dt_slow, &
 !$OMP                                  Obs_cn_ice,snow_to_ice,salt_change,qflx_lim_ice, &
-!$OMP                                  Idt_slow,net_melt,IG,CS,IOF,FIA)                            &
+!$OMP                                  Idt_slow,net_melt,IG,CS,IOF,FIA,Rho_ice)         &
 !$OMP                          private(mtot_ice,frac_keep,frac_melt,salt_to_ice,  &
 !$OMP                                  h2o_ice_to_ocn,enth_to_melt,enth_ice_to_ocn,   &
 !$OMP                                  ice_melt_lay,snow_melt,enth_freeze)
@@ -1146,6 +1168,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                     scale=Idt_slow, wtd=.true.)
   if (FIA%id_bmelt>0) call post_avg(FIA%id_bmelt, FIA%bmelt, IST%part_size(:,:,1:), CS%diag, G=G, &
                                     scale=Idt_slow, wtd=.true.)
+  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, CS%diag)
   if (CS%id_sn2ic>0) call post_avg(CS%id_sn2ic, snow_to_ice, IST%part_size(:,:,1:), CS%diag, G=G, &
                                     scale=Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)
@@ -1300,6 +1323,8 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                'nudging freshwater flux', 'kg/(m^2*s)', missing_value=missing)
   endif
 
+  call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
+
   iceClock7 = mpp_clock_id( '  Ice: slow: conservation check', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock5 = mpp_clock_id( '  Ice: slow: thermodynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClock6 = mpp_clock_id( '  Ice: slow: restore/limit', flags=clock_flag_default, grain=CLOCK_LOOP )
@@ -1325,6 +1350,10 @@ end subroutine SIS_slow_thermo_set_ptrs
 !> SIS_slow_thermo_end deallocates any memory associated with this module.
 subroutine SIS_slow_thermo_end (CS)
   type(slow_thermo_CS), pointer :: CS
+
+  call SIS2_ice_thm_end(CS%ice_thm_CSp)
+
+  if (associated(CS)) deallocate(CS)
 
 end subroutine SIS_slow_thermo_end
 

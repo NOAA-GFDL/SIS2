@@ -16,10 +16,7 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
-use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
-use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
+use SIS2_ice_thm, only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -27,32 +24,25 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
+use SIS_diag_mediator, only : register_SIS_diag_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_dyn_trans, only : dyn_trans_CS
-use SIS_fast_thermo, only : fast_thermo_CS
-use SIS_slow_thermo, only : slow_thermo_CS
-use SIS_sum_output_type, only : SIS_sum_out_CS
-use SIS_tracer_registry, only : SIS_tracer_registry_type
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
-use SIS_types, only : ice_state_type, fast_ice_avg_type, ice_rad_type
-use SIS_types, only : ice_ocean_flux_type, ocean_sfc_state_type
+use SIS_types, only : ice_state_type, fast_ice_avg_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_data_type, ice_data_type_register_restarts, dealloc_ice_arrays 
+public :: ice_data_type, dealloc_ice_arrays 
+public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! This structure contains the ice model data (some used by calling routines);  !
-! the third index is partition (1 is open water; 2 is ice cover)               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! This structure contains the ice model data (some used by calling routines);   !
+! the third index is partition (1 is open water; 2... are ice cover by category)!
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_data_type !  ice_public_type
   type(domain2D)                     :: Domain
   type(time_type)                    :: Time
@@ -89,7 +79,7 @@ type ice_data_type !  ice_public_type
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
     flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  ! The sensible heat flux out of the ocean, in W m-2.
+    flux_lw => NULL(), &  ! The longwave flux out of the ocean, in W m-2.
     flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
     flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
     flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all
@@ -120,7 +110,7 @@ type ice_data_type !  ice_public_type
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
-             ! eventually from h_ice outside the ice module.
+             ! h_ice outside the ice module.
   integer, dimension(3)    :: axes
   type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
   type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
@@ -141,43 +131,25 @@ type ice_data_type !  ice_public_type
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
 
-  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
-  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
-                               ! representation of the ice state.
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
-                               ! the ice to the ocean that are calculated by the ice model.
-  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
-                               ! that describe the ocean's surface state, as it is revealed
-                               ! to the ice model.
-  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-                               ! fields that are calculated during the fast ice step but
-                               ! stored for later use by the slow ice step or the ocean.
-  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
-                               ! the absorption, reflection and transmission of
-                               ! shortwave radiation.
-  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
-  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
-  type(dyn_trans_CS), pointer :: dyn_trans_CSp => NULL()
-  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
-
   type(restart_file_type), pointer :: Ice_restart => NULL()
+  type(restart_file_type), pointer :: Ice_fast_restart => NULL()
 end type ice_data_type !  ice_public_type
 
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_data_type_register_restarts - allocate the arrays in the ice_data_type   !
-!     and register any variables in the ice data type that need to be included !
-!     in the restart files.                                                    !
+! ice_type_slow_reg_restarts - allocate the arrays in the ice_data_type        !
+!     that are predominantly associated with the slow processors, and register !
+!     any variables in the ice data type that need to be included in the slow  !
+!     ice restart files.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
+subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                            Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: domain
   integer,                 intent(in)    :: CatIce
   type(param_file_type),   intent(in)    :: param_file
   type(ice_data_type),     intent(inout) :: Ice
-  type(restart_file_type), intent(inout) :: Ice_restart
+  type(restart_file_type), pointer       :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
@@ -187,21 +159,16 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
-  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
-  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
-  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
-  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
-
-  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0  ! Derived?
-  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
+  ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
+  if (.not.associated(Ice%t_surf)) then
+    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+  endif
+  if (.not.associated(Ice%s_surf)) then
+    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+  endif
+  if (.not.associated(Ice%part_size)) then
+    allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
+  endif
 
   allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
   allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
@@ -231,57 +198,134 @@ subroutine ice_data_type_register_restarts(domain, CatIce, param_file, Ice, &
     allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0
   endif ; endif
 
+  ! These are used by the ocean model, and need to be in the slow PE restarts.
+  if (associated(Ice_restart)) then
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
+                                        domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
+                                        domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
+                                        domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
+                                        domain=domain)
+  endif
+end subroutine ice_type_slow_reg_restarts
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! ice_type_slow_reg_restarts - allocate the arrays in the ice_data_type        !
+!     that are predominantly associated with the fast processors, and register !
+!     any variables in the ice data type that need to be included in the fast  !
+!     ice restart files.                                                       !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
+                                           Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: domain
+  integer,                 intent(in)    :: CatIce
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_data_type),     intent(inout) :: Ice
+  type(restart_file_type), pointer       :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
+
+  ! This subroutine allocates the externally visible ice_data_type's arrays and
+  ! registers the appopriate ones for inclusion in the restart file.
+  integer :: isc, iec, jsc, jec, km, idr
+
+  call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
+  km = CatIce + 1
+
+  ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
+  if (.not.associated(Ice%t_surf)) then
+    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+  endif
+  if (.not.associated(Ice%s_surf)) then
+    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+  endif
+  if (.not.associated(Ice%part_size)) then
+    allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
+  endif
+
+  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+
+  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
+  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
+  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
+
+  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0  ! Derived?
+  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
+  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
+  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
   ! Now register some of these arrays to be read from the restart files.
-  idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
+  ! These are used by the atmospheric model, and need to be in the fast PE restarts.
+  if (associated(Ice_restart)) then
+    idr = register_restart_field(Ice_restart, restart_file, 'rough_mom',   Ice%rough_mom,   domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'rough_heat',  Ice%rough_heat,  domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'rough_moist', Ice%rough_moist, domain=domain)
+  endif
 
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
-                                      domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
-                                      domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir, &
-                                      domain=domain)
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
-                                      domain=domain)
-end subroutine ice_data_type_register_restarts
+end subroutine ice_type_fast_reg_restarts
+
 
 subroutine dealloc_Ice_arrays(Ice)
   type(ice_data_type), intent(inout) :: Ice
 
-  deallocate(Ice%ocean_pt, Ice%t_surf, Ice%s_surf)
-  deallocate(Ice%u_surf, Ice%v_surf, Ice%part_size)
-  deallocate(Ice%rough_mom, Ice%rough_heat, Ice%rough_moist)
-  deallocate(Ice%albedo, Ice%albedo_vis_dir, Ice%albedo_nir_dir)
-  deallocate(Ice%albedo_vis_dif, Ice%albedo_nir_dif)
+  if (associated(Ice%ocean_pt)) deallocate(Ice%ocean_pt)
+  if (associated(Ice%t_surf)) deallocate(Ice%t_surf)
+  if (associated(Ice%s_surf)) deallocate(Ice%s_surf)
+  if (associated(Ice%u_surf)) deallocate(Ice%u_surf)
+  if (associated(Ice%v_surf)) deallocate(Ice%v_surf)
+  if (associated(Ice%part_size)) deallocate(Ice%part_size)
+  if (associated(Ice%rough_mom)) deallocate(Ice%rough_mom)
+  if (associated(Ice%rough_heat)) deallocate(Ice%rough_heat)
+  if (associated(Ice%rough_moist)) deallocate(Ice%rough_moist)
+  if (associated(Ice%albedo)) deallocate(Ice%albedo)
+  if (associated(Ice%albedo_vis_dir)) deallocate(Ice%albedo_vis_dir)
+  if (associated(Ice%albedo_nir_dir)) deallocate(Ice%albedo_nir_dir)
+  if (associated(Ice%albedo_vis_dif)) deallocate(Ice%albedo_vis_dif)
+  if (associated(Ice%albedo_nir_dif)) deallocate(Ice%albedo_nir_dif)
 
-  deallocate(Ice%flux_u, Ice%flux_v, Ice%flux_t, Ice%flux_q, Ice%flux_lw)
-  deallocate(Ice%flux_lh, Ice%lprec, Ice%fprec, Ice%p_surf, Ice%runoff)
-  deallocate(Ice%calving, Ice%runoff_hflx, Ice%calving_hflx)
-  deallocate(Ice%flux_salt)
-  deallocate(Ice%flux_sw_vis_dir, Ice%flux_sw_vis_dif)
-  deallocate(Ice%flux_sw_nir_dir, Ice%flux_sw_nir_dif)
-  deallocate(Ice%area, Ice%mi)
+  if (associated(Ice%flux_u)) deallocate(Ice%flux_u)
+  if (associated(Ice%flux_v)) deallocate(Ice%flux_v)
+  if (associated(Ice%flux_t)) deallocate(Ice%flux_t)
+  if (associated(Ice%flux_q)) deallocate(Ice%flux_q)
+  if (associated(Ice%flux_lw)) deallocate(Ice%flux_lw)
+  if (associated(Ice%flux_lh)) deallocate(Ice%flux_lh)
+  if (associated(Ice%lprec)) deallocate(Ice%lprec)
+  if (associated(Ice%fprec)) deallocate(Ice%fprec)
+  if (associated(Ice%p_surf)) deallocate(Ice%p_surf)
+  if (associated(Ice%runoff)) deallocate(Ice%runoff)
+  if (associated(Ice%calving)) deallocate(Ice%calving)
+  if (associated(Ice%runoff_hflx)) deallocate(Ice%runoff_hflx)
+  if (associated(Ice%calving_hflx)) deallocate(Ice%calving_hflx)
 
-  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
-    deallocate(Ice%ustar_berg)
-    deallocate(Ice%area_berg)
-    deallocate(Ice%mass_berg)
-  endif ; endif
+  if (associated(Ice%flux_salt)) deallocate(Ice%flux_salt)
+  if (associated(Ice%flux_sw_vis_dir)) deallocate(Ice%flux_sw_vis_dir)
+  if (associated(Ice%flux_sw_vis_dif)) deallocate(Ice%flux_sw_vis_dif)
+  if (associated(Ice%flux_sw_nir_dir)) deallocate(Ice%flux_sw_nir_dir)
+  if (associated(Ice%flux_sw_nir_dif)) deallocate(Ice%flux_sw_nir_dif)
+  if (associated(Ice%area)) deallocate(Ice%area)
+  if (associated(Ice%mi)) deallocate(Ice%mi)
+
+  if (associated(Ice%ustar_berg)) deallocate(Ice%ustar_berg)
+  if (associated(Ice%area_berg)) deallocate(Ice%area_berg)
+  if (associated(Ice%mass_berg)) deallocate(Ice%mass_berg)
+
 end subroutine dealloc_Ice_arrays
 
 subroutine Ice_public_type_chksum(mesg, Ice)
@@ -295,36 +339,42 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   ! Note that the publicly visible ice_data_type has no halos, so it is not
   ! possible do check their values.
 
+  ! These fields are on all PEs.
   call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
-  call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
-  call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
-  call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
-  call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
-  call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
-  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-  call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
-
   call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
-  call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
-  call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
   call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
 
-  call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
-  call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
-  call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
-  call chksum(Ice%flux_q, trim(mesg)//" Ice%flux_q")
-  call chksum(Ice%flux_lw, trim(mesg)//" Ice%flux_lw")
-  call chksum(Ice%flux_sw_vis_dir, trim(mesg)//" Ice%flux_sw_vis_dir")
-  call chksum(Ice%flux_sw_nir_dir, trim(mesg)//" Ice%flux_sw_nir_dir")
-  call chksum(Ice%flux_sw_vis_dif, trim(mesg)//" Ice%flux_sw_vis_dif")
-  call chksum(Ice%flux_sw_nir_dif, trim(mesg)//" Ice%flux_sw_nir_dif")
-  call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
-  call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
-  call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
-  call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
-  call chksum(Ice%calving, trim(mesg)//" Ice%calving")
-  call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+  if (associated(Ice%fCS)) then ! This is a fast-ice PE.
+    call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
+    call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
+    call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
+    call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
+    call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
+    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
+
+    call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
+    call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
+  endif
+
+  if (associated(Ice%sCS)) then ! This is a slow-ice PE.
+    call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
+    call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
+    call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
+    call chksum(Ice%flux_q, trim(mesg)//" Ice%flux_q")
+    call chksum(Ice%flux_lw, trim(mesg)//" Ice%flux_lw")
+    call chksum(Ice%flux_sw_vis_dir, trim(mesg)//" Ice%flux_sw_vis_dir")
+    call chksum(Ice%flux_sw_nir_dir, trim(mesg)//" Ice%flux_sw_nir_dir")
+    call chksum(Ice%flux_sw_vis_dif, trim(mesg)//" Ice%flux_sw_vis_dif")
+    call chksum(Ice%flux_sw_nir_dif, trim(mesg)//" Ice%flux_sw_nir_dif")
+    call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
+    call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
+    call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
+    call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
+    call chksum(Ice%calving, trim(mesg)//" Ice%calving")
+    call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+  endif
 
   if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
@@ -341,24 +391,18 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   character(len=512) :: mesg1, mesg2
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
+  logical :: fluxes_avail
   real    :: t_min, t_max
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = Ice%IG%CatIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
+  ncat = SIZE(Ice%t_surf,3) - 1
+
+  fluxes_avail = (associated(Ice%flux_t) .and. associated(Ice%flux_lw))
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
-      n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
-    endif
-    if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
-      n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
-    endif
-  enddo ; enddo
   t_min = T_0degC-100. ; t_max = T_0degC+60.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -367,13 +411,30 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
+    endif
+  enddo ; enddo
+  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
+    endif
+  enddo ; enddo ; endif
 
   if (n_bad > 0) then
     i2 = i_bad+i_off ; j2 = j_bad+j_off ; k2 = k_bad+1
     write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i_bad,j_bad), G%geolatT(i_bad,j_bad), i_bad, j_bad, k_bad, n_bad, pe_here()
-    write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &
-       Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%flux_t(i2,j2), Ice%flux_lw(i2,j2), Ice%flux_q(i2,j2)
+    if (fluxes_avail) then
+      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &
+         Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%flux_t(i2,j2), Ice%flux_lw(i2,j2), Ice%flux_q(i2,j2)
+    else
+      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", S_sfc = ",1pe12.4)') &
+       Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%s_surf(i2,j2)
+    endif
     call SIS_error(WARNING, "Bad ice data "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
   endif
 
@@ -389,7 +450,15 @@ subroutine ice_model_restart(Ice, time_stamp)
   type(ice_data_type), intent(inout) :: Ice
   character(len=*),    intent(in), optional :: time_stamp
 
-  call save_restart(Ice%Ice_restart, time_stamp)
+  if (associated(Ice%Ice_restart)) then
+    call save_restart(Ice%Ice_restart, time_stamp)
+    if (associated(Ice%Ice_fast_restart)) then
+      if (.not.associated(Ice%Ice_fast_restart,Ice%Ice_restart)) &
+        call save_restart(Ice%Ice_fast_restart, time_stamp)
+    endif
+  elseif (associated(Ice%Ice_fast_restart)) then
+    call save_restart(Ice%Ice_fast_restart, time_stamp)
+  endif
   call icebergs_save_restart(Ice%icebergs)
 
 end subroutine ice_model_restart
@@ -407,23 +476,34 @@ subroutine ice_stock_pe(Ice, index, value)
   integer, intent(in) :: index
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
-  type(ice_grid_type),  pointer :: IG => NULL()
 
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   real :: icebergs_value
   real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  type(SIS_hor_grid_type), pointer :: G => NULL()
 
   value = 0.0
   if(.not.Ice%pe) return
 
-  IST => Ice%Ice_state
-  IG => Ice%IG
+  if (associated(Ice%sCS)) then
+    IST => Ice%sCS%IST
+    G => Ice%sCS%G
+    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
+  elseif (associated(Ice%fCS)) then
+    IST => Ice%fCS%IST
+    G => Ice%fCS%G
+    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
+  else
+    call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
+                   "without either sCS or fCS associated.")
+    return
+  endif
 
-  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
-  ncat = IG%CatIce ; I_NkIce = 1.0 / IG%NkIce
-  kg_H = IG%H_to_kg_m2 ; kg_H_Nk = IG%H_to_kg_m2 / IG%NkIce
-  call get_SIS2_thermo_coefs(Ice%Ice_State%ITV, Latent_fusion=LI)
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
   select case (index)
 
@@ -431,7 +511,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -439,17 +519,17 @@ subroutine ice_stock_pe(Ice, index, value)
       if (IST%slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-              value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+              value = value - (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                               (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
       else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          part_wt = (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
-            do m=1,IG%NkIce
+            do m=1,NkIce
               value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
                   Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
             enddo
@@ -460,8 +540,8 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_SALT)
       !There is no salt in the snow.
       value = 0.0
-      do m=1,IG%NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
+      do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
+        value = value + (IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 
