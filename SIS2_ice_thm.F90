@@ -99,10 +99,6 @@
 
 module SIS2_ice_thm
 
-! for calling delta-Eddington shortwave from ice_optics
-use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond
-use ice_shortwave_dEdd, only : shortwave_dEdd0, shortwave_dEdd0_set_params
-use ice_shortwave_dEdd, only : dbl_kind, int_kind, nilyr, nslyr
 use ice_thm_mod, only : get_thermo_coefs
 use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
@@ -110,9 +106,10 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 
 implicit none ; private
 
-public :: get_thermo_coefs, get_SIS2_thermo_coefs, SIS2_ice_thm_end
-public :: SIS2_ice_thm_init, ice_optics_SIS2, ice_temp_SIS2
+public :: SIS2_ice_thm_init, SIS2_ice_thm_end, ice_temp_SIS2
 public :: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
+
+public :: get_SIS2_thermo_coefs, ice_thermo_init, ice_thermo_end
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
 public :: e_to_melt_TS, energy_melt_enthS
@@ -132,8 +129,6 @@ type, public :: ice_thermo_type ; private
   real :: Lat_Vapor         ! The latent heat of vaporization, in J kg-1.
   real :: dTf_dS            ! The derivative of the freezing point with salinity,
                             ! in degC per PSU.  (dTf_dS is negative.)
-  real :: mu_TS             ! Negative the derivative of the freezing point with
-                            ! salinity, in degC per PSU.
 
   real :: enth_liq_0 = 0.0     ! The value of enthalpy for liquid fresh
                                ! water at 0 C, in J kg-1.
@@ -149,12 +144,6 @@ type, public :: SIS2_ice_thm_CS ; private
   real :: KS   ! conductivity of snow, often 0.31 W/(mK)
   real :: KI   ! conductivity of ice, often 2.03 W/(mK)
 
-  ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-  real :: alb_snow        ! albedo of snow (not melting)
-  real :: alb_ice         ! albedo of ice (not melting)
-  real :: pen_ice         ! ice surface penetrating solar fraction
-  real :: opt_dep_ice     ! ice optical depth (m)
-  real :: t_range_melt    ! melt albedos scaled in below melting T
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
   real :: temp_range_est  ! An estimate of the range of snow and ice temperatures
                           ! that is used to evaluate whether an explicit
@@ -179,10 +168,6 @@ type, public :: SIS2_ice_thm_CS ; private
                           ! freezing pointin the calculation of the initial ice
                           ! temperature estimate.  The default is false.
 
-  logical :: do_deltaEdd = .true.  ! If true, use a delta-Eddington radiative
-                          ! transfer calculation for the shortwave radiation
-                          ! within the sea-ice and snow.
-
   logical :: do_pond = .false. ! activate melt pond scheme - mw/new
   ! mw/new - these melt pond control data are temporarily placed here
   real :: tdrain = -0.8 ! if average ice temp. > tdrain, drain pond
@@ -197,86 +182,21 @@ end type SIS2_ice_thm_CS
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_thm_param - set ice thermodynamic parameters                             !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
+!> SIS2_ice_thm_init initializes the control structure for the ice thermodynamic
+!! update code.
+subroutine SIS2_ice_thm_init(param_file, CS)
 
   type(param_file_type), intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
-  type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
-  logical,     optional, intent(in) :: init_EOS
 
-  real :: sal_ice_top(1)  ! A specified surface salinity of ice.
-
-  !
-  ! Albedo tuning parameters are documented in:
-  !
-  ! Briegleb, B.P., and B. Light, 2007:  A delta-Eddington multiple scattering
-  !  parameterization for solar radiation in the sea ice component of the
-  !  Community Climate System Model, NCAR/TN+472+STR.
-  !
-  real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning, non-dim.
-  real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning, non-dim.
-  real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning, non-dim.
-  character(len=40)  :: mod = "SIS2_ice_thm" ! This module's name.
+! This include declares and sets the variable "version".
+#include "version_variable.h"
+  character(len=40)  :: mod = "SIS2_ice_thm (updates)" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
-  if (.not.associated(ITV)) allocate(ITV)
 
-  call get_param(param_file, mod, "LATENT_HEAT_FUSION", ITV%LI, &
-                 "The latent heat of fusion as used by SIS.", &
-                 units="J kg-1", default=3.34e5)
-  call get_param(param_file, mod, "LATENT_HEAT_VAPOR", ITV%Lat_Vapor, &
-                 "The latent heat of vaporization of water at 0C as used by SIS.", &
-                 units="J kg-1", default=2.500e6)
-  call get_param(param_file, mod, "RHO_OCEAN", ITV%Rho_water, &
-                 "The nominal density of sea water as used by SIS.", &
-                 units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", ITV%Rho_ice, &
-                 "The nominal density of sea ice as used by SIS.", &
-                 units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", ITV%Rho_snow, &
-                 "The nominal density of snow as used by SIS.", &
-                 units="kg m-3", default=330.0)
-  call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
-                 "The heat capacity of fresh ice, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=2100.0)
-  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
-                 "The heat capacity of sea water, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=4200.0)
-  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
-                 "The heat capacity of water in sea-ice, approximated as \n"//&
-                 "a constant.  CP_WATER and CP_SEAWATER should be equal, \n"//&
-                 "but for computational convenience CP_WATER has often \n"//&
-                 "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
-                 default=ITV%Cp_SeaWater)
-  call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
-                 "The heat capacity of water in brine pockets within the \n"//&
-                 "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
-                 "CP_WATER should be equal, but for computational \n"//&
-                 "convenience CP_BRINE has often been set equal to CP_ICE.", &
-                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE LATER TO default=CP_WATER)
-  call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
-                 "The derivative of the freezing temperature with salinity.", &
-                 units="deg C PSU-1", default=-0.054)
-  ITV%mu_TS = -ITV%dTf_dS
-
-  call get_thermo_coefs(ice_salinity=sal_ice_top)
-  CS%temp_ice_freeze = T_freeze(sal_ice_top(1), ITV)
-
-  call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
-                 "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
-                 "should be physically consistent when this is adjusted, \n"//&
-                 "because only the relative value is of physical meaning, \n"//&
-                 "but roundoff errors can change the solution.", units="J kg-1", &
-                 default=0.0)
-  call get_param(param_file, mod, "ENTHALPY_UNITS", ITV%enth_unit, &
-                 "A constant that rescales enthalpy from J/kg to a \n"//&
-                 "different scale in its internal representation.  Changing \n"//&
-                 "this by a power of 2 is useful for debugging, as answers \n"//&
-                 "should not change.  A negative values is taken as an inverse.", &
-                 units="J kg-1", default=1.0)
-  if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
+  call log_version(param_file, mod, version, &
+     "This sub-module does updates of the sea-ice due to thermodynamic changes.")
 
   call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
@@ -288,9 +208,6 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
 
-  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
-                 "If true, a delta-Eddington radiative transfer calculation \n"//&
-                 "for the shortwave radiation within the sea-ice.", default=.true.)
   call get_param(param_file, mod, "DO_POND", CS%do_pond, &
                  "If true, calculate melt ponds and use them for\n"//&
                  "shortwave radiation calculation.", default=.false.)
@@ -323,248 +240,9 @@ subroutine SIS2_ice_thm_init(param_file, CS, ITV, init_EOS )
                  "capacity for temperatures above the freezing point in the \n"//&
                  "calculation of the initial ice temperature estimate.", default=.false.)
 
-  if (CS%do_deltaEdd) then
-    call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
-                   "A dreadfully documented tuning parameter for the radiative \n"//&
-                   "propeties of sea ice with the delta-Eddington radiative \n"//&
-                   "transfer calculation.", units="nondimensional", default=0.0)
-    call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
-                   "A dreadfully documented tuning parameter for the radiative \n"//&
-                   "propeties of snow on sea ice with the delta-Eddington \n"//&
-                   "radiative transfer calculation.", &
-                   units="nondimensional", default=0.0)
-    call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
-                   "A dreadfully documented tuning parameter for the radiative \n"//&
-                   "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
-                   "radiative transfer calculation.", units="nondimensional", &
-                   default=0.0)
-    call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
-
-  else
-    call get_param(param_file, mod, "SNOW_ALBEDO", CS%alb_snow, &
-                   "The albedo of dry snow atop sea ice.", units="nondim", &
-                   default=0.85)
-    call get_param(param_file, mod, "ICE_ALBEDO", CS%alb_ice, &
-                   "The albedo of dry bare sea ice.", units="nondim", &
-                   default=0.5826)
-    call get_param(param_file, mod, "ICE_SW_PEN_FRAC", CS%pen_ice, &
-                   "The fraction of the unreflected shortwave radiation that \n"//&
-                   "penetrates into the ice.", units="Nondimensional", default=0.3)
-    call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", CS%opt_dep_ice, &
-                   "The optical depth of shortwave radiation in sea ice.", &
-                   units="m", default=0.67)
-    call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
-                   "The temperature range below freezing over which the \n"//&
-                   "albedos are changed by partial melting.", units="degC", &
-                   default=1.0)
-  endif
-
-  if (present(init_EOS)) then ; if (init_EOS) then
-    if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
-  endif ; endif
-
 end subroutine SIS2_ice_thm_init
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
-                    alb_nir_dir, alb_nir_dif, abs_sfc, abs_snow, abs_ice_lay, &
-                    abs_ocn, abs_int, CS, ITV, coszen_in)
-  real, intent(in   ) :: mp  ! pond mass (kg/m2) mw/new
-  real, intent(in   ) :: hs  ! snow thickness (m-snow)
-  real, intent(in   ) :: hi  ! ice thickness (m-ice)
-  real, intent(in   ) :: ts  ! surface temperature
-  real, intent(in   ) :: tfw ! seawater freezing temperature
-  integer, intent(in) :: NkIce
-  real, intent(  out) :: alb_vis_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_vis_dif ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dif ! ice surface albedo (0-1)
-  real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
-  real, intent(  out) :: abs_snow ! frac abs sw abs in snow
-  real, intent(  out) :: abs_ice_lay(NkIce) ! frac abs sw abs by each ice layer
-  real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
-  real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  type(SIS2_ice_thm_CS), intent(in) :: CS
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real, intent(in),optional :: coszen_in
 
-  real :: alb, as, ai, snow_cover, fh
-  real :: coalb, I_coalb  ! The coalbedo and its reciprocal.
-  real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
-                          ! is still present at the top of each ice layer (ND).
-  real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
-  real :: pen      ! frac sw passed below the surface (frac 1-pen absorbed at the surface)
-  integer :: m
-  character(len=200) :: mesg
-
-  integer (kind=int_kind) :: &
-    nx_block, ny_block, & ! block dimensions
-    icells                ! number of ice-covered grid cells
-
-  integer (kind=int_kind), dimension (1) :: &
-    indxi   , & ! compressed indices for ice-covered cells
-    indxj
-
-  ! inputs
-  real (kind=dbl_kind), dimension (1,1) :: &
-    aice   , & ! concentration of ice
-    vice   , & ! volume of ice
-    vsno   , & ! volume of snow
-    Tsfc   , & ! surface temperature
-    coszen , & ! cosine of solar zenith angle
-    tarea  , & ! cell area - not used
-    swvdr  , & ! sw down, visible, direct  (W/m^2)
-    swvdf  , & ! sw down, visible, diffuse (W/m^2)
-    swidr  , & ! sw down, near IR, direct  (W/m^2)
-    swidf      ! sw down, near IR, diffuse (W/m^2)
-
-  ! outputs
-  real (kind=dbl_kind), dimension (1,1) :: &
-    fs     , & ! horizontal coverage of snow
-    fp     , & ! pond fractional coverage (0 to 1)
-    hprad      ! pond depth (m) for radiation code - may be diagnosed
-
-  real (kind=dbl_kind), dimension (1,1,1) :: &
-    rhosnw , & ! density in snow layer (kg/m3)
-    rsnw       ! grain radius in snow layer (micro-meters)
-
-  real (kind=dbl_kind), dimension (1,1,18) :: &
-    trcr        ! aerosol tracers
-
-  real (kind=dbl_kind), dimension (1,1) :: &
-    alvdr   , & ! visible, direct, albedo (fraction)
-    alvdf   , & ! visible, diffuse, albedo (fraction)
-    alidr   , & ! near-ir, direct, albedo (fraction)
-    alidf   , & ! near-ir, diffuse, albedo (fraction)
-    fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
-    fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-    fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
-
-  real (kind=dbl_kind), dimension (1,1,1) :: &
-    Sswabs      ! SW absorbed in snow layer (W m-2)
-
-  real (kind=dbl_kind), dimension (1,1,NkIce) :: &
-    Iswabs      ! SW absorbed in ice layer (W m-2)
-
-  real (kind=dbl_kind), dimension (1,1) :: &
-    albice  , & ! bare ice albedo, for history
-    albsno  , & ! snow albedo, for history
-    albpnd      ! pond albedo, for history
-
-  real (kind=dbl_kind) :: max_mp, hs_mask_pond, pond_decr
-
-  if (CS%do_deltaEdd) then
-
-    if (nilyr /= NkIce) then
-      write(mesg, '("The Delta-Eddington sea-ice radiation is hard-coded to use ",(I4),&
-                   &" ice layers, not ",(I4),".")') nilyr, NkIce
-      call SIS_error(FATAL, mesg)
-    endif
-
-    ! temporary for delta-Eddington shortwave call
-    nx_block = 1 ; ny_block = 1
-    icells = 1 ; indxi(1) = 1 ; indxj(1) = 1
-    aice(1,1) = 1.0
-    tarea(1,1) = 1.0 ! not used
-
-    ! stuff that matters
-    coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
-    if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
-    Tsfc(1,1) = ts
-    vsno(1,1) = hs
-    vice(1,1) = hi
-    swvdr(1,1) = 0.25
-    swvdf(1,1) = 0.25
-    swidr(1,1) = 0.25
-    swidf(1,1) = 0.25
-
-    call shortwave_dEdd0_set_snow(nx_block, ny_block, icells, indxi, indxj, &
-             aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
-
-    if ( CS%do_pond ) then ! mw/new
-      max_mp = (ITV%Rho_water-ITV%Rho_ice)*hi  ! max pond allowed by waterline
-      fp(1,1) = CS%max_pond_frac*sqrt(min(1.0,mp/max_mp))
-      ! set average pond depth (max. = 2*average)
-      hprad(1,1) = mp/(fp(1,1)*1000)  ! freshwater density = 1000 kg/m2
-      fs(1,1) = fs(1,1)*(1-fp(1,1))   ! reduce fs to frac of pond-free ice
-      ! decrement fp (increment fs) for snow masking of pond: pond is completely
-      ! masked when snow depth contains 2*average_pond_depth in its pore space
-      if (hs>0.0 .and. hprad(1,1)>0.0) then
-        hs_mask_pond = 2*hprad(1,1)*ITV%Rho_ice/(ITV%Rho_ice-ITV%Rho_snow)
-        pond_decr = fp(1,1)*min(1.0,hs/hs_mask_pond)
-        fp(1,1) = fp(1,1) - pond_decr
-        fs(1,1) = fs(1,1) + pond_decr
-      endif
-    else
-      call shortwave_dEdd0_set_pond(nx_block, ny_block, icells, indxi, indxj, &
-               aice, Tsfc, fs, fp, hprad) ! out: fp, hprad
-    endif
-
-    call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
-             aice, vice, vsno, fs, rhosnw, rsnw, fp, hprad, swvdr, swvdf, &
-             swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
-             fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
-    ! out: alvdf, alvdr, and subsequent.
-
-    ! Note: fswint = Sswabs + sum(Iswabs)
-    alb = 1.0 - (fswsfc(1,1) + (fswint(1,1) + fswthru(1,1)))
-    coalb = fswsfc(1,1) + (fswint(1,1) + fswthru(1,1))
-    I_coalb = 0.0 ; if (coalb > 0.0) I_coalb = 1.0 / coalb
-    abs_sfc  = fswsfc(1,1)   * I_coalb
-    abs_snow = Sswabs(1,1,1) * I_coalb
-    do m=1,NkIce ; abs_ice_lay(m) = Iswabs(1,1,m) * I_coalb ; enddo
-    abs_ocn  = fswthru(1,1)  * I_coalb
-
-    alb_vis_dir = alvdr(1,1)
-    alb_vis_dif = alvdf(1,1)
-    alb_nir_dir = alidr(1,1)
-    alb_nir_dif = alidf(1,1)
-
-    pen = (fswint(1,1) + fswthru(1,1)) * I_coalb
-    abs_int = fswint(1,1) * I_coalb
-
-  else
-    as = CS%alb_snow ; ai = CS%alb_ice
-    snow_cover = hs/(hs+0.02)                ! thin snow partially covers ice
-
-    fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
-    ! reduce albedo for thin ice
-    if (ts+CS%T_RANGE_MELT > CS%temp_ice_freeze) then        ! reduce albedo for melting as in
-       ! CSIM4 assuming 0.53/0.47 vis/ir
-       as = as-0.1235*min((ts+CS%T_RANGE_MELT-CS%temp_ice_freeze)/CS%T_RANGE_MELT,1.0)
-       ai = ai-0.075 *min((ts+CS%T_RANGE_MELT-CS%temp_ice_freeze)/CS%T_RANGE_MELT,1.0)
-    endif
-    ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
-
-    alb = snow_cover*as + (1-snow_cover)*ai
-    alb_vis_dir = alb ; alb_vis_dif = alb
-    alb_nir_dir = alb ; alb_nir_dif = alb
-
-    pen = (1-snow_cover)*CS%pen_ice
-    opt_decay_lay = exp(-hi/(NkIce*CS%opt_dep_ice))
-    abs_ocn = pen * exp(-hi/CS%opt_dep_ice)
-    abs_sfc  = 1.0 - pen
-    abs_snow = 0.0
-    SW_frac_top = pen
-    do m=1,NkIce
-      abs_ice_lay(m) = SW_frac_top * (1.0 - opt_decay_lay)
-      SW_frac_top = SW_frac_top * opt_decay_lay
-    enddo
-    abs_int = pen - SW_frac_top
-
-     !! check for ice albedos out of range (0 to 1)
-     ! if (alb.lt.0.0 .or. alb.gt.1.0) then
-     !    print *,'ice_optics: albedo out of range, alb=',alb
-     !    print *,'cs=',cs,  'as=',as, 'ai=',ai
-     !    print *,'ts=',ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',tfw
-     !    print *,'ALB_SNO=',ALB_SNO,  'ALB_ICE=',ALB_ICE, 'T_RANGE_MELT,=',T_RANGE_MELT, 'TFI=',TFI
-     !    stop
-     ! end if
-  endif
-
-end subroutine ice_optics_SIS2
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_temp_SIS2 - A subroutine that calculates the snow and ice enthalpy       !
@@ -641,7 +319,14 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   real :: hL_ice_eff
   real :: enth_liq_lim
   real :: enth_prev
-  real :: I_enth_unit
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: Cp_ice   ! The heat capacity of ice, in J kg-1 K-1.
+  real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
+                   ! in J kg-1 K-1.
+  real :: Lat_fus  ! The latent heat of fusion, in J kg-1.
+  real :: enth_unit    ! A conversion factor for enthalpy from Joules kg-1.
+  real :: I_enth_unit  ! The inverse of enth_unit.
   logical :: col_check
   integer :: k
 
@@ -650,17 +335,20 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   temp_IC(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
   call temp_from_Enth_S(enthalpy(1:), sice(1:), temp_IC(1:), ITV)
 
+  call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, rho_ice=rho_ice, rho_snow=rho_snow, &
+                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine)
+
   A = -sh_T0
 
-  I_enth_unit = 1.0 / ITV%enth_unit
+  I_enth_unit = 1.0 / enth_unit
   mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
   mL_snow = m_snow         ! snow mass per unit area (in kg m-2).
   call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
 
   ! Set the effective thickness of each ice and snow layer, limited to avoid
   ! instabilities for thin layers.
-  hL_ice_eff = max(mL_ice / ITV%Rho_ice, CS%H_LO_LIM)
-  hsnow_eff = mL_snow / ITV%Rho_snow + max(1e-35, 1e-20*CS%H_LO_LIM)
+  hL_ice_eff = max(mL_ice / rho_ice, CS%H_LO_LIM)
+  hsnow_eff = mL_snow / rho_snow + max(1e-35, 1e-20*CS%H_LO_LIM)
 
   kk = CS%KI/hL_ice_eff       ! full ice layer conductivity
 
@@ -689,19 +377,19 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   ! Determine the effective layer heat capacities.
   !   bb = dheat/dTemp, as derived from a linearization of the enthalpy equation
   !     but using the value for ice near the melt point if temp_IC is above T_fr.
-  bb(0) = mL_snow*ITV%Cp_ice
+  bb(0) = mL_snow* Cp_ice
   do k=1,NkIce   ! Store the heat capacity term in bb.
     if (tfi(k) >= 0.0) then ! This is pure ice.
-      bb(k) = mL_ice * ITV%Cp_ice
+      bb(k) = mL_ice * Cp_ice
     elseif ((temp_IC(k) < tfi(k)) .or. (CS%old_heat_cap))  then
-      bb(k) = mL_ice * (ITV%Cp_ice - (tfi(k) / temp_IC(k)**2) * &
-                        (ITV%LI - (ITV%Cp_brine-ITV%Cp_ice) * temp_IC(k)) )
+      bb(k) = mL_ice * (Cp_ice - (tfi(k) / temp_IC(k)**2) * &
+                        (Lat_Fus - (Cp_brine-Cp_ice) * temp_IC(k)) )
       ! Or mroe generally:
       !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
-      ! bb(k) = mL_ice * (ITV%Cp_ice + dSf_dT*ITV%LI + S_Sf * &
-      !                   ((ITV%Cp_brine-ITV%Cp_ice))
+      ! bb(k) = mL_ice * (Cp_ice + dSf_dT*Lat_fus + S_Sf * &
+      !                   ((Cp_brine-Cp_ice))
     else ! Use the value when temp_IC = tfi.
-      bb(k) = mL_ice * (ITV%Cp_brine - ITV%LI / tfi(k))
+      bb(k) = mL_ice * (Cp_brine - Lat_fus / tfi(k))
     endif
   enddo
 
@@ -796,7 +484,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   ! the numerator but not the denominator.  The present form is based on the
   ! assumption that floating-point roundoff dominates the errors.
   heat_flux_err_rat = 0.7071 * dtt * (CS%temp_range_est) / &
-                      (CS%temp_range_est * ITV%Cp_Ice + ITV%LI)
+                      (CS%temp_range_est * Cp_ice + Lat_fus)
 
   e_extra = 0.0
   if (tsurf > tsf .or. m_pond > 0.0) then
@@ -864,7 +552,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   !
 
   if (col_check) then
-    col_enth2 = e_extra_sum*ITV%enth_unit ; sum_sol = 0.0 ; col_enth2b = 0.0
+    col_enth2 = e_extra_sum*enth_unit ; sum_sol = 0.0 ; col_enth2b = 0.0
     do k=0,NkIce
       col_enth2 = col_enth2 + m_lay(k)*enthalpy(k)
       col_enth2b = col_enth2b + m_lay(k)*enthalpy(k)
@@ -921,10 +609,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
     col_enth3 = 0.0
     do k=0,NkIce ; col_enth3 = col_enth3 + m_lay(k)*enthalpy(k) ; enddo
 
-    d_e_extra = col_enth3 - (col_enth2b - e_extra_sum*ITV%enth_unit)
+    d_e_extra = col_enth3 - (col_enth2b - e_extra_sum*enth_unit)
     if (abs(d_e_extra) > 1.0e-12*(abs(col_enth3) + abs(col_enth2b) + &
-                                  abs(e_extra_sum*ITV%enth_unit))) then
-      d_e_extra = (col_enth3 - col_enth2b) - e_extra_sum*ITV%enth_unit
+                                  abs(e_extra_sum*enth_unit))) then
+      d_e_extra = (col_enth3 - col_enth2b) - e_extra_sum*enth_unit
     endif
   endif
 
@@ -960,12 +648,18 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
 
   real :: E0   ! Starting heat relative to salinity dependent freezing.
   real :: AA, BB, CC
-  real :: Cp_Ice, LI
+  real :: Cp_ice   ! The heat capacity of ice, in J kg-1 K-1.
+  real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
+                   ! in J kg-1 K-1.
+  real :: Cp_water ! The heat capacity of liquid water in the ice model,
+                   ! but not in the brine pockets, in J kg-1 K-1.
+  real :: LI       ! The latent heat of fusion, in J kg-1.
 
   integer :: itt
 !  real :: T_itt(20), dTemp(20), Err_itt(20)
 
-  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
+  call get_SIS2_thermo_coefs(ITV, Cp_Ice=Cp_ice, Latent_Fusion=LI, &
+                             Cp_Brine=Cp_Brine, Cp_Water=Cp_Water)
 
   if ( T_fr == 0.0 ) then
     ! For fresh water, avoid the degeneracy of the enthalpy-temperature
@@ -978,16 +672,16 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
 
   else
     if (tp >= T_fr) then
-      E0 = ITV%Cp_Water*(tp - T_fr)  ! >= 0
+      E0 = Cp_Water*(tp - T_fr)  ! >= 0
     else
       E0 = Cp_Ice*(tp - T_fr) - LI*(1 - T_fr/tp)  ! < 0
-      if (ITV%Cp_ice /= ITV%Cp_brine) E0 = E0 + (ITV%Cp_brine - ITV%Cp_ice) * T_fr*log(tp/T_fr)
+      if (Cp_ice /= Cp_brine) E0 = E0 + (Cp_brine - Cp_ice) * T_fr*log(tp/T_fr)
     endif
     ! Determine whether the new solution will be above or below freezing.
 
     if (m*E0 + dtt * (f - b*T_fr) >= 0) then
       ! This layer will be completely melted, so return the freezing value.
-      ! new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (ITV%Cp_water*m + dtt*b)
+      ! new_temp = T_fr + (m*E0 + dtt* (f - b*T_fr)) / (Cp_water*m + dtt*b)
       new_temp = T_fr
     else
       ! This layer will be partly melted.
@@ -1007,12 +701,12 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
         new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
       endif
 
-      if (ITV%Cp_ice /= ITV%Cp_brine) then
+      if (Cp_ice /= Cp_brine) then
       ! At this point, new_temp is just a good starting guess that needs to be iterated to convergence.
 
       ! Solve the following expression for the new layer temperature, tn:
       !
-        TfmxdCp_BI = T_fr*m*(ITV%Cp_Brine-ITV%Cp_Ice)
+        TfmxdCp_BI = T_fr*m*(Cp_Brine-Cp_Ice)
       !   Err = m * ((Cp_Ice*(tn - T_fr) - LI*(1 - T_fr/tn)) - &
       !               TfmxdCp_BI*(log(T_fr/tn)) - E0) - dtt * (f - b*tn)
       !   Err = -(m*((E0 + LI) + Cp_Ice*T_fr) + f*dtt) + &
@@ -1134,10 +828,19 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: dErr_dT ! The partial derivative of Err with T_g, in J m-2 C-1.
   real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
   real :: TfxdCp_WI, TfxdCp_BI, Err_Tind
-  real :: Cp_Ice, LI
-
+  real :: Cp_ice   ! The heat capacity of ice, in J kg-1 K-1.
+  real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
+                   ! in J kg-1 K-1.
+  real :: Cp_water ! The heat capacity of liquid water in the ice model,
+                   ! but not in the brine pockets, in J kg-1 K-1.
+  real :: LI       ! The latent heat of fusion, in J kg-1.
+  real :: enth_unit    ! A conversion factor for enthalpy from Joules kg-1.
+!  real :: Enth_liq_0   ! The enthalpy of liquid water at 0C.
   integer :: itt
   ! real :: T_itt(20), dTemp(20), Err_itt(20)
+
+  call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, Latent_Fusion=LI, &
+                             Cp_Ice=Cp_ice, Cp_Brine=Cp_Brine, Cp_Water=Cp_Water)
 
   ! Solve m_lay*(enth - enth_in) + extra_heat = dt * (ht_body + ftop - fbot)
   !  ftop = ftop_in + temp*dftop_dT
@@ -1161,7 +864,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     max_temp = temp_max ; max_enth = enth_from_TS(temp_max, sice, ITV)
   endif ; endif
   enth_in = enth
-  dtEU = ITV%enth_unit * dtt
+  dtEU = enth_unit * dtt
 
   ! Solve m_lay * (enth_new - enth) = dtEU * (htg - fb*t_new)
   !       t_new = Temp_from_En_S(enth_new, Sice, ITV)
@@ -1174,13 +877,13 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     ! the maximum temperature and enthalpy, and the extra heat stored for later
     ! use in melting.
     extra_enth = m_lay*(enth_in - max_enth) + dtEU * (htg - fb*max_temp)
-    extra_heat = extra_enth / ITV%enth_unit
+    extra_heat = extra_enth / enth_unit
     new_temp = max_temp
     enth = max_enth
   elseif ( sice == 0.0 ) then  ! Note that T_fr = 0.
     ! dT_dEnth is 0 for enth > enth_fp.
     !   dT_dEnth = dTemp_dEnth_EnS(enth_in, Sice, ITV)
-    dT_dEnth = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
+    dT_dEnth = 1.0 / (Cp_Ice * enth_unit)
 
     ! Solve for enth:  m_lay  * (enth - enth_in) =
     !       dtEU * (htg - fb*T_fr - fb*dT_dEnth*(enth - enth_fp))
@@ -1194,25 +897,25 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     ! but it avoids serious roundoff issues later on when b is large.
     new_temp = dT_dEnth * ((dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
                            (m_lay  + dtEU*(fb*dT_dEnth)))
-  else! if (ITV%Cp_ice == ITV%Cp_brine) then
-    En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
+  else! if (Cp_ice == Cp_brine) then
+    En_J = (enth_in - enthalpy_liquid(0.0, 0.0, ITV)) / enth_unit
     ! Solve a quadratic equation for the new layer temperature, tn:
     !
-    !   m * (En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + L + htg*dt/m) =
+    !   m * (En_J - (Cp_Water-Cp_Ice)*T_fr + L + htg*dt/m) =
     !        (m*Cp_Ice + b*dt) *tn + m*LI*T_fr/tn
     !
-    AA = m_lay *ITV%Cp_Ice + fb*dtt
-    BB = -(m_lay*((En_J - (ITV%Cp_Water-ITV%Cp_Ice)*T_fr) + ITV%LI) + htg*dtt)
-    CC = m_lay *ITV%LI*T_fr
+    AA = m_lay *Cp_Ice + fb*dtt
+    BB = -(m_lay*((En_J - (Cp_Water-Cp_Ice)*T_fr) + LI) + htg*dtt)
+    CC = m_lay * LI*T_fr
     ! This form avoids round-off errors.
     if (BB >= 0) then
       new_temp = -(BB + sqrt(BB*BB - 4*AA*CC)) / (2*AA)
     else
       new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
     endif
-    if (ITV%Cp_ice == ITV%Cp_brine) then
+    if (Cp_ice == Cp_brine) then
       enth = enth_from_TS(new_temp, sice, ITV)
-    else ! (ITV%Cp_ice /= ITV%Cp_brine)
+    else ! (Cp_ice /= Cp_brine)
       ! Correct the new temperature estimate.
       ! Solve for enth & -273.15 < T_g < T_fr < 0
       ! m_lay*(enth - En_J) = dtt * (htg - fb*T_g)
@@ -1223,10 +926,9 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
       ! Err = m_lay*((-LI * (1.0 - T_fr/T_g)) + &
       !       ((Cp_Ice*Tg + TfxdCP_WI) - TfxdCp_BI*log(T_fr/T_g)) - En_J) + dt * (fb*T_g - htg)
 
-      ! En_J = enth_in  / ITV%enth_unit - ITV%enth_liq_0
-      LI = ITV%LI ; Cp_Ice = ITV%Cp_Ice
-      TfxdCp_WI = T_fr*(ITV%Cp_Water-ITV%Cp_Ice)
-      TfxdCp_BI = T_fr*(ITV%Cp_Brine-ITV%Cp_Ice)
+      ! En_J = enth_in  / enth_unit - enth_liq_0
+      TfxdCp_WI = T_fr*(Cp_Water-Cp_Ice)
+      TfxdCp_BI = T_fr*(Cp_Brine-Cp_Ice)
       Err_Tind = (m_lay*(-LI + TfxdCP_WI - En_J) - dtt*htg)
 
       T_min = -273.15
@@ -1236,7 +938,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
       ! Err_Tmin = m_lay*((Cp_Ice*T_min - TfxdCp_BI*log(T_fr/T_min))) + &
       !      (dtt * fb * T_min + Err_Tind) ?
       T_max = T_fr
-      Err_Tmax = m_lay*(T_fr*ITV%Cp_Water - En_J) + dtt * (fb * T_fr - htg)
+      Err_Tmax = m_lay*(T_fr*Cp_Water - En_J) + dtt * (fb * T_fr - htg)
 
       T_g = new_temp
       ! Using a false position method first-guess instead adds about 2 iterations.
@@ -1377,411 +1079,6 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
 end subroutine ice_check
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! T_Freeze - Return the freezing temperature as a function of salinity (and    !
-!            possibly later pressure).                                         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function T_Freeze(S, ITV)
-  real, intent(in) :: S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: T_Freeze
-
-  T_Freeze = 0.0 + ITV%dTf_dS * S
-
-end function T_Freeze
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! calculate_T_Freeze - Calculate an array of freezing temperatures for an      !
-!            an array of salinities (and maybe later pressures).               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine calculate_T_Freeze(S, T_Freeze, ITV)
-  real, dimension(:), intent(in) :: S
-  real, dimension(:), intent(out) :: T_Freeze
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-
-  integer :: k, nk_ice
-  nk_ice = size(S)
-
-  do k=1,nk_ice ; T_Freeze(k) = 0.0 + ITV%dTf_dS * S(k) ; enddo
-
-end subroutine calculate_T_Freeze
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! enthalpy_from_TS - Set a column of enthalpies from temperature and salinity. !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine enthalpy_from_TS(T, S, enthalpy, ITV)
-  real, dimension(:), intent(in) :: T, S
-  real, dimension(:), intent(out) :: enthalpy
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-
-  integer :: k, nk_ice
-  nk_ice = size(T)
-
-  do k=1,nk_ice ; enthalpy(k) = enth_from_TS(T(k), S(k), ITV) ; enddo
-
-end subroutine enthalpy_from_TS
-
-function enth_from_TS(T, S, ITV) result(enthalpy)
-  real, intent(in)  :: T, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: enthalpy
-
-  real :: T_fr  ! The freezing temperature in deg C.
-  real :: Cp_Ice, Enth_liq_0, LI, enth_unit
-  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
-  Enth_liq_0 = ITV%Enth_liq_0 ; enth_unit = ITV%enth_unit
-
-  T_fr = -ITV%mu_TS*max(0.0,S)
-
-  if ((S == 0.0) .and. (T <= 0.0)) then
-    ! Note that at the freezing point, fresh water is assumed to be all ice,
-    ! due to the degeneracy in inverting temperature for enthalpy.
-    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + Cp_Ice*T)
-  elseif (T >= T_fr) then ! This layer is already melted, so the enthalpy is
-    ! just what is required to warm or cool it to 0 C.
-    enthalpy = enth_unit * (ENTH_LIQ_0 + ITV%Cp_Water*T)
-  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
-    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
-                  (Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr))
-  else  ! The derivation of this expression can be found in the SIS2 manual;
-    ! it assumes that the freezing temperature varies linearly with salinity.
-    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
-                  ((Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
-                   (ITV%Cp_Brine - Cp_Ice) * T_fr*log(T_fr/T))) ! Note that log(1/a) = -log(a).
-  endif
-
-end function enth_from_TS
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! enthalpy_liquid_freeze - Return the enthalpy of liquid water at the freezing !
-!    point for a given salinity.                                               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function enthalpy_liquid_freeze(S, ITV)
-  real, intent(in)  :: S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: enthalpy_liquid_freeze
-
-  enthalpy_liquid_freeze = ITV%enth_unit * &
-    (ITV%Cp_water*(-ITV%mu_TS*S) + ITV%ENTH_LIQ_0)
-
-end function enthalpy_liquid_freeze
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! enthalpy_liquid - Returns the enthalpy of liquid water at the given          !
-!     temperature and salinity, in enth_unit.                                  !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function enthalpy_liquid(T, S, ITV)
-  real, intent(in)  :: T, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: enthalpy_liquid
-
-  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%CP_SeaWater*T)
-
-end function enthalpy_liquid
-
-! This returns the enthalpy change associated with melting water of
-! a given temperature (T, in C) and salinity (S), in enth_unit.
-function enth_melt(T, S, ITV) result (emelt)
-  real, intent(in) :: T, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real             :: emelt
-
-  emelt = enthalpy_liquid_freeze(S, ITV) - enth_from_TS(T, S, ITV)
-end function enth_melt
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! Temp_from_Enth_S - Set a column of temperatures from enthalpy and salinity.  !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine Temp_from_Enth_S(En, S, Temp, ITV)
-  real, dimension(:), intent(in) :: En, S
-  real, dimension(:), intent(out) :: Temp
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-
-  integer :: k, nk_ice
-
-  nk_ice = size(Temp)
-
-  do k=1,nk_ice
-    Temp(k) = Temp_from_En_S(En(k), S(k), ITV)
-  enddo
-
-end subroutine Temp_from_Enth_S
-
-function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
-  real, intent(in)  :: En, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
-
-  real :: I_Cp_Ice, BB, I_CpI_Eu, I_CpW_Eu
-  real :: I_enth_unit
-  real :: Cp_Ice, LI, Mu_TS
-  real :: T_fr  ! The freezing temperature in deg C.
-  real :: En_J  ! Enthalpy in Joules with 0 offset.
-  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
-
-  I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
-  I_CpI_Eu = 1.0 / (Cp_Ice * ITV%enth_unit)
-  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
-  ! I_Cp_Water = 1.0 / ITV%CP_Water
-
-  T_fr = -ITV%mu_TS*S
-
-  En_J = En * I_enth_unit - ITV%enth_liq_0
-  if (S <= 0.0) then ! There is a step function for fresh water.
-    if (En_J >= 0.0) then ; dT_dE = I_CpW_Eu
-    elseif (En_J > -LI) then ; dT_dE = 0.0
-    else ; dT_dE = I_CpI_Eu ; endif
-  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
-    ! This makes the assumption that all water in the ice and snow categories,
-    ! both fluid and in pockets, has the same heat capacity.
-    if (En_J < T_fr * ITV%Cp_water) then
-      BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
-      dT_dE = I_Cp_Ice * 0.5 * (1.0 - BB / sqrt(BB**2 - T_fr*Cp_Ice*LI))
-    else  ! This layer is already melted, so just warm it to 0 C.
-      dT_dE = I_CpW_Eu
-    endif
-  else
-    call SIS_error(FATAL, "Write dTemp_dEnth_Enth for Cp_ice /= Cp_brine.")
-  endif
-
-end function dTemp_dEnth_EnS
-
-function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
-  real, intent(in)  :: Temp, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
-
-  real :: I_CpI_Eu, I_CpW_Eu
-!  real :: I_enth_unit
-!  real :: Cp_Ice, LI, Mu_TS
-  real :: T_fr  ! The freezing temperature in deg C.
-!  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
-
-  I_CpI_Eu = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
-  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
-
-  T_fr = -ITV%mu_TS*S
-
-  if (S <= 0.0) then ! There is a step function for fresh water.
-    if (Temp > T_fr) then ; dT_dE = I_CpW_Eu
-    elseif (Temp == T_Fr) then ; dT_dE = 0.0
-    else ; dT_dE = I_CpI_Eu ; endif
-  else
-    ! This makes the assumption that all water in the ice and snow categories,
-    ! both fluid and in pockets, has the same heat capacity.
-    if (Temp < T_fr) then
-        ! These are equivalent expressions.
-        !  dEn_dT = ( -LI * (T_fr / Temp**2)) + &
-        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/Temp)
-        dT_dE = (-Temp) / (ITV%enth_unit * (ITV%LI * (T_fr / Temp) + &
-                  (ITV%Cp_Ice*(-Temp) + (ITV%Cp_Brine - ITV%Cp_Ice) * (-T_Fr))))
-    else  ! This layer is already melted, so just warm it to 0 C.
-      dT_dE = I_CpW_Eu
-    endif
-  endif
-
-end function dTemp_dEnth_TS
-
-
-function Temp_from_En_S(En, S, ITV) result(Temp)
-  real, intent(in)  :: En, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real :: Temp  ! Temperature in deg C.
-
-  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities, in kg K J-1.
-  real :: BB
-  real :: I_enth_unit
-  real :: T_fr  ! The freezing temperature in deg C.
-  real :: Cp_Ice, Cp_Water, LI, Mu_TS
-  real :: En_J  ! Enthalpy in Joules with 0 offset.
-  real :: T_guess  ! The latest best guess at Temp, in deg C.
-  real :: T_deriv  ! The value of Temp at which to evaluate dT_dEn, in deg C.
-  real :: T_next   ! The tentative next value for T_guess, in deg C.
-  real :: T_max, T_min ! Bracketing temperatures, in deg C.
-  real :: En_Tg    ! The enthalpy at T_guess, in J kg-1.
-  real :: En_Tmin, En_Tmax ! The enthalpies at T_max and T_min, in J kg-1.
-  real :: dT_dEn   ! The partial derivative of temperature with enthalpy, in degC kg / J.
-  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
-
-!  real :: dTemp(20), T_itt(20)
-  integer :: itt
-  Cp_Ice = ITV%Cp_Ice ; Cp_water = ITV%Cp_water ; LI = ITV%LI ; Mu_TS = ITV%mu_TS
-
-  I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
-  I_Cp_Water = 1.0 / CP_Water
-
-  T_fr = -ITV%mu_TS*S
-  En_J = En * I_enth_unit - ITV%enth_liq_0
-
-  if (S <= 0.0) then ! There is a step function for fresh water.
-    if (En_J >= 0.0) then ; Temp = En_J * I_Cp_Water
-    elseif (En_J >= -LI) then ; Temp = 0.0
-    else ; Temp = I_Cp_Ice * (En_J + LI) ; endif
-  elseif (En_J >= T_fr*Cp_Water) then  ! This layer is completely melted.
-    Temp = En_J * I_Cp_Water
-  else
-    !   This makes the assumption that all water in the ice and snow categories,
-    ! both fluid and in pockets, has the same heat capacity. This may be the
-    ! final solution or it may be a good first guess to start the iterations.
-
-    !   LI * (T_fr/T) + Cp_Ice*T = En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + LI
-    !   LI * (T_fr/T) + Cp_Ice*T = 2.0*BB
-    !   Cp_Ice*T**2 - 2.0*BB*T + LI * T_fr = 0.0
-
-    ! Note that (En_J < T_fr*Cp_Water)
-    BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
-    Temp = I_Cp_Ice * (BB - sqrt(BB**2 - T_fr*Cp_Ice*LI))
-
-    if (Cp_Ice /= ITV%Cp_brine) then
-      T_min = -273.15
-      En_Tmin = ( - LI * (1.0 - T_fr/T_min) ) + &
-              ((Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
-               (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_min)))
-      ! Could En_Tmin be approximated as -LI + (Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) ?
-      T_max = T_fr ; En_Tmax = (ITV%Cp_Water*T_fr)
-
-      ! This might be a good enough first guess that bracketing is unnecessary.
-      T_guess = Temp
-!      dTemp(:) = 0.0 ; T_itt(:) = 0.0
-      do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
-!        T_itt(itt) = T_guess
-        ! This expression uses the fact that the freezing point varies linearly
-        ! with salinity.
-        En_Tg = ( - LI * (1.0 - T_fr/T_guess)) + &
-                ((Cp_Ice*T_guess + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
-                 (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_guess)))
-
-        if (abs(En_Tg - En_J) <= 1.0e-15*(abs(En_J) + abs(En_Tg))) then
-          Temp = T_guess ; exit ! (The exit could be a return?)
-        elseif (En_Tg < En_J) then
-          T_min = T_guess ; En_Tmin = En_Tg
-        else
-          T_max = T_guess ; En_Tmax = En_Tg
-        endif
-
-        ! Use the more efficient Newton's method of McDougall & Witherspoon (2014),
-        ! Appl. Math. Lett., 29, 20-25.
-        T_deriv = T_guess
-        if (itt > 1) then ! Reuse the estimate of dT_dEn from the last iteration.
-          T_deriv = T_guess + 0.5*dT_dEn * (En_J - En_Tg)
-          if ((T_deriv < T_min) .or. (T_deriv > T_max)) T_deriv = T_guess
-        endif
-
-        ! These are equivalent expressions.
-        !  dEn_dT = ( -LI * (T_fr / T_deriv**2)) + &
-        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/T_deriv)
-        dT_dEn = (-T_deriv) / (LI * (T_fr / T_deriv) + &
-                  (Cp_Ice*(-T_deriv) + (ITV%Cp_Brine - Cp_Ice) * (-T_fr)))
-        T_next = T_guess + dT_dEn * (En_J - En_Tg)
-
-!        dTemp(itt) = T_next - T_guess
-        if ((T_next > T_max) .or. (T_next < T_min)) then ! Use the false position method.
-          T_guess = ((En_Tmax - En_J) * T_min + (En_J - En_Tmin) * T_max) / &
-                     (En_Tmax - En_Tmin)
-        else
-          T_guess = T_next
-        endif
-      enddo
-      Temp = T_guess
-
-!   These were used to debug this routine.
-!      if (itt > 5) then
-!        write (*,'("dTemp = ",8E12.4)') dTemp(1:8)
-!        write (*,'("T_itt = ",8E14.6)') T_itt(1:8)
-!      endif
-    endif
-  endif
-
-end function Temp_from_En_S
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! e_to_melt_TS - return the energy needed to melt a given snow/ice             !
-!      configuration, in J kg-1.                                               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function e_to_melt_TS(T, S, ITV) result(e_to_melt)
-  real, intent(in) :: T, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-
-  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
-                     ! and warm it to its bulk freezing temperature, in J kg-1.
-
-  real :: T_fr  ! The freezing temperature in deg C.
-  T_fr = -ITV%mu_TS*S
-
-  if (T >= T_Fr) then ! This layer is already melted and has excess heat.
-    e_to_melt = ITV%Cp_Water * (-T + T_Fr)
-  elseif (ITV%Cp_Ice == ITV%Cp_brine) then
-    e_to_melt = (ITV%LI - ITV%Cp_ice*T) * (1.0 - T_Fr/T)
-            ! =  ITV%LI * (1.0 - T_Fr/T) + ITV%Cp_ice * (T_Fr - T)
-  else
-    e_to_melt = ITV%LI * (1.0 - T_fr/T) + (ITV%Cp_Ice * (T_Fr - T) + &
-                   (ITV%Cp_Brine - ITV%Cp_Ice) * (T_fr*log(T_fr/T)))
-  endif
-
-end function e_to_melt_TS
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! energy_melt_enthS - return the energy needed to melt a given snow/ice        !
-!      configuration, in J kg-1.                                               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-function energy_melt_enthS(En, S, ITV) result(e_to_melt)
-  real, intent(in) :: En, S
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-
-  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
-                     ! and warm it to its bulk freezing temperature, in J kg-1.
-
-  e_to_melt = ITV%enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
-
-end function energy_melt_enthS
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_thermo_coefs - return various thermodynamic coefficients.                !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, enthalpy_units, &
-                                 Cp_SeaWater, rho_ice, rho_snow, Latent_fusion, Latent_vapor, &
-                                 EOS, specified_thermo_salinity)
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real, dimension(:), optional, intent(out) :: ice_salinity
-  real,           optional, intent(out) :: Cp_Ice, enthalpy_units, Cp_SeaWater
-  real,           optional, intent(out) :: rho_ice, rho_snow
-  real,           optional, intent(out) :: Latent_fusion
-  real,           optional, intent(out) :: Latent_vapor
-  type(EOS_type), optional, pointer     :: EOS
-  logical,        optional, intent(out) :: specified_thermo_salinity
-! Arguments: ITV - The ice_thermo_type that contains all sea-ice thermodynamic
-!                  parameters.
-!            ice_salinity - The specified salinity of each layer when the
-!                           thermodynamic salinities are pre-specified.
-!            enthalpy_units - A unit conversion factor for ethalpy from Joules.
-!            Cp_Ice - The heat capacity of ice in J kg-1 K-1.
-!            Cp_SeaWater - The heat capacity of seawater in J kg-1 K-1.
-!            Latent_fusion - The latent heat of fusion, in J kg-1.
-!            Latent_vapor - The latent heat of vaporization, in J kg-1.
-!            EOS - A pointer to the MOM6/SIS2 ocean equation-of-state type.
-!            specified_thermo_salinity - If true, all thermodynamic calculations
-!                  are done with a specified salinity profile that may be
-!                  independent of the ice bulk salinity.
-
-  call get_thermo_coefs(ice_salinity=ice_salinity)
-
-  if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
-  if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
-  if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
-  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
-  if (present(rho_ice)) rho_ice = ITV%rho_ice
-  if (present(rho_snow)) rho_snow = ITV%rho_snow
-  if (present(Latent_fusion)) Latent_fusion = ITV%LI
-  if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
-  if (present(EOS)) then
-    if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
-      "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
-      "has not yet been allocated.")
-    EOS => ITV%EOS
-  endif
-
-end subroutine get_SIS2_thermo_coefs
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_resize_SIS2 - An n-layer code for applying snow and ice thickness and    !
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1841,14 +1138,19 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real :: m_submerged         ! The submerged mass of ice, in kg m-2.
   real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
-  real :: enth_unit
+  real :: enth_unit   ! A conversion factor for enthalpy from Joules kg-1.
+  real :: LI          ! The latent heat of fusion, in J kg-1.
+  real :: Lat_vapor   ! The latent heat of vaporization, in J kg-1.
+  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
+  real :: rho_water   ! The nominal density of seawater in kg m-3.
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   real :: pond_rate, h2o_to_pond, h2o_from_pond, tavg, mp_min, mp_max ! mw/new
   integer :: k
   logical :: debug = .false.
 
-  enth_unit = ITV%enth_unit
-  min_dEnth_freeze = (ITV%LI*enth_unit) * (1.0-CS%liq_lim)
+  call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, Latent_Fusion=LI, &
+                             Latent_vapor=Lat_vapor, Rho_water=rho_water, rho_ice=rho_ice)
+  min_dEnth_freeze = (LI*enth_unit) * (1.0-CS%liq_lim)
 
   ! mw/new - meltwater retention in pond
   pond_rate = CS%r_min_pond+(CS%r_max_pond-CS%r_min_pond)*a_ice
@@ -1892,7 +1194,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   endif
 
   if (top_melt < 0.0 .and. CS%do_pond) then ! mw/new: add fresh/0C ice to top layer
-    ! enth_freeze = -ITV%LI   ! this is right for prognostic salinity (i think)
+    ! enth_freeze = -LI   ! this is right for prognostic salinity (i think)
     enth_freeze = Enthalpy(1) ! this is right for fixed salinity
     m_freeze = top_melt/enth_freeze;
     if (m_freeze > m_pond) then
@@ -1956,7 +1258,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     !   The energy required to evaporate was already taken into account in
     ! ice_thm, but there is excess energy that has not been used here that needs
     ! to be passed on to the ocean.
-    heat_to_ocn = heat_to_ocn + evap_left*(ITV%Lat_Vapor+ITV%LI)
+    heat_to_ocn = heat_to_ocn + evap_left*(Lat_Vapor+LI)
   endif
 
   if (top_melt > 0.0 ) then ! apply top melt heat flux
@@ -2025,7 +1327,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     end do
     tavg = tavg/mtot_ice  ! average ice temperature
     if (tavg > CS%tdrain) then ! drain pond based on tunable ice temp. criterion
-      mp_max = mtot_ice*(ITV%Rho_water/ITV%Rho_ice-1)
+      mp_max = mtot_ice*(Rho_water/Rho_ice-1)
       mp_min = mp_max*(CS%min_pond_frac/CS%max_pond_frac)**2
       h2o_ice_to_ocn = h2o_ice_to_ocn + max(m_pond-mp_min,0.0)
       m_pond = m_pond-max(m_pond-mp_min,0.0)
@@ -2033,7 +1335,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   endif
 
   ! calculate mass to take from pond to bring ice top to waterline - mw/new
-  h2o_from_pond = m_pond+m_lay(0)-(ITV%Rho_water/ITV%Rho_ice-1.0)*mtot_ice
+  h2o_from_pond = m_pond+m_lay(0)-(Rho_water/Rho_ice-1.0)*mtot_ice
   if (h2o_from_pond>0.0) then ! reduce pond to raise ice top toward waterline
     h2o_from_pond = min(h2o_from_pond,m_pond) ! keep m_pond >= 0.0
     m_pond = m_pond - h2o_from_pond
@@ -2042,7 +1344,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
 
   ! The mass of ice that must be submerged (when floating according to
   ! Archimedes principle) for ice top to be at waterline.
-  m_submerged = (mtot_ice+m_lay(0)+m_pond)* (ITV%Rho_ice/ITV%Rho_water)
+  m_submerged = (mtot_ice+m_lay(0)+m_pond)* (Rho_ice/Rho_water)
   if (m_submerged > mtot_ice) then
     snow_to_ice = min(m_submerged - mtot_ice, m_lay(0)) ! need ice from snow
 
@@ -2117,14 +1419,15 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
   real :: enthM_freezing      ! The enthalpy gain due to the mass gain by 
                               ! freezing, in enth_unit kg m-2 (often J m-2).
   real :: enth_unit           ! The units for enthalpy (often J kg-1).
+  real :: LI          ! The latent heat of fusion, in J kg-1.
   ! These variables are used only for debugging.
   real :: mtot_ice    ! The summed ice mass in kg m-2.
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   integer :: k
   logical :: debug = .false.
 
-  enth_unit = ITV%enth_unit
-  min_dEnth_freeze = (ITV%LI*ITV%enth_unit) * (1.0-CS%liq_lim)
+  call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, Latent_Fusion=LI)
+  min_dEnth_freeze = (LI*enth_unit) * (1.0-CS%liq_lim)
 
   ! set mass mark; will subtract mass at end for melt flux to ocean
   if (debug) then
@@ -2143,7 +1446,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, &
     frazil_per_layer = (enth_unit*frazil)/NkIce
     do k=1,NkIce
     ! ### t_frazil and enth_frazil are calculated in a kludgey way here; revisit this?
-      t_frazil = min(tfw, -ITV%mu_TS*sice_therm(k) - CS%Frazil_temp_offset)
+      t_frazil = min(tfw, T_Freeze(sice_therm(k), ITV) - CS%Frazil_temp_offset)
       enth_frazil = min(enth_from_TS(t_frazil, sice_therm(k), ITV), &
                         enthalpy(NkIce+1) - min_dEnth_freeze)
       m_frazil = frazil_per_layer / (enthalpy(NkIce+1) - enth_frazil)
@@ -2243,13 +1546,530 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce)
 
 end subroutine rebalance_ice_layers
 
-subroutine SIS2_ice_thm_end(CS, ITV)
+!> SIS2_ice_thm_end deallocates an SIS2_ice_thm_CS type and any sub-types.
+subroutine SIS2_ice_thm_end(CS)
+  type(SIS2_ice_thm_CS), pointer :: CS !< A pointer to the SIS2_ice_thm control structure.
+
+  deallocate(CS)
+end subroutine SIS2_ice_thm_end
+
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!  Everything above this point pertains to the updating of the ice state due to
+!  themrmodyanmic forcing.  Everything after this point relates to more basic
+!  calculations of sea ice thermodynamics.  They could be separated into two
+!  modules, but by keeping them together compliers stand a better chance of
+!  inlining various small subroutines and achieving better performance.
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_thermo_init initializes the sea-ice ice thermodynamics parameter structure.
+subroutine ice_thermo_init(param_file, ITV, init_EOS )
+
+  type(param_file_type), intent(in)    :: param_file
   type(SIS2_ice_thm_CS), pointer :: CS
   type(ice_thermo_type), pointer :: ITV ! A pointer to the ice thermodynamic parameter structure.
+  logical,     optional, intent(in) :: init_EOS
+
+! This include declares and sets the variable "version".
+#include "version_variable.h"
+  character(len=40)  :: mod = "SIS2_ice_thm (thermo)" ! This module's name.
+
+  if (.not.associated(ITV)) allocate(ITV)
+
+  call log_version(param_file, mod, version, &
+     "This sub-module calculates ice thermodynamic quantities.")
+  call get_param(param_file, mod, "LATENT_HEAT_FUSION", ITV%LI, &
+                 "The latent heat of fusion as used by SIS.", &
+                 units="J kg-1", default=3.34e5)
+  call get_param(param_file, mod, "LATENT_HEAT_VAPOR", ITV%Lat_Vapor, &
+                 "The latent heat of vaporization of water at 0C as used by SIS.", &
+                 units="J kg-1", default=2.500e6)
+  call get_param(param_file, mod, "RHO_OCEAN", ITV%Rho_water, &
+                 "The nominal density of sea water as used by SIS.", &
+                 units="kg m-3", default=1030.0)
+  call get_param(param_file, mod, "RHO_ICE", ITV%Rho_ice, &
+                 "The nominal density of sea ice as used by SIS.", &
+                 units="kg m-3", default=905.0)
+  call get_param(param_file, mod, "RHO_SNOW", ITV%Rho_snow, &
+                 "The nominal density of snow as used by SIS.", &
+                 units="kg m-3", default=330.0)
+  call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
+                 "The heat capacity of fresh ice, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=2100.0)
+  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
+                 "The heat capacity of sea water, approximated as a \n"//&
+                 "constant.", units="J kg-1 K-1", default=4200.0)
+  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
+                 "The heat capacity of water in sea-ice, approximated as \n"//&
+                 "a constant.  CP_WATER and CP_SEAWATER should be equal, \n"//&
+                 "but for computational convenience CP_WATER has often \n"//&
+                 "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
+                 default=ITV%Cp_SeaWater)
+  call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
+                 "The heat capacity of water in brine pockets within the \n"//&
+                 "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
+                 "CP_WATER should be equal, but for computational \n"//&
+                 "convenience CP_BRINE has often been set equal to CP_ICE.", &
+                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE LATER TO default=CP_WATER)
+  call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
+                 "The derivative of the freezing temperature with salinity.", &
+                 units="deg C PSU-1", default=-0.054)
+
+  call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
+                 "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
+                 "should be physically consistent when this is adjusted, \n"//&
+                 "because only the relative value is of physical meaning, \n"//&
+                 "but roundoff errors can change the solution.", units="J kg-1", &
+                 default=0.0)
+  call get_param(param_file, mod, "ENTHALPY_UNITS", ITV%enth_unit, &
+                 "A constant that rescales enthalpy from J/kg to a \n"//&
+                 "different scale in its internal representation.  Changing \n"//&
+                 "this by a power of 2 is useful for debugging, as answers \n"//&
+                 "should not change.  A negative values is taken as an inverse.", &
+                 units="J kg-1", default=1.0)
+  if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
+
+  if (present(init_EOS)) then ; if (init_EOS) then
+    if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
+  endif ; endif
+
+end subroutine ice_thermo_init
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! T_Freeze - Return the freezing temperature as a function of salinity (and    !
+!            possibly later pressure).                                         !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function T_Freeze(S, ITV)
+  real, intent(in) :: S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: T_Freeze
+
+  T_Freeze = 0.0 + ITV%dTf_dS * S
+
+end function T_Freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! calculate_T_Freeze - Calculate an array of freezing temperatures for an      !
+!            an array of salinities (and maybe later pressures).               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine calculate_T_Freeze(S, T_Freeze, ITV)
+  real, dimension(:), intent(in) :: S
+  real, dimension(:), intent(out) :: T_Freeze
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  integer :: k, nk_ice
+  nk_ice = size(S)
+
+  do k=1,nk_ice ; T_Freeze(k) = 0.0 + ITV%dTf_dS * S(k) ; enddo
+
+end subroutine calculate_T_Freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_from_TS - Set a column of enthalpies from temperature and salinity. !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine enthalpy_from_TS(T, S, enthalpy, ITV)
+  real, dimension(:), intent(in) :: T, S
+  real, dimension(:), intent(out) :: enthalpy
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  integer :: k, nk_ice
+  nk_ice = size(T)
+
+  do k=1,nk_ice ; enthalpy(k) = enth_from_TS(T(k), S(k), ITV) ; enddo
+
+end subroutine enthalpy_from_TS
+
+function enth_from_TS(T, S, ITV) result(enthalpy)
+  real, intent(in)  :: T, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: enthalpy
+
+  real :: T_fr  ! The freezing temperature in deg C.
+  real :: Cp_Ice, Enth_liq_0, LI, enth_unit
+  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI
+  Enth_liq_0 = ITV%Enth_liq_0 ; enth_unit = ITV%enth_unit
+
+  T_fr = ITV%dTf_dS*max(0.0,S)
+
+  if ((S == 0.0) .and. (T <= 0.0)) then
+    ! Note that at the freezing point, fresh water is assumed to be all ice,
+    ! due to the degeneracy in inverting temperature for enthalpy.
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI) + Cp_Ice*T)
+  elseif (T >= T_fr) then ! This layer is already melted, so the enthalpy is
+    ! just what is required to warm or cool it to 0 C.
+    enthalpy = enth_unit * (ENTH_LIQ_0 + ITV%Cp_Water*T)
+  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
+                  (Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr))
+  else  ! The derivation of this expression can be found in the SIS2 manual;
+    ! it assumes that the freezing temperature varies linearly with salinity.
+    enthalpy = enth_unit * ((ENTH_LIQ_0 - LI * (1.0 - T_fr/T)) + &
+                  ((Cp_Ice*T + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
+                   (ITV%Cp_Brine - Cp_Ice) * T_fr*log(T_fr/T))) ! Note that log(1/a) = -log(a).
+  endif
+
+end function enth_from_TS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_liquid_freeze - Return the enthalpy of liquid water at the freezing !
+!    point for a given salinity.                                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function enthalpy_liquid_freeze(S, ITV)
+  real, intent(in)  :: S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: enthalpy_liquid_freeze
+
+  enthalpy_liquid_freeze = ITV%enth_unit * &
+    (ITV%Cp_water*(ITV%dTf_dS*S) + ITV%ENTH_LIQ_0)
+
+end function enthalpy_liquid_freeze
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! enthalpy_liquid - Returns the enthalpy of liquid water at the given          !
+!     temperature and salinity, in enth_unit.                                  !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function enthalpy_liquid(T, S, ITV)
+  real, intent(in)  :: T, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: enthalpy_liquid
+
+  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%CP_SeaWater*T)
+
+end function enthalpy_liquid
+
+! This returns the enthalpy change associated with melting water of
+! a given temperature (T, in C) and salinity (S), in enth_unit.
+function enth_melt(T, S, ITV) result (emelt)
+  real, intent(in) :: T, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real             :: emelt
+
+  emelt = enthalpy_liquid_freeze(S, ITV) - enth_from_TS(T, S, ITV)
+end function enth_melt
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! Temp_from_Enth_S - Set a column of temperatures from enthalpy and salinity.  !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+subroutine Temp_from_Enth_S(En, S, Temp, ITV)
+  real, dimension(:), intent(in) :: En, S
+  real, dimension(:), intent(out) :: Temp
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  integer :: k, nk_ice
+
+  nk_ice = size(Temp)
+
+  do k=1,nk_ice
+    Temp(k) = Temp_from_En_S(En(k), S(k), ITV)
+  enddo
+
+end subroutine Temp_from_Enth_S
+
+function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
+  real, intent(in)  :: En, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
+
+  real :: I_Cp_Ice, BB, I_CpI_Eu, I_CpW_Eu
+  real :: I_enth_unit
+  real :: Cp_Ice, LI, Mu_TS
+  real :: T_fr  ! The freezing temperature in deg C.
+  real :: En_J  ! Enthalpy in Joules with 0 offset.
+  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = -ITV%dTf_dS
+
+  I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
+  I_CpI_Eu = 1.0 / (Cp_Ice * ITV%enth_unit)
+  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
+  ! I_Cp_Water = 1.0 / ITV%CP_Water
+
+  T_fr = ITV%dTf_dS*S
+
+  En_J = En * I_enth_unit - ITV%enth_liq_0
+  if (S <= 0.0) then ! There is a step function for fresh water.
+    if (En_J >= 0.0) then ; dT_dE = I_CpW_Eu
+    elseif (En_J > -LI) then ; dT_dE = 0.0
+    else ; dT_dE = I_CpI_Eu ; endif
+  elseif (ITV%Cp_Ice == ITV%Cp_Brine) then
+    ! This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity.
+    if (En_J < T_fr * ITV%Cp_water) then
+      BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
+      dT_dE = I_Cp_Ice * 0.5 * (1.0 - BB / sqrt(BB**2 - T_fr*Cp_Ice*LI))
+    else  ! This layer is already melted, so just warm it to 0 C.
+      dT_dE = I_CpW_Eu
+    endif
+  else
+    call SIS_error(FATAL, "Write dTemp_dEnth_Enth for Cp_ice /= Cp_brine.")
+  endif
+
+end function dTemp_dEnth_EnS
+
+function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
+  real, intent(in)  :: Temp, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: dT_dE  ! Partial derivative of temperature with enthalpy in degC/Enth_unit.
+
+  real :: I_CpI_Eu, I_CpW_Eu
+!  real :: I_enth_unit
+!  real :: Cp_Ice, LI, Mu_TS
+  real :: T_fr  ! The freezing temperature in deg C.
+!  Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = -ITV%dTf_dS
+
+  I_CpI_Eu = 1.0 / (ITV%Cp_Ice * ITV%enth_unit)
+  I_CpW_Eu = 1.0 / (ITV%Cp_Water * ITV%enth_unit)
+
+  T_fr = ITV%dTf_dS*S
+
+  if (S <= 0.0) then ! There is a step function for fresh water.
+    if (Temp > T_fr) then ; dT_dE = I_CpW_Eu
+    elseif (Temp == T_Fr) then ; dT_dE = 0.0
+    else ; dT_dE = I_CpI_Eu ; endif
+  else
+    ! This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity.
+    if (Temp < T_fr) then
+        ! These are equivalent expressions.
+        !  dEn_dT = ( -LI * (T_fr / Temp**2)) + &
+        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/Temp)
+        dT_dE = (-Temp) / (ITV%enth_unit * (ITV%LI * (T_fr / Temp) + &
+                  (ITV%Cp_Ice*(-Temp) + (ITV%Cp_Brine - ITV%Cp_Ice) * (-T_Fr))))
+    else  ! This layer is already melted, so just warm it to 0 C.
+      dT_dE = I_CpW_Eu
+    endif
+  endif
+
+end function dTemp_dEnth_TS
+
+
+function Temp_from_En_S(En, S, ITV) result(Temp)
+  real, intent(in)  :: En, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+  real :: Temp  ! Temperature in deg C.
+
+  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities, in kg K J-1.
+  real :: BB
+  real :: I_enth_unit
+  real :: T_fr  ! The freezing temperature in deg C.
+  real :: Cp_Ice, Cp_Water, LI, Mu_TS
+  real :: En_J  ! Enthalpy in Joules with 0 offset.
+  real :: T_guess  ! The latest best guess at Temp, in deg C.
+  real :: T_deriv  ! The value of Temp at which to evaluate dT_dEn, in deg C.
+  real :: T_next   ! The tentative next value for T_guess, in deg C.
+  real :: T_max, T_min ! Bracketing temperatures, in deg C.
+  real :: En_Tg    ! The enthalpy at T_guess, in J kg-1.
+  real :: En_Tmin, En_Tmax ! The enthalpies at T_max and T_min, in J kg-1.
+  real :: dT_dEn   ! The partial derivative of temperature with enthalpy, in degC kg / J.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+
+!  real :: dTemp(20), T_itt(20)
+  integer :: itt
+  Cp_Ice = ITV%Cp_Ice ; Cp_water = ITV%Cp_water ; LI = ITV%LI ; Mu_TS = -ITV%dTf_dS
+
+  I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
+  I_Cp_Water = 1.0 / CP_Water
+
+  T_fr = ITV%dTf_dS*S
+  En_J = En * I_enth_unit - ITV%enth_liq_0
+
+  if (S <= 0.0) then ! There is a step function for fresh water.
+    if (En_J >= 0.0) then ; Temp = En_J * I_Cp_Water
+    elseif (En_J >= -LI) then ; Temp = 0.0
+    else ; Temp = I_Cp_Ice * (En_J + LI) ; endif
+  elseif (En_J >= T_fr*Cp_Water) then  ! This layer is completely melted.
+    Temp = En_J * I_Cp_Water
+  else
+    !   This makes the assumption that all water in the ice and snow categories,
+    ! both fluid and in pockets, has the same heat capacity. This may be the
+    ! final solution or it may be a good first guess to start the iterations.
+
+    !   LI * (T_fr/T) + Cp_Ice*T = En_J - (ITV%Cp_Water-Cp_Ice)*T_fr + LI
+    !   LI * (T_fr/T) + Cp_Ice*T = 2.0*BB
+    !   Cp_Ice*T**2 - 2.0*BB*T + LI * T_fr = 0.0
+
+    ! Note that (En_J < T_fr*Cp_Water)
+    BB = 0.5*((En_J - T_fr*(ITV%Cp_water-ITV%Cp_ice)) + LI)
+    Temp = I_Cp_Ice * (BB - sqrt(BB**2 - T_fr*Cp_Ice*LI))
+
+    if (Cp_Ice /= ITV%Cp_brine) then
+      T_min = -273.15
+      En_Tmin = ( - LI * (1.0 - T_fr/T_min) ) + &
+              ((Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
+               (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_min)))
+      ! Could En_Tmin be approximated as -LI + (Cp_Ice*T_min + (ITV%Cp_Water-Cp_Ice)*T_fr) ?
+      T_max = T_fr ; En_Tmax = (ITV%Cp_Water*T_fr)
+
+      ! This might be a good enough first guess that bracketing is unnecessary.
+      T_guess = Temp
+!      dTemp(:) = 0.0 ; T_itt(:) = 0.0
+      do itt=1,20 ! Note that 3 or 4 iterations usually are enough.
+!        T_itt(itt) = T_guess
+        ! This expression uses the fact that the freezing point varies linearly
+        ! with salinity.
+        En_Tg = ( - LI * (1.0 - T_fr/T_guess)) + &
+                ((Cp_Ice*T_guess + (ITV%Cp_Water-Cp_Ice)*T_fr) - &
+                 (ITV%Cp_Brine - Cp_Ice) * (T_fr * log(T_fr/T_guess)))
+
+        if (abs(En_Tg - En_J) <= 1.0e-15*(abs(En_J) + abs(En_Tg))) then
+          Temp = T_guess ; exit ! (The exit could be a return?)
+        elseif (En_Tg < En_J) then
+          T_min = T_guess ; En_Tmin = En_Tg
+        else
+          T_max = T_guess ; En_Tmax = En_Tg
+        endif
+
+        ! Use the more efficient Newton's method of McDougall & Witherspoon (2014),
+        ! Appl. Math. Lett., 29, 20-25.
+        T_deriv = T_guess
+        if (itt > 1) then ! Reuse the estimate of dT_dEn from the last iteration.
+          T_deriv = T_guess + 0.5*dT_dEn * (En_J - En_Tg)
+          if ((T_deriv < T_min) .or. (T_deriv > T_max)) T_deriv = T_guess
+        endif
+
+        ! These are equivalent expressions.
+        !  dEn_dT = ( -LI * (T_fr / T_deriv**2)) + &
+        !             Cp_Ice + (ITV%Cp_Brine - Cp_Ice) * (T_fr/T_deriv)
+        dT_dEn = (-T_deriv) / (LI * (T_fr / T_deriv) + &
+                  (Cp_Ice*(-T_deriv) + (ITV%Cp_Brine - Cp_Ice) * (-T_fr)))
+        T_next = T_guess + dT_dEn * (En_J - En_Tg)
+
+!        dTemp(itt) = T_next - T_guess
+        if ((T_next > T_max) .or. (T_next < T_min)) then ! Use the false position method.
+          T_guess = ((En_Tmax - En_J) * T_min + (En_J - En_Tmin) * T_max) / &
+                     (En_Tmax - En_Tmin)
+        else
+          T_guess = T_next
+        endif
+      enddo
+      Temp = T_guess
+
+!   These were used to debug this routine.
+!      if (itt > 5) then
+!        write (*,'("dTemp = ",8E12.4)') dTemp(1:8)
+!        write (*,'("T_itt = ",8E14.6)') T_itt(1:8)
+!      endif
+    endif
+  endif
+
+end function Temp_from_En_S
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! e_to_melt_TS - return the energy needed to melt a given snow/ice             !
+!      configuration, in J kg-1.                                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function e_to_melt_TS(T, S, ITV) result(e_to_melt)
+  real, intent(in) :: T, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
+                     ! and warm it to its bulk freezing temperature, in J kg-1.
+
+  real :: T_fr  ! The freezing temperature in deg C.
+  T_fr = ITV%dTf_dS*S
+
+  if (T >= T_Fr) then ! This layer is already melted and has excess heat.
+    e_to_melt = ITV%Cp_Water * (-T + T_Fr)
+  elseif (ITV%Cp_Ice == ITV%Cp_brine) then
+    e_to_melt = (ITV%LI - ITV%Cp_ice*T) * (1.0 - T_Fr/T)
+            ! =  ITV%LI * (1.0 - T_Fr/T) + ITV%Cp_ice * (T_Fr - T)
+  else
+    e_to_melt = ITV%LI * (1.0 - T_fr/T) + (ITV%Cp_Ice * (T_Fr - T) + &
+                   (ITV%Cp_Brine - ITV%Cp_Ice) * (T_fr*log(T_fr/T)))
+  endif
+
+end function e_to_melt_TS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! energy_melt_enthS - return the energy needed to melt a given snow/ice        !
+!      configuration, in J kg-1.                                               !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+function energy_melt_enthS(En, S, ITV) result(e_to_melt)
+  real, intent(in) :: En, S
+  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
+
+  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
+                     ! and warm it to its bulk freezing temperature, in J kg-1.
+
+  e_to_melt = ITV%enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
+
+end function energy_melt_enthS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> get_SIS2_thermo_coefs returns various thermodynamic coefficients.
+subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
+                                 Cp_Ice, Cp_SeaWater, Cp_brine, Cp_water, &
+                                 rho_ice, rho_snow, rho_water, &
+                                 Latent_fusion, Latent_vapor, &
+                                 EOS, specified_thermo_salinity)
+  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+  real, dimension(:), optional, intent(out) :: &
+    ice_salinity    !< The specified salinity of each layer when the thermodynamic
+                    !! salinities are pre-specified, in g kg-1.
+  real, optional, intent(out) :: &
+    enthalpy_units  !< A unit conversion factor for ethalpy from its internal representation to
+                    !! Joules kg-1.
+  real, optional, intent(out) :: &
+    Cp_Ice          !< The heat capacity of ice in J kg-1 K-1.
+  real, optional, intent(out) :: &
+    Cp_SeaWater     !< The heat capacity of seawater in J kg-1 K-1.
+  real, optional, intent(out) :: &
+    Cp_Water        !< The heat capacity of water in the sea-ice thermodynamic
+                    !! calculations, in J kg-1 K-1.  Cp_Water and Cp_Seawater
+                    !! should be equal, but can be set separately for convenience
+                    !! in reproducing previous simulations.
+  real, optional, intent(out) :: &
+    Cp_Brine        !< The heat capacity of liquid water in brine pockets within
+                    !! the sea-ice, in J kg-1 K-1.  Cp_Brine and Cp_Water should
+                    !! be equal, but for computational convenience Cp_Brine has
+                    !! often been set equal to Cp_Ice instead.
+  real, optional, intent(out) :: &
+    rho_ice         !< A nominal density of ice in kg m-3. 
+  real, optional, intent(out) :: &
+    rho_snow        !< A nominal density of snow in kg m-3.
+  real, optional, intent(out) :: &
+    rho_water       !< A nominal density of water in kg m-3.
+  real, optional, intent(out) :: &
+    Latent_fusion   !< The latent heat of fusion, in J kg-1.
+  real, optional, intent(out) :: &
+    Latent_vapor    !< The latent heat of vaporization, in J kg-1.
+  type(EOS_type), optional, pointer :: &
+    EOS             !< A pointer to the MOM6/SIS2 ocean equation-of-state type.
+  logical, optional, intent(out) :: &
+    specified_thermo_salinity !< If true, all thermodynamic calculations
+                    !! are done with a specified salinity profile that may be
+                    !! independent of the ice bulk salinity.
+
+  call get_thermo_coefs(ice_salinity=ice_salinity)
+
+  if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
+  if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
+  if (present(Cp_Water)) Cp_Water = ITV%Cp_Water
+  if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine
+  if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
+  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
+  if (present(rho_ice)) rho_ice = ITV%rho_ice
+  if (present(rho_snow)) rho_snow = ITV%rho_snow
+  if (present(rho_water)) rho_water = ITV%rho_water
+  if (present(Latent_fusion)) Latent_fusion = ITV%LI
+  if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
+  if (present(EOS)) then
+    if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
+      "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
+      "has not yet been allocated.")
+    EOS => ITV%EOS
+  endif
+
+end subroutine get_SIS2_thermo_coefs
+
+!> ice_thermo_end deallocates an ice_thermo_type and any sub-types.
+subroutine ice_thermo_end(ITV)
+  type(ice_thermo_type), pointer :: ITV !< A pointer to the ice thermodynamic parameter structure.
 
   if (associated(ITV%EOS)) call EOS_end(ITV%EOS)
   deallocate(ITV)
-  deallocate(CS)
-end subroutine SIS2_ice_thm_end
+
+end subroutine ice_thermo_end
 
 end module SIS2_ice_thm

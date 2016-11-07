@@ -722,14 +722,14 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
-           ( ((IOF%runoff(i,j) + IOF%calving(i,j)) + &
+           ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
               (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%flux_q_ocn_top(i,j) )
     Flux_SW = (IOF%flux_sw_vis_dir_ocn(i,j) + IOF%flux_sw_vis_dif_ocn(i,j)) + &
               (IOF%flux_sw_nir_dir_ocn(i,j) + IOF%flux_sw_nir_dif_ocn(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
            ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_t_ocn_top(i,j)) + &
-            (-LI)*(IOF%fprec_ocn_top(i,j) + IOF%calving(i,j)) )
+            (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
            (OSS%frazil(i,j)-FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
@@ -839,7 +839,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
-          (IOF%runoff(i,j) + IOF%calving(i,j))
+          (FIA%runoff(i,j) + FIA%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
@@ -847,7 +847,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 
     ! These are mass fluxes that are simply passed through to the ocean.
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
-                      (area_pt * FIA%fprec_top(i,j,0) + IOF%calving(i,j))
+                      (area_pt * FIA%fprec_top(i,j,0) + FIA%calving(i,j))
 
   enddo ; enddo
 
