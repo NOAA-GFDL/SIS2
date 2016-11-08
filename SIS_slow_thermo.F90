@@ -346,73 +346,106 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
+  endif
 
-  else ! Do not use specified ice.
-    !TOM> Store old ice mass per unit area for calculating partial ice growth.  
-    mi_old = IST%mH_ice
+  ! IOF must be updated regardless of whether the ice is specified or the prognostic model
+  ! is being used
+  if (FIA%num_tr_fluxes>0) then
+!It is necessary and sufficient that only one OMP thread goes through the following block
+!since IOF is shared between the threads (hence the block is not thread-safe).
+!$OMP SINGLE
+    if (IOF%num_tr_fluxes < 0) then
+      ! This is the first call, and the IOF arrays need to be allocated.
+      IOF%num_tr_fluxes = FIA%num_tr_fluxes
+
+      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
+      IOF%tr_flux_ocn_top(:,:,:) = 0.0
+      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
+      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
+    endif
+!$OMP END SINGLE
+!$OMP do
+    do m=1,FIA%num_tr_fluxes
+      do j=jsc,jec ; do i=isc,iec
+        IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
+      enddo ; enddo
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        IOF%tr_flux_ocn_top(i,j,m) = IOF%tr_flux_ocn_top(i,j,m) + &
+                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,m)
+      enddo ; enddo ; enddo
+    enddo
+  endif
+!$OMP end parallel
+  
+  ! No other thermodynamics need to be done for ice that is specified, 
+  if(CS%specified_ice) return ;   
+  ! Otherwise, Continue with the remainder of the prognostic slow thermodynamics
     
-    !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
-    !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-    if (CS%do_ridging) then
+  !TOM> Store old ice mass per unit area for calculating partial ice growth.  
+  mi_old = IST%mH_ice
+
+  !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
+  !     in order to subtract ice melt proportionally from ridged ice volume (see below)
+  if (CS%do_ridging) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
 !$OMP                          private(tmp3)
-      do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-        rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-            rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-      enddo ; enddo ; enddo
-    endif
-
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
-    ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
-    call post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
-
-    call disable_SIS_averaging(CS%diag)
-
-    call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
-  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
-    do j=jsc,jec ; do i=isc,iec
-      IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
-      IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
-    enddo ; enddo
-
-    ! The thermodynamics routines return updated values of the ice and snow
-    ! masses-per-unit area and enthalpies.
-    call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
-
-    !TOM> calculate partial ice growth for ridging and aging.
-    if (CS%do_ridging) then
-      !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
-      !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
-      do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-          IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
-             (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
-        IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
-      enddo ; enddo ; enddo
-    endif
-
-    !  Other routines that do thermodynamic vertical processes should be added here
-
-    ! Do tracer column physics
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-    call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
-    call disable_SIS_averaging(CS%diag)
-
-    call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
-
-    if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_thermo A", check_column=.true.)
-    call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                               IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
-
-    if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_thermo B ", check_column=.true.)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
+          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+    enddo ; enddo ; enddo
   endif
+
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+
+  ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
+  call post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
+
+  call disable_SIS_averaging(CS%diag)
+
+  call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
+  do j=jsc,jec ; do i=isc,iec
+    IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
+    IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
+  enddo ; enddo
+
+  ! The thermodynamics routines return updated values of the ice and snow
+  ! masses-per-unit area and enthalpies.
+  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
+
+  !TOM> calculate partial ice growth for ridging and aging.
+  if (CS%do_ridging) then
+    !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
+    !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
+        IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+           (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
+      IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
+    enddo ; enddo ; enddo
+  endif
+
+  !  Other routines that do thermodynamic vertical processes should be added here
+
+  ! Do tracer column physics
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
+  call disable_SIS_averaging(CS%diag)
+
+  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
+
+  if (CS%column_check) &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                              message="      Post_thermo A", check_column=.true.)
+  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
+                             IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
+
+  if (CS%column_check) &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                              message="      Post_thermo B ", check_column=.true.)
+
 
 end subroutine slow_thermodynamics
 
@@ -677,33 +710,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
                                  IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
-
-  if (FIA%num_tr_fluxes>0) then
-!It is necessary and sufficient that only one OMP thread goes through the following block
-!since IOF is shared between the threads (hence the block is not thread-safe).
-!$OMP SINGLE
-    if (IOF%num_tr_fluxes < 0) then
-      ! This is the first call, and the IOF arrays need to be allocated.
-      IOF%num_tr_fluxes = FIA%num_tr_fluxes
-
-      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
-      IOF%tr_flux_ocn_top(:,:,:) = 0.0
-      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
-      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
-    endif
-!$OMP END SINGLE
-!$OMP do
-    do n=1,FIA%num_tr_fluxes
-      do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
-                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
-      enddo ; enddo ; enddo
-    enddo
-  endif
-!$OMP end parallel
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
