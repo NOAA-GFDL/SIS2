@@ -346,7 +346,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
-    call pass_var(IST%part_size, G%Domain)
     
     if (FIA%num_tr_fluxes>0) then
 !It is necessary and sufficient that only one OMP thread goes through the following block
@@ -363,13 +362,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif
 !$OMP END SINGLE
 !$OMP do
-      do n=1,FIA%num_tr_fluxes
+      do m=1,FIA%num_tr_fluxes
         do j=jsc,jec ; do i=isc,iec
-          IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
+          IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
         enddo ; enddo
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
-                     IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
+          IOF%tr_flux_ocn_top(i,j,m) = IOF%tr_flux_ocn_top(i,j,m) + &
+                     IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,m)
         enddo ; enddo ; enddo
       enddo
     endif
