@@ -129,41 +129,65 @@ public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice
+public :: ice_model_fast_cleanup, unpack_land_ice_boundary
+public :: exchange_fast_to_slow_ice, update_ice_model_slow
 
 integer :: iceClock, iceClock1, iceCLock2, iceCLock3
 
 contains
 
 !-----------------------------------------------------------------------
-!
-! Coupler interface to do slow ice processes:  dynamics, transport, mass
-!
+!> Update the sea-ice state due to slow processes, including dynamics,
+!! freezing and melting, precipitation, and transport.
 subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
-  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
-  type(land_ice_boundary_type),  intent(inout) :: Land_boundary
-  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), &
+    intent(in)    :: Atmos_boundary !< Atmos_boundary is not actually used, and
+                                   !! is still here only for backward compatibilty with the
+                                   !! interface to Verona and earlier couplers.
+  type(land_ice_boundary_type), &
+    intent(in)    :: Land_boundary !< A structure containing information about
+                                   !! the fluxes from the land that is being shared with the
+                                   !! sea-ice.  If this argument is not present, it is assumed
+                                   !! that this information has already been exchanged.
+  type(ice_data_type), &
+    intent(inout) :: Ice           !< The publicly visible ice data type; this must always be
+                                   !! present, but is optional because of an unfortunate
+                                   !! order of arguments.
+
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in update_ice_model_slow_dn.")
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+
+  call ice_model_fast_cleanup(Ice)
+
+  call unpack_land_ice_boundary(Ice, Land_boundary)
+
+  !   In the case where fast and slow ice PEs are not the same, this call would
+  ! need to be replaced by a routine that does inter-processor receives.
+
+  call exchange_fast_to_slow_ice(Ice)
+
+  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+
+  call update_ice_model_slow(Ice)
+
+end subroutine update_ice_model_slow_dn
+
+
+!-----------------------------------------------------------------------
+!> Update the sea-ice state due to slow processes, including dynamics,
+!! freezing and melting, precipitation, and transport.
+subroutine update_ice_model_slow(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   real :: dt_slow  ! The time step over which to advance the model.
   integer :: i, j, i2, j2, i_off, j_off
 
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
+
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
-
-  ! average fluxes from update_ice_model_fast
-  !   In the case where fast and slow ice PEs are not the same, this call would
-  ! need to be replaced by a routine that does inter-processor receives.
-  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, Ice%fCS%G, Ice%fCS%IG)
-
-  call unpack_land_ice_bdry(Ice%fCS%FIA, Land_boundary, Ice%fCS%G)
-
-  if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
-    ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
-    call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
-  endif
-
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
-    call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
-  endif
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
   ! is a separate clock inside the fCS that is advanced elsewhere.
@@ -238,17 +262,45 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
 
-end subroutine update_ice_model_slow_dn
+end subroutine update_ice_model_slow
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_model_fast_cleanup performs the final steps in the fast ice update cycle
+!! and prepares data to drive the slow ice updates.  This includes finding the
+!! averaged fluxes and unpacking the land to ice forcing.
+subroutine ice_model_fast_cleanup(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+
+  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS must be associated in ice_model_fast_cleanup.")
+
+  ! average fluxes from update_ice_model_fast
+  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
+                          Ice%fCS%G, Ice%fCS%IG)
+
+end subroutine ice_model_fast_cleanup
+ 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
 !! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
-subroutine unpack_land_ice_bdry(FIA, LIB, G)
-  type(fast_ice_avg_type),      intent(inout) :: FIA
-  type(land_ice_boundary_type), intent(in)    :: LIB
-  type(SIS_hor_grid_type),      intent(in)    :: G
+subroutine unpack_land_ice_boundary(Ice, LIB)
+  type(ice_data_type),          intent(inout) :: Ice !< The publicly visible ice data type.
+  type(land_ice_boundary_type), intent(in)    :: LIB !< The land ice boundary type that is being unpacked.
 
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(SIS_hor_grid_type), pointer :: G => NULL()
+  
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+
+  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS must be associated in unpack_land_ice_boundary.")
+  if (.not.associated(Ice%fCS%FIA)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS%FIA must be associated in unpack_land_ice_boundary.")
+  if (.not.associated(Ice%fCS%G)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS%G must be associated in unpack_land_ice_boundary.")
+
+  FIA => Ice%fCS%FIA ; G => Ice%fCS%G
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
@@ -263,7 +315,31 @@ subroutine unpack_land_ice_bdry(FIA, LIB, G)
     FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
   enddo ; enddo
 
-end subroutine unpack_land_ice_bdry
+end subroutine unpack_land_ice_boundary
+
+!> This subroutine copies information (mostly fluxes and the updated tempertures)
+!! from the fast part of the sea-ice to the  slow part of the sea ice.
+subroutine exchange_fast_to_slow_ice(Ice)
+  type(ice_data_type), &
+    intent(inout) :: Ice            !< The publicly visible ice data type whose fast
+                                    !! part is to be exchanged with the slow part.
+
+  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+      "associated (although perhaps not with each other) in exchange_fast_to_slow_ice.")
+
+  if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
+    ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
+    call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
+  endif
+
+  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
+    ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
+    call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
+  endif
+
+end subroutine exchange_fast_to_slow_ice
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
@@ -409,8 +485,6 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice, Verona_coupler )
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in update_ice_model_slow_up.")
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
-
 
   if (Verona) then
     if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
@@ -421,6 +495,8 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice, Verona_coupler )
 
     call exchange_slow_to_fast_ice(Ice)
   endif
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
                              Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
@@ -436,6 +512,8 @@ subroutine exchange_slow_to_fast_ice(Ice)
     intent(inout) :: Ice            !< The publicly visible ice data type whose slow
                                     !! part is to be exchanged with the fast part.
 
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+
   if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
@@ -446,6 +524,8 @@ subroutine exchange_slow_to_fast_ice(Ice)
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
     call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
   endif
+
+  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
 end subroutine exchange_slow_to_fast_ice
 
@@ -486,6 +566,8 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
@@ -592,6 +674,8 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
     ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
   enddo ; enddo
+
+  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
 
 end subroutine unpack_ocn_ice_bdry
 
