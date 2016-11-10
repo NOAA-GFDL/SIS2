@@ -44,11 +44,15 @@ public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 ! the third index is partition (1 is open water; 2... are ice cover by category)!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_data_type !  ice_public_type
-  type(domain2D)                     :: Domain
-  type(time_type)                    :: Time
-  logical                            :: pe
-  integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
-  logical, pointer, dimension(:,:)   :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
+  type(domain2D)                   :: Domain
+  type(time_type)                  :: Time
+  logical                          :: pe
+  logical                          :: slow_ice_pe = .false.
+  logical                          :: fast_ice_pe = .false.
+  integer, pointer, dimension(:)   :: slow_pelist =>NULL() ! Used for flux-exchange with slow processes.
+  integer, pointer, dimension(:)   :: fast_pelist =>NULL() ! Used for flux-exchange with fast processes.
+  integer, pointer, dimension(:)   :: pelist   =>NULL() ! Used for flux-exchange.
+  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
