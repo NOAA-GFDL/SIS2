@@ -40,7 +40,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
 use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
 
-use MOM_domains,       only : pass_var
+! use MOM_domains,       only : pass_var
 ! ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
@@ -169,20 +169,20 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(ice_grid_type),       intent(in) :: IG
   real,                      intent(in) :: Idt_slow
 
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
   !
-  if (IOF%id_runoff>0) &
-    call post_data(IOF%id_runoff, IOF%runoff, CS%diag)
-  if (IOF%id_calving>0) &
-    call post_data(IOF%id_calving, IOF%calving_preberg, CS%diag)
-  if (IOF%id_runoff_hflx>0) &
-    call post_data(IOF%id_runoff_hflx, IOF%runoff_hflx, CS%diag)
-  if (IOF%id_calving_hflx>0) &
-    call post_data(IOF%id_calving_hflx, IOF%calving_hflx_preberg, CS%diag)
+  if (FIA%id_runoff>0) &
+    call post_data(FIA%id_runoff, FIA%runoff, CS%diag)
+  if (FIA%id_calving>0) &
+    call post_data(FIA%id_calving, FIA%calving_preberg, CS%diag)
+  if (FIA%id_runoff_hflx>0) &
+    call post_data(FIA%id_runoff_hflx, FIA%runoff_hflx, CS%diag)
+  if (FIA%id_calving_hflx>0) &
+    call post_data(FIA%id_calving_hflx, FIA%calving_hflx_preberg, CS%diag)
   ! The frazil diagnostic is with the other ocean surface diagnostics.
   ! if (IST%id_frazil>0) &
   !   call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
@@ -195,17 +195,32 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_slp>0) &
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
 
-  if (FIA%id_sw>0) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
+  if ((FIA%id_sw>0) .or. (FIA%id_albedo>0)) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,net_sw,IST,FIA)
     do j=jsc,jec
-      do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
+      do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
-        tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
+        net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
               FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k) + &
               FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
       enddo ; enddo
     enddo
-    call post_data(FIA%id_sw, tmp2d, CS%diag)
+    if (FIA%id_sw>0) call post_data(FIA%id_sw, net_sw, CS%diag)
+    if (FIA%id_albedo>0) then
+      do j=jsc,jec ; do i=isc,iec
+        if (G%mask2dT(i,j)<=0.5) then
+          tmp2d(i,j) = -1.0 ! This is land.
+        elseif ((FIA%flux_sw_dn(i,j) > 0.0)) then
+          ! The 10.0 below is deliberate.  An albedo of down to -9 can be reported
+          ! for detecting inconsistent net_sw and sw_dn.
+          tmp2d(i,j) = (FIA%flux_sw_dn(i,j) - min(net_sw(i,j), 10.0*FIA%flux_sw_dn(i,j))) / &
+                       FIA%flux_sw_dn(i,j)
+        else
+          tmp2d(i,j) = 0.0 ! What does the albedo mean at night?
+        endif
+      enddo ; enddo
+      call post_data(FIA%id_albedo, tmp2d, CS%diag)
+    endif
   endif
   if (FIA%id_lw>0) call post_avg(FIA%id_lw, FIA%flux_lw_top, &
                                  IST%part_size, CS%diag, G=G)
@@ -213,6 +228,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                     IST%part_size, CS%diag, G=G)
   if (FIA%id_rain>0) call post_avg(FIA%id_rain, FIA%lprec_top, &
                                    IST%part_size, CS%diag, G=G)
+  if (FIA%id_sw_dn>0) call post_data(FIA%id_sw_dn, FIA%flux_sw_dn, CS%diag)
   if (FIA%id_sw_vis>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec
@@ -302,6 +318,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Start of SIS_slow_thermo", OSS=OSS)
 
+  !   Set the frazil heat flux that remains to be applied.  This might need
+  ! to be moved earlier in the algorithm, if there ever to be multiple calls to
+  ! slow_thermodynamics per coupling timestep.
+  do j=jsc,jec ; do i=isc,iec
+    FIA%frazil_left(i,j) = OSS%frazil(i,j)
+  enddo ; enddo
+
   !
   ! conservation checks: top fluxes
   !
@@ -323,77 +346,105 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
-    call pass_var(IST%part_size, G%Domain)
+  endif
 
-  else ! Do not use specified ice.
-    !TOM> Store old ice mass per unit area for calculating partial ice growth.  
-    mi_old = IST%mH_ice
+  ! IOF must be updated regardless of whether the ice is specified or the prognostic model
+  ! is being used
+  if (FIA%num_tr_fluxes>0) then
+!It is necessary and sufficient that only one OMP thread goes through the following block
+!since IOF is shared between the threads (hence the block is not thread-safe).
+!$OMP SINGLE
+    if (IOF%num_tr_fluxes < 0) then
+      ! This is the first call, and the IOF arrays need to be allocated.
+      IOF%num_tr_fluxes = FIA%num_tr_fluxes
+
+      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
+      IOF%tr_flux_ocn_top(:,:,:) = 0.0
+      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
+      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
+    endif
+!$OMP END SINGLE
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,FIA,IOF)
+    do m=1,FIA%num_tr_fluxes
+      do j=jsc,jec ; do i=isc,iec
+        IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
+      enddo ; enddo
+      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+        IOF%tr_flux_ocn_top(i,j,m) = IOF%tr_flux_ocn_top(i,j,m) + &
+                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,m)
+      enddo ; enddo ; enddo
+    enddo
+  endif
+  
+  ! No other thermodynamics need to be done for ice that is specified, 
+  if(CS%specified_ice) return ;   
+  ! Otherwise, Continue with the remainder of the prognostic slow thermodynamics
     
-    !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
-    !     in order to subtract ice melt proportionally from ridged ice volume (see below)
-    if (CS%do_ridging) then
+  !TOM> Store old ice mass per unit area for calculating partial ice growth.  
+  mi_old = IST%mH_ice
+
+  !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
+  !     in order to subtract ice melt proportionally from ridged ice volume (see below)
+  if (CS%do_ridging) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
 !$OMP                          private(tmp3)
-      do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-        rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-            rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
-      enddo ; enddo ; enddo
-    endif
-
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
-    ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
-    call post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
-
-    call disable_SIS_averaging(CS%diag)
-
-    call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
-  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
-    do j=jsc,jec ; do i=isc,iec
-      IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
-      IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
-    enddo ; enddo
-
-    ! The thermodynamics routines return updated values of the ice and snow
-    ! masses-per-unit area and enthalpies.
-    call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
-
-    !TOM> calculate partial ice growth for ridging and aging.
-    if (CS%do_ridging) then
-      !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
-      !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
-      do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-        if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
-          IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
-             (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
-        IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
-      enddo ; enddo ; enddo
-    endif
-
-    !  Other routines that do thermodynamic vertical processes should be added here
-
-    ! Do tracer column physics
-    call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-    call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
-    call disable_SIS_averaging(CS%diag)
-
-    call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
-
-    if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_thermo A", check_column=.true.)
-    call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                               IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
-    call pass_var(IST%part_size, G%Domain)
-    call pass_var(IST%mH_ice, G%Domain, complete=.false.)
-    call pass_var(IST%mH_snow, G%Domain, complete=.true.)
-
-    if (CS%column_check) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_thermo B ", check_column=.true.)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
+          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+    enddo ; enddo ; enddo
   endif
+
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+
+  ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
+  call post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
+
+  call disable_SIS_averaging(CS%diag)
+
+  call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
+  do j=jsc,jec ; do i=isc,iec
+    IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
+    IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
+  enddo ; enddo
+
+  ! The thermodynamics routines return updated values of the ice and snow
+  ! masses-per-unit area and enthalpies.
+  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
+
+  !TOM> calculate partial ice growth for ridging and aging.
+  if (CS%do_ridging) then
+    !     ice growth (IST%mH_ice > mi_old) does not affect ridged ice volume
+    !     ice melt   (IST%mH_ice < mi_old) reduces ridged ice volume proportionally
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,mi_old,rdg_frac)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      if (IST%mH_ice(i,j,k) < mi_old(i,j,k)) &
+        IST%rdg_mice(i,j,k) = IST%rdg_mice(i,j,k) + rdg_frac(i,j,k) * &
+           (IST%mH_ice(i,j,k) - mi_old(i,j,k)) * IST%part_size(i,j,k)
+      IST%rdg_mice(i,j,k) = max(IST%rdg_mice(i,j,k), 0.0)
+    enddo ; enddo ; enddo
+  endif
+
+  !  Other routines that do thermodynamic vertical processes should be added here
+
+  ! Do tracer column physics
+  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
+  call disable_SIS_averaging(CS%diag)
+
+  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
+
+  if (CS%column_check) &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                              message="      Post_thermo A", check_column=.true.)
+  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
+                             IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
+
+  if (CS%column_check) &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                              message="      Post_thermo B ", check_column=.true.)
+
 
 end subroutine slow_thermodynamics
 
@@ -658,32 +709,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
                                  IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
-
-  if (FIA%num_tr_fluxes>0) then
-!It is necessary and sufficient that only one OMP thread goes through the following block
-!since IOF is shared between the threads (hence the block is not thread-safe).
-!$OMP SINGLE
-    if (IOF%num_tr_fluxes < 0) then
-      ! This is the first call, and the IOF arrays need to be allocated.
-      IOF%num_tr_fluxes = FIA%num_tr_fluxes
-
-      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
-      IOF%tr_flux_ocn_top(:,:,:) = 0.0
-      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
-      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
-    endif
-!$OMP END SINGLE
-!$OMP do
-    do n=1,FIA%num_tr_fluxes
-      do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,n) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,n)
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) + &
-                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
-      enddo ; enddo ; enddo
-    enddo
-  endif
 !$OMP end parallel
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &

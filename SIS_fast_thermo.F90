@@ -31,12 +31,11 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_fast_thermo
 
-use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
-use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
+use SIS_diag_mediator, only : SIS_diag_ctrl
+! ! use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
+! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
-use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -50,9 +49,8 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : fast_ice_avg_type, ice_rad_type, ocean_sfc_state_type
+use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
-use ice_utils_mod, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
@@ -148,6 +146,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
+    FIA%flux_sw_dn(:,:) = 0.0
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
 
@@ -172,6 +171,8 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
   !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
   do n=1,ABT%fluxes%num_bcs ; if(ABT%fluxes%bc(n)%flux_type  .ne. 'air_sea_deposition') then
    do m=1,ABT%fluxes%bc(n)%num_fields
+  ! FIA%flux_sw_dn is accumulated where the fast radiation diagnostics are output
+  ! because it depends on arrays that are stored in the public ice_data_type.
     ind = FIA%tr_flux_index(m,n)
     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -218,7 +219,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
 !$OMP                          private(u,v)
   do j=jsc,jec
-    do k=0,ncat ;  do i=isc,iec
+    do k=0,ncat ; do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*divid)
       v = FIA%flux_v_top(i,j,k) * (sign*divid)
       FIA%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
@@ -245,22 +246,25 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
       enddo
     enddo ; enddo
+    do i=isc,iec
+      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*divid
+    enddo
   enddo
-  call pass_vector(FIA%flux_u_top, FIA%flux_v_top, G%Domain, stagger=AGRID)
 
   ! Determine the fractional ice coverage and the wind stresses averaged
-  ! across all the ice thickness categories on an A-grid.  This is done
-  ! over the entire data domain for safety.
+  ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,FIA,part_size) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,part_size) &
 !$OMP                           private(I_wts)
-  do j=jsd,jed
-    do k=1,ncat ; do i=isd,ied
+  do j=jsc,jec
+    do k=1,ncat ; do i=isc,iec
       FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
       FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
       FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
+      FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
+      FIA%WindStr_ocn_y(i,j) = FIA%flux_v_top(i,j,0)
     enddo ; enddo
-    do i=isd,ied
+    do i=isc,iec
       if (FIA%ice_cover(i,j) > 0.0) then
         I_wts = 1.0 / FIA%ice_cover(i,j)
         FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) * I_wts
@@ -279,7 +283,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       else
         FIA%ice_free(i,j) = 1.0 ; FIA%ice_cover(i,j) = 0.0
         FIA%WindStr_x(i,j) = FIA%flux_u_top(i,j,0)
-        FIA%WindStr_y(i,j) = FIA%flux_u_top(i,j,0)
+        FIA%WindStr_y(i,j) = FIA%flux_v_top(i,j,0)
       endif
     enddo
   enddo
@@ -296,11 +300,11 @@ end subroutine avg_top_quantities
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_step, CS, G, IG )
+subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
-  type(ocean_sfc_state_type),    intent(in)    :: OSS
+  type(simple_OSS_type),         intent(in)    :: sOSS
   type(ice_rad_type),            intent(in)    :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
@@ -421,12 +425,12 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,OSS,FIA,Rad,CS)  &
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    T_Freeze_surf = T_Freeze(OSS%s_surf(i,j), IST%ITV)
+    T_Freeze_surf = T_Freeze(sOSS%s_surf(i,j), IST%ITV)
     if (IST%mH_ice(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
@@ -508,7 +512,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, OSS, Rad, FIA, Time_st
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "End of update_ice_fast", OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "End of update_ice_fast") !, OSS=OSS)
 
 end subroutine do_update_ice_model_fast
 

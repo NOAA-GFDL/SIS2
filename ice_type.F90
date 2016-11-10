@@ -16,10 +16,7 @@ use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
-use SIS_dyn_bgrid,    only: SIS_B_dyn_CS
-use SIS_dyn_cgrid,    only: SIS_C_dyn_CS
-use ice_transport_mod, only: ice_transport_CS
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
+use SIS2_ice_thm, only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 
@@ -27,14 +24,10 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
+use SIS_diag_mediator, only : register_SIS_diag_field
 use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
-use SIS_sum_output_type, only : SIS_sum_out_CS
-use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 use SIS_types, only : ice_state_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
@@ -51,11 +44,15 @@ public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 ! the third index is partition (1 is open water; 2... are ice cover by category)!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_data_type !  ice_public_type
-  type(domain2D)                     :: Domain
-  type(time_type)                    :: Time
-  logical                            :: pe
-  integer, pointer, dimension(:)     :: pelist   =>NULL() ! Used for flux-exchange.
-  logical, pointer, dimension(:,:)   :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
+  type(domain2D)                   :: Domain
+  type(time_type)                  :: Time
+  logical                          :: pe
+  logical                          :: slow_ice_pe = .false.
+  logical                          :: fast_ice_pe = .false.
+  integer, pointer, dimension(:)   :: slow_pelist =>NULL() ! Used for flux-exchange with slow processes.
+  integer, pointer, dimension(:)   :: fast_pelist =>NULL() ! Used for flux-exchange with fast processes.
+  integer, pointer, dimension(:)   :: pelist   =>NULL() ! Used for flux-exchange.
+  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
@@ -86,7 +83,7 @@ type ice_data_type !  ice_public_type
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
     flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  ! The sensible heat flux out of the ocean, in W m-2.
+    flux_lw => NULL(), &  ! The longwave flux out of the ocean, in W m-2.
     flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
     flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
     flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all
@@ -137,16 +134,6 @@ type ice_data_type !  ice_public_type
   type(icebergs),    pointer :: icebergs => NULL()
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
-
-  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
-                               ! representation of the ice state.
-  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
-                               ! that describe the ocean's surface state, as it is revealed
-                               ! to the ice model.
-  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-                               ! fields that are calculated during the fast ice step but
-                               ! stored for later use by the slow ice step or the ocean.
 
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
@@ -356,36 +343,42 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   ! Note that the publicly visible ice_data_type has no halos, so it is not
   ! possible do check their values.
 
+  ! These fields are on all PEs.
   call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
-  call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
-  call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
-  call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
-  call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
-  call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
-  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-  call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-  call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
-
   call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
-  call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
-  call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
   call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
 
-  call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
-  call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
-  call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
-  call chksum(Ice%flux_q, trim(mesg)//" Ice%flux_q")
-  call chksum(Ice%flux_lw, trim(mesg)//" Ice%flux_lw")
-  call chksum(Ice%flux_sw_vis_dir, trim(mesg)//" Ice%flux_sw_vis_dir")
-  call chksum(Ice%flux_sw_nir_dir, trim(mesg)//" Ice%flux_sw_nir_dir")
-  call chksum(Ice%flux_sw_vis_dif, trim(mesg)//" Ice%flux_sw_vis_dif")
-  call chksum(Ice%flux_sw_nir_dif, trim(mesg)//" Ice%flux_sw_nir_dif")
-  call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
-  call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
-  call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
-  call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
-  call chksum(Ice%calving, trim(mesg)//" Ice%calving")
-  call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+  if (associated(Ice%fCS)) then ! This is a fast-ice PE.
+    call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
+    call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
+    call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
+    call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
+    call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
+    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
+
+    call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
+    call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
+  endif
+
+  if (associated(Ice%sCS)) then ! This is a slow-ice PE.
+    call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
+    call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
+    call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
+    call chksum(Ice%flux_q, trim(mesg)//" Ice%flux_q")
+    call chksum(Ice%flux_lw, trim(mesg)//" Ice%flux_lw")
+    call chksum(Ice%flux_sw_vis_dir, trim(mesg)//" Ice%flux_sw_vis_dir")
+    call chksum(Ice%flux_sw_nir_dir, trim(mesg)//" Ice%flux_sw_nir_dir")
+    call chksum(Ice%flux_sw_vis_dif, trim(mesg)//" Ice%flux_sw_vis_dif")
+    call chksum(Ice%flux_sw_nir_dif, trim(mesg)//" Ice%flux_sw_nir_dif")
+    call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
+    call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
+    call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
+    call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
+    call chksum(Ice%calving, trim(mesg)//" Ice%calving")
+    call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+  endif
 
   if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
@@ -402,6 +395,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   character(len=512) :: mesg1, mesg2
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
+  logical :: fluxes_avail
   real    :: t_min, t_max
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
@@ -409,18 +403,10 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   ncat = SIZE(Ice%t_surf,3) - 1
 
+  fluxes_avail = (associated(Ice%flux_t) .and. associated(Ice%flux_lw))
+
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
-      n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
-    endif
-    if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
-      n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
-    endif
-  enddo ; enddo
   t_min = T_0degC-100. ; t_max = T_0degC+60.
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
@@ -429,13 +415,30 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
   enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
+    endif
+  enddo ; enddo
+  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
+      n_bad = n_bad + 1
+      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
+    endif
+  enddo ; enddo ; endif
 
   if (n_bad > 0) then
     i2 = i_bad+i_off ; j2 = j_bad+j_off ; k2 = k_bad+1
     write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i_bad,j_bad), G%geolatT(i_bad,j_bad), i_bad, j_bad, k_bad, n_bad, pe_here()
-    write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &
-       Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%flux_t(i2,j2), Ice%flux_lw(i2,j2), Ice%flux_q(i2,j2)
+    if (fluxes_avail) then
+      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &
+         Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%flux_t(i2,j2), Ice%flux_lw(i2,j2), Ice%flux_q(i2,j2)
+    else
+      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", S_sfc = ",1pe12.4)') &
+       Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%s_surf(i2,j2)
+    endif
     call SIS_error(WARNING, "Bad ice data "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
   endif
 
@@ -482,25 +485,29 @@ subroutine ice_stock_pe(Ice, index, value)
   real :: icebergs_value
   real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  type(SIS_hor_grid_type), pointer :: G => NULL()
 
   value = 0.0
   if(.not.Ice%pe) return
 
   if (associated(Ice%sCS)) then
-    IST => Ice%Ice_state
+    IST => Ice%sCS%IST
+    G => Ice%sCS%G
     ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
   elseif (associated(Ice%fCS)) then
-    IST => Ice%Ice_state
+    IST => Ice%fCS%IST
+    G => Ice%fCS%G
     ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
-                   "without either sCS or fCS associated")
+                   "without either sCS or fCS associated.")
     return
   endif
 
-  isc = Ice%G%isc ; iec = Ice%G%iec ; jsc = Ice%G%jsc ; jec = Ice%G%jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
-  call get_SIS2_thermo_coefs(Ice%Ice_State%ITV, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
   select case (index)
 
@@ -508,7 +515,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k)) * &
-               IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -516,13 +523,13 @@ subroutine ice_stock_pe(Ice, index, value)
       if (IST%slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-              value = value - (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+              value = value - (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                               (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
       else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          part_wt = (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
@@ -538,7 +545,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !There is no salt in the snow.
       value = 0.0
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%part_size(i,j,k) * (Ice%G%areaT(i,j)*Ice%G%mask2dT(i,j))) * &
+        value = value + (IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 

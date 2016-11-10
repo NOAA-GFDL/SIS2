@@ -101,6 +101,11 @@ type dyn_trans_CS ; private
                           ! ice.  The original SIS2 implementation is based on
                           ! work by Torge Martin.  Otherwise, ice is compressed
                           ! proportionately if the concentration exceeds 1.
+  logical :: berg_windstress_bug  ! If true, use older code that applied an old
+                          ! ice-ocean stress to the icebergs in place of the
+                          ! current air-ice stress.  This option is here for
+                          ! backward compatibility, but should be avoided.
+
   logical :: debug        ! If true, write verbose checksums for debugging purposes.
   logical :: column_check ! If true, enable the heat check column by column.
   real    :: imb_tol      ! The tolerance for imbalances to be flagged by
@@ -144,7 +149,7 @@ contains
 subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(inout) :: IOF
   real,                       intent(in)    :: dt_slow
   type(icebergs),             pointer       :: icebergs_CS
@@ -154,11 +159,14 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
+  real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
+    windstr_x, &      ! The area-weighted average ice thickness, in Pa.
+    windstr_y         ! The area-weighted average ice thickness, in Pa.
   real :: rho_ice     ! The nominal density of sea ice in kg m-3.
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
-
-  integer :: isc, iec, jsc, jec
+  integer :: stress_stagger
+  integer :: i, j, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -167,30 +175,42 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
 
-  !### I think that there is long-standing bug here, in that the old ice-ocean
-  !###  stresses are being passed in place of the wind stresses on the icebergs. -RWH
+  if (CS%berg_windstress_bug) then
+    !  This code reproduces a long-standing bug, in that the old ice-ocean
+    !   stresses are being passed in place of the wind stresses on the icebergs.
+    do j=jsc,jec ; do i=isc,iec
+      windstr_x(i,j) = IOF%flux_u_ocn(i,j)
+      windstr_y(i,j) = IOF%flux_v_ocn(i,j)
+    enddo ; enddo
+    stress_stagger = IOF%flux_uv_stagger
+  else
+    do j=jsc,jec ; do i=isc,iec
+      windstr_x(i,j) = FIA%WindStr_ocn_x(i,j)
+      windstr_y(i,j) = FIA%WindStr_ocn_y(i,j)
+    enddo ; enddo
+    stress_stagger = AGRID
+  endif
+  
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, CS%Time, &
-            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-            IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), &
-            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   else
     call icebergs_run( icebergs_CS, CS%Time, &
-            IOF%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), &
-            IOF%flux_u_ocn(isc:iec,jsc:jec), IOF%flux_v_ocn(isc:iec,jsc:jec), &
+            IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
-            IOF%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=IOF%flux_uv_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   endif
@@ -296,13 +316,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     ! Store values to determine the ice and snow mass change due to transport.
     h2o_chg_xprt(:,:) = 0.0
   endif
+
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
 !$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
 !$OMP                                  WindStr_y_ocn_A,FIA)
   do j=jsd,jed
     do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-      WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
 
       ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
       WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
@@ -325,23 +346,23 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         ice_free(i,j) = IST%part_size(i,j,0)
 
         if (ice_cover(i,j) > FIA%ice_cover(i,j)) then
-          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_u_top(i,j,0) + &
+          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_x(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_x(i,j)) / ice_cover(i,j)
-          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%flux_v_top(i,j,0) + &
+          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_y(i,j) + &
                               FIA%ice_cover(i,j)*FIA%WindStr_y(i,j)) / ice_cover(i,j)
-!        else
-!          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
-!          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-!        endif
-!        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-!          WindStr_x_ocn_A(i,j) = FIA%flux_u_top(i,j,0)
-!          WindStr_y_ocn_A(i,j) = FIA%flux_v_top(i,j,0)
-!        else
-        elseif (ice_free(i,j) > FIA%ice_free(i,j)) then
+        else
+          WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+          WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+        endif
+
+        if (ice_free(i,j) <= FIA%ice_free(i,j)) then
+          WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+          WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+        else
           WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_u_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
           WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                              FIA%ice_free(i,j)*FIA%flux_v_top(i,j,0)) / ice_free(i,j)
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
         endif
       enddo
     enddo
@@ -1211,6 +1232,12 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
+
+  call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
+                 "If true, use older code that applied an old ice-ocean \n"//&
+                 "stress to the icebergs in place of the current air-ocean \n"//&
+                 "stress.  This option is here for backward compatibility, \n"//&
+                 "but should be avoided.", default=.false.)
 
   call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
