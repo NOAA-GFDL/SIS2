@@ -124,11 +124,11 @@ implicit none ; private
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
-public :: update_ice_model_slow_up, update_ice_model_slow_dn
+public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona interfaces.
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
-public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice
+public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 
@@ -454,54 +454,29 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
 
 end subroutine set_ocean_top_fluxes
 
-!
 ! Coupler interface to provide ocean surface data to atmosphere.
+!
 !> update_ice_model_slow_up prepares the ice surface data for forcing the atmosphere
-!! and may also unpack the data from the ocean and share it between the fast and
-!! slow processors.
-subroutine update_ice_model_slow_up ( Ocean_boundary, Ice, Verona_coupler )
+!! and also unpacks the data from the ocean and shares it between the fast and
+!! slow ice structures.
+subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   type(ocean_ice_boundary_type), &
-    optional, intent(inout) :: Ocean_boundary  !< A structure containing information about
-                                   !! the ocean that is being shared with the sea-ice.  If
-                                   !! this argument is not present, it is assumed that this
-                                   !! information has already been exchanged.
+    intent(inout) :: Ocean_boundary  !< A structure containing information about
+                                   !! the ocean that is being shared with the sea-ice.
   type(ice_data_type), &
-    optional, intent(inout) :: Ice !< The publicly visible ice data type; this must always be
-                                   !! present, but is optional because of an unfortunate
-                                   !! order of arguments.
-  logical, &
-    optional, intent(in)    :: Verona_coupler !< If missing or true, make the extra calls that
-                                   !! are needed with the Verona and earlier versions of the
-                                   !! FMS coupler.
+    intent(inout) :: Ice           !< The publicly visible ice data type.
 
-  logical :: Verona
-  
-  ! These two checks give two different ways to disable the Verona and earlier coupling calls.
-  Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
-  if (.not.present(Ocean_boundary)) Verona = .false.
-
-  if (.not.present(Ice)) call SIS_error(FATAL, &
-      "Ice must be present in the call to update_ice_model_slow_up")
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in update_ice_model_slow_up.")
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in update_ice_model_slow_up.")
 
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
+                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  if (Verona) then
-    if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
-        "The pointer to Ice%sCS must be associated with the Verona-compatible "//&
-        "version of update_ice_model_slow_up.")
-    call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                             Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+  call exchange_slow_to_fast_ice(Ice)
 
-    call exchange_slow_to_fast_ice(Ice)
-  endif
-
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
-
-  call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
-                             Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
-
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call set_ice_surface_fields(Ice)
 
 end subroutine update_ice_model_slow_up
 
@@ -716,6 +691,23 @@ subroutine copy_OSS_to_sOSS(OSS, sOSS, G, ITV)
   enddo ; enddo
 
 end subroutine copy_OSS_to_sOSS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ice_surface_fields prepares the ice surface state for atmosphere fast
+!! physics and does precalculation of ice radiative properties.
+subroutine set_ice_surface_fields(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type whose
+                                            !! surface properties are being set.
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS must be associated in set_ice_surface_fields.")
+
+  call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
+                             Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
+
+  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+end subroutine set_ice_surface_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
