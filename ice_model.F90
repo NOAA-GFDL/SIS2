@@ -1250,15 +1250,22 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
 end subroutine add_diurnal_sw
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_init - initializes ice model data, parameters and diagnostics      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
+!> ice_model_init - initializes ice model data, parameters and diagnostics. It
+!! might operate on the fast ice processors, the slow ice processors or both.
+subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, Verona_coupler )
 
-  type(ice_data_type), intent(inout) :: Ice
-  type(time_type)    , intent(in)    :: Time_Init      ! starting time of model integration
-  type(time_type)    , intent(in)    :: Time           ! current time
-  type(time_type)    , intent(in)    :: Time_step_fast ! time step for the ice_model_fast
-  type(time_type)    , intent(in)    :: Time_step_slow ! time step for the ice_model_slow
+  type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
+  type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
+  type(time_type)    , intent(in)    :: Time           !< The current time
+  type(time_type)    , intent(in)    :: Time_step_fast !< The time step for the ice_model_fast
+  type(time_type)    , intent(in)    :: Time_step_slow !< The time step for the ice_model_slow
+  logical,   optional, intent(in)    :: Verona_coupler !< If present and false, use the input values
+                                              !! in Ice to determine whether this is a fast or slow
+                                              !! ice processor or both.  Otherwise, carry out all of
+                                              !! the sea ice iniatialization calls so that SIS2 will
+                                              !! work with the Verona and earlier releases of the FMS
+                                              !! coupler code in configurations that use the exchange
+                                              !! grid to communicate with the atmosphere or land.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1281,7 +1288,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   type(dyn_horgrid_type),  pointer :: dG => NULL()
   ! These pointers are used only for coding convenience on slow PEs.
   type(SIS_hor_grid_type), pointer :: sG => NULL()
-  type(MOM_domain_type), pointer :: sGD => NULL()
+  type(MOM_domain_type),   pointer :: sGD => NULL()
   type(ice_state_type),    pointer :: sIST => NULL()
   type(ice_grid_type),     pointer :: sIG => NULL()
 
@@ -1336,7 +1343,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   integer :: CatIce, NkIce, isd, ied, jsd, jed
   integer :: idr, id_sal
   integer :: write_geom
-  logical :: Verona_coupler
   logical :: nudge_sea_ice
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
@@ -1357,6 +1363,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
   logical :: single_IST        ! If true, fCS%IST and sCS%IST point to the same structure.
+  logical :: Verona
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
@@ -1374,6 +1381,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
 
   ! For now, both fast and slow processes occur on all sea-ice PEs.
   fast_ice_PE = .true. ; slow_ice_PE = .true.
+  if (present(Verona_coupler)) then ; if (.not.Verona_coupler) then
+    fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
+  endif ; endif
+  Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
 
   ! Open the parameter file.
   call Get_SIS_Input(param_file, dirs)
@@ -1489,8 +1500,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
-  call get_param(param_file, mod, "VERONA_COUPLER", Verona_coupler, &
-                 "If true, carry out all of the seaice calls so that SIS2 \n"//&
+  call log_param(param_file, mod, "! VERONA_COUPLER", Verona, &
+                 "If true, carry out all of the sea ice calls so that SIS2 \n"//&
                  "will work with the Verona and earlier releases of the \n"//&
                  "FMS coupler code in configurations that use the exchange \n"//&
                  "grid to communicate with the atmosphere or land.", default=.true.)
@@ -2111,7 +2122,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow )
       endif
     endif
 
-    if (Verona_coupler) then
+    if (Verona) then
       !   The Verona and earlier versions of the coupler code make calls to set
       ! up the exchange grid right at the start of the coupled timestep, before
       ! information about the part_size distribution can be copied from the slow
