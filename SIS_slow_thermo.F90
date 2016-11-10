@@ -364,7 +364,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
     endif
 !$OMP END SINGLE
-!$OMP do
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,FIA,IOF)
     do m=1,FIA%num_tr_fluxes
       do j=jsc,jec ; do i=isc,iec
         IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
@@ -375,7 +375,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       enddo ; enddo ; enddo
     enddo
   endif
-!$OMP end parallel
   
   ! No other thermodynamics need to be done for ice that is specified, 
   if(CS%specified_ice) return ;   
@@ -710,6 +709,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
                                  IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
+!$OMP end parallel
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
