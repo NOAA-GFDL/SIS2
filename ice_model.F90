@@ -493,7 +493,7 @@ subroutine exchange_slow_to_fast_ice(Ice)
       "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
-  call copy_OSS_to_sOSS(Ice%sCS%OSS, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
@@ -655,11 +655,12 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
 end subroutine unpack_ocn_ice_bdry
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> copy_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
+!> translate_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
 !! ice processors into a simplified version with the fields that are shared with
 !! the atmosphere and the fast ice thermodynamics.
-subroutine copy_OSS_to_sOSS(OSS, sOSS, G, ITV)
+subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
   type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ice_state_type),       intent(in)    :: IST
   type(simple_OSS_type),      intent(inout) :: sOSS
   type(SIS_hor_grid_type),    intent(in)    :: G
   type(ice_thermo_type),      intent(in)    :: ITV
@@ -668,13 +669,14 @@ subroutine copy_OSS_to_sOSS(OSS, sOSS, G, ITV)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,ITV)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST,ITV)
   do j=jsc,jec ; do i=isc,iec
     sOSS%s_surf(i,j) = OSS%s_surf(i,j)
     sOSS%t_ocn(i,j) = OSS%t_ocn(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
       sOSS%bheat(i,j) = OSS%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
+      ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
         sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
         sOSS%v_ocn_A(i,j) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
@@ -684,13 +686,23 @@ subroutine copy_OSS_to_sOSS(OSS, sOSS, G, ITV)
         sOSS%v_ocn_A(i,j) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
                                   (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
       endif
-    else
+      if (IST%Cgrid_dyn) then
+        sOSS%u_ice_A(i,j) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
+        sOSS%v_ice_A(i,j) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
+      else
+        sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
+                                  (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
+        sOSS%v_ice_A(i,j) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
+                                  (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
+      endif
+    else ! This is a land point.
       sOSS%bheat(i,j) = 0.0
       sOSS%u_ocn_A(i,j) = 0.0 ; sOSS%v_ocn_A(i,j) = 0.0
+      sOSS%u_ice_A(i,j) = 0.0 ; sOSS%v_ice_A(i,j) = 0.0
     endif
   enddo ; enddo
 
-end subroutine copy_OSS_to_sOSS
+end subroutine translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_surface_fields prepares the ice surface state for atmosphere fast
@@ -845,45 +857,21 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2,k2)
-  do j=jsc,jec
-    do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
-    enddo
-    do k=0,ncat ; do i=isc,iec
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
       Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
     enddo ; enddo
   enddo
 
-  ! put ocean and ice velocities into Ice%u_surf/v_surf on t-cells
-  if (IST%Cgrid_dyn) then
+  ! Put ocean salinity and ocean and ice velocities into Ice%u_surf/v_surf on t-cells.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2)
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%u_surf(i2,j2,1) = OSS%u_ocn_A(i,j) ; Ice%v_surf(i2,j2,1) = OSS%v_ocn_A(i,j)
-      if (G%mask2dT(i,j) > 0.5 ) then
-        Ice%u_surf(i2,j2,2) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
-        Ice%v_surf(i2,j2,2) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
-      else
-        Ice%u_surf(i2,j2,2) = 0.0 ; Ice%v_surf(i2,j2,2) = 0.0
-      endif
-    enddo ; enddo
-  else ! B-grid discretization.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off,OSS) &
-!$OMP                          private(i2,j2)
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%u_surf(i2,j2,1) = OSS%u_ocn_A(i,j) ; Ice%v_surf(i2,j2,1) = OSS%v_ocn_A(i,j)
-      if (G%mask2dT(i,j) > 0.5 ) then
-        Ice%u_surf(i2,j2,2) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
-                                    (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
-        Ice%v_surf(i2,j2,2) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
-                                    (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
-      else
-        Ice%u_surf(i2,j2,2) = 0.0 ; Ice%v_surf(i2,j2,2) = 0.0
-      endif
-    enddo ; enddo
-  endif
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    Ice%u_surf(i2,j2,1) = OSS%u_ocn_A(i,j) ; Ice%v_surf(i2,j2,1) = OSS%v_ocn_A(i,j)
+    Ice%u_surf(i2,j2,2) = OSS%u_ice_A(i,j) ; Ice%v_surf(i2,j2,2) = OSS%v_ice_A(i,j)
+    Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
+  enddo ; enddo
 
   if (fCS%debug) then
     call chksum(Ice%u_surf(:,:,1), "Intermed Ice%u_surf(1)")
