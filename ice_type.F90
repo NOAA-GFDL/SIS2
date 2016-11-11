@@ -349,7 +349,7 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
   call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
 
-  if (associated(Ice%fCS)) then ! This is a fast-ice PE.
+  if (Ice%fast_ice_PE) then ! This is a fast-ice PE.
     call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
     call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
     call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
@@ -363,7 +363,7 @@ subroutine Ice_public_type_chksum(mesg, Ice)
     call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
   endif
 
-  if (associated(Ice%sCS)) then ! This is a slow-ice PE.
+  if (Ice%slow_ice_PE) then ! This is a slow-ice PE.
     call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
     call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
     call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")
@@ -574,48 +574,57 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 
   outunit = stdout()
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", id, timestep
-  write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size          )
-  write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo             )
-  write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir     )
-  write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir     )
-  write(outunit,100) 'ice_data_type%albedo_vis_dif     ',mpp_chksum(Ice%albedo_vis_dif     )
-  write(outunit,100) 'ice_data_type%albedo_nir_dif     ',mpp_chksum(Ice%albedo_nir_dif     )
-  write(outunit,100) 'ice_data_type%rough_mom          ',mpp_chksum(Ice%rough_mom          )
-  write(outunit,100) 'ice_data_type%rough_heat         ',mpp_chksum(Ice%rough_heat         )
-  write(outunit,100) 'ice_data_type%rough_moist        ',mpp_chksum(Ice%rough_moist        )
+  ! These fields are on all PEs.
+  write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size         )
+  write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf            )
+  write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf            )
+ 
+  if (Ice%fast_ice_PE) then
+    ! These fields are only valid on fast ice PEs.
+    write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo          )
+    write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir  )
+    write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir  )
+    write(outunit,100) 'ice_data_type%albedo_vis_dif     ',mpp_chksum(Ice%albedo_vis_dif  )
+    write(outunit,100) 'ice_data_type%albedo_nir_dif     ',mpp_chksum(Ice%albedo_nir_dif  )
+    write(outunit,100) 'ice_data_type%rough_mom          ',mpp_chksum(Ice%rough_mom       )
+    write(outunit,100) 'ice_data_type%rough_heat         ',mpp_chksum(Ice%rough_heat      )
+    write(outunit,100) 'ice_data_type%rough_moist        ',mpp_chksum(Ice%rough_moist     )
 
-  write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf             )
-  write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf             )
-  write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf             )
-  write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf             )
-  write(outunit,100) 'ice_data_type%flux_u             ',mpp_chksum(Ice%flux_u             )
-  write(outunit,100) 'ice_data_type%flux_v             ',mpp_chksum(Ice%flux_v             )
-  write(outunit,100) 'ice_data_type%flux_t             ',mpp_chksum(Ice%flux_t             )
-  write(outunit,100) 'ice_data_type%flux_q             ',mpp_chksum(Ice%flux_q             )
-  write(outunit,100) 'ice_data_type%flux_lw            ',mpp_chksum(Ice%flux_lw            )
-  write(outunit,100) 'ice_data_type%flux_sw_vis_dir    ',mpp_chksum(Ice%flux_sw_vis_dir    )
-  write(outunit,100) 'ice_data_type%flux_sw_vis_dif    ',mpp_chksum(Ice%flux_sw_vis_dif    )
-  write(outunit,100) 'ice_data_type%flux_sw_nir_dir    ',mpp_chksum(Ice%flux_sw_nir_dir    )
-  write(outunit,100) 'ice_data_type%flux_sw_nir_dif    ',mpp_chksum(Ice%flux_sw_nir_dif    )
-  write(outunit,100) 'ice_data_type%flux_lh            ',mpp_chksum(Ice%flux_lh            )
-  write(outunit,100) 'ice_data_type%lprec              ',mpp_chksum(Ice%lprec              )
-  write(outunit,100) 'ice_data_type%fprec              ',mpp_chksum(Ice%fprec              )
-  write(outunit,100) 'ice_data_type%p_surf             ',mpp_chksum(Ice%p_surf             )
-  write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff             )
-  write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving            )
-  write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt          )
+    write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf          )
+    write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf          )
+  endif
 
-  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
-    write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg       )
-    write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg        )
-    write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg        )
-  endif ; endif
+  if (Ice%slow_ice_PE) then
+    ! These fields are only valid on slow ice PEs.
+    write(outunit,100) 'ice_data_type%flux_u             ',mpp_chksum(Ice%flux_u          )
+    write(outunit,100) 'ice_data_type%flux_v             ',mpp_chksum(Ice%flux_v          )
+    write(outunit,100) 'ice_data_type%flux_t             ',mpp_chksum(Ice%flux_t          )
+    write(outunit,100) 'ice_data_type%flux_q             ',mpp_chksum(Ice%flux_q          )
+    write(outunit,100) 'ice_data_type%flux_lw            ',mpp_chksum(Ice%flux_lw         )
+    write(outunit,100) 'ice_data_type%flux_sw_vis_dir    ',mpp_chksum(Ice%flux_sw_vis_dir )
+    write(outunit,100) 'ice_data_type%flux_sw_vis_dif    ',mpp_chksum(Ice%flux_sw_vis_dif )
+    write(outunit,100) 'ice_data_type%flux_sw_nir_dir    ',mpp_chksum(Ice%flux_sw_nir_dir )
+    write(outunit,100) 'ice_data_type%flux_sw_nir_dif    ',mpp_chksum(Ice%flux_sw_nir_dif )
+    write(outunit,100) 'ice_data_type%flux_lh            ',mpp_chksum(Ice%flux_lh         )
+    write(outunit,100) 'ice_data_type%lprec              ',mpp_chksum(Ice%lprec           )
+    write(outunit,100) 'ice_data_type%fprec              ',mpp_chksum(Ice%fprec           )
+    write(outunit,100) 'ice_data_type%p_surf             ',mpp_chksum(Ice%p_surf          )
+    write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff          )
+    write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving         )
+    write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt       )
 
-  do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
-    write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
-                       trim(Ice%ocean_fields%bc(n)%field(m)%name), &
-                       mpp_chksum(Ice%ocean_fields%bc(n)%field(m)%values)
-  enddo ; enddo
+    if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
+      write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg    )
+      write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg     )
+      write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg     )
+    endif ; endif
+
+    do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
+      write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
+                         trim(Ice%ocean_fields%bc(n)%field(m)%name), &
+                         mpp_chksum(Ice%ocean_fields%bc(n)%field(m)%values)
+    enddo ; enddo
+  endif
 
 100 FORMAT("   CHECKSUM::",A32," = ",Z20)
 101 FORMAT("   CHECKSUM::",A16,a,'%',a," = ",Z20)
