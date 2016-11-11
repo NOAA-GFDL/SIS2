@@ -138,8 +138,10 @@ type simple_OSS_type
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     t_ocn  , &  ! The ocean's bulk surface temperature in degC.
-    u_ocn_A, &  ! The ocean's zonal velocity on A-grid points in m s-1.
-    v_ocn_A, &  ! The ocean's meridional velocity on A-grid points in m s-1.
+    u_ocn_A, &  ! The ocean's zonal surface velocity on A-grid points in m s-1.
+    v_ocn_A, &  ! The ocean's meridional surface velocity on A-grid points in m s-1.
+    u_ice_A, &  ! The sea ice's zonal velocity on A-grid points in m s-1.
+    v_ice_A, &  ! The sea ice's meridional velocity on A-grid points in m s-1.
     bheat       ! The upward diffusive heat flux from the ocean
                 ! to the ice at the base of the ice, in W m-2.
 
@@ -611,6 +613,8 @@ subroutine alloc_simple_OSS(OSS, HI)
   allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0 
   allocate(OSS%u_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ocn_A(:,:) = 0.0
   allocate(OSS%v_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ocn_A(:,:) = 0.0
+  allocate(OSS%u_ice_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ice_A(:,:) = 0.0
+  allocate(OSS%v_ice_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ice_A(:,:) = 0.0
 
 end subroutine alloc_simple_OSS
 
@@ -832,7 +836,7 @@ subroutine dealloc_simple_OSS(OSS)
   endif
 
   deallocate(OSS%s_surf, OSS%t_ocn, OSS%bheat)
-  deallocate(OSS%u_ocn_A, OSS%v_ocn_A)
+  deallocate(OSS%u_ocn_A, OSS%v_ocn_A, OSS%u_ice_A, OSS%v_ice_A)
 
   deallocate(OSS)
 end subroutine dealloc_simple_OSS
