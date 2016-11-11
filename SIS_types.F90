@@ -371,12 +371,16 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_IST_arrays allocates the arrays in an ice_state_type.
-subroutine alloc_IST_arrays(HI, IG, IST)
+subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
   type(hor_index_type),    intent(in)    :: HI
   type(ice_grid_type),     intent(in)    :: IG
   type(ice_state_type),    intent(inout) :: IST
+  logical, optional,       intent(in)    :: omit_velocities
 
   integer :: CatIce, NkIce, idr
+  logical :: do_vel
+  
+  do_vel = .true. ; if (present(omit_velocities)) do_vel = .not.omit_velocities
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
@@ -386,33 +390,33 @@ subroutine alloc_IST_arrays(HI, IG, IST)
   allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
   allocate(IST%enth_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
   allocate(IST%sal_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
-  if (IST%Cgrid_dyn) then
-    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
-    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
-  else
-    allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
-    allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
+  if (do_vel) then
+    if (IST%Cgrid_dyn) then
+      allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
+      allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
+    else
+      allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
+      allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
+    endif
+
+    ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
+    allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif
 
   allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
 
-  ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-  allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
 end subroutine alloc_IST_arrays
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be includedin the restart files.
-subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
-                                       Ice_restart, restart_file)
+subroutine ice_state_register_restarts(mpp_domain, IST, IG, Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG
-  type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
-  type(restart_file_type), pointer    :: Ice_restart
-  character(len=*),        intent(in) :: restart_file
+  type(ice_grid_type),     intent(in)    :: IG
+  type(restart_file_type), pointer       :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
 
   integer :: idr
 
@@ -951,10 +955,13 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   enddo
   call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
-  if (allocated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B", G%HI, haloshift=hs)
-  if (allocated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B", G%HI, haloshift=hs)
-  call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
-  if (IST%Cgrid_dyn) then
+
+  if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
+    if (allocated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B", G%HI, haloshift=hs)
+    if (allocated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B", G%HI, haloshift=hs)
+    call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
+  endif
+  if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
     call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C", G%HI, haloshift=hs)
     call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C", G%HI, haloshift=hs)
     call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)

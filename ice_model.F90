@@ -90,9 +90,9 @@ use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
-use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
-use SIS_types, only : IST_chksum, IST_bounds_check, copy_IST_to_IST, copy_FIA_to_FIA
-use SIS_types, only : copy_sOSS_to_sOSS
+use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
+use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
+use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -1650,8 +1650,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart, restart_file)
 
-    call ice_state_register_restarts(sGD%mpp_domain, sHI, sIG, param_file, &
-                                     sIST, Ice%Ice_restart, restart_file)
+    call alloc_IST_arrays(sHI, sIG, sIST)
+    call ice_state_register_restarts(sGD%mpp_domain, sIST, sIG, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
     Ice%sCS%OSS%kmelt = kmelt
@@ -1791,9 +1791,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                       param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
 
     if (.not.single_IST) then
-      ! This call just does the allocations of the arrays in the ice state type.
-      call ice_state_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                       Ice%fCS%IST)
+      call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, omit_velocities=.true.)
+
       call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
 
       call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
