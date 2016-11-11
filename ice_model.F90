@@ -92,6 +92,7 @@ use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, copy_IST_to_IST, copy_FIA_to_FIA
+use SIS_types, only : copy_sOSS_to_sOSS
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -493,7 +494,11 @@ subroutine exchange_slow_to_fast_ice(Ice)
       "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%fcs%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+
+  if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
+    call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
+  endif
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
@@ -1651,6 +1656,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
     Ice%sCS%OSS%kmelt = kmelt
 
+    call alloc_simple_OSS(Ice%sCS%sOSS, sHI)
+
     call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
@@ -1722,6 +1729,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       fGD => Ice%fCS%G%Domain
       fHI = sHI
       Ice%fCS%FIA => Ice%sCS%FIA
+      Ice%fCS%sOSS => Ice%sCS%sOSS
     else
       ! Set up the domains and lateral grids.
       if (.not.associated(Ice%fCS%IST)) allocate(Ice%fCS%IST)
@@ -1788,6 +1796,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call ice_state_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
                                        Ice%fCS%IST)
       call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
+
+      call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
     endif
     Ice%fCS%FIA%atmos_winds = atmos_winds
 
@@ -1799,8 +1809,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     !### Instead perhaps this could be
     !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
     !### However this changes answers in coupled models.  I don't understand why. -RWH
-
-    call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
 
     allocate(Ice%fCS%diag)
     call SIS_diag_mediator_init(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, component="SIS_fast", &
@@ -2262,28 +2270,27 @@ subroutine ice_model_end (Ice)
 
     call dealloc_ice_rad(Ice%fCS%Rad)
 
-    call dealloc_simple_OSS(Ice%fCS%sOSS)
-
     call ice_grid_end(Ice%fCS%IG)
     
+
     if (.not.associated(Ice%sCS)) then
       call dealloc_IST_arrays(Ice%fCS%IST)
       deallocate(Ice%fCS%IST)
-    elseif (.not.associated(Ice%fCS%IST,Ice%sCS%IST)) then
-      call dealloc_IST_arrays(Ice%fCS%IST)
-      deallocate(Ice%fCS%IST)
-    endif
 
-    if (.not.associated(Ice%sCS)) then
       call dealloc_fast_ice_avg(Ice%fCS%FIA)
-    elseif (.not.associated(Ice%fCS%FIA,Ice%sCS%FIA)) then
-      call dealloc_fast_ice_avg(Ice%fCS%FIA)
-    endif
-
-    if (.not.associated(Ice%sCS)) then
+      call dealloc_simple_OSS(Ice%fCS%sOSS)
       call SIS_hor_grid_end(Ice%fCS%G)
-    elseif (.not.associated(Ice%fCS%G,Ice%sCS%G)) then
-      call SIS_hor_grid_end(Ice%fCS%G)
+    else
+      if (.not.associated(Ice%fCS%IST,Ice%sCS%IST)) then
+        call dealloc_IST_arrays(Ice%fCS%IST)
+        deallocate(Ice%fCS%IST)
+      endif
+      if (.not.associated(Ice%fCS%FIA,Ice%sCS%FIA)) &
+        call dealloc_fast_ice_avg(Ice%fCS%FIA)
+      if (.not.associated(Ice%fCS%sOSS,Ice%sCS%sOSS)) &
+        call dealloc_simple_OSS(Ice%fCS%sOSS)
+      if (.not.associated(Ice%fCS%G,Ice%sCS%G)) &
+        call SIS_hor_grid_end(Ice%fCS%G)
     endif
 
     if (associated(Ice%Ice_fast_restart) .and. &
@@ -2307,6 +2314,8 @@ subroutine ice_model_end (Ice)
     call dealloc_ice_ocean_flux(Ice%sCS%IOF)
 
     call dealloc_ocean_sfc_state(Ice%sCS%OSS)
+
+    call dealloc_simple_OSS(Ice%sCS%sOSS)
 
     call ice_grid_end(Ice%sCS%IG)
 

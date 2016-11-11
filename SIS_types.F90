@@ -42,7 +42,7 @@ public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
-public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
+public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -696,6 +696,37 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
 
 end subroutine copy_IST_to_IST
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
+!! the computational domain of another simple_OSS_type.  Both must use the same
+!! domain decomposition and indexing convention (for now), but they may have
+!! different halo sizes.
+subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
+  type(simple_OSS_type), intent(in)    :: OSS_in
+  type(simple_OSS_type), intent(inout) :: OSS_out
+  type(hor_index_type),  intent(in)    :: HI_in, HI_out
+
+  integer :: i, j, k, m, isc, iec, jsc, jec
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+
+  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
+      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+    call SIS_error(FATAL, "copy_sOSS_to_sOSS called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+
+  do j=jsc,jec ; do i=isc,iec
+    OSS_out%t_ocn(i,j) = OSS_in%t_ocn(i,j)
+    OSS_out%s_surf(i,j) = OSS_in%s_surf(i,j)
+    OSS_out%bheat(i,j) = OSS_in%bheat(i,j)
+    OSS_out%u_ocn_A(i,j) = OSS_in%u_ocn_A(i,j)
+    OSS_out%v_ocn_A(i,j) = OSS_in%v_ocn_A(i,j)
+    OSS_out%u_ice_A(i,j) = OSS_in%u_ice_A(i,j)
+    OSS_out%v_ice_A(i,j) = OSS_in%v_ice_A(i,j)
+  enddo ; enddo
+
+end subroutine copy_sOSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
