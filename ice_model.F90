@@ -1765,7 +1765,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     Ice%fCS%slab_ice = slab_ice
-    Ice%fCS%Cgrid_dyn = Cgrid_dyn
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
 

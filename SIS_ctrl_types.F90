@@ -58,8 +58,8 @@ type SIS_fast_CS
   type(time_type) :: Time_step_slow
 
   logical :: slab_ice  ! If true, do the old style GFDL slab ice.
-  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.
+!  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+!                       ! sea-ice dynamics.
 
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.

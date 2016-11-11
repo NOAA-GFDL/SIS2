@@ -36,7 +36,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_state_type, ice_state_register_restarts, dealloc_IST_arrays
+public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts, dealloc_IST_arrays
 public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
@@ -55,6 +55,7 @@ type ice_state_type
     part_size   ! The fractional coverage of a grid cell by each ice
                 ! thickness category, nondim, 0 to 1.  Category 0 is
                 ! open ocean.  The sum of part_size is 1.
+  ! These velocities are only used on the slow ice processors
   real, allocatable, dimension(:,:) :: &
     u_ice_B, &  ! The pseudo-zonal and pseudo-meridional ice velocities
     v_ice_B, &  ! along the model's grid directions on a B-grid, in m s-1.
@@ -369,21 +370,13 @@ end type ice_ocean_flux_type
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_state_register_restarts allocates the arrays in the ice_state_type
-!!     and registers any variables in the ice state type that need to be included
-!!     in the restart files.
-subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
-                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
+!> alloc_IST_arrays allocates the arrays in an ice_state_type.
+subroutine alloc_IST_arrays(HI, IG, IST)
   type(hor_index_type),    intent(in)    :: HI
   type(ice_grid_type),     intent(in)    :: IG
-  type(param_file_type),   intent(in)    :: param_file
   type(ice_state_type),    intent(inout) :: IST
-  type(restart_file_type), optional, pointer    :: Ice_restart
-  character(len=*),        optional, intent(in) :: restart_file
 
-  integer :: CatIce, NkIce, idr, n
-  character(len=8) :: nstr
+  integer :: CatIce, NkIce, idr
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
@@ -406,9 +399,25 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
   ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
   allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
 
+end subroutine alloc_IST_arrays
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_state_register_restarts registers any variables in the ice state type
+!!     that need to be includedin the restart files.
+subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
+                                       Ice_restart, restart_file)
+  type(domain2d),          intent(in)    :: mpp_domain
+  type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG
+  type(param_file_type),   intent(in)    :: param_file
+  type(ice_state_type),    intent(inout) :: IST
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
+
+  integer :: idr
 
   ! Now register some of these arrays to be read from the restart files.
-  if (present(Ice_restart)) then ; if (associated(Ice_restart)) then
+  if (associated(Ice_restart)) then
     idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
     idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
                                  domain=mpp_domain)
@@ -440,7 +449,7 @@ subroutine ice_state_register_restarts(mpp_domain, HI, IG, param_file, IST, &
       idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
                                    domain=mpp_domain, position=CORNER, mandatory=.false.)
     endif
-  endif ; endif
+  endif
 
 end subroutine ice_state_register_restarts
 
@@ -659,40 +668,9 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! These copies of the staggered velocity points include tests that handle the
-  ! case of non-symmetric memory and no halos properly.
-  if (IST_in%Cgrid_dyn) then
-    if (min(lbound(IST_in%u_ice_C,1),lbound(IST_out%u_ice_C,1)) <= isc-1) then
-      do j=jsc,jec ; do I=isc-1,iec
-        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
-      enddo ; enddo
-    else ! One of the arrays is non-symmetric and has no halos.
-      do j=jsc,jec ; do i=isc,iec
-        IST_out%u_ice_C(I,j) = IST_in%u_ice_C(I,j)
-        IST_out%v_ice_C(i,J) = IST_in%v_ice_C(i,J)
-      enddo ; enddo
-    endif
-  else
-    if (min(lbound(IST_in%u_ice_B,1),lbound(IST_out%u_ice_B,1)) <= isc-1) then
-      do J=jsc-1,jec ; do I=isc-1,iec
-        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
-        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
-      enddo ; enddo
-    else
-      do J=jsc,jec ; do I=isc,iec
-        IST_out%u_ice_B(I,J) = IST_in%u_ice_B(I,J)
-        IST_out%v_ice_B(I,J) = IST_in%v_ice_B(I,J)
-      enddo ; enddo
-    endif
-  endif
-
-  IST_out%Cgrid_dyn = IST_in%Cgrid_dyn
   IST_out%slab_ice = IST_in%slab_ice
 
-  ! rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
 
@@ -829,11 +807,11 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice, IST%t_surf)
-  if (IST%Cgrid_dyn) then
-    deallocate(IST%u_ice_C, IST%v_ice_C)
-  else
-    deallocate(IST%u_ice_B, IST%v_ice_B)
-  endif
+
+  if (allocated(IST%u_ice_C)) deallocate(IST%u_ice_C)
+  if (allocated(IST%v_ice_C)) deallocate(IST%v_ice_C)
+  if (allocated(IST%u_ice_B)) deallocate(IST%u_ice_B)
+  if (allocated(IST%v_ice_B)) deallocate(IST%v_ice_B)
 
 end subroutine dealloc_IST_arrays
 
