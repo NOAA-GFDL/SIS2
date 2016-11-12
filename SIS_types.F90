@@ -377,20 +377,25 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
   type(ice_state_type),    intent(inout) :: IST
   logical, optional,       intent(in)    :: omit_velocities
 
-  integer :: CatIce, NkIce, idr
+  integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel
   
   do_vel = .true. ; if (present(omit_velocities)) do_vel = .not.omit_velocities
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
-  allocate(IST%part_size(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%mH_pond(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_pond(:,:,:) = 0.0
-  allocate(IST%mH_snow(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_snow(:,:,:) = 0.0
-  allocate(IST%enth_snow(SZI_(HI), SZJ_(HI), CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
-  allocate(IST%mH_ice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%enth_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
-  allocate(IST%sal_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(IST%part_size(isd:ied, jsd:jed, 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
+  allocate(IST%mH_pond(  isd:ied, jsd:jed, CatIce)) ; IST%mH_pond(:,:,:) = 0.0
+  allocate(IST%mH_snow(  isd:ied, jsd:jed, CatIce)) ; IST%mH_snow(:,:,:) = 0.0
+  allocate(IST%enth_snow(isd:ied, jsd:jed, CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
+  allocate(IST%mH_ice(   isd:ied, jsd:jed, CatIce)) ; IST%mH_ice(:,:,:) = 0.0
+  allocate(IST%enth_ice( isd:ied, jsd:jed, CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
+  allocate(IST%sal_ice(  isd:ied, jsd:jed, CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+
   if (do_vel) then
+    ! These velocities are only required for the slow ice processes, and hence
+    ! can use the memory macros.
     if (IST%Cgrid_dyn) then
       allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
       allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
@@ -400,10 +405,10 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
     endif
 
     ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-    allocate(IST%rdg_mice(SZI_(HI), SZJ_(HI), CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif
 
-  allocate(IST%t_surf(SZI_(HI), SZJ_(HI), 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
+  allocate(IST%t_surf(isd:ied, jsd:jed, 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
 
 
 end subroutine alloc_IST_arrays
@@ -465,45 +470,46 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
 
-  integer :: CatIce, NkIce
+  integer :: isd, ied, jsd, jed, CatIce, NkIce
 
   if (.not.associated(FIA)) allocate(FIA)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
-  allocate(FIA%flux_u_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0
-  allocate(FIA%flux_v_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0
-  allocate(FIA%flux_t_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_t_top(:,:,:) = 0.0
-  allocate(FIA%flux_q_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_q_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_vis_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_vis_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_nir_dir_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_nir_dif_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
-  allocate(FIA%flux_lw_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0
-  allocate(FIA%flux_lh_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
-  allocate(FIA%lprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
-  allocate(FIA%fprec_top(SZI_(HI), SZJ_(HI), 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
-  allocate(FIA%runoff(SZI_(HI), SZJ_(HI))) ; FIA%runoff(:,:) = 0.0 !NI
-  allocate(FIA%calving(SZI_(HI), SZJ_(HI))) ; FIA%calving(:,:) = 0.0 !NI
-  allocate(FIA%calving_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_preberg(:,:) = 0.0 !NI, diag
-  allocate(FIA%runoff_hflx(SZI_(HI), SZJ_(HI))) ; FIA%runoff_hflx(:,:) = 0.0 !NI
-  allocate(FIA%calving_hflx(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx(:,:) = 0.0 !NI
-  allocate(FIA%calving_hflx_preberg(SZI_(HI), SZJ_(HI))) ; FIA%calving_hflx_preberg(:,:) = 0.0 !NI, diag
+  allocate(FIA%flux_u_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0
+  allocate(FIA%flux_v_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0
+  allocate(FIA%flux_t_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_t_top(:,:,:) = 0.0
+  allocate(FIA%flux_q_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_q_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_vis_dir_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_vis_dif_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_nir_dir_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_nir_dif_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
+  allocate(FIA%flux_lw_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0
+  allocate(FIA%flux_lh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
+  allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
+  allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
+  allocate(FIA%runoff(isd:ied, jsd:jed)) ; FIA%runoff(:,:) = 0.0 !NI
+  allocate(FIA%calving(isd:ied, jsd:jed)) ; FIA%calving(:,:) = 0.0 !NI
+  allocate(FIA%calving_preberg(isd:ied, jsd:jed)) ; FIA%calving_preberg(:,:) = 0.0 !NI, diag
+  allocate(FIA%runoff_hflx(isd:ied, jsd:jed)) ; FIA%runoff_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx(isd:ied, jsd:jed)) ; FIA%calving_hflx(:,:) = 0.0 !NI
+  allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed)) ; FIA%calving_hflx_preberg(:,:) = 0.0 !NI, diag
 
-  allocate(FIA%frazil_left(SZI_(HI), SZJ_(HI))) ; FIA%frazil_left(:,:) = 0.0
-  allocate(FIA%bheat(SZI_(HI), SZJ_(HI))) ; FIA%bheat(:,:) = 0.0
-  allocate(FIA%tmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%tmelt(:,:,:) = 0.0
-  allocate(FIA%bmelt(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%bmelt(:,:,:) = 0.0
-  allocate(FIA%WindStr_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_x(:,:) = 0.0
-  allocate(FIA%WindStr_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_y(:,:) = 0.0
-  allocate(FIA%WindStr_ocn_x(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_x(:,:) = 0.0
-  allocate(FIA%WindStr_ocn_y(SZI_(HI), SZJ_(HI))) ; FIA%WindStr_ocn_y(:,:) = 0.0
-  allocate(FIA%p_atm_surf(SZI_(HI), SZJ_(HI))) ; FIA%p_atm_surf(:,:) = 0.0
-  allocate(FIA%ice_free(SZI_(HI), SZJ_(HI)))  ; FIA%ice_free(:,:) = 0.0
-  allocate(FIA%ice_cover(SZI_(HI), SZJ_(HI))) ; FIA%ice_cover(:,:) = 0.0 
+  allocate(FIA%frazil_left(isd:ied, jsd:jed)) ; FIA%frazil_left(:,:) = 0.0
+  allocate(FIA%bheat(isd:ied, jsd:jed)) ; FIA%bheat(:,:) = 0.0
+  allocate(FIA%tmelt(isd:ied, jsd:jed, CatIce)) ; FIA%tmelt(:,:,:) = 0.0
+  allocate(FIA%bmelt(isd:ied, jsd:jed, CatIce)) ; FIA%bmelt(:,:,:) = 0.0
+  allocate(FIA%WindStr_x(isd:ied, jsd:jed)) ; FIA%WindStr_x(:,:) = 0.0
+  allocate(FIA%WindStr_y(isd:ied, jsd:jed)) ; FIA%WindStr_y(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_x(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_x(:,:) = 0.0
+  allocate(FIA%WindStr_ocn_y(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_y(:,:) = 0.0
+  allocate(FIA%p_atm_surf(isd:ied, jsd:jed)) ; FIA%p_atm_surf(:,:) = 0.0
+  allocate(FIA%ice_free(isd:ied, jsd:jed))  ; FIA%ice_free(:,:) = 0.0
+  allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0 
 
-  allocate(FIA%flux_sw_dn(SZI_(HI), SZJ_(HI)))  ; FIA%flux_sw_dn(:,:) = 0.0
-  allocate(FIA%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
+  allocate(FIA%flux_sw_dn(isd:ied, jsd:jed))  ; FIA%flux_sw_dn(:,:) = 0.0
+  allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
 end subroutine alloc_fast_ice_avg
 
@@ -522,18 +528,19 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   type(restart_file_type), intent(inout) :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
-  integer :: CatIce, NkIce, idr
+  integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
 
   if (.not.associated(Rad)) allocate(Rad)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
-  allocate(Rad%sw_abs_sfc(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
-  allocate(Rad%sw_abs_snow(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
-  allocate(Rad%sw_abs_ice(SZI_(HI), SZJ_(HI), CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
-  allocate(Rad%sw_abs_ocn(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
-  allocate(Rad%sw_abs_int(SZI_(HI), SZJ_(HI), CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
+  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
+  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
+  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
+  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
+  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
 
-  allocate(Rad%coszen_nextrad(SZI_(HI), SZJ_(HI))) ; Rad%coszen_nextrad(:,:) = 0.0
+  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
 
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
                                domain=mpp_domain, mandatory=.false.)
@@ -594,6 +601,7 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
 
   if (.not.associated(OSS)) allocate(OSS)
 
+  ! The ocean_sfc_state_type only occurs on slow ice PEs, so it can use the memory macros.
   allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
@@ -619,15 +627,18 @@ subroutine alloc_simple_OSS(OSS, HI)
   type(simple_OSS_type), pointer    :: OSS
   type(hor_index_type),  intent(in) :: HI
 
-  if (.not.associated(OSS)) allocate(OSS)
+  integer :: isd, ied, jsd, jed
 
-  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
-  allocate(OSS%t_ocn(SZI_(HI), SZJ_(HI)))  ; OSS%t_ocn(:,:) = 0.0 
-  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0 
-  allocate(OSS%u_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ocn_A(:,:) = 0.0
-  allocate(OSS%v_ocn_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ocn_A(:,:) = 0.0
-  allocate(OSS%u_ice_A(SZI_(HI), SZJ_(HI))) ; OSS%u_ice_A(:,:) = 0.0
-  allocate(OSS%v_ice_A(SZI_(HI), SZJ_(HI))) ; OSS%v_ice_A(:,:) = 0.0
+  if (.not.associated(OSS)) allocate(OSS)
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
+  allocate(OSS%t_ocn(isd:ied, jsd:jed))  ; OSS%t_ocn(:,:) = 0.0 
+  allocate(OSS%bheat(isd:ied, jsd:jed))  ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%u_ocn_A(isd:ied, jsd:jed)) ; OSS%u_ocn_A(:,:) = 0.0
+  allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
+  allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
+  allocate(OSS%v_ice_A(isd:ied, jsd:jed)) ; OSS%v_ice_A(:,:) = 0.0
 
 end subroutine alloc_simple_OSS
 
@@ -643,33 +654,38 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   type(hor_index_type), intent(in)    :: HI_in, HI_out
   type(ice_grid_type),  intent(in)    :: IG
 
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i2, j2, i_off, j_off
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
-  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
-      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_IST_to_IST called with inconsistent domain "//&
                           "decompositions of the two ice types.")
   endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    IST_out%part_size(i,j,k) = IST_in%part_size(i,j,k)
-    IST_out%t_surf(i,j,k) = IST_in%t_surf(i,j,k)
+    i2 = i+i_off ; j2 = j+j_off
+    IST_out%part_size(i2,j2,k) = IST_in%part_size(i,j,k)
+    IST_out%t_surf(i2,j2,k) = IST_in%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    IST_out%mH_pond(i,j,k) = IST_in%mH_pond(i,j,k)
-    IST_out%mH_snow(i,j,k) = IST_in%mH_snow(i,j,k)
-    IST_out%mH_ice(i,j,k) = IST_in%mH_ice(i,j,k)
+    i2 = i+i_off ; j2 = j+j_off
+    IST_out%mH_pond(i2,j2,k) = IST_in%mH_pond(i,j,k)
+    IST_out%mH_snow(i2,j2,k) = IST_in%mH_snow(i,j,k)
+    IST_out%mH_ice(i2,j2,k) = IST_in%mH_ice(i,j,k)
 
-    IST_out%enth_snow(i,j,k,1) = IST_in%enth_snow(i,j,k,1)
+    IST_out%enth_snow(i2,j2,k,1) = IST_in%enth_snow(i,j,k,1)
   enddo ; enddo ; enddo
 
   do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    IST_out%enth_ice(i,j,k,m) = IST_in%enth_ice(i,j,k,m)
-    IST_out%sal_ice(i,j,k,m) = IST_in%sal_ice(i,j,k,m)
+    i2 = i+i_off ; j2 = j+j_off
+    IST_out%enth_ice(i2,j2,k,m) = IST_in%enth_ice(i,j,k,m)
+    IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
   IST_out%slab_ice = IST_in%slab_ice
@@ -689,23 +705,26 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   type(hor_index_type),  intent(in)    :: HI_in, HI_out
 
   integer :: i, j, k, m, isc, iec, jsc, jec
+  integer :: i2, j2, i_off, j_off
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
 
-  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
-      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_sOSS_to_sOSS called with inconsistent domain "//&
                           "decompositions of the two ice types.")
   endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
 
   do j=jsc,jec ; do i=isc,iec
-    OSS_out%t_ocn(i,j) = OSS_in%t_ocn(i,j)
-    OSS_out%s_surf(i,j) = OSS_in%s_surf(i,j)
-    OSS_out%bheat(i,j) = OSS_in%bheat(i,j)
-    OSS_out%u_ocn_A(i,j) = OSS_in%u_ocn_A(i,j)
-    OSS_out%v_ocn_A(i,j) = OSS_in%v_ocn_A(i,j)
-    OSS_out%u_ice_A(i,j) = OSS_in%u_ice_A(i,j)
-    OSS_out%v_ice_A(i,j) = OSS_in%v_ice_A(i,j)
+    i2 = i+i_off ; j2 = j+j_off
+    OSS_out%t_ocn(i2,j2) = OSS_in%t_ocn(i,j)
+    OSS_out%s_surf(i2,j2) = OSS_in%s_surf(i,j)
+    OSS_out%bheat(i2,j2) = OSS_in%bheat(i,j)
+    OSS_out%u_ocn_A(i2,j2) = OSS_in%u_ocn_A(i,j)
+    OSS_out%v_ocn_A(i2,j2) = OSS_in%v_ocn_A(i,j)
+    OSS_out%u_ice_A(i2,j2) = OSS_in%u_ice_A(i,j)
+    OSS_out%v_ice_A(i2,j2) = OSS_in%v_ice_A(i,j)
   enddo ; enddo
 
 end subroutine copy_sOSS_to_sOSS
@@ -722,49 +741,55 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   type(ice_grid_type),     intent(in)    :: IG
 
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+  integer :: i2, j2, i_off, j_off
+  integer :: isd, ied, jsd, jed
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
-  if ((HI_in%isc /= HI_out%isc) .or. (HI_in%iec /= HI_out%iec) .or. &
-      (HI_in%jsc /= HI_out%jsc) .or. (HI_in%jec /= HI_out%jec)) then
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
                           "decompositions of the two ice types.")
   endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    FIA_out%flux_t_top(i,j,k) = FIA_in%flux_t_top(i,j,k)
-    FIA_out%flux_q_top(i,j,k) = FIA_in%flux_q_top(i,j,k)
-    FIA_out%flux_sw_vis_dir_top(i,j,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
-    FIA_out%flux_sw_vis_dif_top(i,j,k) = FIA_in%flux_sw_vis_dif_top(i,j,k)
-    FIA_out%flux_sw_nir_dir_top(i,j,k) = FIA_in%flux_sw_nir_dir_top(i,j,k)
-    FIA_out%flux_sw_nir_dif_top(i,j,k) = FIA_in%flux_sw_nir_dif_top(i,j,k)
-    FIA_out%flux_lw_top(i,j,k) = FIA_in%flux_lw_top(i,j,k)
-    FIA_out%flux_lh_top(i,j,k) = FIA_in%flux_lh_top(i,j,k)
-    FIA_out%lprec_top(i,j,k) = FIA_in%lprec_top(i,j,k)
-    FIA_out%fprec_top(i,j,k) = FIA_in%fprec_top(i,j,k)
+    i2 = i+i_off ; j2 = j+j_off
+    FIA_out%flux_t_top(i2,j2,k) = FIA_in%flux_t_top(i,j,k)
+    FIA_out%flux_q_top(i2,j2,k) = FIA_in%flux_q_top(i,j,k)
+    FIA_out%flux_sw_vis_dir_top(i2,j2,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
+    FIA_out%flux_sw_vis_dif_top(i2,j2,k) = FIA_in%flux_sw_vis_dif_top(i,j,k)
+    FIA_out%flux_sw_nir_dir_top(i2,j2,k) = FIA_in%flux_sw_nir_dir_top(i,j,k)
+    FIA_out%flux_sw_nir_dif_top(i2,j2,k) = FIA_in%flux_sw_nir_dif_top(i,j,k)
+    FIA_out%flux_lw_top(i2,j2,k) = FIA_in%flux_lw_top(i,j,k)
+    FIA_out%flux_lh_top(i2,j2,k) = FIA_in%flux_lh_top(i,j,k)
+    FIA_out%lprec_top(i2,j2,k) = FIA_in%lprec_top(i,j,k)
+    FIA_out%fprec_top(i2,j2,k) = FIA_in%fprec_top(i,j,k)
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    FIA_out%tmelt(i,j,k) = FIA_in%tmelt(i,j,k)
-    FIA_out%bmelt(i,j,k) = FIA_in%bmelt(i,j,k)
-    FIA_out%sw_abs_ocn(i,j,k) = FIA_in%sw_abs_ocn(i,j,k)
+    i2 = i+i_off ; j2 = j+j_off
+    FIA_out%tmelt(i2,j2,k) = FIA_in%tmelt(i,j,k)
+    FIA_out%bmelt(i2,j2,k) = FIA_in%bmelt(i,j,k)
+    FIA_out%sw_abs_ocn(i2,j2,k) = FIA_in%sw_abs_ocn(i,j,k)
   enddo ; enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
-    FIA_out%bheat(i,j) = FIA_in%bheat(i,j)
-    FIA_out%WindStr_x(i,j) = FIA_in%WindStr_x(i,j)
-    FIA_out%WindStr_y(i,j) = FIA_in%WindStr_y(i,j)
-    FIA_out%WindStr_ocn_x(i,j) = FIA_in%WindStr_ocn_x(i,j)
-    FIA_out%WindStr_ocn_y(i,j) = FIA_in%WindStr_ocn_y(i,j)
-    FIA_out%p_atm_surf(i,j) = FIA_in%p_atm_surf(i,j)
-    FIA_out%runoff(i,j) = FIA_in%runoff(i,j)
-    FIA_out%calving(i,j) =  FIA_in%calving(i,j)
-    FIA_out%runoff_hflx(i,j) = FIA_in%runoff_hflx(i,j)
-    FIA_out%calving_hflx(i,j) =  FIA_in%calving_hflx(i,j)
-    FIA_out%ice_free(i,j) = FIA_in%ice_free(i,j)
-    FIA_out%ice_cover(i,j) = FIA_in%ice_cover(i,j)
-    FIA_out%flux_sw_dn(i,j) = FIA_in%flux_sw_dn(i,j)
+    i2 = i+i_off ; j2 = j+j_off
+    FIA_out%bheat(i2,j2) = FIA_in%bheat(i,j)
+    FIA_out%WindStr_x(i2,j2) = FIA_in%WindStr_x(i,j)
+    FIA_out%WindStr_y(i2,j2) = FIA_in%WindStr_y(i,j)
+    FIA_out%WindStr_ocn_x(i2,j2) = FIA_in%WindStr_ocn_x(i,j)
+    FIA_out%WindStr_ocn_y(i2,j2) = FIA_in%WindStr_ocn_y(i,j)
+    FIA_out%p_atm_surf(i2,j2) = FIA_in%p_atm_surf(i,j)
+    FIA_out%runoff(i2,j2) = FIA_in%runoff(i,j)
+    FIA_out%calving(i2,j2) =  FIA_in%calving(i,j)
+    FIA_out%runoff_hflx(i2,j2) = FIA_in%runoff_hflx(i,j)
+    FIA_out%calving_hflx(i2,j2) =  FIA_in%calving_hflx(i,j)
+    FIA_out%ice_free(i2,j2) = FIA_in%ice_free(i,j)
+    FIA_out%ice_cover(i2,j2) = FIA_in%ice_cover(i,j)
+    FIA_out%flux_sw_dn(i2,j2) = FIA_in%flux_sw_dn(i,j)
   enddo ; enddo
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
   ! are only needed on the fast_ice_PEs
@@ -781,7 +806,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
       ! initialized FIA_in.
       FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
       if (FIA_out%num_tr_fluxes > 0) then
-        allocate(FIA_out%tr_flux_top(SZI_(HI_out), SZJ_(HI_out), 0:ncat, FIA_out%num_tr_fluxes))
+        isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
+        allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
         FIA_out%tr_flux_top(:,:,:,:) = 0.0
 
         allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
@@ -795,7 +821,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 !$OMP END SINGLE
 
     do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-      FIA_out%tr_flux_top(i,j,k,n) = FIA_in%tr_flux_top(i,j,k,n)
+      i2 = i+i_off ; j2 = j+j_off
+      FIA_out%tr_flux_top(i2,j2,k,n) = FIA_in%tr_flux_top(i,j,k,n)
     enddo ; enddo ; enddo ; enddo
   endif
 
@@ -978,7 +1005,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS)
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
-  real, dimension(SZI_(G),SZJ_(G)) :: sum_part_sz
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
   real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
