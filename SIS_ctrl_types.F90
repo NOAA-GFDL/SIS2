@@ -42,8 +42,6 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: SIS_fast_CS, SIS_slow_CS
 public :: ice_diagnostics_init, ice_diags_fast_init
 

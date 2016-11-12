@@ -34,8 +34,6 @@ use SIS_hor_grid,       only : SIS_hor_grid_type
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: get_avg, post_avg, ice_line, is_NaN, g_sum, ice_grid_chksum
 
 interface post_avg

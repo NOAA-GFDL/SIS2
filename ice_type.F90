@@ -32,8 +32,6 @@ use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: ice_data_type, dealloc_ice_arrays 
 public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
