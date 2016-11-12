@@ -121,8 +121,6 @@ use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
 
-! #include <SIS2_memory.h>
-
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
 public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona interfaces.
@@ -1738,15 +1736,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       fG => Ice%fCS%G
 
       ! Set up the MOM_domain_type structures.  
-#ifdef STATIC_MEMORY_
-      call MOM_domains_init(Ice%fCS%G%domain, param_file, symmetric=symmetric, &
-                static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
-                NIGLOBAL=NIGLOBAL_, NJGLOBAL=NJGLOBAL_, NIPROC=NIPROC_, &
-                NJPROC=NJPROC_, domain_name="ice model", include_name="SIS2_memory.h")
-#else
-      call MOM_domains_init(Ice%fCS%G%domain, param_file, symmetric=symmetric, &
-               domain_name="ice model", include_name="SIS2_memory.h")
-#endif
+      call MOM_domains_init(Ice%fCS%G%domain, param_file, symmetric=.true., &
+               domain_name="ice model fast", include_name="SIS2_memory.h", &
+               static_memory=.false., NIHALO=0, NJHALO=0, param_suffix="_FAST")
       fGD => Ice%fCS%G%Domain
 
       call callTree_waypoint("domains initialized (ice_model_init)")
@@ -1757,7 +1749,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, dG%Domain)
 
       ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-      call SIS_initialize_fixed(dG, param_file, write_geom_files, dirs%output_directory)
+      call SIS_initialize_fixed(dG, param_file, .false., dirs%output_directory)
 
       call set_hor_grid(Ice%fCS%G, param_file, global_indexing=global_indexing)
       call copy_dyngrid_to_SIS_horgrid(dG, Ice%fCS%G)
