@@ -121,7 +121,7 @@ use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
 
-#include <SIS2_memory.h>
+! #include <SIS2_memory.h>
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
@@ -534,13 +534,13 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   type(ocean_ice_boundary_type), intent(in)    :: OIB
   type(ocean_sfc_state_type),    intent(inout) :: OSS
   type(SIS_hor_grid_type),       intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G)), &
+  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
                                  intent(inout) :: t_surf_ocn_K  ! The ocean surface temperature in Kelvin.
   logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
                                                                 ! related to passive tracers.
 
-  real, dimension(SZI_(G),SZJ_(G)) :: u_nonsym, v_nonsym
+  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: Cgrid_ocn
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
@@ -1041,7 +1041,7 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
   logical,                 intent(in)    :: recalc_sun_angle
   type(SIS_hor_grid_type), intent(inout) :: G
   type(time_type),         intent(in)    :: Time_start, Time_end
-  real, dimension(SZI_(G), SZJ_(G)), &
+  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
                            intent(in)    :: coszen
    
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
@@ -1083,7 +1083,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   type(SIS_fast_CS),             intent(inout) :: CS
   type(time_type),               intent(in)    :: Time_start, Time_end
 
-  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag, sw_dn, net_sw, avg_alb
+  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
   real :: dt_diag
   real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
                     ! strictly diagnostic purposes.
@@ -1860,7 +1860,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! Initialize the ice salinity.
       if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
-        allocate(sal_ice_tmp(SZI_(sG), SZJ_(sG), CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
+        allocate(sal_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
         do n=1,NkIce
           write(nstr, '(I4)') n ; nstr = adjustl(nstr)
           id_sal = register_restart_field(Ice%Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
@@ -1893,8 +1893,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       read_aux_restart = (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
                          (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))
       if (read_aux_restart) then
-        allocate(t_snow_tmp(SZI_(sG), SZJ_(sG), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
-        allocate(t_ice_tmp(SZI_(sG), SZJ_(sG), CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
+        allocate(t_snow_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+        allocate(t_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
 
         idr = register_restart_field(Ice%Ice_restart, restart_file, 't_snow', t_snow_tmp, &
                                      domain=sGD%mpp_domain, mandatory=.false., read_only=.true.)
