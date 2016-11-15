@@ -492,8 +492,6 @@ subroutine exchange_slow_to_fast_ice(Ice)
       "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
-
   if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
     call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
   endif
@@ -522,6 +520,8 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
                            Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
 end subroutine unpack_ocean_ice_boundary
 
