@@ -181,6 +181,10 @@ type ice_state_type
 
   !### THESE DIAGNOSTICS ARE NEVER SENT!
   ! integer :: id_strna=-1
+  ! Priority 1 diagnostics from Notz et al, 2016:  Sea Ice Model Intercomparison
+  ! Project, GMDD.  These were implemented for CMIP6.
+  integer :: id_siconc, id_sithick, id_sisnconc, id_sisnthick, id_sitemptop, &
+             id_sivol, id_siu, id_siv, id_sispeed, id_sitimefrac
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
@@ -293,7 +297,8 @@ type dyn_trans_CS ! To be made ; private
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
 
-  integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
+  integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1, id_simass = -1,&
+             id_sisnmass = -1
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
   type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
@@ -1343,12 +1348,24 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, G, diag, Time)
                'ice modeled', '0 or 1', missing_value=missing)
   IST%id_cn       = register_SIS_diag_field('ice_model', 'CN', diag%axesTc, Time, &
                'ice concentration', '0-1', missing_value=missing)
+  IST%id_sitimefrac = register_SIS_diag_field('ice_model', 'sitimefrac', diag%axesT1, Time, &
+               'time fraction of ice cover', '0-1', missing_value=missing)
+  IST%id_siconc = register_SIS_diag_field('ice_model', 'siconc', diag%axesT1, Time, &
+               'ice concentration', '0-1', missing_value=missing)
+  IST%id_sisnconc = register_SIS_diag_field('ice_model', 'sisnconc', diag%axesT1, Time, &
+               'snow concentration', '0-1', missing_value=missing)
   IST%id_hs       = register_SIS_diag_field('ice_model', 'HS', diag%axesT1, Time, &
+               'snow thickness', 'm-snow', missing_value=missing)
+  IST%id_sisnthick= register_SIS_diag_field('ice_model', 'sisnthick', diag%axesT1, Time, &
                'snow thickness', 'm-snow', missing_value=missing)
   IST%id_tsn      = register_SIS_diag_field('ice_model', 'TSN', diag%axesT1, Time, &
                'snow layer temperature', 'C',  missing_value=missing)
   IST%id_hi       = register_SIS_diag_field('ice_model', 'HI', diag%axesT1, Time, &
                'ice thickness', 'm-ice', missing_value=missing)
+  IST%id_sithick  = register_SIS_diag_field('ice_model', 'sithick', diag%axesT1, Time, &
+               'ice thickness', 'm-ice', missing_value=missing)
+  IST%id_sivol  = register_SIS_diag_field('ice_model', 'sivol', diag%axesT1, Time, &
+               'ice volume', 'm-ice', missing_value=missing)
 
   IST%id_t_iceav = register_SIS_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', 'C', missing_value=missing)
@@ -1366,6 +1383,8 @@ subroutine ice_diagnostics_init(Ice, IST, IOF, OSS, FIA, G, diag, Time)
                'g/kg',  missing_value=missing)
   enddo
   IST%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+  IST%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
   FIA%id_sh       = register_SIS_diag_field('ice_model','SH' ,diag%axesT1, Time, &
                'sensible heat flux', 'W/m^2',  missing_value=missing)

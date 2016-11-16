@@ -160,7 +160,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   type(dyn_trans_CS),         pointer       :: CS
   type(icebergs),             pointer       :: icebergs_CS
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, tmp2d
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature in degC.
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
@@ -583,12 +583,17 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   ! Sum the concentration weighted mass for diagnostics.
   if (CS%id_mi>0 .or. CS%id_mib>0) then
+    mass_ice(:,:) = 0.0
+    mass_snow(:,:) = 0.0
     mass(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,mass,G,IST,IG)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      mass(i,j) = mass(i,j) + (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))) * &
-                  IST%part_size(i,j,k)
+      mass_ice(i,j) = mass_ice(i,j) + IG%H_to_kg_m2*IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      mass_snow(i,j) = mass_snow(i,j) + IG%H_to_kg_m2*IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
+      mass(i,j) = mass_ice(i,j) + mass_snow(i,j)
     enddo ; enddo ; enddo
+    if (CS%id_simass>0) call post_data(CS%id_simass, mass_ice(isc:iec,jsc:jec), CS%diag)
+    if (CS%id_sisnmass>0) call post_data(CS%id_sisnmass, mass_snow(isc:iec,jsc:jec), CS%diag)
     if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), CS%diag)
 
     if (CS%id_mib>0) then
@@ -604,6 +609,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   !
   call mpp_clock_begin(iceClock9)
   if (IST%id_cn>0) call post_data(IST%id_cn, IST%part_size(:,:,1:ncat), IST%diag)
+  if (IST%id_siconc>0) call post_data(IST%id_siconc, sum(IST%part_size(:,:,1:ncat),3), IST%diag)
   ! TK Mod: 10/18/02
   !  if (IST%id_obs_cn>0) call post_data(IST%id_obs_cn, Obs_cn_ice(:,:,2), IST%diag)
   ! TK Mod: 10/18/02: (commented out...does not compile yet... add later)
@@ -647,13 +653,40 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     enddo ; enddo
     call post_data(IST%id_ext, diagVar, CS%diag)
   endif
+  if (IST%id_sitimefrac>0) then
+    diagVar(:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec
+      if (IST%part_size(i,j,0) < 1.0) diagVar(i,j) = 1.0
+    enddo ; enddo
+    call post_data(IST%id_sitimefrac, diagVar, CS%diag)
+  endif
+  if (IST%id_sisnconc>0) then
+    diagVar(:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec; do k=1,ncat
+      if (IST%part_size(i,j,k) > 0.0 .and. IST%mH_snow(i,j,k) > 0.0) then
+        diagVar(i,j) = diagVar(i,j) + IST%part_size(i,j,k)
+      endif
+    enddo ; enddo ; enddo
+    call post_data(IST%id_sisnconc, diagVar, CS%diag)
+  endif
   if (IST%id_hs>0) call post_avg(IST%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
+                                 CS%diag, G=G, &
+                                 scale=IG%H_to_kg_m2/IST%Rho_snow, wtd=.true.)
+  if (IST%id_sisnthick>0) call post_avg(IST%id_sisnthick, IST%mH_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
                                  scale=IG%H_to_kg_m2/IST%Rho_snow, wtd=.true.)
   if (IST%id_hi>0) call post_avg(IST%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, &
                                  scale=IG%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
+  if (IST%id_sithick>0) call post_avg(IST%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
+                                 CS%diag, G=G, &
+                                 scale=IG%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
+  if (IST%id_sivol>0) call post_avg(IST%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
+                                 CS%diag, G=G, &
+                                 scale=IG%H_to_kg_m2/IST%Rho_ice, wtd=.true.)
   if (IST%id_tsfc>0) call post_avg(IST%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
+                                 CS%diag, G=G, offset=-T_0degC, wtd=.true.)
+  if (IST%id_sitemptop>0) call post_avg(IST%id_sitemptop, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
                                  CS%diag, G=G, offset=-T_0degC, wtd=.true.)
   if (IST%id_tsn>0) call post_avg(IST%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  CS%diag, G=G, wtd=.true.)
@@ -1131,9 +1164,13 @@ subroutine SIS_slow_init(Time, G, IG, param_file, diag, CS, output_dir, Time_ini
   CS%id_xprt = register_diag_field('ice_model','XPRT',diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
   CS%id_mi   = register_diag_field('ice_model', 'MI', diag%axesT1, Time, &
+               'ice + snow mass', 'kg/m^2', missing_value=missing)
+  CS%id_simass = register_diag_field('ice_model', 'simass', diag%axesT1, Time, &
                'ice mass', 'kg/m^2', missing_value=missing)
+  CS%id_sisnmass = register_diag_field('ice_model', 'sisnmass', diag%axesT1, Time, &
+               'snow mass', 'kg/m^2', missing_value=missing)
   CS%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
-               'ice + bergs mass', 'kg/m^2', missing_value=missing)
+               'ice + snow + bergs mass', 'kg/m^2', missing_value=missing)
 
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
