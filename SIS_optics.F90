@@ -258,7 +258,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
 
     call shortwave_dEdd0  (nx_block, ny_block, icells, indxi, indxj, coszen, &
              aice, vice, vsno, fs, rhosnw, rsnw, fp, hprad, swvdr, swvdf, &
-             swidr, swidf, alvdf, alvdr, alidr, alidf, fswsfc, fswint, &
+             swidr, swidf, alvdr, alvdf, alidr, alidf, fswsfc, fswint, &
              fswthru, Sswabs, Iswabs, albice, albsno, albpnd)
     ! out: alvdf, alvdr, and subsequent.
 
