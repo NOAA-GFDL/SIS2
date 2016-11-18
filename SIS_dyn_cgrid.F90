@@ -133,6 +133,7 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: id_sh_d_hifreq = -1, id_sh_t_hifreq = -1, id_sh_s_hifreq = -1
   integer :: id_sigi_hifreq = -1, id_sigii_hifreq = -1
   integer :: id_stren_hifreq = -1, id_ci_hifreq = -1
+  integer :: id_siu = -1, id_siv = -1, id_sispeed = -1 ! SIMIP diagnostics
 end type SIS_C_dyn_CS
 
 contains
@@ -399,6 +400,13 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time,     &
             'ice strength', 'Pa*m', missing_value=missing)
 
+  CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time,          &
+            'ice velocity - x component', 'm/s', missing_value=missing)
+  CS%id_siv = register_diag_field('ice_model', 'siv', diag%axesT1, Time,          &
+            'ice velocity - y component', 'm/s', missing_value=missing)
+  CS%id_sispeed = register_diag_field('ice_model', 'sispeed', diag%axesT1, Time,          &
+            'ice speed', 'm/s', missing_value=missing)
+
 end subroutine SIS_C_dyn_init
 
 
@@ -411,7 +419,6 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
   type(SIS_C_dyn_CS),               pointer     :: CS
   integer,                optional, intent(in)  :: halo_sz
-
   integer :: i, j, isc, iec, jsc, jec, halo
   halo = 0 ; if (present(halo_sz)) halo = halo_sz
   isc = G%isc-halo ; iec = G%iec+halo ; jsc = G%jsc-halo ; jec = G%jec+halo
@@ -479,7 +486,8 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                 ! in s-1.  This is set based on considerations of numerical
                 ! stability, and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points, in m2.
-    dx_dyT, dy_dxT  ! dx/dy or dy_dx at T points, nondim.
+    dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points, nondim.
+    siu, siv, sispeed  ! diagnostics on T points, m/s
 
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     fxic, &  ! Zonal force due to internal stresses, in Pa.
@@ -1340,6 +1348,21 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (CS%id_del_sh>0) call post_SIS_data(CS%id_del_sh, del_sh, CS%diag)
     if (CS%id_del_sh_min>0) call post_SIS_data(CS%id_del_sh_min, &
                                     (del_sh_min_pr(:,:)*pres_mice(:,:)), CS%diag)
+    if (Cs%id_siu>0 .or. Cs%id_siv>0 .or. Cs%id_sispeed>0) then
+
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        if (mis(i,j) > 0.0) then
+          siu(i,j) = (ui(I-1,j) + ui(I,j))/2
+          siv(i,j) = (vi(i,J-1) + vi(i,J))/2
+          sispeed(i,j) = (siu(i,j)*siu(i,j)+siv(i,j)*siv(i,j))**0.5
+        else
+          siu(i,j) = 0.0; siv(i,j) = 0.0; sispeed(i,j) = 0.0;
+        endif
+      enddo ; enddo
+      if (Cs%id_siu>0) call post_SIS_data(CS%id_siu, siu, CS%diag)
+      if (Cs%id_siv>0) call post_SIS_data(CS%id_siv, siv, CS%diag)
+      if (Cs%id_sispeed>0) call post_SIS_data(CS%id_sispeed, sispeed, CS%diag)
+    endif
 
   endif
 
