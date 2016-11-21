@@ -69,6 +69,7 @@ use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_ROUTINE
+use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
@@ -93,6 +94,8 @@ use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
+use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
+use SIS_types, only : redistribute_sOSS_to_sOSS
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -132,6 +135,8 @@ public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 
 integer :: iceClock, iceClock1, iceCLock2, iceCLock3
+
+integer, parameter :: REDIST=2, DIRECT=3
 
 contains
 
@@ -329,12 +334,23 @@ subroutine exchange_fast_to_slow_ice(Ice)
 
   if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
     ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
-    call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
+    if(Ice%xtype == DIRECT) then
+      call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, &
+           Ice%fCS%IG)
+    else if(Ice%xtype == REDIST) then
+      call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G, Ice%sCS%G, &
+           Ice%fCS%IG)
+    endif
   endif
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
-    call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, Ice%fCS%IG)
+    if(Ice%xtype == DIRECT) then
+      call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, &
+           Ice%fCS%IG)
+    else if(Ice%xtype == REDIST) then
+      call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G, Ice%sCS%G)
+    endif
   endif
 
 end subroutine exchange_fast_to_slow_ice
@@ -493,12 +509,21 @@ subroutine exchange_slow_to_fast_ice(Ice)
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
   if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
-    call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
+    if(Ice%xtype == DIRECT) then
+      call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
+    else if(Ice%xtype == REDIST) then
+      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G, Ice%fCS%G)
+    endif
   endif
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
-    call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, Ice%sCS%IG)
+    if(Ice%xtype == DIRECT) then
+      call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, &
+           Ice%sCS%IG)
+    else
+      call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G, Ice%fCS%G)
+    endif
   endif
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
@@ -1759,6 +1784,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%slab_ice = slab_ice
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
+    if(.not.associated(Ice%sCS%G%domain)) then
+      allocate(Ice%sCS%G%domain)
+      allocate(Ice%sCS%G%domain%mpp_domain)
+    endif
+    if(.not.associated(Ice%fCS%G%domain)) then
+      allocate(Ice%fCS%G%domain)
+      allocate(Ice%fCS%G%domain%mpp_domain)
+    endif
+    call mpp_broadcast_domain(Ice%sCS%G%domain%mpp_domain)
+    call mpp_broadcast_domain(Ice%fCS%G%domain%mpp_domain)
+    Ice%xtype = REDIST   ! valuce can be REDIST or DIRECT
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
