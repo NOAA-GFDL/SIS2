@@ -7,7 +7,7 @@ module SIS_types
 
 ! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
 ! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
-use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH
+use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH, mpp_redistribute
 ! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
 ! use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 ! use fms_io_mod,       only: save_restart, restore_state, query_initialized
@@ -43,6 +43,7 @@ public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
+public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -695,6 +696,39 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
 end subroutine copy_IST_to_IST
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_IST_to_IST redistributes the computational domain of one ice state type into
+!! the computational domain of another ice_state_type.  
+subroutine redistribute_IST_to_IST(IST_in, IST_out, G_in, G_out)
+  type(ice_state_type),    intent(in)    :: IST_in
+  type(ice_state_type),    intent(inout) :: IST_out
+  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%part_size, &
+       G_out%domain%mpp_domain, IST_out%part_size, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%t_surf, &
+       G_out%domain%mpp_domain, IST_out%t_surf, complete=.true.)
+
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_pond, &
+       G_out%domain%mpp_domain, IST_out%mH_pond, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_snow, &
+       G_out%domain%mpp_domain, IST_out%mH_snow, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_ice, &
+       G_out%domain%mpp_domain, IST_out%mH_ice, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%enth_snow, &
+       G_out%domain%mpp_domain, IST_out%enth_snow, complete=.true.)
+
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%enth_ice, &
+       G_out%domain%mpp_domain, IST_out%enth_ice, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%sal_ice, &
+       G_out%domain%mpp_domain, IST_out%sal_ice, complete=.true.)
+
+  IST_out%slab_ice = IST_in%slab_ice
+
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+
+end subroutine redistribute_IST_to_IST
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type.  Both must use the same
 !! domain decomposition and indexing convention (for now), but they may have
@@ -728,6 +762,31 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   enddo ; enddo
 
 end subroutine copy_sOSS_to_sOSS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
+!! the computational domain of another simple_OSS_type. 
+subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, G_in, G_out)
+  type(simple_OSS_type),   intent(in)    :: OSS_in
+  type(simple_OSS_type),   intent(inout) :: OSS_out
+  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%t_ocn, &
+       G_out%domain%mpp_domain, OSS_out%t_ocn, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%s_surf, &
+       G_out%domain%mpp_domain, OSS_out%s_surf, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%bheat, &
+       G_out%domain%mpp_domain, OSS_out%bheat, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%u_ocn_A, &
+       G_out%domain%mpp_domain, OSS_out%u_ocn_A, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%v_ocn_A, &
+       G_out%domain%mpp_domain, OSS_out%v_ocn_A, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%u_ice_A, &
+       G_out%domain%mpp_domain, OSS_out%u_ice_A, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%v_ice_A, &
+       G_out%domain%mpp_domain, OSS_out%v_ice_A, complete=.true.)
+
+end subroutine redistribute_sOSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
@@ -828,6 +887,110 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
   ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 end subroutine copy_FIA_to_FIA
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
+!! the computational domain of another fast_ice_avg_type. 
+subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, G_in, G_out, IG)
+  type(fast_ice_avg_type), intent(in)    :: FIA_in
+  type(fast_ice_avg_type), intent(inout) :: FIA_out
+  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+  type(ice_grid_type),     intent(in)    :: IG
+
+  integer :: isd, ied, jsd, jed, ncat
+
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_t_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_t_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_q_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_q_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_vis_dir_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_sw_vis_dir_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_vis_dif_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_sw_vis_dif_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_nir_dir_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_sw_nir_dir_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_nir_dif_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_sw_nir_dif_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_lw_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_lw_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_lh_top, &
+       G_out%domain%mpp_domain, FIA_out%flux_lh_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%lprec_top, &
+       G_out%domain%mpp_domain, FIA_out%lprec_top, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%fprec_top, &
+       G_out%domain%mpp_domain, FIA_out%fprec_top, complete=.true.)
+
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tmelt, &
+       G_out%domain%mpp_domain, FIA_out%tmelt, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%bmelt, &
+       G_out%domain%mpp_domain, FIA_out%bmelt, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%sw_abs_ocn, &
+       G_out%domain%mpp_domain, FIA_out%sw_abs_ocn, complete=.true.)
+
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%bheat, &
+       G_out%domain%mpp_domain, FIA_out%bheat, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_x, &
+       G_out%domain%mpp_domain, FIA_out%WindStr_x, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_y, &
+       G_out%domain%mpp_domain, FIA_out%WindStr_y, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_ocn_x, &
+       G_out%domain%mpp_domain, FIA_out%WindStr_ocn_x, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_ocn_y, &
+       G_out%domain%mpp_domain, FIA_out%WindStr_ocn_y, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%p_atm_surf, &
+       G_out%domain%mpp_domain, FIA_out%p_atm_surf, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%runoff, &
+       G_out%domain%mpp_domain, FIA_out%runoff, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%calving, &
+       G_out%domain%mpp_domain, FIA_out%calving, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%runoff_hflx, &
+       G_out%domain%mpp_domain, FIA_out%runoff_hflx, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%calving_hflx, &
+       G_out%domain%mpp_domain, FIA_out%calving_hflx, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%ice_free, &
+       G_out%domain%mpp_domain, FIA_out%ice_free, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%ice_cover, &
+       G_out%domain%mpp_domain, FIA_out%ice_cover, complete=.false.)
+  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_dn, &
+       G_out%domain%mpp_domain, FIA_out%flux_sw_dn, complete=.true.)
+
+  !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
+  ! are only needed on the fast_ice_PEs
+  !   FIA%frazil_left is deliberately not being copied, as it is only valid on
+  ! the slow_ice_PEs.
+  !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
+  ! being copied over.
+
+  if (FIA_in%num_tr_fluxes >= 0) then
+!$OMP SINGLE
+    if (FIA_out%num_tr_fluxes < 0) then
+      ! Allocate the tr_flux_top arrays to accommodate the size of the input
+      ! fluxes.  This only occurs the first time FIA_out is copied from a fully
+      ! initialized FIA_in.
+      FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
+      if (FIA_out%num_tr_fluxes > 0) then
+        isd = G_out%isd ; ied = G_out%ied ; jsd = G_out%jsd ; jed = G_out%jed
+        ncat = IG%CatIce
+        allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
+        FIA_out%tr_flux_top(:,:,:,:) = 0.0
+
+        allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
+                                       size(FIA_in%tr_flux_index,2)))
+        FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
+      endif
+    endif
+
+    if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
+      call SIS_error(FATAL, "redistribute_FIA_to_FIA called with different num_tr_fluxes.")
+!$OMP END SINGLE
+    if (FIA_in%num_tr_fluxes > 0) then
+      call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tr_flux_top, &
+           G_out%domain%mpp_domain, FIA_out%tr_flux_top)
+    endif
+  endif
+
+  ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
+end subroutine redistribute_FIA_to_FIA
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
