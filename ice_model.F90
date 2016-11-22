@@ -766,23 +766,17 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   real, dimension(IG%NkIce) :: sw_abs_lay
   real :: u, v
   real :: area_pt
-  real :: I_Nk
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: rho_snow ! The nominal density of snow in kg m-3.
-  real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
-  real :: dt_slow  ! The thermodynamic step, in s.
-  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
-  logical :: sent
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-  I_Nk = 1.0 / IG%NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
@@ -936,18 +930,6 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       call chksum(Ice%v_surf(:,:,k2), "End Ice%v_surf(k2)")
     enddo
   endif
-
-  !
-  ! Pre-timestep diagnostics
-  !
-  dt_slow = time_type_to_real(fCS%Time_step_slow)
-  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
-
-  call enable_SIS_averaging(dt_slow, fCS%Time+fCS%Time_step_slow, fCS%diag)
-  if (Rad%id_alb>0) call post_avg(Rad%id_alb, Ice%albedo, &
-                                  IST%part_size(isc:iec,jsc:jec,:), fCS%diag)
-
-  call disable_SIS_averaging(fCS%diag)
 
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
@@ -1123,13 +1105,15 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   call enable_SIS_averaging(dt_diag, Time_end, CS%diag)
 
   if (Rad%id_alb_vis_dir>0) call post_avg(Rad%id_alb_vis_dir, Ice%albedo_vis_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+                              IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_vis_dif>0) call post_avg(Rad%id_alb_vis_dif, Ice%albedo_vis_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+                              IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_nir_dir>0) call post_avg(Rad%id_alb_nir_dir, Ice%albedo_nir_dir, &
-                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+                              IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb_nir_dif>0) call post_avg(Rad%id_alb_nir_dif, Ice%albedo_nir_dif, &
-                             IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+                              IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+  if (Rad%id_alb>0)         call post_avg(Rad%id_alb, Ice%albedo, &
+                              IST%part_size(isc:iec,jsc:jec,:), CS%diag)
 
   if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
@@ -1784,17 +1768,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%slab_ice = slab_ice
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
-    if(.not.associated(Ice%sCS%G%domain)) then
-      allocate(Ice%sCS%G%domain)
-      allocate(Ice%sCS%G%domain%mpp_domain)
-    endif
-    if(.not.associated(Ice%fCS%G%domain)) then
-      allocate(Ice%fCS%G%domain)
-      allocate(Ice%fCS%G%domain%mpp_domain)
-    endif
-    call mpp_broadcast_domain(Ice%sCS%G%domain%mpp_domain)
-    call mpp_broadcast_domain(Ice%fCS%G%domain%mpp_domain)
-    Ice%xtype = REDIST   ! valuce can be REDIST or DIRECT
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
@@ -2225,6 +2198,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call nullify_domain()
 
   call close_param_file(param_file)
+
+  ! This code has to be called for all of the ice processors.
+  !### I think that there is still a problem here!!!
+  if (.not.associated(Ice%sCS%G%domain)) then
+    allocate(Ice%sCS%G%domain)
+    allocate(Ice%sCS%G%domain%mpp_domain)
+  endif
+  if(.not.associated(Ice%fCS%G%domain)) then
+    allocate(Ice%fCS%G%domain)
+    allocate(Ice%fCS%G%domain%mpp_domain)
+  endif
+  call mpp_broadcast_domain(Ice%sCS%G%domain%mpp_domain)
+  call mpp_broadcast_domain(Ice%fCS%G%domain%mpp_domain)
+  Ice%xtype = REDIST   ! value can be REDIST or DIRECT
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
