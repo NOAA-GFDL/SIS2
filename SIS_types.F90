@@ -21,7 +21,7 @@ use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 
-use MOM_coms, only : PE_here
+use MOM_coms, only : PE_here, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
@@ -226,6 +226,7 @@ type fast_ice_avg_type
                      ! thickness categories, used in calculating
                      ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
+  logical :: first_copy = .true.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
     tr_flux_top    ! An array of tracer fluxes at the top of the
@@ -794,7 +795,7 @@ end subroutine redistribute_sOSS_to_sOSS
 !! domain decomposition and indexing convention (for now), but they may have
 !! different halo sizes.
 subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
-  type(fast_ice_avg_type), intent(in)    :: FIA_in
+  type(fast_ice_avg_type), intent(inout) :: FIA_in
   type(fast_ice_avg_type), intent(inout) :: FIA_out
   type(hor_index_type),    intent(in)    :: HI_in, HI_out
   type(ice_grid_type),     intent(in)    :: IG
@@ -857,8 +858,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
   ! being copied over.
 
-  if (FIA_in%num_tr_fluxes >= 0) then
-!$OMP SINGLE
+  if (FIA_in%first_copy .or. FIA_out%first_copy) then ; if (FIA_in%num_tr_fluxes >= 0) then
     if (FIA_out%num_tr_fluxes < 0) then
       ! Allocate the tr_flux_top arrays to accommodate the size of the input
       ! fluxes.  This only occurs the first time FIA_out is copied from a fully
@@ -874,7 +874,10 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
         FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
       endif
     endif
+    FIA_in%first_copy = .false. ; FIA_out%first_copy = .false.
+  endif ; endif
 
+  if (FIA_in%num_tr_fluxes >= 0) then
     if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
       call SIS_error(FATAL, "copy_FIA_to_FIA called with different num_tr_fluxes.")
 !$OMP END SINGLE
@@ -892,12 +895,14 @@ end subroutine copy_FIA_to_FIA
 !> redistribute_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
 !! the computational domain of another fast_ice_avg_type. 
 subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, G_in, G_out, IG)
-  type(fast_ice_avg_type), intent(in)    :: FIA_in
+  type(fast_ice_avg_type), intent(inout) :: FIA_in
   type(fast_ice_avg_type), intent(inout) :: FIA_out
   type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
   type(ice_grid_type),     intent(in)    :: IG
 
-  integer :: isd, ied, jsd, jed, ncat
+  integer, allocatable, dimension(:,:) :: tr_flux_index
+  integer :: i, j, isd, ied, jsd, jed, ncat
+  integer :: num_tr_flux, tr_ind_size(2)
 
   call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_t_top, &
        G_out%domain%mpp_domain, FIA_out%flux_t_top, complete=.false.)
@@ -960,36 +965,65 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, G_in, G_out, IG)
   ! the slow_ice_PEs.
   !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
   ! being copied over.
+  ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 
-  if (FIA_in%num_tr_fluxes >= 0) then
-!$OMP SINGLE
-    if (FIA_out%num_tr_fluxes < 0) then
-      ! Allocate the tr_flux_top arrays to accommodate the size of the input
-      ! fluxes.  This only occurs the first time FIA_out is copied from a fully
-      ! initialized FIA_in.
-      FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
-      if (FIA_out%num_tr_fluxes > 0) then
-        isd = G_out%isd ; ied = G_out%ied ; jsd = G_out%jsd ; jed = G_out%jed
-        ncat = IG%CatIce
-        allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
-        FIA_out%tr_flux_top(:,:,:,:) = 0.0
+  if (FIA_in%first_copy .or. FIA_out%first_copy) then
+    ! Determine the number of fluxes.
+    num_tr_flux = FIA_in%num_tr_fluxes
+    call max_across_PEs(num_tr_flux)
 
-        allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
-                                       size(FIA_in%tr_flux_index,2)))
-        FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
+    if (num_tr_flux >= 0) then
+      ! Make the tr_flux_index arrays available on all ice PEs.
+      tr_ind_size(:) = -1
+      if (allocated(FIA_in%tr_flux_index)) then
+        tr_ind_size(1) = size(FIA_in%tr_flux_index,1)
+        tr_ind_size(2) = size(FIA_in%tr_flux_index,2)
       endif
-    endif
+      do i=1,2 ; call max_across_PEs(tr_ind_size(i)) ; enddo
 
-    if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
-      call SIS_error(FATAL, "redistribute_FIA_to_FIA called with different num_tr_fluxes.")
-!$OMP END SINGLE
-    if (FIA_in%num_tr_fluxes > 0) then
-      call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tr_flux_top, &
-           G_out%domain%mpp_domain, FIA_out%tr_flux_top)
+      allocate(tr_flux_index(tr_ind_size(1), tr_ind_size(2)))
+      tr_flux_index(:,:) = -1
+      if (allocated(FIA_in%tr_flux_index)) then
+        if ((size(FIA_in%tr_flux_index,1) /= tr_ind_size(1)) .or. &
+            (size(FIA_in%tr_flux_index,2) /= tr_ind_size(2))) &
+          call SIS_error(FATAL, "redistribute_FIA_to_FIA called with an "//&
+            "allocated FIA_in%tr_flux_index of the wrong size.")
+        tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
+      endif
+      !### This is horribly inefficient, but it should work for now!
+      do j=1,tr_ind_size(2) ; do i=1,tr_ind_size(1)
+        call max_across_PEs(tr_flux_index(i,j))
+      enddo ; enddo
+
+      if (FIA_out%num_tr_fluxes < 0) then
+        ! Allocate the tr_flux_top arrays to accommodate the size of the input
+        ! fluxes.  This only occurs the first time FIA_out is copied from a fully
+        ! initialized FIA_in.
+        FIA_out%num_tr_fluxes = num_tr_flux
+        if (FIA_out%num_tr_fluxes > 0) then
+          isd = G_out%isd ; ied = G_out%ied ; jsd = G_out%jsd ; jed = G_out%jed
+          ncat = IG%CatIce
+          allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
+          FIA_out%tr_flux_top(:,:,:,:) = 0.0
+
+          allocate(FIA_out%tr_flux_index(tr_ind_size(1), tr_ind_size(2)))
+          FIA_out%tr_flux_index(:,:) = tr_flux_index(:,:)
+        endif
+      endif
+      FIA_in%first_copy = .false. ; FIA_out%first_copy = .false.
     endif
   endif
 
-  ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
+  if ((FIA_in%num_tr_fluxes >= 0)  .and. &
+      (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes)) then
+      call SIS_error(FATAL, "redistribute_FIA_to_FIA called with different num_tr_fluxes.")
+  endif
+
+  if ((FIA_in%num_tr_fluxes > 0) .or. (FIA_out%num_tr_fluxes > 0)) then
+    call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tr_flux_top, &
+         G_out%domain%mpp_domain, FIA_out%tr_flux_top)
+  endif
+
 end subroutine redistribute_FIA_to_FIA
 
 
