@@ -336,10 +336,10 @@ subroutine exchange_fast_to_slow_ice(Ice)
     ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
     if(Ice%xtype == DIRECT) then
       call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, &
-           Ice%fCS%IG)
+                           Ice%sCS%IG)
     else if(Ice%xtype == REDIST) then
-      call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G, Ice%sCS%G, &
-           Ice%fCS%IG)
+      call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fast_domain, Ice%slow_domain, &
+                                   Ice%sCS%G, Ice%sCS%IG)
     endif
   endif
 
@@ -349,7 +349,8 @@ subroutine exchange_fast_to_slow_ice(Ice)
       call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, &
            Ice%fCS%IG)
     else if(Ice%xtype == REDIST) then
-      call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G, Ice%sCS%G)
+      call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fast_domain, &
+                                   Ice%slow_domain)
     endif
   endif
 
@@ -512,7 +513,8 @@ subroutine exchange_slow_to_fast_ice(Ice)
     if(Ice%xtype == DIRECT) then
       call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
     else if(Ice%xtype == REDIST) then
-      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G, Ice%fCS%G)
+      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
+                                     Ice%fast_domain)
     endif
   endif
 
@@ -522,7 +524,8 @@ subroutine exchange_slow_to_fast_ice(Ice)
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, &
            Ice%sCS%IG)
     else
-      call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G, Ice%fCS%G)
+      call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%slow_domain, &
+                                   Ice%fast_domain)
     endif
   endif
 
@@ -2200,17 +2203,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call close_param_file(param_file)
 
   ! This code has to be called for all of the ice processors.
-  !### I think that there is still a problem here!!!
-  if (.not.associated(Ice%sCS%G%domain)) then
-    allocate(Ice%sCS%G%domain)
-    allocate(Ice%sCS%G%domain%mpp_domain)
+  if (associated(Ice%sCS)) then
+    Ice%slow_domain => Ice%sCS%G%domain%mpp_domain
+  else
+    allocate(Ice%slow_domain)
   endif
-  if(.not.associated(Ice%fCS%G%domain)) then
-    allocate(Ice%fCS%G%domain)
-    allocate(Ice%fCS%G%domain%mpp_domain)
+  if (associated(Ice%fCS)) then
+    Ice%fast_domain => Ice%fCS%G%domain%mpp_domain
+  else
+    allocate(Ice%fast_domain)
   endif
-  call mpp_broadcast_domain(Ice%sCS%G%domain%mpp_domain)
-  call mpp_broadcast_domain(Ice%fCS%G%domain%mpp_domain)
+  call mpp_broadcast_domain(Ice%slow_domain)
+  call mpp_broadcast_domain(Ice%fast_domain)
   Ice%xtype = REDIST   ! value can be REDIST or DIRECT
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )

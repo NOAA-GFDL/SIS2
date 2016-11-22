@@ -134,7 +134,11 @@ type ice_data_type !  ice_public_type
   type(icebergs),    pointer :: icebergs => NULL()
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
-
+  type(domain2D), pointer :: &
+    fast_domain => NULL(), & ! A pointer to the fast ice mpp domain or a copy
+                             ! on slow ice PEs.
+    slow_domain => NULL()    ! A pointer to the fast ice mpp domain or a copy
+                             ! on slow ice PEs.
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
 end type ice_data_type !  ice_public_type

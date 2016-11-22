@@ -699,29 +699,29 @@ end subroutine copy_IST_to_IST
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_IST_to_IST redistributes the computational domain of one ice state type into
 !! the computational domain of another ice_state_type.  
-subroutine redistribute_IST_to_IST(IST_in, IST_out, G_in, G_out)
+subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   type(ice_state_type),    intent(in)    :: IST_in
   type(ice_state_type),    intent(inout) :: IST_out
-  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+  type(domain2d),          intent(in)    :: domain_in, domain_out
 
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%part_size, &
-       G_out%domain%mpp_domain, IST_out%part_size, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%t_surf, &
-       G_out%domain%mpp_domain, IST_out%t_surf, complete=.true.)
+  call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
+                        IST_out%part_size, complete=.false.)
+  call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
+                        IST_out%t_surf, complete=.true.)
 
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_pond, &
-       G_out%domain%mpp_domain, IST_out%mH_pond, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_snow, &
-       G_out%domain%mpp_domain, IST_out%mH_snow, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%mH_ice, &
-       G_out%domain%mpp_domain, IST_out%mH_ice, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%enth_snow, &
-       G_out%domain%mpp_domain, IST_out%enth_snow, complete=.true.)
+  call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
+                        IST_out%mH_pond, complete=.false.)
+  call mpp_redistribute(domain_in, IST_in%mH_snow, domain_out, &
+                        IST_out%mH_snow, complete=.false.)
+  call mpp_redistribute(domain_in, IST_in%mH_ice, domain_out, &
+                        IST_out%mH_ice, complete=.false.)
+  call mpp_redistribute(domain_in, IST_in%enth_snow, domain_out, &
+                        IST_out%enth_snow, complete=.true.)
 
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%enth_ice, &
-       G_out%domain%mpp_domain, IST_out%enth_ice, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, IST_in%sal_ice, &
-       G_out%domain%mpp_domain, IST_out%sal_ice, complete=.true.)
+  call mpp_redistribute(domain_in, IST_in%enth_ice, domain_out, &
+                        IST_out%enth_ice, complete=.false.)
+  call mpp_redistribute(domain_in, IST_in%sal_ice, domain_out, &
+                        IST_out%sal_ice, complete=.true.)
 
   IST_out%slab_ice = IST_in%slab_ice
 
@@ -767,25 +767,25 @@ end subroutine copy_sOSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type. 
-subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, G_in, G_out)
+subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out)
   type(simple_OSS_type),   intent(in)    :: OSS_in
   type(simple_OSS_type),   intent(inout) :: OSS_out
-  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+  type(domain2d),          intent(in)    :: domain_in, domain_out
 
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%t_ocn, &
-       G_out%domain%mpp_domain, OSS_out%t_ocn, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%s_surf, &
-       G_out%domain%mpp_domain, OSS_out%s_surf, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%bheat, &
-       G_out%domain%mpp_domain, OSS_out%bheat, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%u_ocn_A, &
-       G_out%domain%mpp_domain, OSS_out%u_ocn_A, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%v_ocn_A, &
-       G_out%domain%mpp_domain, OSS_out%v_ocn_A, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%u_ice_A, &
-       G_out%domain%mpp_domain, OSS_out%u_ice_A, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, OSS_in%v_ice_A, &
-       G_out%domain%mpp_domain, OSS_out%v_ice_A, complete=.true.)
+  call mpp_redistribute(domain_in, OSS_in%t_ocn, domain_out, &
+                        OSS_out%t_ocn, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
+                        OSS_out%s_surf, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
+                        OSS_out%bheat, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%u_ocn_A, domain_out, &
+                        OSS_out%u_ocn_A, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%v_ocn_A, domain_out, &
+                        OSS_out%v_ocn_A, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%u_ice_A, domain_out, &
+                        OSS_out%u_ice_A, complete=.false.)
+  call mpp_redistribute(domain_in, OSS_in%v_ice_A, domain_out, &
+                        OSS_out%v_ice_A, complete=.true.)
 
 end subroutine redistribute_sOSS_to_sOSS
 
@@ -894,70 +894,71 @@ end subroutine copy_FIA_to_FIA
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
 !! the computational domain of another fast_ice_avg_type. 
-subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, G_in, G_out, IG)
+subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA_in
   type(fast_ice_avg_type), intent(inout) :: FIA_out
-  type(SIS_hor_grid_type), intent(in)    :: G_in, G_out
+  type(domain2d),          intent(in)    :: domain_in, domain_out
+  type(SIS_hor_grid_type), intent(in)    :: G_out
   type(ice_grid_type),     intent(in)    :: IG
 
   integer, allocatable, dimension(:,:) :: tr_flux_index
   integer :: i, j, isd, ied, jsd, jed, ncat
   integer :: num_tr_flux, tr_ind_size(2)
 
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_t_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_t_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_q_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_q_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_vis_dir_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_sw_vis_dir_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_vis_dif_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_sw_vis_dif_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_nir_dir_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_sw_nir_dir_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_nir_dif_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_sw_nir_dif_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_lw_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_lw_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_lh_top, &
-       G_out%domain%mpp_domain, FIA_out%flux_lh_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%lprec_top, &
-       G_out%domain%mpp_domain, FIA_out%lprec_top, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%fprec_top, &
-       G_out%domain%mpp_domain, FIA_out%fprec_top, complete=.true.)
+  call mpp_redistribute(domain_in, FIA_in%flux_t_top, domain_out, &
+                        FIA_out%flux_t_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_q_top, domain_out, &
+                        FIA_out%flux_q_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dir_top, domain_out, &
+                        FIA_out%flux_sw_vis_dir_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dif_top, domain_out, &
+                        FIA_out%flux_sw_vis_dif_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dir_top, domain_out, &
+                        FIA_out%flux_sw_nir_dir_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dif_top, domain_out, &
+                        FIA_out%flux_sw_nir_dif_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_lw_top, domain_out, &
+                        FIA_out%flux_lw_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_lh_top, domain_out, &
+                        FIA_out%flux_lh_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%lprec_top, domain_out, &
+                        FIA_out%lprec_top, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%fprec_top, domain_out, &
+                        FIA_out%fprec_top, complete=.true.)
 
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tmelt, &
-       G_out%domain%mpp_domain, FIA_out%tmelt, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%bmelt, &
-       G_out%domain%mpp_domain, FIA_out%bmelt, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%sw_abs_ocn, &
-       G_out%domain%mpp_domain, FIA_out%sw_abs_ocn, complete=.true.)
+  call mpp_redistribute(domain_in, FIA_in%tmelt, domain_out, &
+                        FIA_out%tmelt, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%bmelt, domain_out, &
+                        FIA_out%bmelt, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%sw_abs_ocn, domain_out, &
+                        FIA_out%sw_abs_ocn, complete=.true.)
 
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%bheat, &
-       G_out%domain%mpp_domain, FIA_out%bheat, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_x, &
-       G_out%domain%mpp_domain, FIA_out%WindStr_x, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_y, &
-       G_out%domain%mpp_domain, FIA_out%WindStr_y, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_ocn_x, &
-       G_out%domain%mpp_domain, FIA_out%WindStr_ocn_x, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%WindStr_ocn_y, &
-       G_out%domain%mpp_domain, FIA_out%WindStr_ocn_y, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%p_atm_surf, &
-       G_out%domain%mpp_domain, FIA_out%p_atm_surf, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%runoff, &
-       G_out%domain%mpp_domain, FIA_out%runoff, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%calving, &
-       G_out%domain%mpp_domain, FIA_out%calving, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%runoff_hflx, &
-       G_out%domain%mpp_domain, FIA_out%runoff_hflx, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%calving_hflx, &
-       G_out%domain%mpp_domain, FIA_out%calving_hflx, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%ice_free, &
-       G_out%domain%mpp_domain, FIA_out%ice_free, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%ice_cover, &
-       G_out%domain%mpp_domain, FIA_out%ice_cover, complete=.false.)
-  call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%flux_sw_dn, &
-       G_out%domain%mpp_domain, FIA_out%flux_sw_dn, complete=.true.)
+  call mpp_redistribute(domain_in, FIA_in%bheat, domain_out, &
+                        FIA_out%bheat, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%WindStr_x, domain_out, &
+                        FIA_out%WindStr_x, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%WindStr_y, domain_out, &
+                        FIA_out%WindStr_y, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_x, domain_out, &
+                        FIA_out%WindStr_ocn_x, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_y, domain_out, &
+                        FIA_out%WindStr_ocn_y, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%p_atm_surf, domain_out, &
+                        FIA_out%p_atm_surf, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%runoff, domain_out, &
+                        FIA_out%runoff, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%calving, domain_out, &
+                        FIA_out%calving, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%runoff_hflx, domain_out, &
+                        FIA_out%runoff_hflx, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%calving_hflx, domain_out, &
+                        FIA_out%calving_hflx, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%ice_free, domain_out, &
+                        FIA_out%ice_free, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%ice_cover, domain_out, &
+                        FIA_out%ice_cover, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%flux_sw_dn, domain_out, &
+                        FIA_out%flux_sw_dn, complete=.true.)
 
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
   ! are only needed on the fast_ice_PEs
@@ -1020,8 +1021,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, G_in, G_out, IG)
   endif
 
   if ((FIA_in%num_tr_fluxes > 0) .or. (FIA_out%num_tr_fluxes > 0)) then
-    call mpp_redistribute(G_in%domain%mpp_domain, FIA_in%tr_flux_top, &
-         G_out%domain%mpp_domain, FIA_out%tr_flux_top)
+    call mpp_redistribute(domain_in, FIA_in%tr_flux_top, domain_out, &
+                          FIA_out%tr_flux_top)
   endif
 
 end subroutine redistribute_FIA_to_FIA
