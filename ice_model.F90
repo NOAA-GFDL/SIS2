@@ -796,7 +796,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   endif
 
   m_ice_tot(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot,i_off,j_off)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot)
   do j=jsc,jec
 
     do k=1,ncat ; do i=isc,iec
@@ -1715,7 +1715,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     ! Set the computational domain sizes using the ice model's indexing convention.
     isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
-    i_off = LBOUND(Ice%t_surf,1) - sHI%isc ; j_off = LBOUND(Ice%t_surf,2) - sHI%jsc
+    i_off = LBOUND(Ice%area,1) - sHI%isc ; j_off = LBOUND(Ice%area,2) - sHI%jsc
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       Ice%area(i2,j2) = sG%areaT(i,j) * sG%mask2dT(i,j)
     enddo ; enddo
@@ -2120,7 +2120,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! Set the computational domain sizes using the ice model's indexing convention.
       isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
-      i_off = LBOUND(Ice%t_surf,1) - sHI%isc ; j_off = LBOUND(Ice%t_surf,2) - sHI%jsc
+      i_off = LBOUND(Ice%part_size,1) - sHI%isc ; j_off = LBOUND(Ice%part_size,2) - sHI%jsc
       do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
         Ice%part_size(i2,j2,k2) = sIST%part_size(i,j,k)
@@ -2187,7 +2187,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%Time_step_slow = Time_step_slow
 
     isc = fHI%isc ; iec = fHI%iec ; jsc = fHI%jsc ; jec = fHI%jec
-    i_off = LBOUND(Ice%t_surf,1) - fHI%isc ; j_off = LBOUND(Ice%t_surf,2) - fHI%jsc
+    i_off = LBOUND(Ice%ocean_pt,1) - fHI%isc ; j_off = LBOUND(Ice%ocean_pt,2) - fHI%jsc
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
     enddo ; enddo
