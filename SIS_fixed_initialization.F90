@@ -69,7 +69,8 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   call initialize_masks(G, PF)
 
   if (debug) then
-    call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, haloshift=1)
+    call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, &
+                 haloshift=min(1, G%ied-G%iec, G%jed-G%jec))
     call hchksum(G%mask2dT, 'SIS_initialize_fixed: mask2dT ', G%HI)
     call uchksum(G%mask2dCu, 'SIS_initialize_fixed: mask2dCu ', G%HI)
     call vchksum(G%mask2dCv, 'SIS_initialize_fixed: mask2dCv ', G%HI)
