@@ -79,6 +79,7 @@ type ice_data_type !  ice_public_type
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
+    SST_C => NULL(), &    ! The ocean surface temperature, in deg C.
     flux_u => NULL(), &   ! The flux of x-momentum into the ocean, in Pa.
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
@@ -170,12 +171,12 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   km = CatIce + 1
 
   ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
-  if (.not.associated(Ice%t_surf)) then
-    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-  endif
-  if (.not.associated(Ice%s_surf)) then
-    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  endif
+!  if (.not.associated(Ice%t_surf)) then
+!    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+!  endif
+!  if (.not.associated(Ice%s_surf)) then
+!    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
+!  endif
   if (.not.associated(Ice%part_size)) then
     allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
   endif
@@ -199,6 +200,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
   allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
 
+  allocate(Ice%SST_C(isc:iec, jsc:jec)) ; Ice%SST_C(:,:) = 0.0
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
@@ -257,12 +259,12 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   km = CatIce + 1
 
   ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
-  if (.not.associated(Ice%t_surf)) then
+!  if (.not.associated(Ice%t_surf)) then
     allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-  endif
-  if (.not.associated(Ice%s_surf)) then
+!  endif
+!  if (.not.associated(Ice%s_surf)) then
     allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-  endif
+!  endif
   if (.not.associated(Ice%part_size)) then
     allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
   endif
@@ -351,8 +353,6 @@ subroutine Ice_public_type_chksum(mesg, Ice)
 
   ! These fields are on all PEs.
   call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
-  call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
-  call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
 
   if (Ice%fast_ice_PE) then ! This is a fast-ice PE.
     call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
@@ -364,11 +364,14 @@ subroutine Ice_public_type_chksum(mesg, Ice)
     call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
     call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
 
+    call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
+    call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
     call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
     call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
   endif
 
   if (Ice%slow_ice_PE) then ! This is a slow-ice PE.
+    call chksum(Ice%SST_C, trim(mesg)//" Ice%SST_C")
     call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
     call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
     call chksum(Ice%flux_t, trim(mesg)//" Ice%flux_t")

@@ -254,15 +254,17 @@ subroutine update_ice_model_slow(Ice)
   if (Ice%sCS%debug) &
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%sCS%FIA, Ice%sCS%G, &
-                            Ice%sCS%IG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%sCS%FIA, Ice%sCS%OSS, &
+                            Ice%sCS%G, Ice%sCS%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
   endif
-  if (Ice%sCS%bounds_check) then
-    call Ice_public_type_bounds_check(Ice, Ice%sCS%G, "End update_ice_slow")
-  endif
+
+  !### THIS NO LONGER WORKS ON SLOW ICE PES.
+!  if (Ice%sCS%bounds_check) then
+!    call Ice_public_type_bounds_check(Ice, Ice%sCS%G, "End update_ice_slow")
+!  endif
 
   call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
 
@@ -361,14 +363,15 @@ end subroutine exchange_fast_to_slow_ice
 !> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
 !!  tracers from the ice model's internal state to the public ice data type
 !!  for use by the ocean model.
-subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
-  type(ice_data_type),       intent(inout) :: Ice
-  type(ice_state_type),      intent(inout) :: IST
-  type(ice_ocean_flux_type), intent(in)    :: IOF
-  type(fast_ice_avg_type),   intent(in)    :: FIA
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(in)    :: IG
-  type(SIS_slow_CS),         intent(in)    :: sCS
+subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
+  type(ice_data_type),        intent(inout) :: Ice
+  type(ice_state_type),       intent(inout) :: IST
+  type(ice_ocean_flux_type),  intent(in)    :: IOF
+  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(in)    :: IG
+  type(SIS_slow_CS),          intent(in)    :: sCS
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
@@ -412,12 +415,12 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     endif
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
-!$OMP                           private(i2,j2)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
+! !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
+! !$OMP                           private(i2,j2)
+!   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+!     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+!     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
+!   enddo ; enddo ; enddo
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
@@ -440,6 +443,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
+    Ice%SST_C(i2,j2) = OSS%t_ocn(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
@@ -578,7 +582,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-
     OSS%t_ocn(i,j) = OIB%t(i2,j2) - T_0degC
     OSS%s_surf(i,j) = OIB%s(i2,j2)
     OSS%frazil(i,j) = OIB%frazil(i2,j2)
@@ -1349,6 +1352,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen
+  logical :: write_error_mesg
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -2118,6 +2122,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! information about the part_size distribution can be copied from the slow
       ! processors to the fast processors.  This will cause coupled models with
 
+      if (fast_ice_PE) then
+        write_error_mesg = .not.((sHI%iec-sHI%isc==fHI%iec-fHI%isc) .and. &
+                                 (sHI%jec-sHI%jsc==fHI%jec-fHI%jsc))
+      else ; write_error_mesg = .true.
+      endif
+      
+      if (write_error_mesg) call SIS_error(FATAL, &
+          "The Verona coupler will not work unless the fast and slow portions "//&
+          "of SIS2 use the same PEs and layout.")
+
       ! Set the computational domain sizes using the ice model's indexing convention.
       isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
       i_off = LBOUND(Ice%part_size,1) - sHI%isc ; j_off = LBOUND(Ice%part_size,2) - sHI%jsc
@@ -2126,9 +2140,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         Ice%part_size(i2,j2,k2) = sIST%part_size(i,j,k)
       enddo ; enddo ; enddo
 
-      if (.not.fast_ice_PE) call SIS_error(FATAL, &
-          "The Verona coupler will not work unless the fast and slow portions "//&
-          "of SIS2 use the same PEs and layout.")
     endif
 
     ! Do any error checking here.
