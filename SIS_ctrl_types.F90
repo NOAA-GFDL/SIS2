@@ -55,7 +55,7 @@ type SIS_fast_CS
   type(time_type) :: Time_step_fast
   type(time_type) :: Time_step_slow
 
-  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
 !  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
 !                       ! sea-ice dynamics.
 
@@ -100,7 +100,7 @@ type SIS_slow_CS
   type(time_type) :: Time
   type(time_type) :: Time_step_slow
 
-  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 

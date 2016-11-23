@@ -777,11 +777,13 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
 
@@ -832,7 +834,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, fCS%Time, &
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
-  if (IST%slab_ice) then
+  if (slab_ice) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
@@ -1605,11 +1607,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     ! Set some pointers for convenience.
     sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG
-    sIST%slab_ice = slab_ice ; sIST%Cgrid_dyn = Cgrid_dyn
+    sIST%Cgrid_dyn = Cgrid_dyn
 
     Ice%sCS%do_icebergs = do_icebergs
     Ice%sCS%pass_iceberg_area_to_ocean = pass_iceberg_area_to_ocean
-    Ice%sCS%slab_ice = slab_ice
     Ice%sCS%specified_ice = specified_ice
     Ice%sCS%Cgrid_dyn = Cgrid_dyn
     Ice%sCS%bounds_check = bounds_check
@@ -1743,7 +1744,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     else
       ! Set up the domains and lateral grids.
       if (.not.associated(Ice%fCS%IST)) allocate(Ice%fCS%IST)
-      Ice%fCS%IST%slab_ice = slab_ice ; Ice%fCS%IST%Cgrid_dyn = Cgrid_dyn
+      Ice%fCS%IST%Cgrid_dyn = Cgrid_dyn
       if (.not.associated(Ice%fCS%G)) allocate(Ice%fCS%G)
       fG => Ice%fCS%G
 
@@ -1768,7 +1769,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call destroy_dyn_horgrid(dG)
     endif
 
-    Ice%fCS%slab_ice = slab_ice
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
 

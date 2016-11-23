@@ -335,6 +335,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
@@ -402,7 +404,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   enddo
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
 
   do j=jsc,jec ; do i=isc,iec
     flux_lh(i,j,0) = LatHtVap * flux_q(i,j,0)
@@ -433,7 +435,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       ! In the case of sublimation of either snow or ice, the vapor is at 0 C.
       ! If the vapor should be at a different temperature, a correction would be
       ! made here.
-      if (IST%slab_ice) then
+      if (slab_ice) then
         latent = LatHtVap + LatHtFus
       elseif (IST%mH_snow(i,j,k)>0.0) then
         latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit

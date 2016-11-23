@@ -485,10 +485,12 @@ subroutine ice_stock_pe(Ice, index, value)
   real, intent(out)   :: value
   type(ice_state_type), pointer :: IST => NULL()
 
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   real :: icebergs_value
   real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
   type(SIS_hor_grid_type), pointer :: G => NULL()
 
   value = 0.0
@@ -511,7 +513,7 @@ subroutine ice_stock_pe(Ice, index, value)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice)
 
   select case (index)
 
@@ -524,7 +526,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
     case (ISTOCK_HEAT)
       value = 0.0
-      if (IST%slab_ice) then
+      if (slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
               value = value - (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &

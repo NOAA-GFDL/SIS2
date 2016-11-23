@@ -86,7 +86,6 @@ type ice_state_type
     rdg_mice    ! A diagnostic of the ice load that was formed by
                 ! ridging, in H (usually kg m-2).
 
-  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
@@ -690,8 +689,6 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  IST_out%slab_ice = IST_in%slab_ice
-
   ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
@@ -722,8 +719,6 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
                         IST_out%enth_ice, complete=.false.)
   call mpp_redistribute(domain_in, IST_in%sal_ice, domain_out, &
                         IST_out%sal_ice, complete=.true.)
-
-  IST_out%slab_ice = IST_in%slab_ice
 
   ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
 
