@@ -116,8 +116,10 @@ type ice_data_type !  ice_public_type
              ! removed, if the information on ice thickness can be derived from
              ! h_ice outside the ice module.
   integer, dimension(3)    :: axes
-  type(coupler_3d_bc_type) :: ocean_fields       ! array of fields used for additional tracers
-  type(coupler_2d_bc_type) :: ocean_fluxes       ! array of fluxes used for additional tracers
+  type(coupler_3d_bc_type) :: ocean_fields ! array of fields used for additional tracers
+                                           ! whose surface state is shared with the atmosphere.
+  type(coupler_2d_bc_type) :: ocean_fluxes ! array of fluxes from the ice to the ocean used
+                                           ! for additional tracers
   type(coupler_3d_bc_type) :: ocean_fluxes_top   ! ###THIS IS ARCHAIC AND COULD BE DELETED!
   integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
                     ! points of the two wind stress components. Valid entries
@@ -597,6 +599,12 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 
     write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf          )
     write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf          )
+
+    do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
+      write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
+                         trim(Ice%ocean_fields%bc(n)%field(m)%name), &
+                         mpp_chksum(Ice%ocean_fields%bc(n)%field(m)%values)
+    enddo ; enddo
   endif
 
   if (Ice%slow_ice_PE) then
@@ -624,11 +632,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
       write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg     )
     endif ; endif
 
-    do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
-      write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
-                         trim(Ice%ocean_fields%bc(n)%field(m)%name), &
-                         mpp_chksum(Ice%ocean_fields%bc(n)%field(m)%values)
-    enddo ; enddo
   endif
 
 100 FORMAT("   CHECKSUM::",A32," = ",Z20)
