@@ -415,12 +415,12 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     endif
   endif
 
-! !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
-! !$OMP                           private(i2,j2)
-!   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-!     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-!     Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
-!   enddo ; enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
+!$OMP                           private(i2,j2)
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
@@ -493,6 +493,8 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
                            Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
   call exchange_slow_to_fast_ice(Ice)
 
