@@ -42,12 +42,18 @@ public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 ! the third index is partition (1 is open water; 2... are ice cover by category)!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_data_type !  ice_public_type
-  type(domain2D)                   :: Domain
+  type(domain2D)          :: Domain         ! A copy of the fast ice domain without halos.
+  type(domain2D)          :: slow_Domain_NH ! A copy of the slow ice domain without halos.
+  type(domain2D), pointer :: &
+    fast_domain => NULL(), & ! A pointer to the fast ice mpp domain or a copy
+                             ! on slow ice PEs.
+    slow_domain => NULL()    ! A pointer to the fast ice mpp domain or a copy
+                             ! on slow ice PEs.
   type(time_type)                  :: Time
   logical                          :: pe
   logical                          :: slow_ice_pe = .false.
   logical                          :: fast_ice_pe = .false.
-  logical                          :: shared_slow_fast_PEs = .false.
+  logical                          :: shared_slow_fast_PEs = .true.
   integer                          :: xtype
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() ! Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() ! Used for flux-exchange with fast processes.
@@ -137,11 +143,6 @@ type ice_data_type !  ice_public_type
   type(icebergs),    pointer :: icebergs => NULL()
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
-  type(domain2D), pointer :: &
-    fast_domain => NULL(), & ! A pointer to the fast ice mpp domain or a copy
-                             ! on slow ice PEs.
-    slow_domain => NULL()    ! A pointer to the fast ice mpp domain or a copy
-                             ! on slow ice PEs.
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
 end type ice_data_type !  ice_public_type
@@ -170,16 +171,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
-!  if (.not.associated(Ice%t_surf)) then
-!    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-!  endif
-!  if (.not.associated(Ice%s_surf)) then
-!    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-!  endif
-  if (.not.associated(Ice%part_size)) then
-    allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
-  endif
+  ! The fields t_surf, s_surf, and part_size are only available on fast PEs.
 
   allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
   allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
@@ -258,19 +250,12 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  ! The fields t_surf, s_surf, and part_size are used on both fast and slow PEs.
-!  if (.not.associated(Ice%t_surf)) then
-    allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-!  endif
-!  if (.not.associated(Ice%s_surf)) then
-    allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0 !NI
-!  endif
-  if (.not.associated(Ice%part_size)) then
-    allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
-  endif
+  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
+  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0
+  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
 
-  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0 !NI
-  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0 !NI
+  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0
+  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0
   allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
 
   allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
@@ -412,7 +397,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
   ncat = SIZE(Ice%t_surf,3) - 1
 
-  fluxes_avail = (associated(Ice%flux_t) .and. associated(Ice%flux_lw))
+  fluxes_avail = .false. ! (associated(Ice%flux_t) .and. associated(Ice%flux_lw))
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 

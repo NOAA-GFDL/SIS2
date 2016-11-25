@@ -378,7 +378,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   integer :: i2, j2, i_off, j_off, ind, ncat, NkIce
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce
-  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
@@ -396,6 +395,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
   ! Sum the concentration weighted mass.
   Ice%mi(:,:) = 0.0
+  i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,IG,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -415,13 +415,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     endif
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
-!$OMP                           private(i2,j2)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
-  enddo ; enddo ; enddo
-
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
@@ -467,6 +461,23 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
         Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
     enddo ; enddo
   enddo ; enddo
+
+
+! This extra block is required with the Verona and earlier versions of the coupler.
+  i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
+  if (Ice%shared_slow_fast_PEs) then 
+    if ((Ice%fCS%G%iec-Ice%fCS%G%isc==iec-isc) .and. &
+        (Ice%fCS%G%jec-Ice%fCS%G%jsc==jec-jsc)) then
+      ! The fast and slow ice PEs are using the same PEs and layout, so the
+      ! part_size arrays can be copied directly from the fast ice PEs.
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
+!$OMP                           private(i2,j2)
+      do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+        i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+        Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
+      enddo ; enddo ; enddo
+    endif
+  endif
 
   if (sCS%debug) then
     call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
@@ -1716,7 +1727,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     ! Copy the ice model's domain into one with no halos that can be shared
     ! publicly for use by the exchange grid.
-    call clone_MOM_domain(sGD, Ice%domain, halo_size=0, symmetric=.false., &
+    call clone_MOM_domain(sGD, Ice%slow_domain_NH, halo_size=0, symmetric=.false., &
                           domain_name="ice_nohalo")
 
     ! Set the computational domain sizes using the ice model's indexing convention.
@@ -1834,11 +1845,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! Copy the ice model's domain into one with no halos that can be shared
       ! publicly for use by the exchange grid.
-      if (.not.slow_ice_PE) then
-        call clone_MOM_domain(fGD, Ice%domain, halo_size=0, symmetric=.false., &
-                              domain_name="ice_nohalo")
-      endif
     endif
+    call clone_MOM_domain(fGD, Ice%domain, halo_size=0, symmetric=.false., &
+                          domain_name="ice_nohalo")
 
   endif
 
@@ -2031,7 +2040,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
       call get_sea_surface(Ice%sCS%Time, sIST%t_surf(isc:iec,jsc:jec,0), &
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
-                           h_ice_input, ice_domain=Ice%domain )
+                           h_ice_input, ice_domain=Ice%slow_domain_NH )
       do j=jsc,jec ; do i=isc,iec
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
       enddo ; enddo
@@ -2226,6 +2235,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   else
     allocate(Ice%fast_domain)
   endif
+  call mpp_broadcast_domain(Ice%Domain)
+  call mpp_broadcast_domain(Ice%slow_domain_NH)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
   Ice%xtype = REDIST   ! value can be REDIST or DIRECT
