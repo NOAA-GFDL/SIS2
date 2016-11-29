@@ -531,7 +531,7 @@ subroutine exchange_slow_to_fast_ice(Ice)
       call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
     else if(Ice%xtype == REDIST) then
       call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
-                                     Ice%fast_domain)
+                                     Ice%fast_domain, Ice%fCS%G%HI)
     endif
   endif
 
@@ -586,7 +586,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: Cgrid_ocn
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, index
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
 
@@ -693,8 +693,26 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   call pass_var(OSS%sea_lev, G%Domain)
 
 ! Transfer the ocean state for extra tracer fluxes.
+  if (OSS%num_tr<0) then
+    ! Determine the number of tracer arrays and allocate them.
+    OSS%num_tr = 0
+    do n=1,OIB%fields%num_bcs
+      OSS%num_tr = OSS%num_tr + OIB%fields%bc(n)%num_fields
+    enddo
+    if (OSS%num_tr > 0) then
+      allocate(OSS%tr_array(G%isd:G%ied,G%jsd:G%jed,OSS%num_tr)) ; OSS%tr_array(:,:,:) = 0.0
+    endif
+  endif
+  index = 0
   do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
-    ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
+    index = index+1
+    if (index == 1) then
+      i_off = LBOUND(OIB%fields%bc(n)%field(m)%values,1) - G%isc
+      j_off = LBOUND(OIB%fields%bc(n)%field(m)%values,2) - G%jsc
+    endif
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      OSS%tr_array(i,j,index) = OIB%fields%bc(n)%field(m)%values(i2,j2)
+    enddo ; enddo
   enddo ; enddo
 
   call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
@@ -749,6 +767,16 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
     endif
   enddo ; enddo
 
+  if (sOSS%num_tr<0) then
+    sOSS%num_tr = OSS%num_tr
+    if (sOSS%num_tr > 0) then
+      allocate(sOSS%tr_array(G%isd:G%ied,G%jsd:G%jed,sOSS%num_tr)) ; sOSS%tr_array(:,:,:) = 0.0
+    endif
+  endif
+  do m=1,OSS%num_tr ; do j=jsc,jec ; do i=isc,iec
+    sOSS%tr_array(i,j,m) = OSS%tr_array(i,j,m)
+  enddo ; enddo ; enddo
+
 end subroutine translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -790,6 +818,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: index
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -951,6 +980,19 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       call chksum(Ice%v_surf(:,:,k2), "End Ice%v_surf(k2)")
     enddo
   endif
+
+  ! Copy over the additional tracer fields into the ocean_fields structure.
+  index = 0
+  do n=1,Ice%ocean_fields%num_bcs  ; do m=1,Ice%ocean_fields%bc(n)%num_fields
+    index = index+1
+    if (index == 1) then
+      i_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,1) - G%isc
+      j_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,2) - G%jsc
+    endif
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      Ice%ocean_fields%bc(n)%field(m)%values(i2,j2,1) = OSS%tr_array(i,j,index)
+    enddo ; enddo 
+  enddo ; enddo
 
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)

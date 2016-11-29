@@ -116,6 +116,10 @@ type ocean_sfc_state_type
                 ! (partially) converted back to its equivalent by the
                 ! ocean.
 
+  real, allocatable, dimension(:,:,:) :: &
+    tr_array    ! An array of fields related to properties for additional tracers.
+
+  integer :: num_tr = -1  ! The number of additional tracer-related arrays.
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt ! A constant that is used in the calculation of the ocean/ice
@@ -145,6 +149,11 @@ type simple_OSS_type
     v_ice_A, &  ! The sea ice's meridional velocity on A-grid points in m s-1.
     bheat       ! The upward diffusive heat flux from the ocean
                 ! to the ice at the base of the ice, in W m-2.
+
+  real, allocatable, dimension(:,:,:) :: &
+    tr_array    ! An array of fields related to properties for additional tracers.
+  integer :: num_tr = -1  ! The number of additional tracer-related arrays.
+  logical :: first_copy = .true.
 
 end type simple_OSS_type
 
@@ -730,11 +739,11 @@ end subroutine redistribute_IST_to_IST
 !! domain decomposition and indexing convention (for now), but they may have
 !! different halo sizes.
 subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
-  type(simple_OSS_type), intent(in)    :: OSS_in
+  type(simple_OSS_type), intent(inout) :: OSS_in
   type(simple_OSS_type), intent(inout) :: OSS_out
   type(hor_index_type),  intent(in)    :: HI_in, HI_out
 
-  integer :: i, j, k, m, isc, iec, jsc, jec
+  integer :: i, j, m, isc, iec, jsc, jec
   integer :: i2, j2, i_off, j_off
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
@@ -757,15 +766,51 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
     OSS_out%v_ice_A(i2,j2) = OSS_in%v_ice_A(i,j)
   enddo ; enddo
 
+  if (OSS_out%first_copy) then
+    OSS_in%first_copy = .false. ; OSS_out%first_copy = .false.
+    OSS_out%num_tr = OSS_in%num_tr
+    if (OSS_out%num_tr > 0) then
+      allocate(OSS_out%tr_array(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,OSS_out%num_tr))
+      OSS_out%tr_array(:,:,:) = 0.0
+    endif
+  endif
+
+  do m=1,OSS_in%num_tr ; do j=jsc,jec ; do i=isc,iec
+    OSS_out%tr_array(i,j,m) = OSS_in%tr_array(i,j,m)
+  enddo ; enddo ; enddo
+
 end subroutine copy_sOSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type. 
-subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out)
-  type(simple_OSS_type),   intent(in)    :: OSS_in
+subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_out)
+  type(simple_OSS_type),   intent(inout) :: OSS_in
   type(simple_OSS_type),   intent(inout) :: OSS_out
   type(domain2d),          intent(in)    :: domain_in, domain_out
+  type(hor_index_type),    intent(in)    :: HI_out
+
+  integer :: m, num_tr
+
+  if (OSS_in%first_copy .or. OSS_out%first_copy) then
+    ! Determine the number of fluxes.
+    num_tr = OSS_in%num_tr
+    call max_across_PEs(num_tr)
+
+    OSS_out%num_tr = num_tr
+    if ((OSS_out%num_tr > 0) .and. .not.allocated(OSS_out%tr_array)) then
+      allocate(OSS_out%tr_array(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,OSS_out%num_tr))
+      OSS_out%tr_array(:,:,:) = 0.0
+    endif
+    OSS_in%first_copy = .false. ; OSS_out%first_copy = .false.
+  endif
+
+  ! The extra tracer arrays are copied first so that they can all have
+  ! complete=.false.
+  do m=1,max(OSS_in%num_tr,OSS_out%num_tr)
+    call mpp_redistribute(domain_in, OSS_in%tr_array(:,:,m), domain_out, &
+                          OSS_out%tr_array(:,:,m), complete=.false.)
+  enddo
 
   call mpp_redistribute(domain_in, OSS_in%t_ocn, domain_out, &
                         OSS_out%t_ocn, complete=.false.)
