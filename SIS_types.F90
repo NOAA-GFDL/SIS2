@@ -341,6 +341,8 @@ type ice_ocean_flux_type
     Enth_Mass_out_ocn    ! Negative of the enthalpy extracted from the
                          ! ice by water fluxes to the ocean, in J m-2.
 
+  logical :: debug           ! If true, write verbose checksums for debugging purposes.
+
   integer :: stress_count ! The number of times that the stresses from the ice
                         ! to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
@@ -1188,6 +1190,78 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   endif
 
 end subroutine IST_chksum
+
+
+subroutine Ice_ocean_flux_type_chksum(mesg, IOF)
+  use fms_mod,                 only: stdout
+  use mpp_mod,                 only: mpp_chksum
+  character(len=*),    intent(in) :: mesg
+  type(ice_ocean_flux_type), intent(in) :: IOF
+!   This subroutine writes out chksums for the model's ice ocean flux variables.
+! Arguments: mesg - A message that appears on the chksum lines.
+!  (in)      IOF - An ice_ocean_flux_type structure whose elements are to be
+!                  checksummed.
+
+  ! Note that the publicly visible ice_data_type has no halos, so it is not
+  ! possible do check their values.
+  integer ::   n, outunit
+
+  outunit = stdout()
+  write(outunit,*) 'BEGIN CHECKSUM(IOF_type):: '//trim(mesg)
+  write(outunit,100) 'IOF%flux_t_ocn_top,      ',mpp_chksum(IOF%flux_t_ocn_top)
+  write(outunit,100) 'IOF%flux_q_ocn_top,      ',mpp_chksum(IOF%flux_q_ocn_top)
+  write(outunit,100) 'IOF%flux_lw_ocn_top,     ',mpp_chksum(IOF%flux_lw_ocn_top)
+  write(outunit,100) 'IOF%flux_sw_vis_dir_ocn, ',mpp_chksum(IOF%flux_sw_vis_dir_ocn)
+  write(outunit,100) 'IOF%flux_sw_vis_dif_ocn, ',mpp_chksum(IOF%flux_sw_vis_dif_ocn)
+  write(outunit,100) 'IOF%flux_sw_nir_dir_ocn, ',mpp_chksum(IOF%flux_sw_nir_dir_ocn)
+  write(outunit,100) 'IOF%flux_sw_nir_dif_ocn, ',mpp_chksum(IOF%flux_sw_nir_dif_ocn)
+  write(outunit,100) 'IOF%flux_lh_ocn_top,     ',mpp_chksum(IOF%flux_lh_ocn_top)
+  write(outunit,100) 'IOF%lprec_ocn_top,       ',mpp_chksum(IOF%lprec_ocn_top)
+  write(outunit,100) 'IOF%fprec_ocn_top,       ',mpp_chksum(IOF%fprec_ocn_top)
+  write(outunit,100) 'IOF%runoff,              ',mpp_chksum(IOF%runoff)
+  write(outunit,100) 'IOF%calving,             ',mpp_chksum(IOF%calving)
+  write(outunit,100) 'IOF%calving_preberg,     ',mpp_chksum(IOF%calving_preberg)
+  write(outunit,100) 'IOF%runoff_hflx,         ',mpp_chksum(IOF%runoff_hflx)
+  write(outunit,100) 'IOF%calving_hflx,        ',mpp_chksum(IOF%calving_hflx)
+  write(outunit,100) 'IOF%calving_hflx_preberg ',mpp_chksum(IOF%calving_hflx_preberg)
+  write(outunit,100) 'IOF%flux_u_ocn,          ',mpp_chksum(IOF%flux_u_ocn)
+  write(outunit,100) 'IOF%flux_v_ocn,          ',mpp_chksum(IOF%flux_v_ocn)
+  write(outunit,100) 'IOF%melt_nudge,          ',mpp_chksum(IOF%melt_nudge)
+  write(outunit,100) 'IOF%flux_salt,           ',mpp_chksum(IOF%flux_salt)
+  write(outunit,100) 'IOF%Enth_Mass_in_atm     ',mpp_chksum(IOF%Enth_Mass_in_atm)
+  write(outunit,100) 'IOF%Enth_Mass_out_atm    ',mpp_chksum(IOF%Enth_Mass_out_atm)
+  write(outunit,100) 'IOF%Enth_Mass_in_ocn     ',mpp_chksum(IOF%Enth_Mass_in_ocn)
+  write(outunit,100) 'IOF%Enth_Mass_out_ocn    ',mpp_chksum(IOF%Enth_Mass_out_ocn)
+  !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
+  100 FORMAT("CHECKSUM::",A32," = ",Z20)
+
+!  call chksum(IOF%flux_t_ocn_top,       trim(mesg)//" IOF%flux_t_ocn_top")
+!  call chksum(IOF%flux_q_ocn_top,       trim(mesg)//" IOF%flux_q_ocn_top")
+!  call chksum(IOF%flux_lw_ocn_top,      trim(mesg)//" IOF%flux_lw_ocn_top")
+!  call chksum(IOF%flux_sw_vis_dir_ocn,  trim(mesg)//" IOF%flux_sw_vis_dir_ocn")
+!  call chksum(IOF%flux_sw_vis_dif_ocn,  trim(mesg)//" IOF%flux_sw_vis_dif_ocn")
+!  call chksum(IOF%flux_sw_nir_dir_ocn,  trim(mesg)//" IOF%flux_sw_nir_dir_ocn")
+!  call chksum(IOF%flux_sw_nir_dif_ocn,  trim(mesg)//" IOF%flux_sw_nir_dif_ocn")
+!  call chksum(IOF%flux_lh_ocn_top,      trim(mesg)//" IOF%flux_lh_ocn_top")
+!  call chksum(IOF%lprec_ocn_top,        trim(mesg)//" IOF%lprec_ocn_top")
+!  call chksum(IOF%fprec_ocn_top,        trim(mesg)//" IOF%fprec_ocn_top")
+!  call chksum(IOF%runoff,               trim(mesg)//" IOF%runoff")
+!  call chksum(IOF%calving,              trim(mesg)//" IOF%calving")
+!  call chksum(IOF%calving_preberg,      trim(mesg)//" IOF%calving_preberg")
+!  call chksum(IOF%runoff_hflx,          trim(mesg)//" IOF%runoff_hflx")
+!  call chksum(IOF%calving_hflx,         trim(mesg)//" IOF%calving_hflx")
+!  call chksum(IOF%calving_hflx_preberg, trim(mesg)//" IOF%calving_hflx_preberg")
+!  call chksum(IOF%flux_u_ocn,           trim(mesg)//" IOF%flux_u_ocn")
+!  call chksum(IOF%flux_v_ocn,           trim(mesg)//" IOF%flux_v_ocn")
+!  call chksum(IOF%melt_nudge,           trim(mesg)//" IOF%melt_nudge")
+!  call chksum(IOF%flux_salt,            trim(mesg)//" IOF%flux_salt")
+!
+!  call chksum(IOF%Enth_Mass_in_atm ,        trim(mesg)//" IOF%Enth_Mass_in_atm")
+!  call chksum(IOF%Enth_Mass_out_atm,        trim(mesg)//" IOF%Enth_Mass_out_atm")
+!  call chksum(IOF%Enth_Mass_in_ocn ,        trim(mesg)//" IOF%Enth_Mass_in_ocn")
+!  call chksum(IOF%Enth_Mass_out_ocn,        trim(mesg)//" IOF%Enth_Mass_out_ocn")
+
+end subroutine Ice_ocean_flux_type_chksum
 
 subroutine IST_bounds_check(IST, G, IG, msg, OSS)
   type(ice_state_type),    intent(in)    :: IST
