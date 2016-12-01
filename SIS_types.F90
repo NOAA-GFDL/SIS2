@@ -920,7 +920,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   if (FIA_in%num_tr_fluxes >= 0) then
     if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
       call SIS_error(FATAL, "copy_FIA_to_FIA called with different num_tr_fluxes.")
-!$OMP END SINGLE
 
     do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off

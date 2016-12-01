@@ -736,7 +736,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
     mass_ice(:,:) = 0.0
     mass_snow(:,:) = 0.0
     mass(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,mass,G,IST,IG)
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,mass,mass_ice,mass_snow,G,IST,IG)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       mass_ice(i,j) = mass_ice(i,j) + IG%H_to_kg_m2*IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
       mass_snow(i,j) = mass_snow(i,j) + IG%H_to_kg_m2*IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
