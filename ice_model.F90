@@ -96,7 +96,6 @@ use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum
-use SIS_types, only : Ice_ocean_flux_type_chksum
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -205,7 +204,7 @@ subroutine update_ice_model_slow(Ice)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
     call FIA_chksum("Start update_ice_model_slow", Ice%sCS%FIA, Ice%sCS%G)
-    call Ice_ocean_flux_type_chksum("Start update_ice_model_slow", Ice%sCS%IOF)
+    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
   ! Store some diagnostic fluxes...
@@ -240,7 +239,7 @@ subroutine update_ice_model_slow(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before slow_thermodynamics", Ice)
-    call Ice_ocean_flux_type_chksum("Before slow_thermodynamics", Ice%sCS%IOF)
+    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
@@ -262,7 +261,7 @@ subroutine update_ice_model_slow(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice)
-    call Ice_ocean_flux_type_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF)
+    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
@@ -270,7 +269,7 @@ subroutine update_ice_model_slow(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice)
-    call Ice_ocean_flux_type_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, Ice%sCS%G)
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
@@ -407,7 +406,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
     call IOF_chksum("Start set_ocean_top_fluxes", IOF, G)
     call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
-    call Ice_ocean_flux_type_chksum("Start set_ocean_top_fluxes", IOF)
   endif
 
   ! This block of code is probably unneccessary.
