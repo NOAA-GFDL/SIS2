@@ -41,9 +41,11 @@ public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
+public :: IOF_chksum, FIA_chksum
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
+public :: Ice_ocean_flux_type_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -350,8 +352,6 @@ type ice_ocean_flux_type
     Enth_Mass_out_ocn    ! Negative of the enthalpy extracted from the
                          ! ice by water fluxes to the ocean, in J m-2.
 
-  logical :: debug           ! If true, write verbose checksums for debugging purposes.
-
   integer :: stress_count ! The number of times that the stresses from the ice
                         ! to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
@@ -573,25 +573,25 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
 
   if (.not.associated(IOF)) allocate(IOF)
 
-  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0 !NI
+  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0
 
-  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0 !NI
-  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0 !NI
-  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0 !NI
-  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0 !NI
+  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0
+  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0
+  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0
+  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0
+  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0
+  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0
+  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0
 
-  allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0 !NR
-  allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0 !NR
-  allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0 !NR
-  allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0 !NR
+  allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0
+  allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0
+  allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0
+  allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0
 
   !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.) 
   ! Please note that these are only allocated on the computational domain so that they
@@ -1192,12 +1192,79 @@ subroutine dealloc_ice_ocean_flux(IOF)
 end subroutine dealloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays in an ice_ocean_flux_type.
+subroutine IOF_chksum(mesg, IOF, G)
+  character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(ice_ocean_flux_type), intent(in) :: IOF   !< The structure whose arrays are being checksummed.
+  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
+
+  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI)
+
+  call hchksum(IOF%flux_t_ocn_top, trim(mesg)//"  IOF%flux_t_ocn_top", G%HI)
+  call hchksum(IOF%flux_q_ocn_top, trim(mesg)//"  IOF%flux_q_ocn_top", G%HI)
+  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI)
+  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI)
+  call hchksum(IOF%flux_sw_vis_dir_ocn, trim(mesg)//"  IOF%flux_sw_vis_dir_ocn", G%HI)
+  call hchksum(IOF%flux_sw_vis_dif_ocn, trim(mesg)//"  IOF%flux_sw_vis_dif_ocn", G%HI)
+  call hchksum(IOF%flux_sw_nir_dir_ocn, trim(mesg)//"  IOF%flux_sw_nir_dir_ocn", G%HI)
+  call hchksum(IOF%flux_sw_nir_dif_ocn, trim(mesg)//"  IOF%flux_sw_nir_dif_ocn", G%HI)
+  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
+  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
+  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
+  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI)
+
+  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
+  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
+  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI)
+  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI)
+end subroutine IOF_chksum
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays in a fast_ice_avg_type.
+subroutine FIA_chksum(mesg, FIA, G)
+  character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
+  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+
+  call hchksum(FIA%flux_t_top, trim(mesg)//" FIA%flux_t_top", G%HI)
+  call hchksum(FIA%flux_q_top, trim(mesg)//" FIA%flux_q_top", G%HI)
+  call hchksum(FIA%flux_sw_vis_dir_top, trim(mesg)//" FIA%flux_sw_vis_dir_top", G%HI)
+  call hchksum(FIA%flux_sw_vis_dif_top, trim(mesg)//" FIA%flux_sw_vis_dif_top", G%HI)
+  call hchksum(FIA%flux_sw_nir_dir_top, trim(mesg)//" FIA%flux_sw_nir_dir_top", G%HI)
+  call hchksum(FIA%flux_sw_nir_dif_top, trim(mesg)//" FIA%flux_sw_nir_dif_top", G%HI)
+  call hchksum(FIA%flux_lw_top, trim(mesg)//" FIA%flux_lw_top", G%HI)
+  call hchksum(FIA%flux_lh_top, trim(mesg)//" FIA%flux_lh_top", G%HI)
+  call hchksum(FIA%lprec_top, trim(mesg)//" FIA%lprec_top", G%HI)
+  call hchksum(FIA%fprec_top, trim(mesg)//" FIA%fprec_top", G%HI)
+
+  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI)
+  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
+  call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
+
+  call hchksum(FIA%bheat, trim(mesg)//" FIA%bheat", G%HI)
+  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI)
+  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI)
+  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI)
+  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI)
+  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI)
+  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI)
+  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI)
+  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI)
+  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI)
+  call hchksum(FIA%ice_free, trim(mesg)//" FIA%ice_free", G%HI)
+  call hchksum(FIA%ice_cover, trim(mesg)//" FIA%ice_cover", G%HI)
+  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI)
+
+end subroutine FIA_chksum
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays in an ice_state_type.
 subroutine IST_chksum(mesg, IST, G, IG, haloshift)
-  character(len=*),        intent(in) :: mesg
-  type(ice_state_type),    intent(in) :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(in) :: IG
-  integer, optional,       intent(in) :: haloshift
+  character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(ice_state_type),    intent(in) :: IST   !< The structure whose arrays are being checksummed.
+  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(ice_grid_type),     intent(in) :: IG    !< The sea-ice grid type.
+  integer, optional,       intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      IST - The ice state type variable to be checked.
@@ -1262,12 +1329,12 @@ subroutine Ice_ocean_flux_type_chksum(mesg, IOF)
   write(outunit,100) 'IOF%flux_lh_ocn_top,     ',mpp_chksum(IOF%flux_lh_ocn_top)
   write(outunit,100) 'IOF%lprec_ocn_top,       ',mpp_chksum(IOF%lprec_ocn_top)
   write(outunit,100) 'IOF%fprec_ocn_top,       ',mpp_chksum(IOF%fprec_ocn_top)
-  write(outunit,100) 'IOF%runoff,              ',mpp_chksum(IOF%runoff)
-  write(outunit,100) 'IOF%calving,             ',mpp_chksum(IOF%calving)
-  write(outunit,100) 'IOF%calving_preberg,     ',mpp_chksum(IOF%calving_preberg)
-  write(outunit,100) 'IOF%runoff_hflx,         ',mpp_chksum(IOF%runoff_hflx)
-  write(outunit,100) 'IOF%calving_hflx,        ',mpp_chksum(IOF%calving_hflx)
-  write(outunit,100) 'IOF%calving_hflx_preberg ',mpp_chksum(IOF%calving_hflx_preberg)
+!  write(outunit,100) 'IOF%runoff,              ',mpp_chksum(IOF%runoff)
+!  write(outunit,100) 'IOF%calving,             ',mpp_chksum(IOF%calving)
+!  write(outunit,100) 'IOF%calving_preberg,     ',mpp_chksum(IOF%calving_preberg)
+!  write(outunit,100) 'IOF%runoff_hflx,         ',mpp_chksum(IOF%runoff_hflx)
+!  write(outunit,100) 'IOF%calving_hflx,        ',mpp_chksum(IOF%calving_hflx)
+!  write(outunit,100) 'IOF%calving_hflx_preberg ',mpp_chksum(IOF%calving_hflx_preberg)
   write(outunit,100) 'IOF%flux_u_ocn,          ',mpp_chksum(IOF%flux_u_ocn)
   write(outunit,100) 'IOF%flux_v_ocn,          ',mpp_chksum(IOF%flux_v_ocn)
   write(outunit,100) 'IOF%melt_nudge,          ',mpp_chksum(IOF%melt_nudge)

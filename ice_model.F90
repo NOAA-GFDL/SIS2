@@ -95,7 +95,8 @@ use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
-use SIS_types, only : redistribute_sOSS_to_sOSS, Ice_ocean_flux_type_chksum
+use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum
+use SIS_types, only : Ice_ocean_flux_type_chksum
 use ice_utils_mod, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -202,8 +203,9 @@ subroutine update_ice_model_slow(Ice)
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
-    call Ice_ocean_flux_type_chksum("Start update_ice_model_slow_dn", Ice%IOF)
+    call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
+    call FIA_chksum("Start update_ice_model_slow", Ice%sCS%FIA, Ice%sCS%G)
+    call Ice_ocean_flux_type_chksum("Start update_ice_model_slow", Ice%sCS%IOF)
   endif
 
   ! Store some diagnostic fluxes...
@@ -230,11 +232,15 @@ subroutine update_ice_model_slow(Ice)
     call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
                          dt_slow, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+
+    if (Ice%sCS%debug) then
+      call FIA_chksum("After update_icebergs", Ice%sCS%FIA, Ice%sCS%G)
+    endif
   endif
 
-  if (Ice%Ice_state%debug) then
+  if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before slow_thermodynamics", Ice)
-    call Ice_ocean_flux_type_chksum("Before slow_thermodynamics", Ice%IOF)
+    call Ice_ocean_flux_type_chksum("Before slow_thermodynamics", Ice%sCS%IOF)
   endif
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
@@ -254,9 +260,9 @@ subroutine update_ice_model_slow(Ice)
   call pass_var(Ice%sCS%IST%mH_pond, Ice%sCS%G%Domain, complete=.false.)
   call pass_var(Ice%sCS%IST%mH_snow, Ice%sCS%G%Domain, complete=.true.)
 
-  if (Ice%Ice_state%debug) then
+  if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice)
-    call Ice_ocean_flux_type_chksum("Before SIS_dynamics_trans", Ice%IOF)
+    call Ice_ocean_flux_type_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF)
   endif
 
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
@@ -264,7 +270,7 @@ subroutine update_ice_model_slow(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice)
-    call Ice_ocean_flux_type_chksum("Before set_ocean_top_fluxes", Ice%IOF)
+    call Ice_ocean_flux_type_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF)
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
@@ -272,7 +278,7 @@ subroutine update_ice_model_slow(Ice)
                             Ice%sCS%G, Ice%sCS%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
+    call Ice_public_type_chksum("End update_ice_model_slow", Ice)
   endif
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
@@ -335,6 +341,10 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
     FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
   enddo ; enddo
 
+  if (Ice%fCS%debug) then
+    call FIA_chksum("End of unpack_land_ice_boundary", FIA, G)
+  endif
+
 end subroutine unpack_land_ice_boundary
 
 !> This subroutine copies information (mostly fluxes and the updated tempertures)
@@ -395,6 +405,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
+    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G)
+    call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
     call Ice_ocean_flux_type_chksum("Start set_ocean_top_fluxes", IOF)
   endif
 
@@ -1747,8 +1759,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-    call get_param(param_file, mod, "DEBUG_IOF", Ice%sCS%debug, &
-                 "If true, write out verbose debugging data.", default=.false.)
     call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG)
 
     call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file,&
