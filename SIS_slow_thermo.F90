@@ -870,23 +870,26 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif ; enddo
     endif
 
-!   if (IST%part_size(i,j,0) > 0.0) then
-      k = k_merge
-      T_Freeze_surf = T_Freeze(OSS%s_surf(i,j),IST%ITV)
+    T_Freeze_surf = T_Freeze(OSS%s_surf(i,j),IST%ITV)
 
+!    if (IST%part_size(i,j,0) > 0.0) then  !### This changes answers at roundoff because (t*h)*(1/h) /= t.
       ! Combine the ice-free part size with one of the categories.
-      I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
+      k = k_merge
+      I_part = 0.0 ; if ((IST%part_size(i,j,k) + IST%part_size(i,j,0)) > 0.0) &
+        I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
       IST%mH_snow(i,j,k) = (IST%mH_snow(i,j,k) * IST%part_size(i,j,k)) * I_part
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
       IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
                        (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
+      if (I_part == 0.0) IST%t_surf(i,j,k) = T_0degC + T_Freeze_surf
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
-!   endif
+!    endif
 
     if (CS%filling_frazil) then
       if (CS%fraz_fill_time < 0.0) then
-        frazil_cat(k) = FIA%frazil_left(i,J)
+        ! This will apply the frazil uniformly to all categories.
+        frazil_cat(ncat) = FIA%frazil_left(i,J)
         FIA%frazil_left(i,j) = 0.0
       else
         part_sum = 0.0
@@ -905,15 +908,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
             FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - frazil_cat(k)*part_sum
           endif
         enddo
-        if (FIA%frazil_left(i,j) > 0.0) &
-          frazil_cat(ncat) = FIA%frazil_left(i,j)
+        if (FIA%frazil_left(i,j) > 0.0) then
           ! Note that at this point we should have that part_sum = 1.0.
-        do k=ncat-1,1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
+          frazil_cat(ncat) = FIA%frazil_left(i,j)
+          FIA%frazil_left(i,j) = 0.0
+        endif
       endif
-    else
+      do k=ncat-1,1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
+    else  ! Not filling frazil.
       ! Set the frazil that is absorbed in this category and remove it from
       ! the overall frazil energy.
-      I_part = 1.0 / (IST%part_size(i,j,k))
+      I_part = 1.0 / (IST%part_size(i,j,k_merge))
       frazil_cat(k_merge) = FIA%frazil_left(i,j) * I_part
       FIA%frazil_left(i,j) = 0.0
     endif
