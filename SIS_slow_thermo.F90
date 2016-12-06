@@ -439,7 +439,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                               message="      Post_thermo A", check_column=.true.)
   call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                             IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
+                             IST%t_surf, IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
 
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -767,6 +767,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
+!###        IST%t_surf(i,j,k) = T_Freeze(OSS%s_surf(i,j),IST%ITV) + T_0degC
       else
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy(m) ; enddo
       endif
@@ -881,8 +882,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
       IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
                        (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
-      if (I_part == 0.0) IST%t_surf(i,j,k) = T_0degC + T_Freeze_surf
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
+      if (IST%part_size(i,j,k) == 0.0) IST%t_surf(i,j,k) = T_Freeze_surf + T_0degC
       IST%part_size(i,j,0) = 0.0
 !    endif
 

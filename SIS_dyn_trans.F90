@@ -608,8 +608,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, OSS%sea_lev, &
-                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+                         IST%u_ice_C, IST%v_ice_C, IST%t_surf, IST%TrReg, &
+                         OSS%sea_lev, dt_slow_dyn, G, IG, CS%ice_transport_CSp,&
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -624,9 +624,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         uc, vc, IST%TrReg, OSS%sea_lev, dt_slow_dyn, G, IG, &
-                         CS%ice_transport_CSp, IST%rdg_mice, &
-                         snow2ocn, rdg_rate, rdg_open, rdg_vosh)
+                         uc, vc, IST%t_surf, IST%TrReg, OSS%sea_lev, &
+                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+                         IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -652,7 +652,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call mpp_clock_begin(iceClock9)
 
-  ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
+  ! Set appropriate surface quantities in categories with no ice.
+  !###  Change <1e-10 to == 0.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
     IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)

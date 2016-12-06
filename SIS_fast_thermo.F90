@@ -469,6 +469,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 
       dts               = ts_new - (IST%t_surf(i,j,k)-T_0degC)
       IST%t_surf(i,j,k) = IST%t_surf(i,j,k) + dts
+      ! or IST%t_surf(i,j,k) = ts_new + T_0degC
       flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
       flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
       flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
