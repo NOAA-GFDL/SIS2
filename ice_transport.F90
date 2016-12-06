@@ -163,6 +163,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
   real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: I_mca_ice
 
@@ -268,8 +269,8 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   endif
 
   !   Determine the whole-cell averaged mass of snow and ice.
-  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0; mca_pond(:,:,:) = 0.0
-  ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
+  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0 ; mca_pond(:,:,:) = 0.0
+  ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0 ; mca_skin(:,:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,mH_ice,mca_ice,part_sz, &
 !$OMP                                  mca_snow,mH_snow,mca_pond,mH_pond,ice_cover, &
 !$OMP                                  mHi_avg,nCat)
@@ -355,7 +356,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
     if (CS%advect_tsurf) then
       call continuity(uc, vc, mca0_skin, mca_skin, uh_skin, vh_skin, dt_adv, &
                       G, IG, CS%continuity_CSp)
-      call advect_scalar(tsurf, mca0_skin, mca_skin, uh_skin, vh_skin, dt_adv, &
+      call advect_scalar(tsurf(:,:,1:), mca0_skin, mca_skin, uh_skin, vh_skin, dt_adv, &
                          G, IG, CS%SIS_thick_adv_CSp)
     endif
 
@@ -424,7 +425,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   enddo ; enddo ; enddo
   call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
-
+  if (CS%advect_tsurf) then
+    do k=1,nCat ; do j=jsc,jec ; do i=isc,iec ; if (mca_ice(i,j,k)<=0.0) then
+      tsurf(i,j,k) = T_0degC
+    endif ; enddo ; enddo ; enddo
+  endif
     ! Is sum(part_sz) = 1 ?
 
 !  Niki: TOM does the ridging after redistribute which would need age_ice and rdg_hice below.
