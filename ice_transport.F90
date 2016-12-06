@@ -1147,9 +1147,8 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   endif
   call get_param(param_file, mod, "ADVECT_TSURF", CS%advect_tsurf, &
                  "If true, advect the surface skin temperature along with \n"//&
-                 "the ice.  This should be true for physical consistency, \n"//&
-                 "but the default is temporarily false to avoid changing answers.", &
-                 default=.false.)
+                 "the ice.  This should be true for physical consistency.", &
+                 default=.true.)
 
   call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &
                  "A viscosity used in one-cell wide channels to \n"//&
