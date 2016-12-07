@@ -332,13 +332,20 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off) &
 !$OMP                          private(i2,j2)
-  do j=jsc,jec ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
     FIA%runoff(i,j)  = LIB%runoff(i2,j2)
     FIA%calving(i,j) = LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
-  enddo ; enddo
+  else
+    ! This is a land point from the perspective of the sea-ice.
+    ! At some point it might make sense to check for non-zero fluxes, which
+    ! might indicate regridding errors.  However, bad-data values are also
+    ! non-zero and should not be flagged.
+    FIA%runoff(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
+    FIA%runoff_hflx(i,j)  = 0.0 ; FIA%calving_hflx(i,j) = 0.0
+  endif ; enddo ; enddo
 
   if (Ice%fCS%debug) then
     call FIA_chksum("End of unpack_land_ice_boundary", FIA, G)
