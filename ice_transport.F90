@@ -325,8 +325,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   call pass_var(mca_ice,  G%Domain, complete=.false.)
   call pass_var(mca_snow, G%Domain, complete=.false.)
   call pass_var(mca_pond, G%Domain, complete=.false.)
-  if (CS%advect_tsurf) &
+  if (CS%advect_tsurf) then
     call pass_var(mca_skin, G%Domain, complete=.false.)
+    call pass_var(tsurf(:,:,1:), G%Domain, complete=.false.)
+  endif
   call pass_var(mH_ice, G%Domain, complete=.true.)
 
 
@@ -337,8 +339,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
       call pass_var(mca_ice,  G%Domain, complete=.false.)
       call pass_var(mca_snow, G%Domain, complete=.false.)
       call pass_var(mca_pond, G%Domain, complete=.false.)
-      if (CS%advect_tsurf) &
+      if (CS%advect_tsurf) then
         call pass_var(mca_skin, G%Domain, complete=.false.)
+        call pass_var(tsurf(:,:,1:), G%Domain, complete=.false.)
+      endif
       call pass_var(mH_ice, G%Domain, complete=.true.)
     endif
 
