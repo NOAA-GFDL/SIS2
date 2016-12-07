@@ -1593,7 +1593,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, carry out all of the sea ice calls so that SIS2 \n"//&
                  "will work with the Verona and earlier releases of the \n"//&
                  "FMS coupler code in configurations that use the exchange \n"//&
-                 "grid to communicate with the atmosphere or land.", default=.true.)
+                 "grid to communicate with the atmosphere or land.", &
+                 layoutParam=.true.)
 
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
