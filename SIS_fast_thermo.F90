@@ -103,7 +103,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
-  integer :: ind, max_num_fields, next_index
+  integer :: ind
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -116,21 +116,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     ! This code is only exercised the first time that sum_top_quantities is called.
     FIA%num_tr_fluxes = 0
     if (ABT%fluxes%num_bcs > 0) then
-      max_num_fields = 0
       do n=1,ABT%fluxes%num_bcs
         FIA%num_tr_fluxes = FIA%num_tr_fluxes + ABT%fluxes%bc(n)%num_fields
-        max_num_fields = max(max_num_fields, ABT%fluxes%bc(n)%num_fields)
       enddo
 
       if (FIA%num_tr_fluxes > 0) then
         allocate(FIA%tr_flux_top(G%isd:G%ied, G%jsd:G%jed, 0:IG%CatIce, FIA%num_tr_fluxes))
         FIA%tr_flux_top(:,:,:,:) = 0.0
-
-        allocate(FIA%tr_flux_index(max_num_fields, ABT%fluxes%num_bcs))
-        FIA%tr_flux_index(:,:) = -1 ; next_index = 1
-        do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
-          FIA%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
-        enddo ; enddo
       endif
     endif
   endif
@@ -168,9 +160,9 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
   ! FIA%flux_sw_dn is accumulated where the fast radiation diagnostics are output
   ! because it depends on arrays that are stored in the public ice_data_type.
 
+  ind = 0
   do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
-    ind = FIA%tr_flux_index(m,n)
-    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+    ind = ind + 1
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &

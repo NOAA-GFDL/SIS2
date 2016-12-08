@@ -360,8 +360,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
       IOF%tr_flux_ocn_top(:,:,:) = 0.0
-      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
-      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
     endif
 !$OMP END SINGLE
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,FIA,IOF)

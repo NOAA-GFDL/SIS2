@@ -240,7 +240,6 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:,:,:) :: &
     tr_flux_top    ! An array of tracer fluxes at the top of the
                    ! sea ice.
-  integer, allocatable, dimension(:,:) :: tr_flux_index
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: &
@@ -369,7 +368,6 @@ type ice_ocean_flux_type
   integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
     tr_flux_ocn_top     ! An array of tracer fluxes at the ocean's surface.
-  integer, allocatable, dimension(:,:) :: tr_flux_index
 
   ! diagnostic IDs for ice-to-ocean fluxes.
   integer :: id_saltf=-1
@@ -909,10 +907,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
         isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
         allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
         FIA_out%tr_flux_top(:,:,:,:) = 0.0
-
-        allocate(FIA_out%tr_flux_index(size(FIA_in%tr_flux_index,1), &
-                                       size(FIA_in%tr_flux_index,2)))
-        FIA_out%tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
       endif
     endif
     FIA_in%first_copy = .false. ; FIA_out%first_copy = .false.
@@ -941,9 +935,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   type(SIS_hor_grid_type), intent(in)    :: G_out
   type(ice_grid_type),     intent(in)    :: IG
 
-  integer, allocatable, dimension(:,:) :: tr_flux_index
   integer :: i, j, isd, ied, jsd, jed, ncat
-  integer :: num_tr_flux, tr_ind_size(2)
+  integer :: num_tr_flux
 
   call mpp_redistribute(domain_in, FIA_in%flux_t_top, domain_out, &
                         FIA_out%flux_t_top, complete=.false.)
@@ -1014,28 +1007,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call max_across_PEs(num_tr_flux)
 
     if (num_tr_flux >= 0) then
-      ! Make the tr_flux_index arrays available on all ice PEs.
-      tr_ind_size(:) = -1
-      if (allocated(FIA_in%tr_flux_index)) then
-        tr_ind_size(1) = size(FIA_in%tr_flux_index,1)
-        tr_ind_size(2) = size(FIA_in%tr_flux_index,2)
-      endif
-      do i=1,2 ; call max_across_PEs(tr_ind_size(i)) ; enddo
-
-      allocate(tr_flux_index(tr_ind_size(1), tr_ind_size(2)))
-      tr_flux_index(:,:) = -1
-      if (allocated(FIA_in%tr_flux_index)) then
-        if ((size(FIA_in%tr_flux_index,1) /= tr_ind_size(1)) .or. &
-            (size(FIA_in%tr_flux_index,2) /= tr_ind_size(2))) &
-          call SIS_error(FATAL, "redistribute_FIA_to_FIA called with an "//&
-            "allocated FIA_in%tr_flux_index of the wrong size.")
-        tr_flux_index(:,:) = FIA_in%tr_flux_index(:,:)
-      endif
-      !### This is horribly inefficient, but it should work for now!
-      do j=1,tr_ind_size(2) ; do i=1,tr_ind_size(1)
-        call max_across_PEs(tr_flux_index(i,j))
-      enddo ; enddo
-
       if (FIA_out%num_tr_fluxes < 0) then
         ! Allocate the tr_flux_top arrays to accommodate the size of the input
         ! fluxes.  This only occurs the first time FIA_out is copied from a fully
@@ -1046,9 +1017,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
           ncat = IG%CatIce
           allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
           FIA_out%tr_flux_top(:,:,:,:) = 0.0
-
-          allocate(FIA_out%tr_flux_index(tr_ind_size(1), tr_ind_size(2)))
-          FIA_out%tr_flux_index(:,:) = tr_flux_index(:,:)
         endif
       endif
       FIA_in%first_copy = .false. ; FIA_out%first_copy = .false.
