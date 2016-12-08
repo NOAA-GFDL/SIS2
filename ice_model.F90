@@ -1193,8 +1193,9 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce
-  io_A = LBOUND(ABT%t_flux,1) - G%isc ; jo_A = LBOUND(ABT%t_flux,2) - G%jsc
-  io_I = LBOUND(Ice%t_surf,1) - G%isc ; jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+  io_A = LBOUND(ABT%lw_flux,1) - G%isc ; jo_A = LBOUND(ABT%lw_flux,2) - G%jsc
+  io_I = LBOUND(Ice%albedo_vis_dir,1) - G%isc
+  jo_I = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
   dt_diag = time_type_to_real(Time_end - Time_start)
 
