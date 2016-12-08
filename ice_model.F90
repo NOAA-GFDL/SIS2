@@ -330,7 +330,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off,G) &
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
