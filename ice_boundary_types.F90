@@ -170,6 +170,8 @@ subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
   write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
   write(outunit,100) 'lnd_ice_bnd_type%runoff  ',mpp_chksum(bnd_type%runoff)
   write(outunit,100) 'lnd_ice_bnd_type%calving ',mpp_chksum(bnd_type%calving)
+  write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ',mpp_chksum(bnd_type%runoff_hflx)
+  write(outunit,100) 'lnd_ice_bnd_type%calving_hflx',mpp_chksum(bnd_type%calving_hflx)
   !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 end subroutine lnd_ice_bnd_type_chksum

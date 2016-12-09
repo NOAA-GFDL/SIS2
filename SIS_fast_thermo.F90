@@ -61,8 +61,6 @@ use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
 public :: do_update_ice_atm_deposition_flux
 public :: fast_thermo_CS, avg_top_quantities
@@ -126,7 +124,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
       enddo
 
       if (FIA%num_tr_fluxes > 0) then
-        allocate(FIA%tr_flux_top(SZI_(G), SZJ_(G), 0:IG%CatIce, FIA%num_tr_fluxes))
+        allocate(FIA%tr_flux_top(G%isd:G%ied, G%jsd:G%jed, 0:IG%CatIce, FIA%num_tr_fluxes))
         FIA%tr_flux_top(:,:,:,:) = 0.0
 
         allocate(FIA%tr_flux_index(max_num_fields, ABT%fluxes%num_bcs))
@@ -194,7 +192,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   type(ice_rad_type),      intent(in)    :: Rad
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
-  real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
                            intent(in)    :: part_size
 
   real    :: u, v, divid, sign
@@ -323,7 +321,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
               ! temperature, in kg m-2 s-1 K-1.
     drdt      ! The derivative of the upward radiative heat flux with surface
               ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
-  real, dimension(SZI_(G), SZJ_(G)) :: tmp_diag
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
@@ -340,6 +337,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
@@ -407,7 +406,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   enddo
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
 
   do j=jsc,jec ; do i=isc,iec
     flux_lh(i,j,0) = LatHtVap * flux_q(i,j,0)
@@ -424,7 +423,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dhdt,dedt,drdt,   &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
-!$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,     &
+!$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
 !$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
@@ -438,7 +437,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       ! In the case of sublimation of either snow or ice, the vapor is at 0 C.
       ! If the vapor should be at a different temperature, a correction would be
       ! made here.
-      if (IST%slab_ice) then
+      if (slab_ice) then
         latent = LatHtVap + LatHtFus
       elseif (IST%mH_snow(i,j,k)>0.0) then
         latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
@@ -472,6 +471,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 
       dts               = ts_new - (IST%t_surf(i,j,k)-T_0degC)
       IST%t_surf(i,j,k) = IST%t_surf(i,j,k) + dts
+      ! or IST%t_surf(i,j,k) = ts_new + T_0degC
       flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
       flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
       flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
@@ -593,8 +593,8 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
 
   if (CS%column_check) then
-    allocate(CS%enth_prev(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
-    allocate(CS%heat_in(SZI_(G%HI), SZJ_(G%HI), IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
+    allocate(CS%enth_prev(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
+    allocate(CS%heat_in(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
   endif
 
   call callTree_leave("SIS_fast_thermo_init()")

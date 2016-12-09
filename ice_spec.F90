@@ -9,7 +9,7 @@ use mpp_mod, only: input_nml_file
 use mpp_domains_mod, only : domain2d
 
 use time_manager_mod, only: time_type, get_date, set_date
-use data_override_mod, only : data_override, data_override_init
+use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
 
 implicit none
 include 'netcdf.inc'
@@ -42,12 +42,14 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_sea_surface - get SST, ice concentration and thickness from data         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain)
+subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end)
   type (time_type),                         intent(in)  :: Time
   real, dimension(:, :),                    intent(out) :: ts
   real, dimension(size(ts,1),size(ts,2),2), intent(out) :: cn
   real, dimension(size(ts,1),size(ts,2)),   intent(out) :: iceh
   type(domain2d),                 optional, intent(in)  :: ice_domain
+  type(domain2d),                 optional, intent(in)  :: ice_domain_end
+
   real, dimension(size(ts,1),size(ts,2))                :: sst, icec
 
   real ::  t_sw_freeze0 = -1.8
@@ -78,7 +80,10 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain)
     module_is_initialized = .true.
   endif
 
-  if (present(ice_domain)) call data_override_init(Ice_domain_in = Ice_domain)
+  if (present(ice_domain)) then
+    call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
+    call data_override_init(Ice_domain_in = Ice_domain)
+  endif
 
 ! modify time repeating single day option
   if (all(repeat_date>0)) then
@@ -96,6 +101,12 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain)
   call data_override('ICE', 'sic_obs', icec, Spec_Time)
   call data_override('ICE', 'sit_obs', iceh, Spec_Time)
   call data_override('ICE', 'sst_obs', sst,  Spec_Time)
+  if (present(ice_domain)) then
+    call data_override_unset_domains(unset_Ice=.true.)
+
+    ! Reset the data_override ice domain back to the one expected by the coupler.
+    if (present(ice_domain_end)) call data_override_init(Ice_domain_in = Ice_domain_end)
+  endif
 
   if (mcm_ice) then
     icec = 0.0

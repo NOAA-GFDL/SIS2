@@ -42,8 +42,6 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
 
-#include <SIS2_memory.h>
-
 public :: SIS_fast_CS, SIS_slow_CS
 public :: ice_diagnostics_init, ice_diags_fast_init
 
@@ -57,9 +55,9 @@ type SIS_fast_CS
   type(time_type) :: Time_step_fast
   type(time_type) :: Time_step_slow
 
-  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
-  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.
+!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+!  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
+!                       ! sea-ice dynamics.
 
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
@@ -102,7 +100,7 @@ type SIS_slow_CS
   type(time_type) :: Time
   type(time_type) :: Time_step_slow
 
-  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
+!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
 
@@ -140,6 +138,9 @@ type SIS_slow_CS
   type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
                              ! that describe the ocean's surface state, as it is revealed
                              ! to the ice model.
+  type(simple_OSS_type), pointer :: sOSS => NULL() ! A structure containing the arrays
+                             ! that describe the ocean's surface state, as it is revealed
+                             ! to the atmosphere or the fast ice thermodynamics modules.
   type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
                              ! fields that are calculated during the fast ice step but
                              ! stored for later use by the slow ice step or the ocean.

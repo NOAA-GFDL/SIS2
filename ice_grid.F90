@@ -11,7 +11,6 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 implicit none ; private
 
 include 'netcdf.inc'
-#include <SIS2_memory.h>
 
 public :: set_ice_grid, ice_grid_end
 

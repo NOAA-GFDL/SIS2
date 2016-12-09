@@ -133,6 +133,8 @@ type, public :: ice_thermo_type ; private
   real :: enth_liq_0 = 0.0     ! The value of enthalpy for liquid fresh
                                ! water at 0 C, in J kg-1.
   real :: enth_unit = 1.0      ! A conversion factor for enthalpy from Joules kg-1.
+  logical :: slab_ice = .false. ! If true use the very old slab ice thermodynamics,
+                                ! with effectively zero heat capacity of ice and snow.
   type(EOS_type), pointer :: EOS=>NULL() ! A pointer to the shared MOM6/SIS2
                             ! equation-of-state type. This is here to encourage
                             ! the use of common and consistent thermodynamics
@@ -1576,6 +1578,7 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS2_ice_thm (thermo)" ! This module's name.
+  logical :: specified_ice
 
   if (.not.associated(ITV)) allocate(ITV)
 
@@ -1631,6 +1634,19 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  "should not change.  A negative values is taken as an inverse.", &
                  units="J kg-1", default=1.0)
   if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
+
+  call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
+                 "If true, the ice is specified and there is no dynamics.", &
+                 default=.false.)
+  if (specified_ice) then
+    ITV%slab_ice = .true.
+    call log_param(param_file, mod, "USE_SLAB_ICE", ITV%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mod, "USE_SLAB_ICE", ITV%slab_ice, &
+                 "If true, use the very old slab-style ice.", default=.false.)
+  endif
 
   if (present(init_EOS)) then ; if (init_EOS) then
     if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
@@ -2002,7 +2018,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
                                  Cp_Ice, Cp_SeaWater, Cp_brine, Cp_water, &
                                  rho_ice, rho_snow, rho_water, &
                                  Latent_fusion, Latent_vapor, &
-                                 EOS, specified_thermo_salinity)
+                                 EOS, specified_thermo_salinity, slab_ice)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, dimension(:), optional, intent(out) :: &
     ice_salinity    !< The specified salinity of each layer when the thermodynamic
@@ -2040,7 +2056,9 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
     specified_thermo_salinity !< If true, all thermodynamic calculations
                     !! are done with a specified salinity profile that may be
                     !! independent of the ice bulk salinity.
-
+  logical, optional, intent(out) :: &
+    slab_ice        !< If true, use the very old slab ice thermodynamics,
+                    !! with effectively zero heat capacity of ice and snow.
   call get_thermo_coefs(ice_salinity=ice_salinity)
 
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
@@ -2054,6 +2072,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   if (present(rho_water)) rho_water = ITV%rho_water
   if (present(Latent_fusion)) Latent_fusion = ITV%LI
   if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
+  if (present(slab_ice)) slab_ice = ITV%slab_ice
   if (present(EOS)) then
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
       "An EOS pointer was requested via get_SIS2_thermo_coefs, but ITV%EOS "//&
