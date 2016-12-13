@@ -303,15 +303,16 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
-  call store_fast_tsurf(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%G, Ice%fCS%IG)
+  call store_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
 
-!> store_fast_tsurf stores a filled-in array of actual, interpolated or plausible
+!> store_Tskin stores a filled-in array of actual, interpolated or plausible
 !> ice/snow-surface skin temperatures for later use.
-subroutine store_fast_tsurf(IST, OSS, G, IG)
-  type(ice_state_type),       intent(inout) :: IST  !< The ice state type whose values of t_skin_fast are being set.
+subroutine store_Tskin(IST, OSS, Rad, G, IG)
+  type(ice_state_type),       intent(in)    :: IST  !< The ice state type whose values of t_surf are being used.
   type(simple_OSS_type),      intent(in)    :: OSS  !< An ocean surface state type, used for the surface freezing point.
+  type(ice_rad_type),         intent(inout) :: Rad  !< An ice rad type, where the t_skin are being stored.
   type(SIS_hor_grid_type),    intent(in)    :: G    !< The sea-ice lateral grid type.
   type(ice_grid_type),        intent(in)    :: IG   !< The sea-ice grid type.
 
@@ -345,7 +346,7 @@ subroutine store_fast_tsurf(IST, OSS, G, IG)
     if (.not.any_ice) then
       ! This entire row is ice free.
       do k=1,ncat ; do i=isc,iec
-        IST%t_skin_fast(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i) + T_0degC
+        Rad%t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i) + T_0degC
       enddo ; enddo
     else
       do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
@@ -357,26 +358,26 @@ subroutine store_fast_tsurf(IST, OSS, G, IG)
       ! The logic for the k=1 (thinest) category is particularly simple.
       do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
         if (IST%part_size(i,j,1) > 0.0) then
-          IST%t_skin_fast(i,j,1) = IST%t_surf(i,j,1)
+          Rad%t_skin(i,j,1) = IST%t_surf(i,j,1)
         else
-          IST%t_skin_fast(i,j,1) = T_fr_ocn(i) + T_0degC
+          Rad%t_skin(i,j,1) = T_fr_ocn(i) + T_0degC
         endif
       endif ; enddo
       do k=2,ncat ; do i=isc,iec
         if (G%mask2dT(i,j) > 0.0) then
           if (k > k_thick(i)) then
             ! This is the most common case, since it applies to ice-free water.
-            IST%t_skin_fast(i,j,k) = t_thick(i)
+            Rad%t_skin(i,j,k) = t_thick(i)
           elseif (IST%part_size(i,j,k) > 0.0) then
             ! Copy over the valid value - no interpolation is needed.
-            IST%t_skin_fast(i,j,k) = IST%t_surf(i,j,k)
+            Rad%t_skin(i,j,k) = IST%t_surf(i,j,k)
           elseif (k < k_thin(i)) then
             ! Linearly interpolate to the ocean's freezing temperature.
             mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
             wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
             if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
 
-            IST%t_skin_fast(i,j,k) = wt2*(T_fr_ocn(i) + T_0degC) + (1.0-wt2)*t_thin(i)
+            Rad%t_skin(i,j,k) = wt2*(T_fr_ocn(i) + T_0degC) + (1.0-wt2)*t_thin(i)
           else
             ! Linearly interpolate between bracketing neighboring
             ! categories with valid values.
@@ -389,17 +390,17 @@ subroutine store_fast_tsurf(IST, OSS, G, IG)
               wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
                     (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
 
-            IST%t_skin_fast(i,j,k) = wt2*IST%t_surf(i,j,k2) + (1.0-wt2) * IST%t_surf(i,j,k3)
+            Rad%t_skin(i,j,k) = wt2*IST%t_surf(i,j,k2) + (1.0-wt2) * IST%t_surf(i,j,k3)
           endif
         else ! This is a land point.
-          IST%t_skin_fast(i,j,k) = T_0degC
+          Rad%t_skin(i,j,k) = T_0degC
         endif
       enddo ; enddo
 
     endif
   enddo
 
-end subroutine store_fast_tsurf
+end subroutine store_Tskin
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
@@ -989,7 +990,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
 ! if (fCS%reset_tsurf_from_fast) then
 !   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!     IST%t_surf(i,j,k) = IST%t_skin_fast(i,j,k)
+!     IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
 !   enddo ; enddo ; enddo
 ! endif
 
@@ -1546,7 +1547,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: Cgrid_dyn, slab_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
-  logical :: init_coszen
+  logical :: init_coszen, init_Tskin
   logical :: write_error_mesg
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
@@ -2200,8 +2201,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
       endif
 
-      if (fast_ice_PE .and. .not.split_restart_files) &
+      if (fast_ice_PE .and. .not.split_restart_files) then
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+      endif
 
     else ! no restart file implies initialization with no ice
       sIST%part_size(:,:,:) = 0.0
@@ -2249,7 +2252,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call pass_var(sIST%part_size, sGD, complete=.true. )
       call pass_var(sIST%mH_ice, sGD, complete=.true. )
 
-      init_coszen = .true.
+      init_coszen = .true. ; init_Tskin = .true.
 
     endif ! file_exist(restart_path)
 
@@ -2357,8 +2360,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (file_exist(fast_rest_path)) then
         call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
       else
-        init_coszen = .true.
+        init_coszen = .true. ; init_Tskin = .true.
       endif
     endif
 
@@ -2379,6 +2383,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
+    endif
+    if (init_Tskin) then
+      Ice%fCS%Rad%t_skin(:,:,:) = T_0degC
     endif
 
     call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &

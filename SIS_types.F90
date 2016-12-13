@@ -74,11 +74,7 @@ type ice_state_type
                 ! in units of H (usually kg m-2).
     mH_ice, &   ! The mass per unit area of the ice in each category,
                 ! in units of H (usually kg m-2).
-    t_surf, &   ! The surface temperature, in Kelvin.
-    t_skin_fast ! The surface skin temperature as calculated by the most
-                ! recent fast atmospheric timestep, or a value filled in
-                ! from other ice categories or the local freezing point of
-                ! seawater when there is no ice at all, in Kelvin.
+    t_surf      ! The surface temperature, in Kelvin.
 
   real, allocatable, dimension(:,:,:,:) :: &
     sal_ice, &  ! The salinity of the sea ice in each category and
@@ -265,6 +261,12 @@ end type fast_ice_avg_type
 !! of shortwave radiation in and around the sea ice.
 type ice_rad_type
 
+  ! The ice skin temperature that can next be used for radiation
+  real, allocatable, dimension(:,:,:) :: &
+    t_skin      ! The surface skin temperature as calculated by the most
+                ! recent fast atmospheric timestep, or a value filled in
+                ! from other ice categories or the local freezing point of
+                ! seawater when there is no ice at all, in Kelvin.
   ! Shortwave absorption parameters that are set in ice_optics.
   real, allocatable, dimension(:,:,:) :: &
     sw_abs_sfc , &  !< The fraction of the absorbed shortwave radiation that is
@@ -422,9 +424,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
     allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0   
   endif
 
-  allocate(IST%t_skin_fast(isd:ied, jsd:jed, CatIce)) ; IST%t_skin_fast(:,:,:) = 0.0
   allocate(IST%t_surf(isd:ied, jsd:jed, 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
-
 
 end subroutine alloc_IST_arrays
 
@@ -549,6 +549,8 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
+  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
+
   allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
   allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
   allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
@@ -558,6 +560,8 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
 
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
+                               domain=mpp_domain, mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, 'T_skin', Rad%t_skin, &
                                domain=mpp_domain, mandatory=.false.)
 
 end subroutine ice_rad_register_restarts
@@ -704,7 +708,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   enddo ; enddo ; enddo ; enddo
 
   ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied, and neither is T_skin_fast.
+  ! copied.
 
 end subroutine copy_IST_to_IST
 
@@ -736,7 +740,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
                         IST_out%sal_ice, complete=.true.)
 
   ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied, and neither is T_skin_fast.
+  ! copied.
 
 end subroutine redistribute_IST_to_IST
 
@@ -1052,7 +1056,6 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice, IST%t_surf)
-  if (allocated(IST%t_skin_fast)) deallocate(IST%t_skin_fast)
 
   if (allocated(IST%u_ice_C)) deallocate(IST%u_ice_C)
   if (allocated(IST%v_ice_C)) deallocate(IST%v_ice_C)
@@ -1135,6 +1138,7 @@ subroutine dealloc_ice_rad(Rad)
   deallocate(Rad%sw_abs_sfc, Rad%sw_abs_snow, Rad%sw_abs_ice)
   deallocate(Rad%sw_abs_ocn, Rad%sw_abs_int)
   deallocate(Rad%coszen_nextrad)
+  deallocate(Rad%T_skin)
 
   deallocate(Rad)
 end subroutine dealloc_ice_rad

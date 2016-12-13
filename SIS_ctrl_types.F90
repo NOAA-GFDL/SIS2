@@ -62,6 +62,11 @@ type SIS_fast_CS
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
   logical :: debug          ! If true, write verbose checksums for debugging purposes.
+  logical :: Eulerian_tsurf ! If true, use previous calculations of the ice-top
+                            ! surface skin temperature for tsurf at the start of
+                            ! atmospheric time stepping, including interpolating between
+                            ! tsurf values from other categories in the same location.
+                            ! If true, EULERIAN_TSURF overrides ADVECT_TSURF.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
