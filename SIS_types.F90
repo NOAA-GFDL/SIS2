@@ -74,7 +74,11 @@ type ice_state_type
                 ! in units of H (usually kg m-2).
     mH_ice, &   ! The mass per unit area of the ice in each category,
                 ! in units of H (usually kg m-2).
-    t_surf      ! The surface temperature, in Kelvin.
+    t_surf, &   ! The surface temperature, in Kelvin.
+    t_skin_fast ! The surface skin temperature as calculated by the most
+                ! recent fast atmospheric timestep, or a value filled in
+                ! from other ice categories or the local freezing point of
+                ! seawater when there is no ice at all, in Kelvin.
 
   real, allocatable, dimension(:,:,:,:) :: &
     sal_ice, &  ! The salinity of the sea ice in each category and
@@ -294,6 +298,7 @@ type ice_rad_type
   integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
   integer :: id_alb=-1, id_coszen=-1, id_swdn=-1, id_lwdn=-1
   integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
+  integer :: id_tskin=-1, id_cn=-1, id_mi=-1
 
 end type ice_rad_type
 
@@ -414,9 +419,10 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
     endif
 
     ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0   
   endif
 
+  allocate(IST%t_skin_fast(isd:ied, jsd:jed, CatIce)) ; IST%t_skin_fast(:,:,:) = 0.0
   allocate(IST%t_surf(isd:ied, jsd:jed, 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
 
 
@@ -697,7 +703,8 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
+  ! copied, and neither is T_skin_fast.
 
 end subroutine copy_IST_to_IST
 
@@ -728,7 +735,8 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   call mpp_redistribute(domain_in, IST_in%sal_ice, domain_out, &
                         IST_out%sal_ice, complete=.true.)
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
+  ! copied, and neither is T_skin_fast.
 
 end subroutine redistribute_IST_to_IST
 
@@ -1044,6 +1052,7 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice, IST%t_surf)
+  if (allocated(IST%t_skin_fast)) deallocate(IST%t_skin_fast)
 
   if (allocated(IST%u_ice_C)) deallocate(IST%u_ice_C)
   if (allocated(IST%v_ice_C)) deallocate(IST%v_ice_C)

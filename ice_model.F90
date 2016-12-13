@@ -303,8 +303,104 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
+  call store_fast_tsurf(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%G, Ice%fCS%IG)
+
 end subroutine ice_model_fast_cleanup
- 
+
+!> store_fast_tsurf stores a filled-in array of actual, interpolated or plausible
+!> ice/snow-surface skin temperatures for later use.
+subroutine store_fast_tsurf(IST, OSS, G, IG)
+  type(ice_state_type),       intent(inout) :: IST  !< The ice state type whose values of t_skin_fast are being set.
+  type(simple_OSS_type),      intent(in)    :: OSS  !< An ocean surface state type, used for the surface freezing point.
+  type(SIS_hor_grid_type),    intent(in)    :: G    !< The sea-ice lateral grid type.
+  type(ice_grid_type),        intent(in)    :: IG   !< The sea-ice grid type.
+
+  integer, dimension(G%isd:G%ied) :: k_thick, k_thin
+  real, dimension(G%isd:G%ied) :: &
+    t_thick, t_thin, mH_thin, t_fr_ocn
+  real :: wt2, mH_cat_tgt
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical, dimension(G%isd:G%ied) :: infill
+  logical :: any_ice
+  integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+
+  do j=jsc,jec
+    ! Determine which categories exist.
+    do i=isc,iec ; k_thick(i) = -1 ; k_thin(i) = ncat+1 ; mH_thin(i) = 0.0 ; enddo
+    any_ice = .false.
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      k_thick(i) = k
+      t_thick(i) = IST%t_surf(i,j,k)
+      any_ice = .true.
+    endif ; enddo ; enddo
+
+    do i=isc,iec
+      T_fr_ocn(i) = G%mask2dT(i,j) * T_Freeze(OSS%s_surf(i,j), IST%ITV)
+      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i) + T_0degC
+    enddo
+
+    if (.not.any_ice) then
+      ! This entire row is ice free.
+      do k=1,ncat ; do i=isc,iec
+        IST%t_skin_fast(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i) + T_0degC
+      enddo ; enddo
+    else
+      do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+        k_thin(i) = k
+        t_thin(i) = IST%t_surf(i,j,k)
+        mH_thin(i) = IST%mH_ice(i,j,k)
+      endif ; enddo ; enddo
+
+      ! The logic for the k=1 (thinest) category is particularly simple.
+      do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+        if (IST%part_size(i,j,1) > 0.0) then
+          IST%t_skin_fast(i,j,1) = IST%t_surf(i,j,1)
+        else
+          IST%t_skin_fast(i,j,1) = T_fr_ocn(i) + T_0degC
+        endif
+      endif ; enddo
+      do k=2,ncat ; do i=isc,iec
+        if (G%mask2dT(i,j) > 0.0) then
+          if (k > k_thick(i)) then
+            ! This is the most common case, since it applies to ice-free water.
+            IST%t_skin_fast(i,j,k) = t_thick(i)
+          elseif (IST%part_size(i,j,k) > 0.0) then
+            ! Copy over the valid value - no interpolation is needed.
+            IST%t_skin_fast(i,j,k) = IST%t_surf(i,j,k)
+          elseif (k < k_thin(i)) then
+            ! Linearly interpolate to the ocean's freezing temperature.
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
+            if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
+
+            IST%t_skin_fast(i,j,k) = wt2*(T_fr_ocn(i) + T_0degC) + (1.0-wt2)*t_thin(i)
+          else
+            ! Linearly interpolate between bracketing neighboring
+            ! categories with valid values.
+            do k2=k+1,ncat ; if (IST%part_size(i,j,k2) > 0.0) exit ; enddo
+            do k3=k-1,1,-1 ; if (IST%part_size(i,j,k3) > 0.0) exit ; enddo
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.5
+            if ((IST%mH_ice(i,j,k3) > mH_cat_tgt) .and. &
+                (IST%mH_ice(i,j,k2) < mH_cat_tgt)) &
+              wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
+                    (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
+
+            IST%t_skin_fast(i,j,k) = wt2*IST%t_surf(i,j,k2) + (1.0-wt2) * IST%t_surf(i,j,k3)
+          endif
+        else ! This is a land point.
+          IST%t_skin_fast(i,j,k) = T_0degC
+        endif
+      enddo ; enddo
+
+    endif
+  enddo
+
+end subroutine store_fast_tsurf
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
 !! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
@@ -891,6 +987,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   enddo
 
+! if (fCS%reset_tsurf_from_fast) then
+!   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+!     IST%t_surf(i,j,k) = IST%t_skin_fast(i,j,k)
+!   enddo ; enddo ; enddo
+! endif
+
   ! Determine the sea-ice optical properties.
 
   !   These initialization calls for ice-free categories are not really
@@ -1211,6 +1313,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb>0)         call post_avg(Rad%id_alb, Ice%albedo, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+
+  if (Rad%id_tskin>0) call post_data(Rad%id_tskin, IST%t_surf(:,:,1:), CS%diag)
+  if (Rad%id_cn>0) call post_data(Rad%id_cn, IST%part_size(:,:,1:), CS%diag)
+  if (Rad%id_mi>0) call post_data(Rad%id_mi, IST%mH_ice(:,:,:), CS%diag)
 
   if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
@@ -2316,7 +2422,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call mpp_broadcast_domain(Ice%slow_domain_NH)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
-  Ice%xtype = REDIST   ! value can be REDIST or DIRECT
+  Ice%xtype = REDIST   ! value can be REDIST or DIRECT !### Set this dynamically.
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
