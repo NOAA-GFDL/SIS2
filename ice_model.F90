@@ -988,11 +988,11 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   enddo
 
-! if (fCS%reset_tsurf_from_fast) then
-!   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!     IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
-!   enddo ; enddo ; enddo
-! endif
+  if (fCS%Eulerian_tsurf) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
+    enddo ; enddo ; enddo
+  endif
 
   ! Determine the sea-ice optical properties.
 
@@ -1549,6 +1549,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen, init_Tskin
   logical :: write_error_mesg
+  logical :: Eulerian_tsurf ! If true, use previous calculations of the ice-top
+                            ! surface skin temperature for tsurf at the start of
+                            ! atmospheric time stepping, including interpolating between
+                            ! tsurf values from other categories in the same location.
+                            ! If true, EULERIAN_TSURF overrides ADVECT_TSURF.
   logical :: write_geom_files  ! If true, write out the grid geometry files.
   logical :: symmetric         ! If true, use symmetric memory allocation.
   logical :: global_indexing   ! If true use global horizontal index values instead
@@ -1611,6 +1616,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "single common ice_state_type.  Otherwise they point to \n"//&
                  "different ice_state_types that need to be explicitly \n"//&
                  "copied back and forth.", default=.true.)
+  call get_param(param_file, mod, "EULERIAN_TSURF", Eulerian_tsurf, &
+                 "If true, use previous calculations of the ice-top surface \n"//&
+                 "skin temperature for tsurf at the start of atmospheric \n"//&
+                 "time stepping, including interpolating between tsurf \n"//&
+                 "values from other categories in the same location. \n"//&
+                 "If true, EULERIAN_TSURF overrides ADVECT_TSURF. \n"//&
+                 "The default should be changed to true.", default=.false.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
@@ -1972,6 +1984,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
+    Ice%fCS%Eulerian_tsurf = Eulerian_tsurf
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
