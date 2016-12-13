@@ -68,6 +68,8 @@ type, public :: ice_transport_CS ; private
 
   logical :: advect_tsurf     ! If true, advect the surface skin temperature along
                               ! with the ice.  This should always be true.
+  logical :: readjust_categories  ! If true, readjust the distribution into
+                              ! ice thickness categories after advection.
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: check_conservation ! If true, write out verbose diagnostics of conservation.
@@ -380,7 +382,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,CS,mca_ice,mH_ice,part_sz, &
-!$OMP                                  mH_snow,ice_cover,mca_snow,nCat)
+!$OMP                                  mH_snow,mH_pond,ice_cover,mca_snow,mca_pond,nCat)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
       if (CS%roll_factor * (mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
@@ -401,13 +403,17 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
 
       part_sz(i,j,k) = mca_ice(i,j,k) / mH_ice(i,j,k)
       mH_snow(i,j,k) = mH_ice(i,j,k) * (mca_snow(i,j,k) / mca_ice(i,j,k))
+      mH_pond(i,j,k) = mH_ice(i,j,k) * (mca_pond(i,j,k) / mca_ice(i,j,k))
       ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
     else
       part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
       if (mca_snow(i,j,k) > 0.0) &
         call SIS_error(FATAL, &
           "Positive mca_snow values should not exist without ice.")
-      mH_snow(i,j,k) = 0.0
+      if (mca_pond(i,j,k) > 0.0) &
+        call SIS_error(FATAL, &
+          "Something needs to be done with positive mca_pond values without ice.")
+      mH_snow(i,j,k) = 0.0 ; mH_pond(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
   do j=jsc,jec ; do i=isc,iec
@@ -420,13 +426,19 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   call compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
                     mH_ice, mH_snow, mH_pond, tsurf, TrReg, G, IG, CS)
 
-  !   Handle massless categories.
+  if (CS%readjust_categories) then
+    call adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, &
+                               tsurf, TrReg, G, IG, CS)
+  endif
+
+  ! Handle massless categories.
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
     if (mca_ice(i,j,k)<=0.0) then
       part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
       mH_snow(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
+  !### Change mca_ice to part_sz, or recalculate mca_snow and mca_ice?
   call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
   if (CS%advect_tsurf) then
@@ -434,7 +446,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
       tsurf(i,j,k) = T_0degC
     endif ; enddo ; enddo ; enddo
   endif
-    ! Is sum(part_sz) = 1 ?
 
 !  Niki: TOM does the ridging after redistribute which would need age_ice and rdg_hice below.
 !   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
@@ -461,7 +472,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
       vf(i,J) = vf(i,J) + (vh_snow(i,J,k) + vh_ice(i,J,k))
     enddo ; enddo
   enddo ; endif
-  ! mw/new - uf/vf are diagnostic - should we add in uh_pond and vh_pond above?
+  !### mw/new - uf/vf are diagnostic - should we add in uh_pond and vh_pond above?
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
   call pass_var(mH_pond, G%Domain, complete=.false.)
@@ -1153,7 +1164,9 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "If true, advect the surface skin temperature along with \n"//&
                  "the ice.  This should be true for physical consistency.", &
                  default=.true.)
-
+   call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
+                  "If true, readjust the distribution into ice thickness \n"//&
+                  "categories after advection.", default=.false.) !### SHOULD BE TRUE.
   call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &
                  "A viscosity used in one-cell wide channels to \n"//&
                  "parameterize transport, especially with B-grid sea ice \n"//&
