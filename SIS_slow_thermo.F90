@@ -568,7 +568,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
     pres_0(:) = 0.0
-    call get_SIS2_thermo_coefs(IST%ITV, Cp_SeaWater=Cp_water, EOS=EOS)
+    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
     do j=jsc,jec ; do i=isc,iec
       if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
