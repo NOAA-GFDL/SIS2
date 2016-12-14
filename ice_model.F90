@@ -1549,22 +1549,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen, init_Tskin
   logical :: write_error_mesg
-  logical :: Eulerian_tsurf ! If true, use previous calculations of the ice-top
-                            ! surface skin temperature for tsurf at the start of
-                            ! atmospheric time stepping, including interpolating between
-                            ! tsurf values from other categories in the same location.
-                            ! If true, EULERIAN_TSURF overrides ADVECT_TSURF.
-  logical :: write_geom_files  ! If true, write out the grid geometry files.
-  logical :: symmetric         ! If true, use symmetric memory allocation.
-  logical :: global_indexing   ! If true use global horizontal index values instead
-                               ! of having the data domain on each processor start at 1.
-  integer :: first_direction   ! An integer that indicates which direction is to be
-                               ! updated first in directionally split parts of the
-                               ! calculation.  This can be altered during the course
-                               ! of the run via calls to set_first_direction.
-  logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
-  logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
-  logical :: single_IST        ! If true, fCS%IST and sCS%IST point to the same structure.
+  logical :: Eulerian_tsurf   ! If true, use previous calculations of the ice-top
+                              ! surface skin temperature for tsurf at the start of
+                              ! atmospheric time stepping, including interpolating between
+                              ! tsurf values from other categories in the same location.
+  logical :: write_geom_files ! If true, write out the grid geometry files.
+  logical :: symmetric        ! If true, use symmetric memory allocation.
+  logical :: global_indexing  ! If true use global horizontal index values instead
+                              ! of having the data domain on each processor start at 1.
+  integer :: first_direction  ! An integer that indicates which direction is to be
+                              ! updated first in directionally split parts of the
+                              ! calculation.  This can be altered during the course
+                              ! of the run via calls to set_first_direction.
+  logical :: fast_ice_PE      ! If true, fast ice processes are handled on this PE.
+  logical :: slow_ice_PE      ! If true, slow ice processes are handled on this PE.
+  logical :: single_IST       ! If true, fCS%IST and sCS%IST point to the same structure.
   logical :: Verona
   logical :: read_aux_restart
   logical :: split_restart_files
@@ -1620,8 +1619,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, use previous calculations of the ice-top surface \n"//&
                  "skin temperature for tsurf at the start of atmospheric \n"//&
                  "time stepping, including interpolating between tsurf \n"//&
-                 "values from other categories in the same location. \n"//&
-                 "If true, EULERIAN_TSURF overrides ADVECT_TSURF.", default=.true.)
+                 "values from other categories in the same location.", default=.true.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)

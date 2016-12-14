@@ -66,7 +66,6 @@ type SIS_fast_CS
                             ! surface skin temperature for tsurf at the start of
                             ! atmospheric time stepping, including interpolating between
                             ! tsurf values from other categories in the same location.
-                            ! If true, EULERIAN_TSURF overrides ADVECT_TSURF.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 

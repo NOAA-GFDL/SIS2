@@ -103,6 +103,7 @@ use ice_thm_mod, only : get_thermo_coefs
 use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_obsolete_params, only : obsolete_logical
 
 implicit none ; private
 
@@ -163,10 +164,6 @@ type, public :: SIS2_ice_thm_CS ; private
   ! temperature to be such that the brine content is less than "liq_lim" of
   ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
   real :: liq_lim = .99
-  logical :: old_heat_cap    ! If true, use an older linearization of the
-                          ! sea ice heat capacity for temperatures above the
-                          ! freezing pointin the calculation of the initial ice
-                          ! temperature estimate.  The default is false.
 
   logical :: do_pond = .false. ! activate melt pond scheme - mw/new
   ! mw/new - these melt pond control data are temporarily placed here
@@ -235,10 +232,7 @@ subroutine SIS2_ice_thm_init(param_file, CS)
                  "to always be used.", units="degC", default=40.0)
   CS%temp_range_est = abs(CS%temp_range_est)
 
-  call get_param(param_file, mod, "OLD_ICE_HEAT_CAPACITY", CS%old_heat_cap, &
-                 "If true, use an older linearization of the sea ice heat \n"//&
-                 "capacity for temperatures above the freezing point in the \n"//&
-                 "calculation of the initial ice temperature estimate.", default=.false.)
+  call obsolete_logical(param_file, "OLD_ICE_HEAT_CAPACITY", warning_val=.false.)
 
 end subroutine SIS2_ice_thm_init
 
@@ -381,10 +375,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   do k=1,NkIce   ! Store the heat capacity term in bb.
     if (tfi(k) >= 0.0) then ! This is pure ice.
       bb(k) = mL_ice * Cp_ice
-    elseif ((temp_IC(k) < tfi(k)) .or. (CS%old_heat_cap))  then
+    elseif (temp_IC(k) < tfi(k)) then
       bb(k) = mL_ice * (Cp_ice - (tfi(k) / temp_IC(k)**2) * &
                         (Lat_Fus - (Cp_brine-Cp_ice) * temp_IC(k)) )
-      ! Or mroe generally:
+      ! Or more generally:
       !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
       ! bb(k) = mL_ice * (Cp_ice + dSf_dT*Lat_fus + S_Sf * &
       !                   ((Cp_brine-Cp_ice))
