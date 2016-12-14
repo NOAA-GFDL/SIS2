@@ -1608,7 +1608,7 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
                  "CP_SEAWATER should be equal, but for computational \n"//&
                  "convenience CP_BRINE can be set equal to CP_ICE.", &
-                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE LATER TO default=CP_WATER)
+                 units="J kg-1 K-1", default=ITV%Cp_Water)
   call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
