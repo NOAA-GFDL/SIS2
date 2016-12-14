@@ -437,8 +437,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
       part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
       mH_snow(i,j,k) = 0.0
     endif
+    ! Recalculating mca_ice and mca_snow for consistency.
+    mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
+    mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
   enddo ; enddo ; enddo
-  !### Change mca_ice to part_sz, or recalculate mca_snow and mca_ice?
   call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
   if (CS%advect_tsurf) then
@@ -463,16 +465,17 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
 !     enddo ; enddo
 !   endif   ! do_ridging
 
-  uf(:,:) = 0.0; vf(:,:) = 0.0
-  if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then ; do k=1,nCat
-    do j=jsc,jec ; do I=isc-1,iec
-      uf(I,j) = uf(I,j) + (uh_snow(I,j,k) + uh_ice(I,j,k))
-    enddo ; enddo
-    do J=jsc-1,jec ; do i=isc,iec
-      vf(i,J) = vf(i,J) + (vh_snow(i,J,k) + vh_ice(i,J,k))
-    enddo ; enddo
-  enddo ; endif
-  !### mw/new - uf/vf are diagnostic - should we add in uh_pond and vh_pond above?
+  if ((CS%id_ix_trans>0) .or. (CS%id_iy_trans>0)) then
+    uf(:,:) = 0.0; vf(:,:) = 0.0
+    do k=1,nCat
+      do j=jsc,jec ; do I=isc-1,iec
+        uf(I,j) = uf(I,j) + ((uh_pond(I,j,k) + uh_snow(I,j,k)) + uh_ice(I,j,k))
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        vf(i,J) = vf(i,J) + ((vh_pond(i,J,k) + vh_snow(i,J,k)) + vh_ice(i,J,k))
+      enddo ; enddo
+    enddo
+  endif
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
   call pass_var(mH_pond, G%Domain, complete=.false.)
