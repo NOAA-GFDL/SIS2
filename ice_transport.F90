@@ -1162,11 +1162,11 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   endif
   call get_param(param_file, mod, "ADVECT_TSURF", CS%advect_tsurf, &
                  "If true, advect the surface skin temperature along with \n"//&
-                 "the ice.  This should be true for physical consistency.", &
-                 default=.true.)
+                 "the ice.  If EULERIAN_TSURF is true, ADVECT_TSURF does \n"//&
+                 "not alter the solutions", default=.false.)
    call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
                   "If true, readjust the distribution into ice thickness \n"//&
-                  "categories after advection.", default=.false.) !### SHOULD BE TRUE.
+                  "categories after advection.", default=.true.)
   call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &
                  "A viscosity used in one-cell wide channels to \n"//&
                  "parameterize transport, especially with B-grid sea ice \n"//&

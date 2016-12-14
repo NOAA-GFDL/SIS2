@@ -1621,8 +1621,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "skin temperature for tsurf at the start of atmospheric \n"//&
                  "time stepping, including interpolating between tsurf \n"//&
                  "values from other categories in the same location. \n"//&
-                 "If true, EULERIAN_TSURF overrides ADVECT_TSURF. \n"//&
-                 "The default should be changed to true.", default=.false.)
+                 "If true, EULERIAN_TSURF overrides ADVECT_TSURF.", default=.true.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
