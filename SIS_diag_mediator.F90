@@ -33,7 +33,7 @@ use MOM_coms, only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_safe_alloc, only : safe_alloc_ptr, safe_alloc_alloc
-use MOM_string_functions, only : lowercase, slasher
+use MOM_string_functions, only : lowercase, uppercase, slasher
 use MOM_time_manager, only : time_type
 
 use diag_manager_mod, only : diag_manager_init
@@ -766,6 +766,7 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
   logical :: opened, new_file
   character(len=8)   :: this_pe
   character(len=240) :: doc_file, doc_file_dflt, doc_path
+  character(len=40)  :: doc_file_param
   character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
 
   call diag_manager_init(err_msg=err_msg)
@@ -782,13 +783,15 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
   if (is_root_pe() .and. (diag_CS%doc_unit < 0)) then
     if (present(component)) then
       doc_file_dflt = trim(component)//".available_diags"
+      doc_file_param = trim(uppercase(component))//"_AVAILABLE_DIAGS_FILE"
     else
       write(this_pe,'(i6.6)') PE_here()
       doc_file_dflt = "available_diags."//this_pe
+      doc_file_param = "AVAILABLE_DIAGS_FILE"
     endif
-    call get_param(param_file, mod, "AVAILABLE_DIAGS_FILE", doc_file, &
+    call get_param(param_file, mod, trim(doc_file_param), doc_file, &
                  "A file into which to write a list of all available \n"//&
-                 "ocean diagnostics that can be included in a diag_table.", &
+                 "sea ice diagnostics that can be included in a diag_table.", &
                  default=doc_file_dflt)
     if (len_trim(doc_file) > 0) then
       new_file = .true. ; if (diag_CS%doc_unit /= -1) new_file = .false.
