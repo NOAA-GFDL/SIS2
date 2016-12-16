@@ -608,7 +608,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         IST%u_ice_C, IST%v_ice_C, IST%t_surf, IST%TrReg, &
+                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, &
                          OSS%sea_lev, dt_slow_dyn, G, IG, CS%ice_transport_CSp,&
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
@@ -624,7 +624,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         uc, vc, IST%t_surf, IST%TrReg, OSS%sea_lev, &
+                         uc, vc, IST%TrReg, OSS%sea_lev, &
                          dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
                          IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif

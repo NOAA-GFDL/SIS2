@@ -93,14 +93,13 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg, sea_lev, &
+subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_lev, &
                          dt_slow, G, IG, CS, rdg_hice, snow2ocn, &
                          rdg_rate, rdg_open, rdg_vosh)
   type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: mH_ice, mH_snow, mH_pond
-  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: tsurf
   type(SIS_tracer_registry_type),               pointer       :: TrReg
   real, dimension(SZIB_(G),SZJ_(G)),            intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vc
@@ -120,7 +119,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
 !  (inout)   mH_pond - The mass per unit area of the pond on the ice in each category
 !  (in)      uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
-!  (inout)   tsurf - The surface skin temperature in deg K.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      mH_lim - The lower ice-loading limit of each category, in H (often kg m-2).
 !  (in)      sea_lev - The height of the sea level, including contributions
@@ -416,14 +414,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   ! ridging scheme.  A more complete ridging scheme would also compress
   ! thicker ice and allow the fractional ice coverage to drop below 1.
   call compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
-                    mH_ice, mH_snow, mH_pond, tsurf, TrReg, G, IG, CS)
+                    mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
 
   if (CS%readjust_categories) then
     call adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, &
-                               tsurf, TrReg, G, IG, CS)
+                               TrReg, G, IG, CS)
     if (CS%bounds_check) &
       call check_SIS_tracer_bounds(TrReg, G, IG, "After adjust_ice_categories")
   endif
@@ -533,12 +531,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
 end subroutine ice_transport
 
 
-subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, tsurf, TrReg, G, IG, CS)
+subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG, CS)
   type(SIS_hor_grid_type),                    intent(inout) :: G
   type(ice_grid_type),                        intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mH_ice, mH_snow, mH_pond
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
-  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: tsurf
   type(SIS_tracer_registry_type),             pointer       :: TrReg
   type(ice_transport_CS),                     pointer       :: CS
 
@@ -554,7 +551,6 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, tsurf, TrReg
 !  (inout)   mca_pond - The mass per unit grid-cell area of the melt ponds atop
 !                       the ice in each category in H (often kg m-2).
 !  (inout)   mH_ice - The thickness of the ice in each category in H (often kg m-2).
-!  (inout)   tsurf - The surface skin temperature in deg K.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in)      IG - The sea-ice-specific grid structure.
@@ -752,13 +748,12 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, tsurf, TrReg
 end subroutine adjust_ice_categories
 
 subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
-                        mH_ice, mH_snow, mH_pond, tsurf, TrReg, G, IG, CS)
+                        mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS)
   type(SIS_hor_grid_type),                       intent(inout) :: G
   type(ice_grid_type),                           intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mca_ice, mca_snow, mca_pond
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mH_ice, mH_snow, mH_pond
-  real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: tsurf
   type(SIS_tracer_registry_type),                pointer       :: TrReg
   type(ice_transport_CS),                        pointer       :: CS
 !   This subroutine compresses the ice, starting with the thinnest category, if
@@ -785,7 +780,6 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
 !                     in H.
 !  (inout)   mH_pond - The thickness of the pond atop the ice in each category
 !                     in H.
-!  (inout)   tsurf - The surface skin temperature in deg K.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      G - The ocean's grid structure.
 !  (in)      IG - The sea-ice-specific grid structure.
@@ -810,7 +804,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
 !$OMP                                  mca_ice,mca_snow,mca_pond,mH_ice,mH_snow,mH_pond,&
-!$OMP                                  CS,TrReg,nCat,tsurf) &
+!$OMP                                  CS,TrReg,nCat) &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
 !$OMP                                  mca0_pond,trans_pond,compression_ratio,Icompress_here, &
 !$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old, &
@@ -1135,7 +1129,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
-   call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
+  call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
                   "If true, readjust the distribution into ice thickness \n"//&
                   "categories after advection.", default=.true.)
   call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &

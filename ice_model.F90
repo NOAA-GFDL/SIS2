@@ -992,6 +992,10 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
     enddo ; enddo ; enddo
+  else
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      Rad%t_skin(i,j,k) = IST%t_surf(i,j,k)
+    enddo ; enddo ; enddo
   endif
 
   ! Determine the sea-ice optical properties.
@@ -1016,13 +1020,13 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
   if (slab_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
+               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -1038,7 +1042,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
+               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
@@ -1064,10 +1068,17 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Ice%t_surf(i2,j2,1) = IST%t_surf(i,j,0)
+    Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
+  enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2,k2)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+      Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k)
       Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
     enddo ; enddo
   enddo
