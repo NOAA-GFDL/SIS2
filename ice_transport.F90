@@ -34,6 +34,7 @@ use MOM_file_parser, only : get_param, log_param, read_param, log_version, param
 use MOM_obsolete_params, only : obsolete_logical
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
+use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 use SIS_tracer_advect, only : advect_scalar
@@ -71,6 +72,8 @@ type, public :: ice_transport_CS ; private
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: check_conservation ! If true, write out verbose diagnostics of conservation.
+  logical :: bounds_check     ! If true, check for sensible values of thicknesses,
+                              ! temperatures, salinities, tracers, etc.
   integer :: adv_sub_steps    ! The number of advective iterations for each slow
                               ! time step.
   type(time_type), pointer :: Time ! A pointer to the ice model's clock.
@@ -189,6 +192,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
     enddo ; enddo
     return
   endif
+
+  if (CS%bounds_check) &
+    call check_SIS_tracer_bounds(TrReg, G, IG, "Start of ice_transport")
 
   ! Make sure that ice is in the right thickness category before advection.
 !  call adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS) !Niki: add ridging?
@@ -312,6 +318,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
+  if (CS%bounds_check) &
+    call check_SIS_tracer_bounds(TrReg, G, IG, "Ice_transport set massless 1")
+
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
   ! each partition.
@@ -348,6 +357,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
     call advect_SIS_tracers(mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
+
+    if (CS%bounds_check) then
+      write(mesg,'(i4)') iTransportSubcycles
+      call check_SIS_tracer_bounds(TrReg, G, IG, "After advect_SIS_tracers "//trim(mesg))
+    endif
   enddo ! iTransportSubcycles
 
   ! Add code to make sure that mH_ice(i,j,1) > IG%mH_cat_bound(1).
@@ -404,9 +418,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   call compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
                     mH_ice, mH_snow, mH_pond, tsurf, TrReg, G, IG, CS)
 
+  if (CS%bounds_check) &
+    call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
+
   if (CS%readjust_categories) then
     call adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, &
                                tsurf, TrReg, G, IG, CS)
+    if (CS%bounds_check) &
+      call check_SIS_tracer_bounds(TrReg, G, IG, "After adjust_ice_categories")
   endif
 
   ! Handle massless categories.
@@ -421,6 +440,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   enddo ; enddo ; enddo
   call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+
+  if (CS%bounds_check) &
+    call check_SIS_tracer_bounds(TrReg, G, IG, "Ice_transport set massless 2")
 
 !  Niki: TOM does the ridging after redistribute which would need age_ice and rdg_hice below.
 !   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
@@ -504,6 +526,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, tsurf, TrReg
   if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
   if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
   if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
+
+  if (CS%bounds_check) &
+    call check_SIS_tracer_bounds(TrReg, G, IG, "At end of ice_transport")
 
 end subroutine ice_transport
 
@@ -1158,6 +1183,12 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
           "  PLM    - Piecewise Linear Method\n"//&
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')
+  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+                 "If true, periodically check the values of ice and snow \n"//&
+                 "temperatures and thicknesses to ensure that they are \n"//&
+                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "does not change answers, but can increase model run time.", &
+                 default=.true.)
 
   call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
