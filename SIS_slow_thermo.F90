@@ -346,6 +346,20 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
+    
+    do j=jsc,jec ; do i=isc,iec
+      IOF%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_t_top(i,j,0)
+      IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_q_top(i,j,0)
+      IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
+      IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
+      IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dir_top(i,j,0)
+      IOF%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dif_top(i,j,0)
+      IOF%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dir_top(i,j,0)
+      IOF%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dif_top(i,j,0)
+      IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
+      IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
+    enddo ; enddo
+    
   endif
 
   ! IOF must be updated regardless of whether the ice is specified or the prognostic model
