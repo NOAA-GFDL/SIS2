@@ -1904,7 +1904,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (ice_rel_salin > 0.0) then
       call register_SIS_tracer(sIST%sal_ice, sG, sIG, NkIce, "salin_ice", param_file, &
                                sIST%TrReg, snow_tracer=.false., &
-                               massless_val=massless_ice_salin)
+                               massless_val=massless_ice_salin, nonnegative=.true.)
     endif
 
   !   Register any tracers that will be handled via tracer flow control for 
