@@ -1031,7 +1031,7 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
       ! sensitive to underflow than the alternatives would be.
       if ((uMask(I,j)*uMask(I-1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
           (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
       elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
@@ -1059,7 +1059,7 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
 
       if ((uMask(I,j)*uMask(I+1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
           (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
       elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
@@ -1556,7 +1556,7 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       ! sensitive to underflow than the alternatives would be.
       if ((vMask(i,J)*vMask(i,J-1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
           (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
       elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
@@ -1585,7 +1585,7 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       ! sensitive to underflow than the alternatives would be.
       if ((vMask(i,J)*vMask(i,J+1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
           (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
       elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
