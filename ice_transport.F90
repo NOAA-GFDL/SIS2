@@ -31,7 +31,7 @@ use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_obsolete_params, only : obsolete_logical
+use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
@@ -83,8 +83,7 @@ type, public :: ice_transport_CS ; private
   type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
   type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
-  integer :: id_ustar = -1, id_uocean = -1, id_uchan = -1
-  integer :: id_vstar = -1, id_vocean = -1, id_vchan = -1
+
   integer :: id_ix_trans = -1, id_iy_trans = -1
 end type ice_transport_CS
 
@@ -93,7 +92,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! transport - do ice transport and thickness class redistribution              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_lev, &
+subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
                          dt_slow, G, IG, CS, rdg_hice, snow2ocn, &
                          rdg_rate, rdg_open, rdg_vosh)
   type(SIS_hor_grid_type),                      intent(inout) :: G
@@ -103,7 +102,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
   type(SIS_tracer_registry_type),               pointer       :: TrReg
   real, dimension(SZIB_(G),SZJ_(G)),            intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vc
-  real, dimension(SZI_(G),SZJ_(G)),             intent(in)    :: sea_lev
   real,                                         intent(in)    :: dt_slow
   type(ice_transport_CS),                       pointer       :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: rdg_hice
@@ -121,8 +119,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
 !  (in)      vc - The meridional ice velocity, in m s-1.
 !  (inout)   TrReg - The registry of registered SIS ice and snow tracers.
 !  (in)      mH_lim - The lower ice-loading limit of each category, in H (often kg m-2).
-!  (in)      sea_lev - The height of the sea level, including contributions
-!                      from non-levitating ice from an earlier time step, in m.
 !  (in)      dt_slow - The amount of time over which the ice dynamics are to be
 !                      advanced, in s.
 !  (in)      G - The ocean's grid structure.
@@ -196,70 +192,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
 
   ! Make sure that ice is in the right thickness category before advection.
 !  call adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS) !Niki: add ridging?
-
-  if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
-  ! This block of code is a parameterization of either (or both)
-  ! i) the pressure driven oceanic flow in a narrow channel, or
-  ! ii) pressure driven flow of ice itself.
-  ! The latter is a speculative but both are missing due to
-  ! masking of velocities to zero in a single-cell wide channel.
-    dt_adv = dt_slow/CS%adv_sub_steps
-
-    ice_cover(:,:) = min(sum(part_sz(:,:,1:nCat),dim=3),1.0)
-    ustar(:,:) = 0. ; vstar(:,:) = 0.
-    ustaro(:,:) = 0. ; vstaro(:,:) = 0.
-    ustarv(:,:) = 0. ; vstarv(:,:) = 0.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,uc,sea_lev,ice_cover,dt_adv, &
-!$OMP                                  ustar,ustaro,ustarv)                              &
-!$OMP                          private(grad_eta,u_visc,u_ocn,cnn)
-    do j=jsc,jec ; do I=isc-1,iec
-      if ((uc(I,j)==0.) .and. & ! this is a redundant test due to following line
-          (G%mask2dBu(I,J)+G%mask2dBu(I,J-1)==0.) .and. &  ! =0 => no vels
-          (G%mask2dT(i,j)*G%mask2dT(i+1,j)>0.)) then ! >0 => open for transport
-        grad_eta=(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j) ! delta_i eta/dx
-        u_visc=-G%g_Earth*((G%dy_Cu(I,j)*G%dy_Cu(I,j))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                 *grad_eta                                                  ! d/dx eta
-        u_ocn=sqrt( G%g_Earth*G%dy_Cu(I,j)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-        u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-        cnn=max(ice_cover(i,j),ice_cover(i+1,j))**2. ! Use the larger concentration
-        uc(I,j)=cnn*u_visc+(1.-cnn)*u_ocn
-        ! Limit flow to be stable for fully divergent flow
-        if (uc(I,j)>0.) then
-          uc(I,j)=min( uc(I,j), CS%chan_cfl_limit*G%dxT(i,j)/dt_adv)
-        else
-          uc(I,j)=max( uc(I,j),(-1*CS%chan_cfl_limit)*G%dxT(i+1,j)/dt_adv)
-        endif
-        if (CS%id_ustar>0) ustar(I,j)=uc(I,j)
-        if (CS%id_uocean>0) ustaro(I,j)=u_ocn
-        if (CS%id_uchan>0) ustarv(I,j)=u_visc
-      endif
-    enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,CS,vc,sea_lev,ice_cover,dt_adv, &
-!$OMP                                  vstar,vstaro,vstarv)                              &
-!$OMP                          private(grad_eta,u_visc,u_ocn,cnn)
-    do J=jsc-1,jec ; do i=isc,iec
-      if ((vc(i,J)==0.) .and. & ! this is a redundant test due to following line
-          (G%mask2dBu(I,J)+G%mask2dBu(I-1,J)==0.) .and. &  ! =0 => no vels
-          (G%mask2dT(i,j)*G%mask2dT(i,j+1)>0.)) then ! >0 => open for transport
-        grad_eta=(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J) ! delta_i eta/dy
-        u_visc=-G%g_Earth*((G%dx_Cv(i,J)*G%dx_Cv(i,J))/(12.*CS%chan_visc)) & ! -g*dy^2/(12*visc)
-                *grad_eta                                                  ! d/dx eta
-        u_ocn=sqrt( G%g_Earth*G%dx_Cv(i,J)*abs(grad_eta)/(36.*CS%smag_ocn) ) ! Magnitude of ocean current
-        u_ocn=sign(u_ocn, -grad_eta) ! Direct down the ssh gradient
-        cnn=max(ice_cover(i,j),ice_cover(i,j+1))**2. ! Use the larger concentration
-        vc(i,J)=cnn*u_visc+(1.-cnn)*u_ocn
-        ! Limit flow to be stable for fully divergent flow
-        if (vc(i,J)>0.) then
-          vc(i,J)=min( vc(i,J), CS%chan_cfl_limit*G%dyT(i,j)/dt_adv)
-        else
-          vc(i,J)=max( vc(i,J),(-1*CS%chan_cfl_limit)*G%dyT(i,j+1)/dt_adv)
-        endif
-        if (CS%id_vstar>0) vstar(i,J)=vc(i,J)
-        if (CS%id_vocean>0) vstaro(i,J)=u_ocn
-        if (CS%id_vchan>0) vstarv(i,J)=u_visc
-      endif
-    enddo ; enddo
-  endif
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
@@ -518,12 +450,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, sea_l
 
   if (CS%id_ix_trans>0) call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
-  if (CS%id_ustar >0) call post_SIS_data(CS%id_ustar, ustar, CS%diag)
-  if (CS%id_vstar >0) call post_SIS_data(CS%id_vstar , vstar, CS%diag)
-  if (CS%id_vocean>0) call post_SIS_data(CS%id_vocean, vstaro, CS%diag)
-  if (CS%id_uocean>0) call post_SIS_data(CS%id_uocean, ustaro, CS%diag)
-  if (CS%id_vchan>0)  call post_SIS_data(CS%id_vchan,  vstarv, CS%diag)
-  if (CS%id_uchan>0)  call post_SIS_data(CS%id_uchan,  ustarv, CS%diag)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "At end of ice_transport")
@@ -1132,17 +1058,9 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
                   "If true, readjust the distribution into ice thickness \n"//&
                   "categories after advection.", default=.true.)
-  call get_param(param_file, mod, "ICE_CHANNEL_VISCOSITY", CS%chan_visc, &
-                 "A viscosity used in one-cell wide channels to \n"//&
-                 "parameterize transport, especially with B-grid sea ice \n"//&
-                 "coupled to a C-grid ocean model.", units="m2 s-1", default=0.0)
-  call get_param(param_file, mod, "ICE_CHANNEL_SMAG_COEF", CS%smag_ocn, &
-                 "A Smagorinsky coefficient for viscosity in channels.", &
-                 units="Nondim", default=0.15)
-  call get_param(param_file, mod, "ICE_CHANNEL_CFL_LIMIT", CS%chan_cfl_limit, &
-                 "The CFL limit that is applied to the parameterized \n"//&
-                 "viscous transport in single-point channels.", &
-                 units="Nondim", default=0.25)
+  call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
+  call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)
+  call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
 
   call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
@@ -1189,20 +1107,6 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
-  if (CS%chan_visc>0. .and. CS%adv_sub_steps>0) then
-    CS%id_ustar = register_diag_field('ice_model', 'U_STAR', diag%axesCu1, Time, &
-                'channel transport velocity - x component', 'm/s', missing_value=missing)
-    CS%id_vstar = register_diag_field('ice_model', 'V_STAR', diag%axesCv1, Time, &
-                'channel transport velocity - y component', 'm/s', missing_value=missing)
-    CS%id_uocean = register_diag_field('ice_model', 'U_CHAN_OCN', diag%axesCu1, Time, &
-                'ocean component of channel transport - x', 'm/s', missing_value=missing)
-    CS%id_vocean = register_diag_field('ice_model', 'V_CHAN_OCN', diag%axesCv1, Time, &
-                  'ocean component of channel transport - y', 'm/s', missing_value=missing)
-    CS%id_uchan = register_diag_field('ice_model', 'U_CHAN_VISC', diag%axesCu1, Time, &
-                'viscous component of channel transport - x', 'm/s', missing_value=missing)
-    CS%id_vchan = register_diag_field('ice_model', 'V_CHAN_VISC', diag%axesCv1, Time, &
-                'viscous component of channel transport - y', 'm/s', missing_value=missing)
-  endif
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
                'x-direction ice transport', 'kg/s', missing_value=missing)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
