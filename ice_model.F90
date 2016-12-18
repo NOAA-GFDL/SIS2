@@ -966,7 +966,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state") !, OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
@@ -1067,7 +1067,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   endif
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state") !, OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &

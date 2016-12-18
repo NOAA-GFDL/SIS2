@@ -499,7 +499,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "End of update_ice_fast") !, OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "End of update_ice_fast", Rad=Rad) !, OSS=sOSS)
 
 end subroutine do_update_ice_model_fast
 

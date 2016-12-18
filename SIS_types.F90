@@ -1289,12 +1289,13 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
 
 end subroutine IST_chksum
 
-subroutine IST_bounds_check(IST, G, IG, msg, OSS)
+subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
   type(ice_state_type),    intent(in)    :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
   character(len=*),        intent(in)    :: msg
   type(ocean_sfc_state_type), optional, intent(in) :: OSS
+  type(ice_rad_type),         optional, intent(in) :: Rad
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
@@ -1340,12 +1341,14 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS)
   tice_min = -100. ; tice_max = 1.0
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
   enth_max = enth_from_TS(tice_max, 0., IST%ITV)
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    if ((IST%t_surf(i,j,k) < tsurf_min) .or. (IST%t_surf(i,j,k) > tsurf_max)) then
-      n_bad = n_bad + 1
-      if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
-    endif
-  enddo ; enddo ; enddo
+  if (present(Rad)) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      if ((Rad%t_skin(i,j,k) < tsurf_min) .or. (Rad%t_skin(i,j,k) > tsurf_max)) then
+        n_bad = n_bad + 1
+        if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
+      endif
+    enddo ; enddo ; enddo
+  endif
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max)) then
@@ -1374,7 +1377,11 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS)
     write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
     if (k_bad > 0) then
-      write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4)') IST%t_surf(i,j,k), IST%part_size(i,j,k)
+      if (present(Rad)) then
+        write(mesg2,'("T_skin = ",1pe12.4,", ps = ",1pe12.4)') Rad%t_skin(i,j,k), IST%part_size(i,j,k)
+      else
+        write(mesg2,'("part_size = ",1pe12.4)') IST%part_size(i,j,k)
+      endif
     elseif (present(OSS)) then
       write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
             OSS%t_ocn(i,j), OSS%s_surf(i,j), sum_part_sz(i,j)
