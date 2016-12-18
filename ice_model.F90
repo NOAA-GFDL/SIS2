@@ -634,7 +634,8 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
       "The pointer to Ice%sCS must be associated in update_ice_model_slow_up.")
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+                           Ice%sCS%specified_ice, Ice%ocean_fields)
+  Ice%sCS%IST%t_surf(:,:,0) = Ice%sCS%OSS%SST_K(:,:)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -695,7 +696,8 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
       "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary.")
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+                           Ice%sCS%specified_ice, Ice%ocean_fields)
+  Ice%sCS%IST%t_surf(:,:,0) = Ice%sCS%OSS%SST_K(:,:)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -704,12 +706,10 @@ end subroutine unpack_ocean_ice_boundary
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
-subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_fields)
+subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB
   type(ocean_sfc_state_type),    intent(inout) :: OSS
   type(SIS_hor_grid_type),       intent(inout) :: G
-  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                                 intent(inout) :: t_surf_ocn_K  ! The ocean surface temperature in Kelvin.
   logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
                                                                 ! related to passive tracers.
@@ -734,10 +734,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
 
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
   if (.not. specified_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,t_surf_ocn_K,OIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      t_surf_ocn_K(i,j) = OIB%t(i2,j2)
+      OSS%SST_K(i,j) = OIB%t(i2,j2)
     enddo ; enddo
   endif
 
@@ -869,6 +869,7 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
   do j=jsc,jec ; do i=isc,iec
     sOSS%s_surf(i,j) = OSS%s_surf(i,j)
     sOSS%t_ocn(i,j) = OSS%t_ocn(i,j)
+    sOSS%SST_K(i,j) = OSS%SST_K(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
       sOSS%bheat(i,j) = OSS%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
@@ -1072,7 +1073,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%t_surf(i2,j2,1) = IST%t_surf(i,j,0)
+    Ice%t_surf(i2,j2,1) = OSS%SST_K(i,j)
     Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
@@ -2246,10 +2247,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       enddo
 
       allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
-      call get_sea_surface(Ice%sCS%Time, sIST%t_surf(isc:iec,jsc:jec,0), &
+      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_K(isc:iec,jsc:jec), &
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
                            h_ice_input, ice_domain=Ice%slow_domain_NH )
       do j=jsc,jec ; do i=isc,iec
+        sIST%t_surf(i,j,0) = Ice%sCS%OSS%SST_K(i,j)
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
       enddo ; enddo
 

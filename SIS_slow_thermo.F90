@@ -284,7 +284,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(ice_state_type),       intent(inout) :: IST
   real,                       intent(in)    :: dt_slow ! The thermodynamic step, in s.
   type(slow_thermo_CS),       pointer       :: CS
-  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ocean_sfc_state_type), intent(inout) :: OSS
   type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(inout) :: IOF
   type(SIS_hor_grid_type),    intent(inout) :: G
@@ -340,7 +340,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   !
   if (CS%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
-    call get_sea_surface(CS%Time, IST%t_surf(isc:iec,jsc:jec,0), IST%part_size(isc:iec,jsc:jec,:), &
+    call get_sea_surface(CS%Time, OSS%SST_K(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,:), &
                          h_ice_input(isc:iec,jsc:jec))
     call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
     do j=jsc,jec ; do i=isc,iec
