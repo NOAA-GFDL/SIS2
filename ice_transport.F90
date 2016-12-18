@@ -135,15 +135,13 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
     uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
-    uf, & ! Zonal fluxes in m3 s-1 and kg s-1.
-    ustar, ustaro, ustarv ! Local variables, transporting velocities
+    uf         ! Total zonal fluxes in kg s-1.
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
     vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
     vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    vf, & ! Meridional fluxes in m3 s-1 and kg s-1.
-    vstar, vstaro, vstarv ! Local variables, transporting velocities
+    vf         ! Total meridional fluxes in kg s-1.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a
                           ! cell, in units of H (often kg m-2).  "mca" stands
@@ -156,14 +154,12 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G)) :: opnwtr
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
-  real :: u_visc, u_ocn, cnn, grad_eta ! Variables for channel parameterization
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: I_mca_ice
 
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
   real :: I_tot_ice, I_tot_snow
-  real :: C1_3 = 1.0/3.0
 
   real :: dt_adv
   character(len=200) :: mesg
@@ -394,10 +390,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     uf(:,:) = 0.0; vf(:,:) = 0.0
     do k=1,nCat
       do j=jsc,jec ; do I=isc-1,iec
-        uf(I,j) = uf(I,j) + ((uh_pond(I,j,k) + uh_snow(I,j,k)) + uh_ice(I,j,k))
+        uf(I,j) = uf(I,j) + IG%H_to_kg_m2 * ((uh_pond(I,j,k) + uh_snow(I,j,k)) + uh_ice(I,j,k))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        vf(i,J) = vf(i,J) + ((vh_pond(i,J,k) + vh_snow(i,J,k)) + vh_ice(i,J,k))
+        vf(i,J) = vf(i,J) + IG%H_to_kg_m2 * ((vh_pond(i,J,k) + vh_snow(i,J,k)) + vh_ice(i,J,k))
       enddo ; enddo
     enddo
   endif
