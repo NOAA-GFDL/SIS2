@@ -293,7 +293,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
   type(simple_OSS_type),         intent(in)    :: sOSS
-  type(ice_rad_type),            intent(in)    :: Rad
+  type(ice_rad_type),            intent(inout) :: Rad
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
   type(fast_thermo_CS),          pointer       :: CS
@@ -437,7 +437,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
               (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
-             dhf_dt * (IST%t_surf(i,j,k)-T_0degC)
+             dhf_dt * (Rad%t_skin(i,j,k)-T_0degC)
 
       SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*flux_sw
       do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
@@ -456,9 +456,9 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
-      dts               = ts_new - (IST%t_surf(i,j,k)-T_0degC)
-      IST%t_surf(i,j,k) = IST%t_surf(i,j,k) + dts
-      ! or IST%t_surf(i,j,k) = ts_new + T_0degC
+      dts               = ts_new - (Rad%t_skin(i,j,k)-T_0degC)
+      Rad%t_skin(i,j,k) = Rad%t_skin(i,j,k) + dts
+      ! or Rad%t_skin(i,j,k) = ts_new + T_0degC
       flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
       flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
       flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)

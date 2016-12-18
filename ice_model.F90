@@ -303,7 +303,8 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
-  Ice%fCS%Rad%T_skin(:,:,:) = Ice%fCS%IST%t_surf(:,:,1:)
+  Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:)
+!   Ice%fCS%Rad%T_skin(:,:,:) = Ice%fCS%IST%t_surf(:,:,1:)
   call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
@@ -1234,11 +1235,12 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
 !$OMP                           private(i2,j2,k2)
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k)
   enddo ; enddo ; enddo
 
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
@@ -1328,7 +1330,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   if (Rad%id_alb>0)         call post_avg(Rad%id_alb, Ice%albedo, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
 
-  if (Rad%id_tskin>0) call post_data(Rad%id_tskin, IST%t_surf(:,:,1:), CS%diag)
+  if (Rad%id_tskin>0) call post_data(Rad%id_tskin, Rad%t_skin, CS%diag)
   if (Rad%id_cn>0) call post_data(Rad%id_cn, IST%part_size(:,:,1:), CS%diag)
   if (Rad%id_mi>0) call post_data(Rad%id_mi, IST%mH_ice(:,:,:), CS%diag)
 
@@ -1359,7 +1361,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                           (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
+                           (ABT%lw_flux(i3,j3,k2) + Stefan*Rad%t_skin(i,j,k)**4)
     endif ; enddo ; enddo ; enddo
     call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
