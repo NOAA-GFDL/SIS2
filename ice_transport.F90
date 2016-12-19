@@ -347,6 +347,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
 
+  ! Handle massless categories.  Is this even necessary?
+  do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
+    if (mca_ice(i,j,k)<=0.0) then
+      part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
+      mH_snow(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
+
   if (CS%readjust_categories) then
     call adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, &
                                TrReg, G, IG, CS)
@@ -354,13 +362,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
       call check_SIS_tracer_bounds(TrReg, G, IG, "After adjust_ice_categories")
   endif
 
-  ! Handle massless categories.
+  ! Recalculating mca_ice and mca_snow for consistency when handling tracer
+  ! concentrations in massless categories.
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-    if (mca_ice(i,j,k)<=0.0) then
-      part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
-      mH_snow(i,j,k) = 0.0
-    endif
-    ! Recalculating mca_ice and mca_snow for consistency.
     mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
     mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
   enddo ; enddo ; enddo
