@@ -231,6 +231,9 @@ type fast_ice_avg_type
                         ! exclusive of any iceberg contributions, based on
                         ! the temperature difference relative to a
                         ! reference temperature, in ???.
+    Tskin_avg, &     ! The area-weighted average skin temperature across all 
+                     ! ice thickness categories, in deg C, or 0 if there is
+                     ! no ice.
     ice_free   , &   ! The fractional open water used in calculating
                      ! WindStr_[xy]_A; nondimensional, between 0 & 1.
     ice_cover        ! The fractional ice coverage, summed across all
@@ -256,7 +259,7 @@ type fast_ice_avg_type
   integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1, id_sw_dn=-1, id_albedo=-1
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
-
+  integer :: id_tsfc=-1, id_sitemptop=-1
 end type fast_ice_avg_type
 
 !> ice_rad_type contains variables that describe the absorption and reflection
@@ -506,12 +509,12 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%flux_lh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
   allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
   allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
-  allocate(FIA%runoff(isd:ied, jsd:jed)) ; FIA%runoff(:,:) = 0.0 !NI
-  allocate(FIA%calving(isd:ied, jsd:jed)) ; FIA%calving(:,:) = 0.0 !NI
-  allocate(FIA%calving_preberg(isd:ied, jsd:jed)) ; FIA%calving_preberg(:,:) = 0.0 !NI, diag
-  allocate(FIA%runoff_hflx(isd:ied, jsd:jed)) ; FIA%runoff_hflx(:,:) = 0.0 !NI
-  allocate(FIA%calving_hflx(isd:ied, jsd:jed)) ; FIA%calving_hflx(:,:) = 0.0 !NI
-  allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed)) ; FIA%calving_hflx_preberg(:,:) = 0.0 !NI, diag
+  allocate(FIA%runoff(isd:ied, jsd:jed)) ; FIA%runoff(:,:) = 0.0
+  allocate(FIA%calving(isd:ied, jsd:jed)) ; FIA%calving(:,:) = 0.0
+  allocate(FIA%calving_preberg(isd:ied, jsd:jed)) ; FIA%calving_preberg(:,:) = 0.0 ! diag
+  allocate(FIA%runoff_hflx(isd:ied, jsd:jed)) ; FIA%runoff_hflx(:,:) = 0.0
+  allocate(FIA%calving_hflx(isd:ied, jsd:jed)) ; FIA%calving_hflx(:,:) = 0.0
+  allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed)) ; FIA%calving_hflx_preberg(:,:) = 0.0 ! diag
 
   allocate(FIA%frazil_left(isd:ied, jsd:jed)) ; FIA%frazil_left(:,:) = 0.0
   allocate(FIA%bheat(isd:ied, jsd:jed)) ; FIA%bheat(:,:) = 0.0
@@ -522,6 +525,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%WindStr_ocn_x(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_x(:,:) = 0.0
   allocate(FIA%WindStr_ocn_y(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_y(:,:) = 0.0
   allocate(FIA%p_atm_surf(isd:ied, jsd:jed)) ; FIA%p_atm_surf(:,:) = 0.0
+  allocate(FIA%Tskin_avg(isd:ied, jsd:jed)) ; FIA%Tskin_avg(:,:) = 0.0 ! diag
   allocate(FIA%ice_free(isd:ied, jsd:jed))  ; FIA%ice_free(:,:) = 0.0
   allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0 
 
@@ -905,6 +909,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%calving(i2,j2) =  FIA_in%calving(i,j)
     FIA_out%runoff_hflx(i2,j2) = FIA_in%runoff_hflx(i,j)
     FIA_out%calving_hflx(i2,j2) =  FIA_in%calving_hflx(i,j)
+    FIA_out%Tskin_avg(i2,j2) = FIA_in%Tskin_avg(i,j)
     FIA_out%ice_free(i2,j2) = FIA_in%ice_free(i,j)
     FIA_out%ice_cover(i2,j2) = FIA_in%ice_cover(i,j)
     FIA_out%flux_sw_dn(i2,j2) = FIA_in%flux_sw_dn(i,j)
@@ -1005,6 +1010,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                         FIA_out%runoff_hflx, complete=.false.)
   call mpp_redistribute(domain_in, FIA_in%calving_hflx, domain_out, &
                         FIA_out%calving_hflx, complete=.false.)
+  call mpp_redistribute(domain_in, FIA_in%Tskin_avg, domain_out, &
+                        FIA_out%Tskin_avg, complete=.false.)
   call mpp_redistribute(domain_in, FIA_in%ice_free, domain_out, &
                         FIA_out%ice_free, complete=.false.)
   call mpp_redistribute(domain_in, FIA_in%ice_cover, domain_out, &
@@ -1127,7 +1134,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
   deallocate(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y)
-  deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn)
+  deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn, FIA%Tskin_avg)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg

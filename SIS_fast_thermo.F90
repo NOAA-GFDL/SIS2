@@ -136,6 +136,8 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
     FIA%flux_sw_dn(:,:) = 0.0
+    FIA%Tskin_avg(:,:) = 0.0
+
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
 
@@ -186,7 +188,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
                            intent(in)    :: part_size
 
   real    :: u, v, divid, sign
-  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0, nondim.
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
@@ -236,23 +238,25 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
     enddo ; enddo
     do i=isc,iec
       FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*divid
+      FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * divid
     enddo
   enddo
 
   ! Determine the fractional ice coverage and the wind stresses averaged
   ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,part_size) &
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,Rad,part_size) &
 !$OMP                           private(I_wts)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
       FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
       FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
       FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
-      FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
-      FIA%WindStr_ocn_y(i,j) = FIA%flux_v_top(i,j,0)
     enddo ; enddo
     do i=isc,iec
+      FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
+      FIA%WindStr_ocn_y(i,j) = FIA%flux_v_top(i,j,0)
       if (FIA%ice_cover(i,j) > 0.0) then
         I_wts = 1.0 / FIA%ice_cover(i,j)
         FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) * I_wts

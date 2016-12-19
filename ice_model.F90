@@ -1236,7 +1236,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
     FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,Ice,io_I,jo_I ) &
 !$OMP                           private(i2,j2,k2)
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
@@ -1303,9 +1303,11 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   type(time_type),               intent(in)    :: Time_start, Time_end
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
+  real, dimension(G%isd:G%ied) :: Tskin_avg, ice_conc
   real :: dt_diag
   real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
                     ! strictly diagnostic purposes.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
@@ -1385,6 +1387,22 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
             (Ice%albedo_vis_dir(i2,j2,k2) + Ice%albedo_vis_dif(i2,j2,k2)) + &
             (Ice%albedo_nir_dir(i2,j2,k2) + Ice%albedo_nir_dif(i2,j2,k2)) )
   endif ; enddo ; enddo ; enddo
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,IST,FIA) &
+!$OMP                          private(Tskin_avg, ice_conc)
+  do j=jsc,jec
+    Tskin_avg(:) = 0.0 ; ice_conc(:) = 0.0
+    do k=1,ncat ; do i=isc,iec
+      Tskin_avg(i) = Tskin_avg(i) + Rad%t_skin(i,j,k) * IST%part_size(i,j,k)
+      ice_conc(i) = ice_conc(i) + IST%part_size(i,j,k)
+    enddo ; enddo
+    do i=isc,iec
+      if (ice_conc(i)>0.0) then
+        FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) + ((Tskin_avg(i) / ice_conc(i)) - T_0degC)
+      ! else there is nothing to add, because Tskin_avg = 0.
+      endif
+    enddo
+  enddo
 
   if (Rad%id_swdn > 0) call post_data(Rad%id_swdn, sw_dn, CS%diag)
 

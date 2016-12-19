@@ -131,13 +131,13 @@ type dyn_trans_CS ; private
 
   ! These are the diagnostic ids for describing the ice state.
   integer, dimension(:), allocatable :: id_t, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
+  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
-  integer :: id_sitemptop=-1, id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
+  integer :: id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
@@ -820,10 +820,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (CS%id_sivol>0) call post_avg(CS%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (CS%id_tsfc>0) call post_avg(CS%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
-  if (CS%id_sitemptop>0) call post_avg(CS%id_sitemptop, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
   if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (CS%id_sitimefrac>0) then
@@ -1359,11 +1355,6 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
                'g/kg',  missing_value=missing)
   enddo
-  CS%id_tsfc     = register_diag_field('ice_model', 'TS', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-  CS%id_sitemptop= register_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-
 
   ! Diagnostics that are specific to C-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then

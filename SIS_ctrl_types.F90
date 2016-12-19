@@ -248,6 +248,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
 
+  FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+  FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
              'sea level pressure', 'Pa', missing_value=missing)
