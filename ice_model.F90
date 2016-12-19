@@ -296,6 +296,8 @@ end subroutine update_ice_model_slow
 subroutine ice_model_fast_cleanup(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in ice_model_fast_cleanup.")
 
@@ -303,8 +305,7 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
-  Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:)
-!   Ice%fCS%Rad%T_skin(:,:,:) = Ice%fCS%IST%t_surf(:,:,1:)
+  Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
   call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
@@ -324,7 +325,6 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
   real, dimension(G%isd:G%ied) :: &
     t_thick, t_thin, mH_thin, t_fr_ocn
   real :: wt2, mH_cat_tgt
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical, dimension(G%isd:G%ied) :: infill
   logical :: any_ice
   integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
@@ -344,13 +344,13 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
 
     do i=isc,iec
       T_fr_ocn(i) = G%mask2dT(i,j) * T_Freeze(OSS%s_surf(i,j), IST%ITV)
-      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i) + T_0degC
+      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i)
     enddo
 
     if (.not.any_ice) then
       ! This entire row is ice free.
       do k=1,ncat ; do i=isc,iec
-        t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i) + T_0degC
+        t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i)
       enddo ; enddo
     else
       do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
@@ -362,7 +362,7 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
       ! The logic for the k=1 (thinest) category is particularly simple.
       do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
         if (IST%part_size(i,j,1) <= 0.0) then
-          t_skin(i,j,1) = T_fr_ocn(i) + T_0degC
+          t_skin(i,j,1) = T_fr_ocn(i)
         endif
       endif ; enddo
       do k=2,ncat ; do i=isc,iec
@@ -379,7 +379,7 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
             wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
             if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
 
-            t_skin(i,j,k) = wt2*(T_fr_ocn(i) + T_0degC) + (1.0-wt2)*t_thin(i)
+            t_skin(i,j,k) = wt2*T_fr_ocn(i) + (1.0-wt2)*t_thin(i)
           else
             ! Linearly interpolate between bracketing neighboring
             ! categories with valid values.
@@ -395,7 +395,7 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
             t_skin(i,j,k) = wt2*t_skin(i,j,k2) + (1.0-wt2) * t_skin(i,j,k3)
           endif
         else ! This is a land point.
-          t_skin(i,j,k) = T_0degC
+          t_skin(i,j,k) = 0.0
         endif
       enddo ; enddo
 
@@ -993,11 +993,11 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   if (fCS%Eulerian_tsurf) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
+      IST%t_surf(i,j,k) = Rad%t_skin(i,j,k) + T_0degC
     enddo ; enddo ; enddo
   else
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      Rad%t_skin(i,j,k) = IST%t_surf(i,j,k)
+      Rad%t_skin(i,j,k) = IST%t_surf(i,j,k) - T_0degC
     enddo ; enddo ; enddo
   endif
 
@@ -1029,7 +1029,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
+               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -1045,7 +1045,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
+               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
@@ -1081,7 +1081,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP                          private(i2,j2,k2)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k)
+      Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k) + T_0degC
       Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
     enddo ; enddo
   enddo
@@ -1214,6 +1214,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
    
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
@@ -1240,7 +1241,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
 !$OMP                           private(i2,j2,k2)
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k)
+    Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k) + T_0degC
   enddo ; enddo ; enddo
 
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
@@ -1363,7 +1364,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                           (ABT%lw_flux(i3,j3,k2) + Stefan*Rad%t_skin(i,j,k)**4)
+                           (ABT%lw_flux(i3,j3,k2) + Stefan*(Rad%t_skin(i,j,k)+T_0degC)**4)
     endif ; enddo ; enddo ; enddo
     call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
@@ -1398,7 +1399,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     enddo ; enddo
     do i=isc,iec
       if (ice_conc(i)>0.0) then
-        FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) + ((Tskin_avg(i) / ice_conc(i)) - T_0degC)
+        FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) + (Tskin_avg(i) / ice_conc(i))
       ! else there is nothing to add, because Tskin_avg = 0.
       endif
     enddo
@@ -2429,7 +2430,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
     if (init_Tskin) then
-      Ice%fCS%Rad%t_skin(:,:,:) = T_0degC
+      Ice%fCS%Rad%t_skin(:,:,:) = 0.0
     endif
 
     call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &

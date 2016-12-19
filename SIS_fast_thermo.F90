@@ -342,7 +342,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
@@ -441,7 +440,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
               (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
-             dhf_dt * (Rad%t_skin(i,j,k)-T_0degC)
+             dhf_dt * Rad%t_skin(i,j,k)
 
       SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*flux_sw
       do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
@@ -460,9 +459,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
-      dts               = ts_new - (Rad%t_skin(i,j,k)-T_0degC)
-      Rad%t_skin(i,j,k) = Rad%t_skin(i,j,k) + dts
-      ! or Rad%t_skin(i,j,k) = ts_new + T_0degC
+      dts               = ts_new - Rad%t_skin(i,j,k)
+      Rad%t_skin(i,j,k) = ts_new
       flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
       flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
       flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)

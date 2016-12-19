@@ -154,7 +154,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G)) :: opnwtr
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: I_mca_ice
 

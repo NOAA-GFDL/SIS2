@@ -721,7 +721,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
   real :: enth_units, I_enth_units
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds

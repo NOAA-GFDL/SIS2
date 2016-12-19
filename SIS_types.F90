@@ -271,7 +271,7 @@ type ice_rad_type
     t_skin      ! The surface skin temperature as calculated by the most
                 ! recent fast atmospheric timestep, or a value filled in
                 ! from other ice categories or the local freezing point of
-                ! seawater when there is no ice at all, in Kelvin.
+                ! seawater when there is no ice at all, in degrees Celsius.
   ! Shortwave absorption parameters that are set in ice_optics.
   real, allocatable, dimension(:,:,:) :: &
     sw_abs_sfc , &  !< The fraction of the absorbed shortwave radiation that is
@@ -1310,7 +1310,6 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
   real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max, m_max
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
@@ -1344,7 +1343,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
     endif
   enddo ; enddo
 
-  tsurf_min = tOcn_min + T_0degC ; tsurf_max = tOcn_max + T_0degC
+  tsurf_min = tOcn_min ; tsurf_max = tOcn_max
   tice_min = -100. ; tice_max = 1.0
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
   enth_max = enth_from_TS(tice_max, 0., IST%ITV)
