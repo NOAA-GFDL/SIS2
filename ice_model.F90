@@ -569,7 +569,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
-    Ice%SST_C(i2,j2) = OSS%t_ocn(i,j)
+    Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
@@ -726,7 +726,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    OSS%t_ocn(i,j) = OIB%t(i2,j2) - T_0degC
     OSS%s_surf(i,j) = OIB%s(i2,j2)
     OSS%frazil(i,j) = OIB%frazil(i2,j2)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
@@ -737,7 +736,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      OSS%SST_K(i,j) = OIB%t(i2,j2)
+      OSS%SST_C(i,j) = OIB%t(i2,j2) - T_0degC
     enddo ; enddo
   endif
 
@@ -868,11 +867,10 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST,ITV)
   do j=jsc,jec ; do i=isc,iec
     sOSS%s_surf(i,j) = OSS%s_surf(i,j)
-    sOSS%t_ocn(i,j) = OSS%t_ocn(i,j)
-    sOSS%SST_K(i,j) = OSS%SST_K(i,j)
+    sOSS%SST_C(i,j) = OSS%SST_C(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
-      sOSS%bheat(i,j) = OSS%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
+      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
         sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
@@ -1069,7 +1067,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%t_surf(i2,j2,1) = OSS%t_ocn(i,j) + T_0degC
+    Ice%t_surf(i2,j2,1) = OSS%SST_C(i,j) + T_0degC
     Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
@@ -2269,12 +2267,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       enddo
 
       allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
-      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%t_ocn(isc:iec,jsc:jec), &
+      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_C(isc:iec,jsc:jec), &
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
                            h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
       do j=jsc,jec ; do i=isc,iec
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
-        Ice%sCS%OSS%SST_K(i,j) = Ice%sCS%OSS%t_ocn(i,j) + T_0degC
       enddo ; enddo
 
       !   Transfer ice to the correct thickness category.  If do_ridging=.false.,

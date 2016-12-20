@@ -342,8 +342,8 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   !
   if (CS%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
-    call get_sea_surface(CS%Time, OSS%SST_K(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,:), &
-                         h_ice_input(isc:iec,jsc:jec), ts_in_K=.true.)
+    call get_sea_surface(CS%Time, OSS%SST_C(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,:), &
+                         h_ice_input(isc:iec,jsc:jec), ts_in_K=.false.)
     call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
@@ -590,8 +590,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
              ((icec_obs(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
-          if (OSS%t_ocn(i,j) > T_Freeze(OSS%s_surf(i,j), IST%ITV) ) then
-            call calculate_density_derivs(OSS%t_ocn(i:i,j),OSS%s_surf(i:i,j),pres_0,&
+          if (OSS%SST_C(i,j) > T_Freeze(OSS%s_surf(i,j), IST%ITV) ) then
+            call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
                            drho_dT,drho_dS,1,1,EOS)
             IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
                                   ((Cp_Water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
@@ -753,7 +753,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                        0.0, IST%ITV)
       enthalpy(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enthalpy(m) = IST%enth_ice(i,j,k,m) ; enddo
-      enthalpy_ocean = enthalpy_liquid(OSS%t_ocn(i,j), OSS%s_surf(i,j), IST%ITV)
+      enthalpy_ocean = enthalpy_liquid(OSS%SST_C(i,j), OSS%s_surf(i,j), IST%ITV)
       enthalpy(NkIce+1) = enthalpy_ocean
 
       if (CS%ice_rel_salin > 0.0) then
@@ -955,7 +955,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       ! Set up the columns of enthalpy, salinity, and mass.
       enthalpy(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enthalpy(m) = IST%enth_ice(i,j,k,m) ; enddo
-      enthalpy_ocean = enthalpy_liquid(OSS%t_ocn(i,j), OSS%s_surf(i,j), IST%ITV)
+      enthalpy_ocean = enthalpy_liquid(OSS%SST_C(i,j), OSS%s_surf(i,j), IST%ITV)
       enthalpy(NkIce+1) = enthalpy_ocean
 
       if (CS%ice_rel_salin > 0.0) then

@@ -200,7 +200,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%t_ocn(isc:iec,jsc:jec),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
             stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -211,7 +211,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%t_ocn(isc:iec,jsc:jec),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
             stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -674,7 +674,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(CS%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                  OSS%t_ocn(:,:), G)
+                  OSS%SST_C(:,:), G)
   endif
 
   call mpp_clock_end(iceClock9)
@@ -921,7 +921,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, diag)
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%SST_C, diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, diag)
   if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, diag)
   if (allocated(OSS%u_ocn_C)) then
