@@ -304,8 +304,106 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
+  Ice%fCS%Rad%T_skin(:,:,:) = Ice%fCS%IST%t_surf(:,:,1:)
+  call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
+
 end subroutine ice_model_fast_cleanup
- 
+
+!> infill_Tskin fills in array the array of tskin with actual, interpolated or
+!! plausible ice/snow-surface skin temperatures for later use.
+subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
+  type(ice_state_type),    intent(in)    :: IST  !< The ice state type whose values of part_size and
+                                                 !! mH_ice are being used to control the infilling.
+  type(simple_OSS_type),   intent(in)    :: OSS  !< An ocean surface state type, used for the surface freezing point.
+  type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
+  type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
+  real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
+                           intent(inout) :: t_skin  !< The ice skin temperature that is being infilled.
+
+  integer, dimension(G%isd:G%ied) :: k_thick, k_thin
+  real, dimension(G%isd:G%ied) :: &
+    t_thick, t_thin, mH_thin, t_fr_ocn
+  real :: wt2, mH_cat_tgt
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical, dimension(G%isd:G%ied) :: infill
+  logical :: any_ice
+  integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+
+  do j=jsc,jec
+    ! Determine which categories exist.
+    do i=isc,iec ; k_thick(i) = -1 ; k_thin(i) = ncat+1 ; mH_thin(i) = 0.0 ; enddo
+    any_ice = .false.
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      k_thick(i) = k
+      t_thick(i) = t_skin(i,j,k)
+      any_ice = .true.
+    endif ; enddo ; enddo
+
+    do i=isc,iec
+      T_fr_ocn(i) = G%mask2dT(i,j) * T_Freeze(OSS%s_surf(i,j), IST%ITV)
+      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i) + T_0degC
+    enddo
+
+    if (.not.any_ice) then
+      ! This entire row is ice free.
+      do k=1,ncat ; do i=isc,iec
+        t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i) + T_0degC
+      enddo ; enddo
+    else
+      do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+        k_thin(i) = k
+        t_thin(i) = t_skin(i,j,k)
+        mH_thin(i) = IST%mH_ice(i,j,k)
+      endif ; enddo ; enddo
+
+      ! The logic for the k=1 (thinest) category is particularly simple.
+      do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+        if (IST%part_size(i,j,1) <= 0.0) then
+          t_skin(i,j,1) = T_fr_ocn(i) + T_0degC
+        endif
+      endif ; enddo
+      do k=2,ncat ; do i=isc,iec
+        if (G%mask2dT(i,j) > 0.0) then
+          if (k > k_thick(i)) then
+            ! This is the most common case, since it applies to ice-free water.
+            t_skin(i,j,k) = t_thick(i)
+          elseif (IST%part_size(i,j,k) > 0.0) then
+            ! This is a valid value - no interpolation is needed.
+            cycle
+          elseif (k < k_thin(i)) then
+            ! Linearly interpolate to the ocean's freezing temperature.
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
+            if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
+
+            t_skin(i,j,k) = wt2*(T_fr_ocn(i) + T_0degC) + (1.0-wt2)*t_thin(i)
+          else
+            ! Linearly interpolate between bracketing neighboring
+            ! categories with valid values.
+            do k2=k+1,ncat ; if (IST%part_size(i,j,k2) > 0.0) exit ; enddo
+            do k3=k-1,1,-1 ; if (IST%part_size(i,j,k3) > 0.0) exit ; enddo
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.5
+            if ((IST%mH_ice(i,j,k3) > mH_cat_tgt) .and. &
+                (IST%mH_ice(i,j,k2) < mH_cat_tgt)) &
+              wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
+                    (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
+
+            t_skin(i,j,k) = wt2*t_skin(i,j,k2) + (1.0-wt2) * t_skin(i,j,k3)
+          endif
+        else ! This is a land point.
+          t_skin(i,j,k) = T_0degC
+        endif
+      enddo ; enddo
+
+    endif ! .not.any_ice
+  enddo
+
+end subroutine infill_Tskin
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
 !! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
@@ -486,9 +584,9 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     enddo ; enddo
   endif
 
+  ind = 0
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = IOF%tr_flux_index(m,n)
-    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
+    ind = ind + 1
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
         Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
@@ -892,6 +990,16 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   enddo
 
+  if (fCS%Eulerian_tsurf) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      IST%t_surf(i,j,k) = Rad%t_skin(i,j,k)
+    enddo ; enddo ; enddo
+  else
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      Rad%t_skin(i,j,k) = IST%t_surf(i,j,k)
+    enddo ; enddo ; enddo
+  endif
+
   ! Determine the sea-ice optical properties.
 
   !   These initialization calls for ice-free categories are not really
@@ -914,13 +1022,13 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
   if (slab_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
+               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -936,7 +1044,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
+               Rad%t_skin(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
@@ -962,10 +1070,17 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Ice%t_surf(i2,j2,1) = IST%t_surf(i,j,0)
+    Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
+  enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2,k2)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+      Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k)
       Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
     enddo ; enddo
   enddo
@@ -1194,8 +1309,9 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce
-  io_A = LBOUND(ABT%t_flux,1) - G%isc ; jo_A = LBOUND(ABT%t_flux,2) - G%jsc
-  io_I = LBOUND(Ice%t_surf,1) - G%isc ; jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+  io_A = LBOUND(ABT%lw_flux,1) - G%isc ; jo_A = LBOUND(ABT%lw_flux,2) - G%jsc
+  io_I = LBOUND(Ice%albedo_vis_dir,1) - G%isc
+  jo_I = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
   dt_diag = time_type_to_real(Time_end - Time_start)
 
@@ -1211,6 +1327,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb>0)         call post_avg(Rad%id_alb, Ice%albedo, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+
+  if (Rad%id_tskin>0) call post_data(Rad%id_tskin, IST%t_surf(:,:,1:), CS%diag)
+  if (Rad%id_cn>0) call post_data(Rad%id_cn, IST%part_size(:,:,1:), CS%diag)
+  if (Rad%id_mi>0) call post_data(Rad%id_mi, IST%mH_ice(:,:,:), CS%diag)
 
   if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
@@ -1440,19 +1560,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: Cgrid_dyn, slab_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
-  logical :: init_coszen
+  logical :: init_coszen, init_Tskin
   logical :: write_error_mesg
-  logical :: write_geom_files  ! If true, write out the grid geometry files.
-  logical :: symmetric         ! If true, use symmetric memory allocation.
-  logical :: global_indexing   ! If true use global horizontal index values instead
-                               ! of having the data domain on each processor start at 1.
-  integer :: first_direction   ! An integer that indicates which direction is to be
-                               ! updated first in directionally split parts of the
-                               ! calculation.  This can be altered during the course
-                               ! of the run via calls to set_first_direction.
-  logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
-  logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
-  logical :: single_IST        ! If true, fCS%IST and sCS%IST point to the same structure.
+  logical :: Eulerian_tsurf   ! If true, use previous calculations of the ice-top
+                              ! surface skin temperature for tsurf at the start of
+                              ! atmospheric time stepping, including interpolating between
+                              ! tsurf values from other categories in the same location.
+  logical :: write_geom_files ! If true, write out the grid geometry files.
+  logical :: symmetric        ! If true, use symmetric memory allocation.
+  logical :: global_indexing  ! If true use global horizontal index values instead
+                              ! of having the data domain on each processor start at 1.
+  integer :: first_direction  ! An integer that indicates which direction is to be
+                              ! updated first in directionally split parts of the
+                              ! calculation.  This can be altered during the course
+                              ! of the run via calls to set_first_direction.
+  logical :: fast_ice_PE      ! If true, fast ice processes are handled on this PE.
+  logical :: slow_ice_PE      ! If true, slow ice processes are handled on this PE.
+  logical :: single_IST       ! If true, fCS%IST and sCS%IST point to the same structure.
   logical :: Verona
   logical :: read_aux_restart
   logical :: split_restart_files
@@ -1504,6 +1628,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "single common ice_state_type.  Otherwise they point to \n"//&
                  "different ice_state_types that need to be explicitly \n"//&
                  "copied back and forth.", default=.true.)
+  call get_param(param_file, mod, "EULERIAN_TSURF", Eulerian_tsurf, &
+                 "If true, use previous calculations of the ice-top surface \n"//&
+                 "skin temperature for tsurf at the start of atmospheric \n"//&
+                 "time stepping, including interpolating between tsurf \n"//&
+                 "values from other categories in the same location.", default=.true.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
@@ -1788,7 +1917,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (ice_rel_salin > 0.0) then
       call register_SIS_tracer(sIST%sal_ice, sG, sIG, NkIce, "salin_ice", param_file, &
                                sIST%TrReg, snow_tracer=.false., &
-                               massless_val=massless_ice_salin)
+                               massless_val=massless_ice_salin, nonnegative=.true.)
     endif
 
   !   Register any tracers that will be handled via tracer flow control for 
@@ -1865,6 +1994,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
+    Ice%fCS%Eulerian_tsurf = Eulerian_tsurf
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
@@ -2094,8 +2224,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
       endif
 
-      if (fast_ice_PE .and. .not.split_restart_files) &
+      if (fast_ice_PE .and. .not.split_restart_files) then
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+      endif
 
     else ! no restart file implies initialization with no ice
       sIST%part_size(:,:,:) = 0.0
@@ -2143,7 +2275,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call pass_var(sIST%part_size, sGD, complete=.true. )
       call pass_var(sIST%mH_ice, sGD, complete=.true. )
 
-      init_coszen = .true.
+      init_coszen = .true. ; init_Tskin = .true.
 
     endif ! file_exist(restart_path)
 
@@ -2251,8 +2383,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (file_exist(fast_rest_path)) then
         call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
       else
-        init_coszen = .true.
+        init_coszen = .true. ; init_Tskin = .true.
       endif
     endif
 
@@ -2273,6 +2406,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
+    endif
+    if (init_Tskin) then
+      Ice%fCS%Rad%t_skin(:,:,:) = T_0degC
     endif
 
     call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
@@ -2316,7 +2452,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call mpp_broadcast_domain(Ice%slow_domain_NH)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
-  Ice%xtype = REDIST   ! value can be REDIST or DIRECT
+  Ice%xtype = REDIST   ! value can be REDIST or DIRECT !### Set this dynamically.
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )

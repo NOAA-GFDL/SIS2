@@ -103,6 +103,7 @@ use ice_thm_mod, only : get_thermo_coefs
 use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_obsolete_params, only : obsolete_logical
 
 implicit none ; private
 
@@ -116,14 +117,12 @@ public :: e_to_melt_TS, energy_melt_enthS
 
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
-  real :: Cp_SeaWater       ! The heat capacity of liquid seawater, in J/(kg K).
   real :: Cp_water          ! The heat capacity of liquid water in the ice model,
                             ! but not in the brine pockets, in J/(kg K).
   real :: Cp_brine          ! The heat capacity of liquid water in the brine
                             ! pockets within the ice, in J/(kg K).  Cp_brine
-                            ! should be set equal to Cp_SeaWater, but for
-                            ! algorithmic convenience has often been
-                            ! set equal to Cp_ice.
+                            ! should be set equal to Cp_Water, but for
+                            ! algorithmic convenience can be set equal to Cp_ice.
   real :: rho_ice, rho_snow, rho_water  ! The nominal densities of ice and water in kg m-3.
   real :: LI                ! The latent heat of fusion, in J kg-1.
   real :: Lat_Vapor         ! The latent heat of vaporization, in J kg-1.
@@ -165,10 +164,6 @@ type, public :: SIS2_ice_thm_CS ; private
   ! temperature to be such that the brine content is less than "liq_lim" of
   ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
   real :: liq_lim = .99
-  logical :: old_heat_cap    ! If true, use an older linearization of the
-                          ! sea ice heat capacity for temperatures above the
-                          ! freezing pointin the calculation of the initial ice
-                          ! temperature estimate.  The default is false.
 
   logical :: do_pond = .false. ! activate melt pond scheme - mw/new
   ! mw/new - these melt pond control data are temporarily placed here
@@ -237,10 +232,7 @@ subroutine SIS2_ice_thm_init(param_file, CS)
                  "to always be used.", units="degC", default=40.0)
   CS%temp_range_est = abs(CS%temp_range_est)
 
-  call get_param(param_file, mod, "OLD_ICE_HEAT_CAPACITY", CS%old_heat_cap, &
-                 "If true, use an older linearization of the sea ice heat \n"//&
-                 "capacity for temperatures above the freezing point in the \n"//&
-                 "calculation of the initial ice temperature estimate.", default=.false.)
+  call obsolete_logical(param_file, "OLD_ICE_HEAT_CAPACITY", warning_val=.false.)
 
 end subroutine SIS2_ice_thm_init
 
@@ -383,10 +375,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   do k=1,NkIce   ! Store the heat capacity term in bb.
     if (tfi(k) >= 0.0) then ! This is pure ice.
       bb(k) = mL_ice * Cp_ice
-    elseif ((temp_IC(k) < tfi(k)) .or. (CS%old_heat_cap))  then
+    elseif (temp_IC(k) < tfi(k)) then
       bb(k) = mL_ice * (Cp_ice - (tfi(k) / temp_IC(k)**2) * &
                         (Lat_Fus - (Cp_brine-Cp_ice) * temp_IC(k)) )
-      ! Or mroe generally:
+      ! Or more generally:
       !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
       ! bb(k) = mL_ice * (Cp_ice + dSf_dT*Lat_fus + S_Sf * &
       !                   ((Cp_brine-Cp_ice))
@@ -1602,21 +1594,15 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
   call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
                  "The heat capacity of fresh ice, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=2100.0)
-  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_SeaWater, &
+  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_Water, &
                  "The heat capacity of sea water, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=4200.0)
-  call get_param(param_file, mod, "CP_WATER", ITV%Cp_water, &
-                 "The heat capacity of water in sea-ice, approximated as \n"//&
-                 "a constant.  CP_WATER and CP_SEAWATER should be equal, \n"//&
-                 "but for computational convenience CP_WATER has often \n"//&
-                 "been set equal to CP_ICE instead.", units="J kg-1 K-1", &
-                 default=ITV%Cp_SeaWater)
   call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
                  "The heat capacity of water in brine pockets within the \n"//&
                  "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
-                 "CP_WATER should be equal, but for computational \n"//&
-                 "convenience CP_BRINE has often been set equal to CP_ICE.", &
-                 units="J kg-1 K-1", default=ITV%Cp_ice)  !### CHANGE LATER TO default=CP_WATER)
+                 "CP_SEAWATER should be equal, but for computational \n"//&
+                 "convenience CP_BRINE can be set equal to CP_ICE.", &
+                 units="J kg-1 K-1", default=ITV%Cp_Water)
   call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
@@ -1752,7 +1738,7 @@ function enthalpy_liquid(T, S, ITV)
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
   real :: enthalpy_liquid
 
-  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%CP_SeaWater*T)
+  enthalpy_liquid = ITV%enth_unit * (ITV%ENTH_LIQ_0 + ITV%Cp_Water*T)
 
 end function enthalpy_liquid
 
@@ -2015,7 +2001,7 @@ end function energy_melt_enthS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> get_SIS2_thermo_coefs returns various thermodynamic coefficients.
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
-                                 Cp_Ice, Cp_SeaWater, Cp_brine, Cp_water, &
+                                 Cp_Ice, Cp_brine, Cp_water, &
                                  rho_ice, rho_snow, rho_water, &
                                  Latent_fusion, Latent_vapor, &
                                  EOS, specified_thermo_salinity, slab_ice)
@@ -2029,12 +2015,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   real, optional, intent(out) :: &
     Cp_Ice          !< The heat capacity of ice in J kg-1 K-1.
   real, optional, intent(out) :: &
-    Cp_SeaWater     !< The heat capacity of seawater in J kg-1 K-1.
-  real, optional, intent(out) :: &
-    Cp_Water        !< The heat capacity of water in the sea-ice thermodynamic
-                    !! calculations, in J kg-1 K-1.  Cp_Water and Cp_Seawater
-                    !! should be equal, but can be set separately for convenience
-                    !! in reproducing previous simulations.
+    Cp_Water        !< The heat capacity of seawater in J kg-1 K-1.
   real, optional, intent(out) :: &
     Cp_Brine        !< The heat capacity of liquid water in brine pockets within
                     !! the sea-ice, in J kg-1 K-1.  Cp_Brine and Cp_Water should
@@ -2062,7 +2043,6 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   call get_thermo_coefs(ice_salinity=ice_salinity)
 
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
-  if (present(Cp_SeaWater)) Cp_SeaWater = ITV%Cp_SeaWater
   if (present(Cp_Water)) Cp_Water = ITV%Cp_Water
   if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit

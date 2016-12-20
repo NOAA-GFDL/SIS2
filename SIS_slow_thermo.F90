@@ -346,6 +346,20 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
+    
+    do j=jsc,jec ; do i=isc,iec
+      IOF%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_t_top(i,j,0)
+      IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_q_top(i,j,0)
+      IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
+      IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
+      IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dir_top(i,j,0)
+      IOF%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dif_top(i,j,0)
+      IOF%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dir_top(i,j,0)
+      IOF%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dif_top(i,j,0)
+      IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
+      IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
+    enddo ; enddo
+    
   endif
 
   ! IOF must be updated regardless of whether the ice is specified or the prognostic model
@@ -360,8 +374,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
       IOF%tr_flux_ocn_top(:,:,:) = 0.0
-      allocate(IOF%tr_flux_index(size(FIA%tr_flux_index,1), size(FIA%tr_flux_index,2)))
-      IOF%tr_flux_index(:,:) = FIA%tr_flux_index(:,:)
     endif
 !$OMP END SINGLE
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,FIA,IOF)
@@ -439,7 +451,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                               message="      Post_thermo A", check_column=.true.)
   call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                             IST%t_surf, IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
+                             IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
 
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -570,7 +582,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
     pres_0(:) = 0.0
-    call get_SIS2_thermo_coefs(IST%ITV, Cp_SeaWater=Cp_water, EOS=EOS)
+    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
     do j=jsc,jec ; do i=isc,iec
       if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &

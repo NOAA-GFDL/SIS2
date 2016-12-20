@@ -104,7 +104,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
-  integer :: ind, max_num_fields, next_index
+  integer :: ind
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -117,21 +117,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     ! This code is only exercised the first time that sum_top_quantities is called.
     FIA%num_tr_fluxes = 0
     if (ABT%fluxes%num_bcs > 0) then
-      max_num_fields = 0
       do n=1,ABT%fluxes%num_bcs
         FIA%num_tr_fluxes = FIA%num_tr_fluxes + ABT%fluxes%bc(n)%num_fields
-        max_num_fields = max(max_num_fields, ABT%fluxes%bc(n)%num_fields)
       enddo
 
       if (FIA%num_tr_fluxes > 0) then
         allocate(FIA%tr_flux_top(G%isd:G%ied, G%jsd:G%jed, 0:IG%CatIce, FIA%num_tr_fluxes))
         FIA%tr_flux_top(:,:,:,:) = 0.0
-
-        allocate(FIA%tr_flux_index(max_num_fields, ABT%fluxes%num_bcs))
-        FIA%tr_flux_index(:,:) = -1 ; next_index = 1
-        do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
-          FIA%tr_flux_index(m, n) = next_index ; next_index = next_index + 1
-        enddo ; enddo
       endif
     endif
   endif
@@ -166,19 +158,21 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   + fprec(i,j,k)
     FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) + flux_lh(i,j,k)
   enddo ; enddo ; enddo
-  !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
-  do n=1,ABT%fluxes%num_bcs ; if(ABT%fluxes%bc(n)%flux_type  .ne. 'air_sea_deposition') then
-   do m=1,ABT%fluxes%bc(n)%num_fields
   ! FIA%flux_sw_dn is accumulated where the fast radiation diagnostics are output
   ! because it depends on arrays that are stored in the public ice_data_type.
-    ind = FIA%tr_flux_index(m,n)
-    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+
+  ind = 0
+  do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
+    ind = ind + 1
+    !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
+    if(ABT%fluxes%bc(n)%flux_type  .ne. 'air_sea_deposition') then
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
             ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
-  enddo ; endif; enddo
+    endif
+  enddo ; enddo
 
   FIA%avg_count = FIA%avg_count + 1
 
@@ -331,8 +325,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   real :: flux_sw ! sum over dir/dif vis/nir components
   real :: T_freeze_surf ! The freezing temperature at the surface salinity of
                         ! the ocean, in deg C.
-  real :: T_freeze_ice_top ! The freezing temperature at the salinity of the
-                        ! upper layer of the ice, in deg C.
   real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
@@ -419,7 +411,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
-  T_freeze_ice_top = T_Freeze(S_col(1), IST%ITV)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dhdt,dedt,drdt,   &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
@@ -429,8 +420,8 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    T_Freeze_surf = T_Freeze(sOSS%s_surf(i,j), IST%ITV)
     if (IST%mH_ice(i,j,k) > 0.0) then
+      T_Freeze_surf = T_Freeze(sOSS%s_surf(i,j), IST%ITV)
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
@@ -530,19 +521,18 @@ subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, FIA, G, IG )
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
 
-  do n=1,Atmos_boundary%fluxes%num_bcs
-   if(Atmos_boundary%fluxes%bc(n)%flux_type  .eq. 'air_sea_deposition') then
-    do m=1,Atmos_boundary%fluxes%bc(n)%num_fields
-     ind = FIA%tr_flux_index(m,n)
-     if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
-     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
+  ind = 0 
+  do n=1,Atmos_boundary%fluxes%num_bcs; do m=1,Atmos_boundary%fluxes%bc(n)%num_fields
+     ind = ind + 1
+     if(Atmos_boundary%fluxes%bc(n)%flux_type  .eq. 'air_sea_deposition') then
+       if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+       do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+          i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+          FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
             Atmos_boundary%fluxes%bc(n)%field(m)%values(i2,j2,k2)
-     enddo ; enddo ; enddo
-    enddo
-   endif
-  enddo
+       enddo ; enddo ; enddo
+     endif
+  enddo; enddo
 
 end subroutine do_update_ice_atm_deposition_flux
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

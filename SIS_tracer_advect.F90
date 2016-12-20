@@ -817,7 +817,6 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   logical :: do_i(SZI_(G))  ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j, l, m
-!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -1027,14 +1026,26 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
       aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
-      if (uMask(I,j)*uMask(I-1,j)*(Tp-Tc)*(Tc-Tm) <= 0.) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
-      elseif ( dA*(Tc-mA) > (dA*dA)/6. ) then
-        aL = 3.*Tc - 2.*aR
-      elseif ( dA*(Tc-mA) < - (dA*dA)/6. ) then
-        aR = 3.*Tc - 2.*aL
+
+      ! These expressions are uglier than they might be, but they are less
+      ! sensitive to underflow than the alternatives would be.
+      if ((uMask(I,j)*uMask(I-1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
+          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
+        a6 = 0.0 ! Curvature
+      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aL = 3.*Tc - 2.*aR
+        aL = Tc + 2.*(Tc - aR)
+        a6 = 3.*(aR - Tc) ! Curvature
+      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aR = 3.*Tc - 2.*aL
+        aR = Tc + 2.*(Tc - aL)
+        a6 = 3.*(aL - Tc) ! Curvature
+      else
+        a6 = 3.*((Tc - aR) + (Tc - aL)) ! Curvature
       endif
-      a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+      ! a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+
       Tr_x(I) = ( aR - 0.5 * CFL(I) * ( &
               ( aR - aL ) - a6 * ( 1. - 2./3. * CFL(I) ) ) )
     else
@@ -1045,15 +1056,24 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
       aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
-      dA = aR - aL ; mA = 0.5*( aR + aL )
-      if (uMask(I,j)*uMask(I+1,j)*(Tp-Tc)*(Tc-Tm) <= 0.) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
-      elseif ( dA*(Tc-mA) > (dA*dA)/6. ) then
-        aL = 3.*Tc - 2.*aR
-      elseif ( dA*(Tc-mA) < - (dA*dA)/6. ) then
-        aR = 3.*Tc - 2.*aL
+
+      if ((uMask(I,j)*uMask(I+1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
+          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
+        a6 = 0.0 ! Curvature
+      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aL = 3.*Tc - 2.*aR
+        aL = Tc + 2.*(Tc - aR)
+        a6 = 3.*(aR - Tc) ! Curvature
+      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aR = 3.*Tc - 2.*aL
+        aR = Tc + 2.*(Tc - aL)
+        a6 = 3.*(aL - Tc) ! Curvature
+      else
+        a6 = 3.*((Tc - aR) + (Tc - aL)) ! Curvature
       endif
-      a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+      ! a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+
       Tr_x(I) = ( aL + 0.5 * CFL(I) * ( &
               ( aR - aL ) + a6 * ( 1. - 2./3. * CFL(I) ) ) )
     endif
@@ -1298,9 +1318,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   logical :: do_j_tr(SZJ_(G))  ! If true, calculate the tracer profiles.
   logical :: do_i(SZI_(G))     ! If true, work on given points.
   logical :: do_any_i
-  integer :: i, j, l, m
-!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
+  integer :: i, j, l, m
 
   usePLMslope = .not.(usePCM .or. usePPM)
 
@@ -1519,9 +1538,9 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh
   real, dimension(SZI_(G)),          intent(in)    :: CFL
   real, dimension(SZI_(G)),          intent(inout) :: Tr_y
-  ! Local
-  integer :: i
+  ! Local variables, all with the same units as scalar.
   real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
+  integer :: i
 
   do i=is,ie
     if (vhh(i,J) >= 0.0) then
@@ -1532,14 +1551,26 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
       aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
-      if (vMask(i,J)*vMask(i,J-1)*(Tp-Tc)*(Tc-Tm) <= 0.) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
-      elseif ( dA*(Tc-mA) > (dA*dA)/6. ) then
-        aL = 3.*Tc - 2.*aR
-      elseif ( dA*(Tc-mA) < - (dA*dA)/6. ) then
-        aR = 3.*Tc - 2.*aL
+
+      ! These expressions are uglier than they might be, but they are less
+      ! sensitive to underflow than the alternatives would be.
+      if ((vMask(i,J)*vMask(i,J-1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
+          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
+        a6 = 0.0 ! Curvature
+      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aL = 3.*Tc - 2.*aR
+        aL = Tc + 2.*(Tc - aR)
+        a6 = 3.*(aR - Tc) ! Curvature
+      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aR = 3.*Tc - 2.*aL
+        aR = Tc + 2.*(Tc - aL)
+        a6 = 3.*(aL - Tc) ! Curvature
+      else
+        a6 = 3.*((Tc - aR) + (Tc - aL)) ! Curvature
       endif
-      a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+      ! a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+
       Tr_y(i) = ( aR - 0.5 * CFL(i) * ( &
             ( aR - aL ) - a6 * ( 1. - 2./3. * CFL(i) ) ) )
     else
@@ -1550,14 +1581,24 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
       aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
-      if (vMask(i,J)*vMask(i,J+1)*(Tp-Tc)*(Tc-Tm) <= 0.) then
-        aL = Tc ; aR = Tc ! PCM for local extremum and bounadry cells
-      elseif ( dA*(Tc-mA) > (dA*dA)/6. ) then
-        aL = 3.*Tc - 2.*aR
-      elseif ( dA*(Tc-mA) < - (dA*dA)/6. ) then
-        aR = 3.*Tc - 2.*aL
+      ! These expressions are uglier than they might be, but they are less
+      ! sensitive to underflow than the alternatives would be.
+      if ((vMask(i,J)*vMask(i,J+1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
+          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+        aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
+        a6 = 0.0 ! Curvature
+      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aL = 3.*Tc - 2.*aR
+        aL = Tc + 2.*(Tc - aR)
+        a6 = 3.*(aR - Tc) ! Curvature
+      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+        ! aR = 3.*Tc - 2.*aL
+        aR = Tc + 2.*(Tc - aL)
+        a6 = 3.*(aL - Tc) ! Curvature
+      else
+        a6 = 3.*((Tc - aR) + (Tc - aL)) ! Curvature
       endif
-      a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
+      ! a6 = 6.*Tc - 3. * (aR + aL) ! Curvature
       Tr_y(i) = ( aL + 0.5 * CFL(i) * ( &
             ( aR - aL ) + a6 * ( 1. - 2./3. * CFL(i) ) ) )
     endif
