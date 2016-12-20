@@ -42,19 +42,21 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! get_sea_surface - get SST, ice concentration and thickness from data         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end)
+subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in_K)
   type (time_type),                         intent(in)  :: Time
   real, dimension(:, :),                    intent(out) :: ts
   real, dimension(size(ts,1),size(ts,2),2), intent(out) :: cn
   real, dimension(size(ts,1),size(ts,2)),   intent(out) :: iceh
   type(domain2d),                 optional, intent(in)  :: ice_domain
   type(domain2d),                 optional, intent(in)  :: ice_domain_end
+  logical,                        optional, intent(in)  :: ts_in_K
 
   real, dimension(size(ts,1),size(ts,2))                :: sst, icec
 
   real ::  t_sw_freeze0 = -1.8
   real ::  t_sw_freeze
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical :: ts_in_degK
   integer :: ierr, io, unit
   type(time_type) :: Spec_Time
   integer :: tod(3), dum1, dum2, dum3
@@ -85,6 +87,8 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end)
     call data_override_init(Ice_domain_in = Ice_domain)
   endif
 
+  ts_in_degK = .true. ; if (present(ts_in_K)) ts_in_degK = ts_in_K
+
 ! modify time repeating single day option
   if (all(repeat_date>0)) then
     call get_date(Time,dum1,dum2,dum3,tod(1),tod(2),tod(3))
@@ -97,7 +101,7 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end)
   if (sst_degk) then
     t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
   endif
-  icec = 0.0; iceh = 0.0; sst = t_sw_freeze;
+  icec = 0.0; iceh(:,:) = 0.0; sst(:,:) = t_sw_freeze;
   call data_override('ICE', 'sic_obs', icec, Spec_Time)
   call data_override('ICE', 'sit_obs', iceh, Spec_Time)
   call data_override('ICE', 'sst_obs', sst,  Spec_Time)
@@ -143,16 +147,18 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end)
 ! this perturbation may be useful in accessing model sensitivities
 
   if ( abs(sst_pert) > 0.0001 ) then
-    sst = sst + sst_pert
+    sst(:,:) = sst(:,:) + sst_pert
   endif
 
-  cn(:,:,2) = icec
-  cn(:,:,1) = 1-cn(:,:,2)
+  cn(:,:,2) = icec(:,:)
+  cn(:,:,1) = 1.0 - cn(:,:,2)
 
-  if (sst_degk) then
-    ts = sst
-  else
-    ts = sst+T_0degC
+  if (sst_degk .eqv. ts_in_degK) then ! ts and sst have the same units.
+    ts(:,:) = sst(:,:)
+  elseif (ts_in_degK) then ! ts is in K and sst in C.
+    ts(:,:) = sst(:,:) + T_0degC
+  else ! ts is in C and sst in K.
+    ts(:,:) = sst(:,:) - T_0degC
   endif
 
 end subroutine get_sea_surface
