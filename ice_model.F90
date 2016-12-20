@@ -1069,7 +1069,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Ice%t_surf(i2,j2,1) = OSS%SST_K(i,j)
+    Ice%t_surf(i2,j2,1) = OSS%t_ocn(i,j) + T_0degC
     Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
   enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
