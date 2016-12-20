@@ -2269,11 +2269,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       enddo
 
       allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
-      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_K(isc:iec,jsc:jec), &
+      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%t_ocn(isc:iec,jsc:jec), &
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
-                           h_ice_input, ice_domain=Ice%slow_domain_NH )
+                           h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
       do j=jsc,jec ; do i=isc,iec
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
+        Ice%sCS%OSS%SST_K(i,j) = Ice%sCS%OSS%t_ocn(i,j) + T_0degC
       enddo ; enddo
 
       !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
