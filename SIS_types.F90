@@ -392,16 +392,18 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_IST_arrays allocates the arrays in an ice_state_type.
-subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
+subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
   type(hor_index_type),    intent(in)    :: HI
   type(ice_grid_type),     intent(in)    :: IG
   type(ice_state_type),    intent(inout) :: IST
   logical, optional,       intent(in)    :: omit_velocities
+  logical, optional,       intent(in)    :: omit_Tsurf
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
-  logical :: do_vel
+  logical :: do_vel, do_Tsurf
   
   do_vel = .true. ; if (present(omit_velocities)) do_vel = .not.omit_velocities
+  do_Tsurf = .true. ; if (present(omit_Tsurf)) do_Tsurf = .not.omit_Tsurf
  
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
@@ -429,7 +431,10 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities)
     allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0   
   endif
 
-  allocate(IST%t_surf(isd:ied, jsd:jed, 0:CatIce)) ; IST%t_surf(:,:,:) = 0.0
+  if (do_Tsurf) then
+    ! IST%tsurf is only used with some older options.
+    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = 0.0
+  endif
 
 end subroutine alloc_IST_arrays
 
@@ -448,8 +453,10 @@ subroutine ice_state_register_restarts(mpp_domain, IST, IG, Ice_restart, restart
   ! Now register some of these arrays to be read from the restart files.
   if (associated(Ice_restart)) then
     idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
-    idr = register_restart_field(Ice_restart, restart_file, 't_surf', IST%t_surf, &
-                                 domain=mpp_domain)
+    if (allocated(IST%t_surf)) then
+      idr = register_restart_field(Ice_restart, restart_file, 't_surf_ice', IST%t_surf, &
+                                 domain=mpp_domain, mandatory=.false., units="deg K")
+    endif
     idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
                                  domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
     idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
@@ -694,14 +701,17 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
   endif
   i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
 
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     IST_out%part_size(i2,j2,k) = IST_in%part_size(i,j,k)
-    IST_out%t_surf(i2,j2,k) = IST_in%t_surf(i,j,k)
   enddo ; enddo ; enddo
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off
+  if (allocated(IST_out%t_surf) .and. allocated(IST_in%t_surf)) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      IST_out%t_surf(i2,j2,k) = IST_in%t_surf(i,j,k)
+    enddo ; enddo ; enddo
+  endif
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     IST_out%mH_pond(i2,j2,k) = IST_in%mH_pond(i,j,k)
     IST_out%mH_snow(i2,j2,k) = IST_in%mH_snow(i,j,k)
     IST_out%mH_ice(i2,j2,k) = IST_in%mH_ice(i,j,k)
@@ -729,10 +739,12 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   type(domain2d),          intent(in)    :: domain_in, domain_out
 
   call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
-                        IST_out%part_size, complete=.false.)
-  call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                        IST_out%t_surf, complete=.true.)
+                        IST_out%part_size, complete=.true.)
 
+  if (allocated(IST_out%t_surf) .or. allocated(IST_in%t_surf)) then
+    call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
+                        IST_out%t_surf, complete=.false.)
+  endif
   call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
                         IST_out%mH_pond, complete=.false.)
   call mpp_redistribute(domain_in, IST_in%mH_snow, domain_out, &
@@ -1069,7 +1081,8 @@ subroutine dealloc_IST_arrays(IST)
 
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
-  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice, IST%t_surf)
+  deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
+  if (allocated(IST%t_surf)) deallocate(IST%t_surf)
 
   if (allocated(IST%u_ice_C)) deallocate(IST%u_ice_C)
   if (allocated(IST%v_ice_C)) deallocate(IST%v_ice_C)

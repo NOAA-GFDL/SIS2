@@ -781,7 +781,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
-!###        IST%t_surf(i,j,k) = T_Freeze(OSS%s_surf(i,j),IST%ITV) + T_0degC
       else
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy(m) ; enddo
       endif
@@ -894,10 +893,13 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
       IST%mH_snow(i,j,k) = (IST%mH_snow(i,j,k) * IST%part_size(i,j,k)) * I_part
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
-      IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
+      if (allocated(IST%t_surf)) then
+        IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
                        (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
+        if (IST%part_size(i,j,k) + IST%part_size(i,j,0) == 0.0) &
+          IST%t_surf(i,j,k) = T_Freeze_surf + T_0degC
+      endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
-      if (IST%part_size(i,j,k) == 0.0) IST%t_surf(i,j,k) = T_Freeze_surf + T_0degC
       IST%part_size(i,j,0) = 0.0
 !    endif
 

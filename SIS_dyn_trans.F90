@@ -653,10 +653,12 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   call mpp_clock_begin(iceClock9)
 
   ! Set appropriate surface quantities in categories with no ice.
+  if (allocated(IST%t_surf)) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-    IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
-  enddo ; enddo ; enddo
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
+      IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
+    enddo ; enddo ; enddo
+  endif
 
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)

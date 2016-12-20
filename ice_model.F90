@@ -305,7 +305,8 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
-  Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
+  if (allocated(Ice%fCS%IST%t_surf)) &
+    Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
   call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
@@ -636,7 +637,6 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
-  Ice%sCS%IST%t_surf(:,:,0) = Ice%sCS%OSS%SST_K(:,:)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -698,7 +698,6 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
-  Ice%sCS%IST%t_surf(:,:,0) = Ice%sCS%OSS%SST_K(:,:)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -991,11 +990,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   enddo
 
-  if (fCS%Eulerian_tsurf) then
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-      IST%t_surf(i,j,k) = Rad%t_skin(i,j,k) + T_0degC
-    enddo ; enddo ; enddo
-  else
+  if (.not.fCS%Eulerian_tsurf) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       Rad%t_skin(i,j,k) = IST%t_surf(i,j,k) - T_0degC
     enddo ; enddo ; enddo
@@ -1905,7 +1900,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart, restart_file)
 
-    call alloc_IST_arrays(sHI, sIG, sIST)
+    call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf)
     call ice_state_register_restarts(sGD%mpp_domain, sIST, sIG, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
@@ -2040,7 +2035,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                       param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
 
     if (.not.single_IST) then
-      call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, omit_velocities=.true.)
+      call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
+                            omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
 
       call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
 
@@ -2210,6 +2206,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
+      if (allocated(sIST%t_surf) .and. &
+          .not.query_initialized(Ice%Ice_restart, 't_surf')) then
+        sIST%t_surf(:,:,:) = T_0degC
+      endif
+
       H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
       if (sIG%H_to_kg_m2 == -1.0) then
         ! This is an older restart file, and the snow and ice thicknesses are in
@@ -2257,7 +2258,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%rough_mom(:,:,:)   = mom_rough_ice
       Ice%rough_heat(:,:,:)  = heat_rough_ice
       Ice%rough_moist(:,:,:) = heat_rough_ice
-      sIST%t_surf(:,:,:) = T_0degC
+      if (allocated(sIST%t_surf)) sIST%t_surf(:,:,:) = T_0degC
       sIST%sal_ice(:,:,:,:) = ice_bulk_salin
 
       enth_spec_snow = Enth_from_TS(0.0, 0.0, sIST%ITV)
@@ -2272,7 +2273,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
                            h_ice_input, ice_domain=Ice%slow_domain_NH )
       do j=jsc,jec ; do i=isc,iec
-        sIST%t_surf(i,j,0) = Ice%sCS%OSS%SST_K(i,j)
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
       enddo ; enddo
 
