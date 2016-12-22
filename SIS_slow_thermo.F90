@@ -1242,7 +1242,7 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                "If true, apply frazil to fill as many categories as \n"//&
                "possible to fill in a uniform (minimum) amount of ice \n"//&
                "in all the thinnest categories. Otherwise the frazil is \n"//&
-               "always assigned to a single category.", default=.false.) !###CHANGE DEFAULTS.
+               "always assigned to a single category.", default=.true.)
   if (CS%filling_frazil) then
     call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", CS%fraz_fill_time, &
                "A timescale with which the filling frazil causes the \n"//&
