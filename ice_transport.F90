@@ -1082,7 +1082,7 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
           desc="The horizontal transport scheme for thickness:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
-          "  PCM    - Directionally split peicewise constant\n"//&
+          "  PCM    - Directionally split piecewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')

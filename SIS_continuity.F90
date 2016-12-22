@@ -828,7 +828,7 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "SIS_CONTINUITY_SCHEME", mesg, &
           desc="The horizontal transport scheme used in continuity:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
-          "  PCM       - Directionally split peicewise constant\n"//&
+          "  PCM       - Directionally split piecewise constant\n"//&
           "  PPM:C2PD  - Positive definite PPM with 2nd order edge values\n"//&
           "  PPM:C2MO  - Monotonic PPM with 2nd order edge values\n", &
           default='UPWIND_2D')
