@@ -782,8 +782,7 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   endif
   i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
 
-  do j=jsc,jec ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     OSS_out%SST_C(i2,j2) = OSS_in%SST_C(i,j)
     OSS_out%s_surf(i2,j2) = OSS_in%s_surf(i,j)
     OSS_out%bheat(i2,j2) = OSS_in%bheat(i,j)
@@ -802,8 +801,8 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
     endif
   endif
 
-  do m=1,OSS_in%num_tr ; do j=jsc,jec ; do i=isc,iec
-    OSS_out%tr_array(i,j,m) = OSS_in%tr_array(i,j,m)
+  do m=1,OSS_in%num_tr ; do j=jsc,jec ; do i=isc,iec ; i2=i+i_off ; j2=j+j_off
+    OSS_out%tr_array(i2,j2,m) = OSS_in%tr_array(i,j,m)
   enddo ; enddo ; enddo
 
 end subroutine copy_sOSS_to_sOSS
