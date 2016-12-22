@@ -2472,7 +2472,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call mpp_broadcast_domain(Ice%slow_domain_NH)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
-  Ice%xtype = REDIST   ! value can be REDIST or DIRECT !### Set this dynamically.
+
+  ! Ice%xtype can be REDIST or DIRECT, depending on the relationship between
+  ! the fast and slow ice PEs.  REDIST should always work but may be slower.
+  if (fast_ice_PE .neqv. slow_ice_PE) then
+    Ice%xtype = REDIST
+  elseif (single_IST .or. ((fGD%layout(1) == sGD%layout(1)) .and. &
+                           (fGD%layout(2) == sGD%layout(2))) ) then
+    Ice%xtype = DIRECT
+  else
+    Ice%xtype = REDIST
+  endif
 
   iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
