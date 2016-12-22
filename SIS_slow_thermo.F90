@@ -886,11 +886,12 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
     T_Freeze_surf = T_Freeze(OSS%s_surf(i,j),IST%ITV)
 
-!    if (IST%part_size(i,j,0) > 0.0) then  !### This changes answers at roundoff because (t*h)*(1/h) /= t.
+    if (IST%part_size(i,j,0) > 0.0) then
       ! Combine the ice-free part size with one of the categories.
+      !   Whether or not this is also applied when part_size(i,j,0)==0 changes
+      ! answers at roundoff because (t*h)*(1/h) /= t.
       k = k_merge
-      I_part = 0.0 ; if ((IST%part_size(i,j,k) + IST%part_size(i,j,0)) > 0.0) &
-        I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
+      I_part = 1.0 / (IST%part_size(i,j,k) + IST%part_size(i,j,0))
       IST%mH_snow(i,j,k) = (IST%mH_snow(i,j,k) * IST%part_size(i,j,k)) * I_part
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
       if (allocated(IST%t_surf)) then
@@ -901,7 +902,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
-!    endif
+    endif
 
     if (CS%filling_frazil) then
       if (CS%fraz_fill_time < 0.0) then
