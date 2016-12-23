@@ -74,8 +74,8 @@ use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
-use ice_transport_mod, only : ice_transport_CS
+use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
+use SIS_transport, only : SIS_transport_CS
 
 use ice_bergs,     only: icebergs, icebergs_run, icebergs_init, icebergs_end
 
@@ -141,7 +141,7 @@ type dyn_trans_CS ; private
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   logical :: module_is_initialized = .false.
 end type dyn_trans_CS
@@ -609,7 +609,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
                          IST%u_ice_C, IST%v_ice_C, IST%TrReg, &
-                         dt_slow_dyn, G, IG, CS%ice_transport_CSp,&
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp,&
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -625,7 +625,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
                          uc, vc, IST%TrReg, &
-                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
                          IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
@@ -1206,7 +1206,7 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
     call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
                  CS%SIS_B_dyn_CSp, Ice_restart, restart_file)
   endif
-!  call ice_transport_register_restarts(G, param_file, CS%ice_transport_CSp, &
+!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
 !                                       Ice_restart, restart_file)
 
 end subroutine SIS_dyn_trans_register_restarts
@@ -1306,7 +1306,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   else
     call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_init(CS%Time, G, param_file, CS%diag, CS%ice_transport_CSp)
+  call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp)
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
                            CS%sum_output_CSp, CS%ntrunc)
@@ -1415,13 +1415,13 @@ subroutine safe_alloc_ids_1d(ids, nids)
 end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_transport_CS returns a pointer to the ice_transport_CS type that
+!> SIS_dyn_trans_transport_CS returns a pointer to the SIS_transport_CS type that
 !!  the dyn_trans_CS points to.
 function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
   type(dyn_trans_CS), pointer :: CS
-  type(ice_transport_CS), pointer :: transport_CSp
+  type(SIS_transport_CS), pointer :: transport_CSp
 
-  transport_CSp => CS%ice_transport_CSp
+  transport_CSp => CS%SIS_transport_CSp
 end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1445,7 +1445,7 @@ subroutine SIS_dyn_trans_end(CS)
   else
     call SIS_B_dyn_end(CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_end(CS%ice_transport_CSp)
+  call SIS_transport_end(CS%SIS_transport_CSp)
 
   deallocate(CS)
 

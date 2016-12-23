@@ -22,7 +22,7 @@
 !   This module does the transport and redistribution between thickness        !
 ! categories for the SIS2 sea ice model.                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_transport_mod
+module SIS_transport
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
@@ -49,10 +49,10 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_transport_init, ice_transport, ice_transport_end !, ice_transport_register_restarts
+public :: SIS_transport_init, ice_transport, SIS_transport_end
 public :: adjust_ice_categories
 
-type, public :: ice_transport_CS ; private
+type, public :: SIS_transport_CS ; private
 
   ! parameters for doing advective and parameterized advection.
   logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
@@ -85,7 +85,7 @@ type, public :: ice_transport_CS ; private
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
 
   integer :: id_ix_trans = -1, id_iy_trans = -1
-end type ice_transport_CS
+end type SIS_transport_CS
 
 contains
 
@@ -103,7 +103,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   real, dimension(SZIB_(G),SZJ_(G)),            intent(inout) :: uc
   real, dimension(SZI_(G),SZJB_(G)),            intent(inout) :: vc
   real,                                         intent(in)    :: dt_slow
-  type(ice_transport_CS),                       pointer       :: CS
+  type(SIS_transport_CS),                       pointer       :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(inout) :: rdg_hice
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: snow2ocn ! snow volume [m] dumped into ocean during ridging
   real, dimension(SZI_(G),SZJ_(G)),             intent(inout) :: rdg_rate
@@ -183,7 +183,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   endif
 
   if (CS%bounds_check) &
-    call check_SIS_tracer_bounds(TrReg, G, IG, "Start of ice_transport")
+    call check_SIS_tracer_bounds(TrReg, G, IG, "Start of SIS_transport")
 
   ! Make sure that ice is in the right thickness category before advection.
 !  call adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS) !Niki: add ridging?
@@ -212,10 +212,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
         mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
       else
         if (part_sz(i,j,k)*mH_snow(i,j,k) > 0.0) then
-          call SIS_error(FATAL, "Input to ice_transport, non-zero snow mass rests atop no ice.")
+          call SIS_error(FATAL, "Input to SIS_transport, non-zero snow mass rests atop no ice.")
         endif
         if (part_sz(i,j,k)*mH_pond(i,j,k) > 0.0) then
-          call SIS_error(FATAL, "Input to ice_transport, non-zero pond mass rests atop no ice.")
+          call SIS_error(FATAL, "Input to SIS_transport, non-zero pond mass rests atop no ice.")
         endif
         part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
         mca_snow(i,j,k) = 0.0
@@ -244,7 +244,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
   if (CS%bounds_check) &
-    call check_SIS_tracer_bounds(TrReg, G, IG, "Ice_transport set massless 1")
+    call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
 
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
@@ -363,7 +363,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
   if (CS%bounds_check) &
-    call check_SIS_tracer_bounds(TrReg, G, IG, "Ice_transport set massless 2")
+    call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
 
 !  Niki: TOM does the ridging after redistribute which would need age_ice and rdg_hice below.
 !   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
@@ -443,7 +443,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
 
   if (CS%bounds_check) &
-    call check_SIS_tracer_bounds(TrReg, G, IG, "At end of ice_transport")
+    call check_SIS_tracer_bounds(TrReg, G, IG, "At end of SIS_transport")
 
 end subroutine ice_transport
 
@@ -454,7 +454,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mH_ice, mH_snow, mH_pond
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), intent(inout) :: part_sz
   type(SIS_tracer_registry_type),             pointer       :: TrReg
-  type(ice_transport_CS),                     pointer       :: CS
+  type(SIS_transport_CS),                     pointer       :: CS
 
 !   This subroutine moves mass between thickness categories if it is thinner or
 ! thicker than the bounding limits of each category.
@@ -672,7 +672,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mca_ice, mca_snow, mca_pond
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),   intent(inout) :: mH_ice, mH_snow, mH_pond
   type(SIS_tracer_registry_type),                pointer       :: TrReg
-  type(ice_transport_CS),                        pointer       :: CS
+  type(SIS_transport_CS),                        pointer       :: CS
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
 ! the sum over all categories (including ice free) of part_sz is 1, but that the
@@ -848,7 +848,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc ! tracer to advect
   real,                              intent(in   ) :: stop_lim
   real,                              intent(in   ) :: dt_slow
-  type(ice_transport_CS),            pointer       :: CS
+  type(SIS_transport_CS),            pointer       :: CS
 ! Arguments: uc - The zonal ice velocity, in m s-1.
 !  (in)      vc - The meridional ice velocity, in m s-1.
 !  (inout)   trc - A tracer concentration times thickness, in m kg kg-1 or
@@ -990,14 +990,14 @@ subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
 end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_transport_init - initialize the ice transport and set parameters.        !
+! SIS_transport_init - initialize the ice transport and set parameters.        !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport_init(Time, G, param_file, diag, CS)
+subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time
   type(SIS_hor_grid_type),     intent(in)    :: G
   type(param_file_type),       intent(in)    :: param_file
   type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(ice_transport_CS),      pointer       :: CS
+  type(SIS_transport_CS),      pointer       :: CS
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -1011,12 +1011,12 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "ice_transport" ! This module's name.
+  character(len=40)  :: mod = "SIS_transport" ! This module's name.
   character(len=80)  :: scheme   ! A string for identifying an advection scheme.
   real, parameter :: missing = -1e34
 
   if (associated(CS)) then
-    call SIS_error(WARNING, "ice_transport_init called with an associated control structure.")
+    call SIS_error(WARNING, "SIS_transport_init called with an associated control structure.")
     return
   endif
   allocate(CS)
@@ -1103,18 +1103,18 @@ subroutine ice_transport_init(Time, G, param_file, diag, CS)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
                'y-direction ice transport', 'kg/s', missing_value=missing)
 
-end subroutine ice_transport_init
+end subroutine SIS_transport_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_transport_end - deallocate the memory associated with this module.       !
+! SIS_transport_end - deallocate the memory associated with this module.       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_transport_end(CS)
-  type(ice_transport_CS), pointer :: CS
+subroutine SIS_transport_end(CS)
+  type(SIS_transport_CS), pointer :: CS
 
   call SIS_continuity_end(CS%continuity_CSp)
   call SIS_tracer_advect_end(CS%SIS_tr_adv_CSp)
 
   deallocate(CS)
-end subroutine ice_transport_end
+end subroutine SIS_transport_end
 
-end module ice_transport_mod
+end module SIS_transport

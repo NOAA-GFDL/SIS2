@@ -73,7 +73,7 @@ use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
 use SIS2_ice_thm, only : T_freeze, enthalpy_liquid, calculate_T_freeze
-use ice_transport_mod, only : adjust_ice_categories, ice_transport_CS
+use SIS_transport, only : adjust_ice_categories, SIS_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
 implicit none ; private
@@ -145,7 +145,7 @@ type slow_thermo_CS ; private
   ! These are pointers to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
 
@@ -453,7 +453,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                               message="      Post_thermo A", check_column=.true.)
   call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
-                             IST%TrReg, G, IG, CS%ice_transport_CSp) !Niki: add ridging?
+                             IST%TrReg, G, IG, CS%SIS_transport_CSp) !Niki: add ridging?
 
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -1339,10 +1339,10 @@ end subroutine SIS_slow_thermo_init
 !! are in the slow_therm_CS.
 subroutine SIS_slow_thermo_set_ptrs(CS, transport_CSp, sum_out_CSp)
   type(slow_thermo_CS), pointer :: CS
-  type(ice_transport_CS), optional, pointer :: transport_CSp
+  type(SIS_transport_CS), optional, pointer :: transport_CSp
   type(SIS_sum_out_CS),   optional, pointer :: sum_out_CSp
 
-  if (present(transport_CSp)) CS%ice_transport_CSp => transport_CSp
+  if (present(transport_CSp)) CS%SIS_transport_CSp => transport_CSp
   if (present(sum_out_CSp)) CS%sum_output_CSp => sum_out_CSp
 
 end subroutine SIS_slow_thermo_set_ptrs
