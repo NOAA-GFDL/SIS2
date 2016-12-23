@@ -96,7 +96,7 @@ use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum
-use ice_utils_mod, only : post_avg, ice_grid_chksum
+use SIS_utils, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 

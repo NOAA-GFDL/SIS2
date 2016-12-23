@@ -60,7 +60,7 @@ use data_override_mod, only : data_override
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum, IST_bounds_check
-use ice_utils_mod, only : post_avg
+use SIS_utils, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type

@@ -63,7 +63,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum,  IST_bounds_check
-use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
+use SIS_utils, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
