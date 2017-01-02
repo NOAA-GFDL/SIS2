@@ -125,7 +125,8 @@ use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 implicit none ; private
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
+public :: ice_model_init, share_ice_domains, ice_model_end, ice_stock_pe
+public :: update_ice_model_fast
 public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona interfaces.
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
@@ -2065,12 +2066,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, fG%domain_aux, symmetric=.false., &
                             domain_name="ice model aux")
 
-      ! Copy the ice model's domain into one with no halos that can be shared
-      ! publicly for use by the exchange grid.
     endif
-    call clone_MOM_domain(fGD, Ice%domain, halo_size=0, symmetric=.false., &
-                          domain_name="ice_nohalo")
 
+    ! Copy the ice model's domain into one with no halos that can be shared
+    ! publicly for use by the exchange grid.
+    call clone_MOM_domain(Ice%fCS%G%Domain, Ice%domain, halo_size=0, &
+                          symmetric=.false., domain_name="ice_nohalo")
   endif
 
 
@@ -2457,21 +2458,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   call close_param_file(param_file)
 
-  ! This code has to be called for all of the ice processors.
-  if (associated(Ice%sCS)) then
-    Ice%slow_domain => Ice%sCS%G%domain%mpp_domain
-  else
-    allocate(Ice%slow_domain)
-  endif
-  if (associated(Ice%fCS)) then
-    Ice%fast_domain => Ice%fCS%G%domain%mpp_domain
-  else
-    allocate(Ice%fast_domain)
-  endif
-  call mpp_broadcast_domain(Ice%Domain)
-  call mpp_broadcast_domain(Ice%slow_domain_NH)
-  call mpp_broadcast_domain(Ice%slow_domain)
-  call mpp_broadcast_domain(Ice%fast_domain)
+  ! In the post-Verona coupler, share_ice_domains is called by the coupler
+  ! after it switches the current PE_list to the one with all ice PEs.
+  if (Verona) call share_ice_domains(Ice)
 
   ! Ice%xtype can be REDIST or DIRECT, depending on the relationship between
   ! the fast and slow ice PEs.  REDIST should always work but may be slower.
@@ -2493,6 +2482,30 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
 end subroutine ice_model_init
 
+subroutine share_ice_domains(Ice)
+  type(ice_data_type), intent(inout) :: Ice
+
+  ! This code has to be called for all of the ice processors using the
+  ! union of the fast and slow ice PE_lists.
+
+  if (associated(Ice%sCS)) then
+    Ice%slow_domain => Ice%sCS%G%domain%mpp_domain
+  else
+    allocate(Ice%slow_domain)
+  endif
+  if (associated(Ice%fCS)) then
+    Ice%fast_domain => Ice%fCS%G%domain%mpp_domain
+  else
+    allocate(Ice%fast_domain)
+  endif
+  call mpp_broadcast_domain(Ice%Domain)
+  call mpp_broadcast_domain(Ice%slow_domain_NH)
+  call mpp_broadcast_domain(Ice%slow_domain)
+  call mpp_broadcast_domain(Ice%fast_domain)
+
+!  ice_clock_exchange = mpp_clock_id( 'Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+  
+end subroutine share_ice_domains
 
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
