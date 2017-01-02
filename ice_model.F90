@@ -461,31 +461,52 @@ subroutine exchange_fast_to_slow_ice(Ice)
   type(ice_data_type), &
     intent(inout) :: Ice            !< The publicly visible ice data type whose fast
                                     !! part is to be exchanged with the slow part.
+  type(fast_ice_avg_type), pointer :: FIA_null => NULL()
+  type(ice_state_type),    pointer :: IST_null => NULL()
 
-  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+  if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "With xtype=DIRECT, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_fast_to_slow_ice.")
 
-  if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
-    ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
       call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, &
                            Ice%sCS%IG)
-    else if(Ice%xtype == REDIST) then
-      call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fast_domain, Ice%slow_domain, &
-                                   Ice%sCS%G, Ice%sCS%IG)
     endif
-  endif
 
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
       call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, &
            Ice%fCS%IG)
-    else if(Ice%xtype == REDIST) then
-      call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fast_domain, &
-                                   Ice%slow_domain)
     endif
+  elseif (Ice%xtype == REDIST) then
+    if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "Either the pointer to Ice%sCS or the pointer to Ice%fCS must be "//&
+      "associated in exchange_fast_to_slow_ice.")
+
+    if (associated(Ice%fCS) .and. associated(Ice%sCS)) then
+      if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) &
+        call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fast_domain, &
+                                     Ice%slow_domain, Ice%sCS%G, Ice%sCS%IG)
+
+      if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) &
+        call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fast_domain, &
+                                     Ice%slow_domain)
+    elseif (associated(Ice%fCS)) then
+      call redistribute_FIA_to_FIA(Ice%fCS%FIA, FIA_null, Ice%fast_domain, &
+                                   Ice%slow_domain)
+      call redistribute_IST_to_IST(Ice%fCS%IST, IST_null, Ice%fast_domain, &
+                                   Ice%slow_domain)
+    elseif (associated(Ice%sCS)) then
+      call redistribute_FIA_to_FIA(FIA_null, Ice%sCS%FIA, Ice%fast_domain, &
+                                   Ice%slow_domain, Ice%sCS%G, Ice%sCS%IG)
+      call redistribute_IST_to_IST(IST_null, Ice%sCS%IST, Ice%fast_domain, &
+                                   Ice%slow_domain)
+    else
+      call SIS_error(FATAL, "Either the pointer to Ice%sCS or the pointer to "//&
+                     "Ice%fCS must be associated in exchange_fast_to_slow_ice.")
+    endif
+  else
+    call SIS_error(FATAL, "exchange_fast_to_slow_ice called with an unrecognized Ice%xtype value.")
   endif
 
 end subroutine exchange_fast_to_slow_ice
@@ -654,31 +675,55 @@ subroutine exchange_slow_to_fast_ice(Ice)
   type(ice_data_type), &
     intent(inout) :: Ice            !< The publicly visible ice data type whose slow
                                     !! part is to be exchanged with the fast part.
+  type(simple_OSS_type), pointer :: sOSS_null => NULL()
+  type(ice_state_type),  pointer :: IST_null => NULL()
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_exchange)
 
-  if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+
+  if (Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "With xtype=DIRECT, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
-  if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
-    if (Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
       call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
-    else if (Ice%xtype == REDIST) then
-      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
-                                     Ice%fast_domain, Ice%fCS%G%HI)
     endif
-  endif
 
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
-    if (Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, &
            Ice%sCS%IG)
-    else
-      call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%slow_domain, &
-                                   Ice%fast_domain)
     endif
+
+  elseif (Ice%xtype == REDIST) then
+    if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "Either the pointer to Ice%sCS or the pointer to Ice%fCS must be "//&
+      "associated in exchange_slow_to_fast_ice.")
+
+    if (associated(Ice%fCS) .and. associated(Ice%sCS)) then
+      if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) &
+        call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
+                                       Ice%fast_domain, Ice%fCS%G%HI)
+
+      if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) &
+        call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%slow_domain, &
+                                     Ice%fast_domain)
+    elseif (associated(Ice%fCS)) then
+      call redistribute_sOSS_to_sOSS(sOSS_null, Ice%fCS%sOSS, Ice%slow_domain, &
+                                     Ice%fast_domain, HI_out=Ice%fCS%G%HI)
+      call redistribute_IST_to_IST(IST_null, Ice%fCS%IST, Ice%slow_domain, &
+                                   Ice%fast_domain)
+    elseif (associated(Ice%sCS)) then
+      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, sOSS_null, Ice%slow_domain, &
+                                     Ice%fast_domain)
+      call redistribute_IST_to_IST(Ice%sCS%IST, IST_null, Ice%slow_domain, &
+                                   Ice%fast_domain)
+    else
+      call SIS_error(FATAL, "Either the pointer to Ice%sCS or the pointer to "//&
+                     "Ice%fCS must be associated in exchange_slow_to_fast_ice.")
+    endif
+  else
+    call SIS_error(FATAL, "exchange_slow_to_fast_ice called with an unrecognized Ice%xtype value.")
   endif
 
   call mpp_clock_end(ice_clock_exchange) ; call mpp_clock_end(iceClock)
@@ -1576,7 +1621,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: Cgrid_dyn, slab_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
-  logical :: init_coszen, init_Tskin
+  logical :: init_coszen, init_Tskin, init_rough
   logical :: write_error_mesg
   logical :: Eulerian_tsurf   ! If true, use previous calculations of the ice-top
                               ! surface skin temperature for tsurf at the start of
@@ -2249,15 +2294,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (fast_ice_PE .and. .not.split_restart_files) then
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+        init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_heat') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
       endif
 
     else ! no restart file implies initialization with no ice
       sIST%part_size(:,:,:) = 0.0
       sIST%part_size(:,:,0) = 1.0
 
-      Ice%rough_mom(:,:,:)   = mom_rough_ice
-      Ice%rough_heat(:,:,:)  = heat_rough_ice
-      Ice%rough_moist(:,:,:) = heat_rough_ice
       if (allocated(sIST%t_surf)) sIST%t_surf(:,:,:) = T_0degC
       sIST%sal_ice(:,:,:,:) = ice_bulk_salin
 
@@ -2297,7 +2342,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call pass_var(sIST%part_size, sGD, complete=.true. )
       call pass_var(sIST%mH_ice, sGD, complete=.true. )
 
-      init_coszen = .true. ; init_Tskin = .true.
+      init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
 
     endif ! file_exist(restart_path)
 
@@ -2406,8 +2451,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+        init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_heat') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
       else
-        init_coszen = .true. ; init_Tskin = .true.
+        init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
       endif
     endif
 
@@ -2431,6 +2479,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
     if (init_Tskin) then
       Ice%fCS%Rad%t_skin(:,:,:) = 0.0
+    endif
+    if (init_rough) then
+      Ice%rough_mom(:,:,:)   = mom_rough_ice
+      Ice%rough_heat(:,:,:)  = heat_rough_ice
+      Ice%rough_moist(:,:,:) = heat_rough_ice
     endif
 
     call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
@@ -2639,8 +2692,7 @@ subroutine ice_model_end (Ice)
 
   call dealloc_Ice_arrays(Ice)
 
-  deallocate(Ice%Ice_restart)
-
+  if (associated(Ice%Ice_restart)) deallocate(Ice%Ice_restart)
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_end(Ice%sCS%Time, Ice%sCS%diag)
