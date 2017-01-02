@@ -68,7 +68,7 @@ use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initiali
 use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
-use mpp_mod, only : CLOCK_COMPONENT, CLOCK_ROUTINE
+use mpp_mod, only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT
 use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
@@ -135,7 +135,8 @@ public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 
-integer :: iceClock, iceClock1, iceCLock2, iceCLock3
+integer :: iceClock
+integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
 
 integer, parameter :: REDIST=2, DIRECT=3
 
@@ -162,7 +163,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow_dn.")
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   call ice_model_fast_cleanup(Ice)
 
@@ -173,7 +174,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call exchange_fast_to_slow_ice(Ice)
 
-  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
   call update_ice_model_slow(Ice)
 
@@ -192,7 +193,7 @@ subroutine update_ice_model_slow(Ice)
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
   ! is a separate clock inside the fCS that is advanced elsewhere.
@@ -228,10 +229,10 @@ subroutine update_ice_model_slow(Ice)
       enddo ; enddo
     endif
 
-    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+    call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
     call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
                          dt_slow, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
-    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
     if (Ice%sCS%debug) then
       call FIA_chksum("After update_icebergs", Ice%sCS%FIA, Ice%sCS%G)
@@ -286,7 +287,7 @@ subroutine update_ice_model_slow(Ice)
 !    call Ice_public_type_bounds_check(Ice, Ice%sCS%G, "End update_ice_slow")
 !  endif
 
-  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow
 
@@ -654,16 +655,16 @@ subroutine exchange_slow_to_fast_ice(Ice)
     intent(inout) :: Ice            !< The publicly visible ice data type whose slow
                                     !! part is to be exchanged with the fast part.
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_exchange)
 
-  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+  if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
   if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
-    if(Ice%xtype == DIRECT) then
+    if (Ice%xtype == DIRECT) then
       call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
-    else if(Ice%xtype == REDIST) then
+    else if (Ice%xtype == REDIST) then
       call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
                                      Ice%fast_domain, Ice%fCS%G%HI)
     endif
@@ -671,7 +672,7 @@ subroutine exchange_slow_to_fast_ice(Ice)
 
   if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
     ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
-    if(Ice%xtype == DIRECT) then
+    if (Ice%xtype == DIRECT) then
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, &
            Ice%sCS%IG)
     else
@@ -680,7 +681,7 @@ subroutine exchange_slow_to_fast_ice(Ice)
     endif
   endif
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_exchange) ; call mpp_clock_end(iceClock)
 
 end subroutine exchange_slow_to_fast_ice
 
@@ -722,7 +723,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
@@ -846,7 +847,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
     enddo ; enddo
   enddo ; enddo
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
 end subroutine unpack_ocn_ice_bdry
 
@@ -917,14 +918,14 @@ subroutine set_ice_surface_fields(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type whose
                                             !! surface properties are being set.
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_fast)
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in set_ice_surface_fields.")
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
                              Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 end subroutine set_ice_surface_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1158,7 +1159,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   type(time_type) :: Time_start, Time_end, dT_fast
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_fast)
 
   if (Ice%fCS%debug) &
     call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
@@ -1193,7 +1194,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   if (Ice%fCS%bounds_check) &
     call Ice_public_type_bounds_check(Ice, Ice%fCS%G, "End update_ice_fast")
 
-  call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_fast
 
@@ -2473,10 +2474,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%xtype = REDIST
   endif
 
-  iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
-  iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
+  if (Ice%shared_slow_fast_PEs) then
+    iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    ice_clock_fast = mpp_clock_id('Ice Fast', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+    ice_clock_slow = mpp_clock_id('Ice Slow', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+  else
+    iceClock = 0 ! The comprehensive ice clock can not be used with separate fast and slow ice PEs.
+    if (fast_ice_PE) then
+      ice_clock_fast = mpp_clock_id('Ice Fast', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    elseif (slow_ice_PE) then
+      ice_clock_slow = mpp_clock_id('Ice Slow', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    endif
+  endif
 
   call callTree_leave("ice_model_init()")
 
@@ -2503,7 +2512,11 @@ subroutine share_ice_domains(Ice)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
 
-!  ice_clock_exchange = mpp_clock_id( 'Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+  if (Ice%shared_slow_fast_PEs) then
+    ice_clock_exchange = mpp_clock_id('Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+  else
+    ice_clock_exchange = mpp_clock_id('Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+  endif
   
 end subroutine share_ice_domains
 
