@@ -1662,7 +1662,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
 
   ! Open the parameter file.
-  call Get_SIS_Input(param_file, dirs)
+  call Get_SIS_Input(param_file, dirs, check_params=slow_ice_PE)
 
   call callTree_enter("ice_model_init(), ice_model.F90")
 
