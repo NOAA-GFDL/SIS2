@@ -1243,48 +1243,46 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                "possible to fill in a uniform (minimum) amount of ice \n"//&
                "in all the thinnest categories. Otherwise the frazil is \n"//&
                "always assigned to a single category.", default=.true.)
-  if (CS%filling_frazil) then
-    call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", CS%fraz_fill_time, &
+  call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", CS%fraz_fill_time, &
                "A timescale with which the filling frazil causes the \n"//&
                "thinest cells to attain similar thicknesses, or a negative \n"//&
-               "number to apply the frazil flux uniformly.", default=0.0, units="s")
-  endif
+               "number to apply the frazil flux uniformly.", default=0.0, &
+               units="s", do_not_log=.not.CS%filling_frazil)
 
   call get_param(param_file, mod, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
-  if (CS%do_ice_limit) &
-    call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", CS%max_ice_limit, &
+  call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", CS%max_ice_limit, &
                  "The maximum permitted sea ice thickness when \n"//&
-                 "APPLY_ICE_LIMIT is true.", units="m", default=4.0)
+                 "APPLY_ICE_LIMIT is true.", units="m", default=4.0, &
+                 do_not_log=.not.CS%do_ice_limit)
 
   call get_param(param_file, mod, "DO_ICE_RESTORE", CS%do_ice_restore, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
-  if (CS%do_ice_restore) &
-    call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", CS%ice_restore_timescale, &
+  call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", CS%ice_restore_timescale, &
                  "The restoring timescale when DO_ICE_RESTORE is true.", &
-                 units="days", default=5.0)
+                 units="days", default=5.0, do_not_log=.not.CS%do_ice_restore)
 
   call get_param(param_file, mod, "NUDGE_SEA_ICE", CS%nudge_sea_ice, &
                  "If true, constrain the sea ice concentrations using observations.", &
                  default=.false.)
-  if (CS%nudge_sea_ice) then
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_RATE", CS%nudge_sea_ice_rate, &
+  call get_param(param_file, mod, "NUDGE_SEA_ICE_RATE", CS%nudge_sea_ice_rate, &
                  "The rate of cooling of ice-free water that should be ice \n"//&
                  "covered in order to constrained the ice concentration to \n"//&
                  "track observations.  A suggested value is ~10000 W m-2.", &
-                 units = "W m-2", default=0.0)
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
+                 units = "W m-2", default=0.0, do_not_log=.not.CS%nudge_sea_ice)
+  call get_param(param_file, mod, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
                  "The tolerance for mismatch in the sea ice concentations \n"//&
                  "before nudging begins to be applied.  Values of order 0.1\n"//&
-                 "should work well.", units = "nondim", default=0.0)
-    call get_param(param_file, mod, "NUDGE_SEA_ICE_STABILITY", CS%nudge_stab_fac, &
+                 "should work well.", units = "nondim", default=0.0, &
+                 do_not_log=.not.CS%nudge_sea_ice)
+  call get_param(param_file, mod, "NUDGE_SEA_ICE_STABILITY", CS%nudge_stab_fac, &
                  "A factor that determines whether the buoyancy flux \n"//&
                  "associated with the sea ice nudging of warm water includes \n"//&
                  "a freshwater flux so as to be destabilizing on net (<1), \n"//&
-                 "stabilizing (>1), or neutral (=1).", units="nondim", default=1.0)
-  endif
+                 "stabilizing (>1), or neutral (=1).", units="nondim", &
+                 default=1.0, do_not_log=.not.CS%nudge_sea_ice)
 
   call get_param(param_file, mod, "DEBUG", CS%debug, &
                  "If true, write out verbose debugging data.", default=.false.)
