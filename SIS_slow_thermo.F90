@@ -916,7 +916,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         do k=1,ncat-1
           part_sum = part_sum + IST%part_size(i,j,k)
           d_enth = fill_frac * max(0.0, LatHtFus * IG%H_to_kg_m2 * &
-                         (IG%mH_cat_bound(k+1) - IST%mH_ice(i,j,k)))
+                         (IG%mH_cat_bound(k+1) - &
+                          max(IST%mH_ice(i,j,k),IG%mH_cat_bound(k))) )
           if (d_enth*part_sum > FIA%frazil_left(i,j)) then
             frazil_cat(k) = FIA%frazil_left(i,j) / part_sum
             FIA%frazil_left(i,j) = 0.0
@@ -932,7 +933,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
           FIA%frazil_left(i,j) = 0.0
         endif
       endif
-      do k=ncat-1,1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
+      do k=ncat-1,1,-1 ; frazil_cat(k) = frazil_cat(k) + frazil_cat(k+1) ; enddo
     else  ! Not filling frazil.
       ! Set the frazil that is absorbed in this category and remove it from
       ! the overall frazil energy.
