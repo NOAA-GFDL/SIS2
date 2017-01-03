@@ -204,7 +204,7 @@ subroutine update_ice_model_slow(Ice)
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Start update_ice_model_slow", Ice)
+    call Ice_public_type_chksum("Start update_ice_model_slow", Ice, check_slow=.true.)
     call FIA_chksum("Start update_ice_model_slow", Ice%sCS%FIA, Ice%sCS%G)
     call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, Ice%sCS%G)
   endif
@@ -240,7 +240,7 @@ subroutine update_ice_model_slow(Ice)
   endif
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Before slow_thermodynamics", Ice)
+    call Ice_public_type_chksum("Before slow_thermodynamics", Ice, check_slow=.true.)
     call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
@@ -262,7 +262,7 @@ subroutine update_ice_model_slow(Ice)
   call pass_var(Ice%sCS%IST%mH_snow, Ice%sCS%G%Domain, complete=.true.)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice)
+    call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
     call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
@@ -270,7 +270,7 @@ subroutine update_ice_model_slow(Ice)
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, Ice%sCS%IG)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice)
+    call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, Ice%sCS%G)
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
   endif
@@ -279,7 +279,7 @@ subroutine update_ice_model_slow(Ice)
                             Ice%sCS%G, Ice%sCS%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("End update_ice_model_slow", Ice)
+    call Ice_public_type_chksum("End update_ice_model_slow", Ice, check_slow=.true.)
   endif
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
@@ -533,7 +533,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
   if (sCS%debug) then
-    call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
+    call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Start set_ocean_top_fluxes", IOF, G)
     call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
   endif
@@ -635,7 +635,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   endif
 
   if (sCS%debug) then
-    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
+    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IST_chksum("Start set_ocean_top_fluxes", IST, G, IG)
   endif
 
@@ -1014,7 +1014,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
-    call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
+    call Ice_public_type_chksum("Start set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
   m_ice_tot(:,:) = 0.0
@@ -1186,7 +1186,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
-    call Ice_public_type_chksum("End set_ice_surface_state", Ice)
+    call Ice_public_type_chksum("End set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
   if (fCS%bounds_check) &
@@ -1207,7 +1207,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_fast)
 
   if (Ice%fCS%debug) &
-    call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
+    call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice, check_fast=.true.)
 
   dT_fast = Ice%fCS%Time_step_fast
   Time_start = Ice%fCS%Time
@@ -1235,7 +1235,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
                                      Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
-    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
+    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice, check_fast=.true.)
   if (Ice%fCS%bounds_check) &
     call Ice_public_type_bounds_check(Ice, Ice%fCS%G, "End update_ice_fast")
 
