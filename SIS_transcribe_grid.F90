@@ -113,13 +113,17 @@ subroutine copy_dyngrid_to_SIS_horgrid(dG, SG)
 
   SG%gridLonT(SG%isg:SG%ieg) = dG%gridLonT(dG%isg:dG%ieg)
   SG%gridLatT(SG%jsg:SG%jeg) = dG%gridLatT(dG%jsg:dG%jeg)
+  ! The both grids always use symmetric memory for gridLonB and gridLatB.
+  SG%gridLonB(SG%isg-1:SG%ieg) = dG%gridLonB(dG%isg-1:dG%ieg)
+  SG%gridLatB(SG%jsg-1:SG%jeg) = dG%gridLatB(dG%jsg-1:dG%jeg)
+
   ! The more complicated logic here avoids segmentation faults if one grid uses
   ! global symmetric memory while the other does not.  Because a northeast grid
   ! convention is being used, the upper bounds for each array correspond.
-  Ido2 = dG%IegB-SG%IegB ; Igst = max(SG%IsgB, dG%IsgB-Ido2)
-  Jdo2 = dG%JegB-SG%JegB ; Jgst = max(SG%JsgB, dG%JsgB-Jdo2)
-  do I=Igst,SG%IegB ; SG%gridLonB(I) = dG%gridLonB(I+Ido2) ; enddo
-  do J=Jgst,SG%JegB ; SG%gridLatB(J) = dG%gridLatB(J+Jdo2) ; enddo
+!  Ido2 = dG%IegB-SG%IegB ; Igst = max(SG%isg, dG%isg-Ido2)-1
+!  Jdo2 = dG%JegB-SG%JegB ; Jgst = max(SG%jsg, dG%jsg-Jdo2)-1
+!  do I=Igst,SG%IegB ; SG%gridLonB(I) = dG%gridLonB(I+Ido2) ; enddo
+!  do J=Jgst,SG%JegB ; SG%gridLatB(J) = dG%gridLatB(J+Jdo2) ; enddo
 
   ! Copy various scalar variables and strings.
   SG%x_axis_units = dG%x_axis_units ; SG%y_axis_units = dG%y_axis_units
@@ -241,18 +245,17 @@ subroutine copy_SIS_horgrid_to_dyngrid(SG, dG)
 
   dG%gridLonT(dG%isg:dG%ieg) = SG%gridLonT(SG%isg:SG%ieg)
   dG%gridLatT(dG%jsg:dG%jeg) = SG%gridLatT(SG%jsg:SG%jeg)
-  ! These two might not be right with symmetric memory, however hopefully
-  ! a compiler would catch mismatched array sizes. ###REVISIT THIS?
-  dG%gridLonB(dG%IsgB:dG%IegB) = SG%gridLonB(SG%IsgB:SG%IegB)
-  dG%gridLatB(dG%JsgB:dG%JegB) = SG%gridLatB(SG%JsgB:SG%JegB)
+  ! Both grids always use symmetric memory for gridLonB and gridLatB.
+  dG%gridLonB(dG%isg-1:dG%ieg) = SG%gridLonB(SG%isg-1:SG%ieg)
+  dG%gridLatB(dG%jsg-1:dG%jeg) = SG%gridLatB(SG%jsg-1:SG%jeg)
 
   ! The more complicated logic here avoids segmentation faults if one grid uses
   ! global symmetric memory while the other does not.  Because a northeast grid
   ! convention is being used, the upper bounds for each array correspond.
-  Ido2 = SG%IegB-dG%IegB ; Igst = max(dG%IsgB, SG%IsgB-Ido2)
-  Jdo2 = SG%JegB-dG%JegB ; Jgst = max(dG%JsgB, SG%JsgB-Jdo2)
-  do I=Igst,dG%IegB ; dG%gridLonB(I) = SG%gridLonB(I+Ido2) ; enddo
-  do J=Jgst,dG%JegB ; dG%gridLatB(J) = SG%gridLatB(J+Jdo2) ; enddo
+!  Ido2 = SG%IegB-dG%IegB ; Igst = max(dG%isg-1, (SG%isg-1)-Ido2)
+!  Jdo2 = SG%JegB-dG%JegB ; Jgst = max(dG%jsg-1, (SG%jsg-1)-Jdo2)
+!  do I=Igst,dG%IegB ; dG%gridLonB(I) = SG%gridLonB(I+Ido2) ; enddo
+!  do J=Jgst,dG%JegB ; dG%gridLatB(J) = SG%gridLatB(J+Jdo2) ; enddo
 
   ! Copy various scalar variables and strings.
   dG%x_axis_units = SG%x_axis_units ; dG%y_axis_units = SG%y_axis_units
