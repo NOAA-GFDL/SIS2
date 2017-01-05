@@ -68,7 +68,7 @@ use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initiali
 use fms_io_mod, only : restore_state, query_initialized
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
-use mpp_mod, only : CLOCK_COMPONENT, CLOCK_ROUTINE
+use mpp_mod, only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT
 use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
@@ -95,8 +95,8 @@ use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
-use SIS_types, only : redistribute_sOSS_to_sOSS
-use ice_utils_mod, only : post_avg, ice_grid_chksum
+use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum
+use SIS_utils, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 
@@ -125,7 +125,8 @@ use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 implicit none ; private
 
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
-public :: ice_model_init, ice_model_end, update_ice_model_fast, ice_stock_pe
+public :: ice_model_init, share_ice_domains, ice_model_end, ice_stock_pe
+public :: update_ice_model_fast
 public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona interfaces.
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
@@ -134,7 +135,8 @@ public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 
-integer :: iceClock, iceClock1, iceCLock2, iceCLock3
+integer :: iceClock
+integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
 
 integer, parameter :: REDIST=2, DIRECT=3
 
@@ -161,7 +163,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow_dn.")
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   call ice_model_fast_cleanup(Ice)
 
@@ -172,7 +174,7 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call exchange_fast_to_slow_ice(Ice)
 
-  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
   call update_ice_model_slow(Ice)
 
@@ -191,7 +193,7 @@ subroutine update_ice_model_slow(Ice)
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
   ! is a separate clock inside the fCS that is advanced elsewhere.
@@ -202,7 +204,9 @@ subroutine update_ice_model_slow(Ice)
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Start update_ice_model_slow_dn", Ice)
+    call Ice_public_type_chksum("Start update_ice_model_slow", Ice, check_slow=.true.)
+    call FIA_chksum("Start update_ice_model_slow", Ice%sCS%FIA, Ice%sCS%G)
+    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
   ! Store some diagnostic fluxes...
@@ -225,10 +229,19 @@ subroutine update_ice_model_slow(Ice)
       enddo ; enddo
     endif
 
-    call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+    call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
     call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
                          dt_slow, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
-    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock2)
+    call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
+
+    if (Ice%sCS%debug) then
+      call FIA_chksum("After update_icebergs", Ice%sCS%FIA, Ice%sCS%G)
+    endif
+  endif
+
+  if (Ice%sCS%debug) then
+    call Ice_public_type_chksum("Before slow_thermodynamics", Ice, check_slow=.true.)
+    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, Ice%sCS%G)
   endif
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
@@ -248,17 +261,25 @@ subroutine update_ice_model_slow(Ice)
   call pass_var(Ice%sCS%IST%mH_pond, Ice%sCS%G%Domain, complete=.false.)
   call pass_var(Ice%sCS%IST%mH_snow, Ice%sCS%G%Domain, complete=.true.)
 
+  if (Ice%sCS%debug) then
+    call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
+    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, Ice%sCS%G)
+  endif
+
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, Ice%sCS%IG)
 
-  if (Ice%sCS%debug) &
+  if (Ice%sCS%debug) then
+    call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, Ice%sCS%G)
     call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
+  endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
   call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%sCS%FIA, Ice%sCS%OSS, &
                             Ice%sCS%G, Ice%sCS%IG, Ice%sCS)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("End update_ice_model_slow_dn", Ice)
+    call Ice_public_type_chksum("End update_ice_model_slow", Ice, check_slow=.true.)
   endif
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
@@ -266,7 +287,7 @@ subroutine update_ice_model_slow(Ice)
 !    call Ice_public_type_bounds_check(Ice, Ice%sCS%G, "End update_ice_slow")
 !  endif
 
-  call mpp_clock_end(iceClock2) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_slow
 
@@ -277,6 +298,8 @@ end subroutine update_ice_model_slow
 subroutine ice_model_fast_cleanup(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in ice_model_fast_cleanup.")
 
@@ -284,8 +307,104 @@ subroutine ice_model_fast_cleanup(Ice)
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
 
+  if (allocated(Ice%fCS%IST%t_surf)) &
+    Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
+  call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
+
 end subroutine ice_model_fast_cleanup
- 
+
+!> infill_Tskin fills in array the array of tskin with actual, interpolated or
+!! plausible ice/snow-surface skin temperatures for later use.
+subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
+  type(ice_state_type),    intent(in)    :: IST  !< The ice state type whose values of part_size and
+                                                 !! mH_ice are being used to control the infilling.
+  type(simple_OSS_type),   intent(in)    :: OSS  !< An ocean surface state type, used for the surface freezing point.
+  type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
+  type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
+  real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
+                           intent(inout) :: t_skin  !< The ice skin temperature that is being infilled.
+
+  integer, dimension(G%isd:G%ied) :: k_thick, k_thin
+  real, dimension(G%isd:G%ied) :: &
+    t_thick, t_thin, mH_thin, t_fr_ocn
+  real :: wt2, mH_cat_tgt
+  logical, dimension(G%isd:G%ied) :: infill
+  logical :: any_ice
+  integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+
+  do j=jsc,jec
+    ! Determine which categories exist.
+    do i=isc,iec ; k_thick(i) = -1 ; k_thin(i) = ncat+1 ; mH_thin(i) = 0.0 ; enddo
+    any_ice = .false.
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      k_thick(i) = k
+      t_thick(i) = t_skin(i,j,k)
+      any_ice = .true.
+    endif ; enddo ; enddo
+
+    do i=isc,iec
+      T_fr_ocn(i) = G%mask2dT(i,j) * T_Freeze(OSS%s_surf(i,j), IST%ITV)
+      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i)
+    enddo
+
+    if (.not.any_ice) then
+      ! This entire row is ice free.
+      do k=1,ncat ; do i=isc,iec
+        t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i)
+      enddo ; enddo
+    else
+      do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+        k_thin(i) = k
+        t_thin(i) = t_skin(i,j,k)
+        mH_thin(i) = IST%mH_ice(i,j,k)
+      endif ; enddo ; enddo
+
+      ! The logic for the k=1 (thinest) category is particularly simple.
+      do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
+        t_skin(i,j,1) = G%mask2dT(i,j)*T_fr_ocn(i)
+      endif ; enddo
+      do k=2,ncat ; do i=isc,iec
+        if (G%mask2dT(i,j) > 0.0) then
+          if (k > k_thick(i)) then
+            ! This is the most common case, since it applies to ice-free water.
+            t_skin(i,j,k) = t_thick(i)
+          elseif (IST%part_size(i,j,k) > 0.0) then
+            ! This is a valid value - no interpolation is needed.
+            cycle
+          elseif (k < k_thin(i)) then
+            ! Linearly interpolate to the ocean's freezing temperature.
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
+            if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
+
+            t_skin(i,j,k) = wt2*T_fr_ocn(i) + (1.0-wt2)*t_thin(i)
+          else
+            ! Linearly interpolate between bracketing neighboring
+            ! categories with valid values.
+            do k2=k+1,ncat ; if (IST%part_size(i,j,k2) > 0.0) exit ; enddo
+            do k3=k-1,1,-1 ; if (IST%part_size(i,j,k3) > 0.0) exit ; enddo
+            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
+            wt2 = 0.5
+            if ((IST%mH_ice(i,j,k3) > mH_cat_tgt) .and. &
+                (IST%mH_ice(i,j,k2) < mH_cat_tgt)) &
+              wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
+                    (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
+
+            t_skin(i,j,k) = wt2*t_skin(i,j,k2) + (1.0-wt2) * t_skin(i,j,k3)
+          endif
+        else ! This is a land point.
+          t_skin(i,j,k) = 0.0
+        endif
+      enddo ; enddo
+
+    endif ! .not.any_ice
+  enddo
+
+end subroutine infill_Tskin
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
 !! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
@@ -311,15 +430,26 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off,G) &
 !$OMP                          private(i2,j2)
-  do j=jsc,jec ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
     FIA%runoff(i,j)  = LIB%runoff(i2,j2)
     FIA%calving(i,j) = LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
-  enddo ; enddo
+  else
+    ! This is a land point from the perspective of the sea-ice.
+    ! At some point it might make sense to check for non-zero fluxes, which
+    ! might indicate regridding errors.  However, bad-data values are also
+    ! non-zero and should not be flagged.
+    FIA%runoff(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
+    FIA%runoff_hflx(i,j)  = 0.0 ; FIA%calving_hflx(i,j) = 0.0
+  endif ; enddo ; enddo
+
+  if (Ice%fCS%debug) then
+    call FIA_chksum("End of unpack_land_ice_boundary", FIA, G)
+  endif
 
 end subroutine unpack_land_ice_boundary
 
@@ -329,31 +459,52 @@ subroutine exchange_fast_to_slow_ice(Ice)
   type(ice_data_type), &
     intent(inout) :: Ice            !< The publicly visible ice data type whose fast
                                     !! part is to be exchanged with the slow part.
+  type(fast_ice_avg_type), pointer :: FIA_null => NULL()
+  type(ice_state_type),    pointer :: IST_null => NULL()
 
-  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+  if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "With xtype=DIRECT, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_fast_to_slow_ice.")
 
-  if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
-    ! call SIS_mesg("Copying Ice%fCS%FIA to Ice%sCS%FIA in update_ice_model_slow_dn.")
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) then
       call copy_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fCS%G%HI, Ice%sCS%G%HI, &
                            Ice%sCS%IG)
-    else if(Ice%xtype == REDIST) then
-      call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fast_domain, Ice%slow_domain, &
-                                   Ice%sCS%G, Ice%sCS%IG)
     endif
-  endif
 
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%fCS%IST to Ice%sCS%IST in update_ice_model_slow_dn.")
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
       call copy_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fCS%G%HI, Ice%sCS%G%HI, &
            Ice%fCS%IG)
-    else if(Ice%xtype == REDIST) then
-      call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fast_domain, &
-                                   Ice%slow_domain)
     endif
+  elseif (Ice%xtype == REDIST) then
+    if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "Either the pointer to Ice%sCS or the pointer to Ice%fCS must be "//&
+      "associated in exchange_fast_to_slow_ice.")
+
+    if (associated(Ice%fCS) .and. associated(Ice%sCS)) then
+      if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) &
+        call redistribute_FIA_to_FIA(Ice%fCS%FIA, Ice%sCS%FIA, Ice%fast_domain, &
+                                     Ice%slow_domain, Ice%sCS%G, Ice%sCS%IG)
+
+      if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) &
+        call redistribute_IST_to_IST(Ice%fCS%IST, Ice%sCS%IST, Ice%fast_domain, &
+                                     Ice%slow_domain)
+    elseif (associated(Ice%fCS)) then
+      call redistribute_FIA_to_FIA(Ice%fCS%FIA, FIA_null, Ice%fast_domain, &
+                                   Ice%slow_domain)
+      call redistribute_IST_to_IST(Ice%fCS%IST, IST_null, Ice%fast_domain, &
+                                   Ice%slow_domain)
+    elseif (associated(Ice%sCS)) then
+      call redistribute_FIA_to_FIA(FIA_null, Ice%sCS%FIA, Ice%fast_domain, &
+                                   Ice%slow_domain, Ice%sCS%G, Ice%sCS%IG)
+      call redistribute_IST_to_IST(IST_null, Ice%sCS%IST, Ice%fast_domain, &
+                                   Ice%slow_domain)
+    else
+      call SIS_error(FATAL, "Either the pointer to Ice%sCS or the pointer to "//&
+                     "Ice%fCS must be associated in exchange_fast_to_slow_ice.")
+    endif
+  else
+    call SIS_error(FATAL, "exchange_fast_to_slow_ice called with an unrecognized Ice%xtype value.")
   endif
 
 end subroutine exchange_fast_to_slow_ice
@@ -380,7 +531,9 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
   if (sCS%debug) then
-    call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice)
+    call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice, check_slow=.true.)
+    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G)
+    call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
   endif
 
   ! This block of code is probably unneccessary.
@@ -437,7 +590,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
-    Ice%SST_C(i2,j2) = OSS%t_ocn(i,j)
+    Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
@@ -453,9 +606,9 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     enddo ; enddo
   endif
 
+  ind = 0
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = IOF%tr_flux_index(m,n)
-    if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in set_ocean_top_fluxes.")
+    ind = ind + 1
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
         Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
@@ -480,7 +633,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   endif
 
   if (sCS%debug) then
-    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice)
+    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice, check_slow=.true.)
+    call IST_chksum("Start set_ocean_top_fluxes", IST, G, IG)
   endif
 
 end subroutine set_ocean_top_fluxes
@@ -503,7 +657,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
       "The pointer to Ice%sCS must be associated in update_ice_model_slow_up.")
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+                           Ice%sCS%specified_ice, Ice%ocean_fields)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -519,34 +673,58 @@ subroutine exchange_slow_to_fast_ice(Ice)
   type(ice_data_type), &
     intent(inout) :: Ice            !< The publicly visible ice data type whose slow
                                     !! part is to be exchanged with the fast part.
+  type(simple_OSS_type), pointer :: sOSS_null => NULL()
+  type(ice_state_type),  pointer :: IST_null => NULL()
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_exchange)
 
-  if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "For now, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
+
+  if (Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "With xtype=DIRECT, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_slow_to_fast_ice.")
 
-  if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) then
       call copy_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%sCS%G%HI, Ice%fCS%G%HI)
-    else if(Ice%xtype == REDIST) then
-      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
-                                     Ice%fast_domain)
     endif
-  endif
 
-  if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
-    ! call SIS_mesg("Copying Ice%sCS%IST to Ice%fCS%IST in update_ice_model_slow_up.")
-    if(Ice%xtype == DIRECT) then
+    if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
       call copy_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%sCS%G%HI, Ice%fCS%G%HI, &
            Ice%sCS%IG)
-    else
-      call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%slow_domain, &
-                                   Ice%fast_domain)
     endif
+
+  elseif (Ice%xtype == REDIST) then
+    if (.not.associated(Ice%fCS) .and. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "Either the pointer to Ice%sCS or the pointer to Ice%fCS must be "//&
+      "associated in exchange_slow_to_fast_ice.")
+
+    if (associated(Ice%fCS) .and. associated(Ice%sCS)) then
+      if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) &
+        call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, Ice%fCS%sOSS, Ice%slow_domain, &
+                                       Ice%fast_domain, Ice%fCS%G%HI)
+
+      if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) &
+        call redistribute_IST_to_IST(Ice%sCS%IST, Ice%fCS%IST, Ice%slow_domain, &
+                                     Ice%fast_domain)
+    elseif (associated(Ice%fCS)) then
+      call redistribute_sOSS_to_sOSS(sOSS_null, Ice%fCS%sOSS, Ice%slow_domain, &
+                                     Ice%fast_domain, HI_out=Ice%fCS%G%HI)
+      call redistribute_IST_to_IST(IST_null, Ice%fCS%IST, Ice%slow_domain, &
+                                   Ice%fast_domain)
+    elseif (associated(Ice%sCS)) then
+      call redistribute_sOSS_to_sOSS(Ice%sCS%sOSS, sOSS_null, Ice%slow_domain, &
+                                     Ice%fast_domain)
+      call redistribute_IST_to_IST(Ice%sCS%IST, IST_null, Ice%slow_domain, &
+                                   Ice%fast_domain)
+    else
+      call SIS_error(FATAL, "Either the pointer to Ice%sCS or the pointer to "//&
+                     "Ice%fCS must be associated in exchange_slow_to_fast_ice.")
+    endif
+  else
+    call SIS_error(FATAL, "exchange_slow_to_fast_ice called with an unrecognized Ice%xtype value.")
   endif
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_exchange) ; call mpp_clock_end(iceClock)
 
 end subroutine exchange_slow_to_fast_ice
 
@@ -564,7 +742,7 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
       "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary.")
 
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
-                           Ice%sCS%IST%t_surf(:,:,0), Ice%sCS%specified_ice, Ice%ocean_fields)
+                           Ice%sCS%specified_ice, Ice%ocean_fields)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
 
@@ -573,12 +751,10 @@ end subroutine unpack_ocean_ice_boundary
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
-subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_fields)
+subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB
   type(ocean_sfc_state_type),    intent(inout) :: OSS
   type(SIS_hor_grid_type),       intent(inout) :: G
-  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                                 intent(inout) :: t_surf_ocn_K  ! The ocean surface temperature in Kelvin.
   logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
                                                                 ! related to passive tracers.
@@ -586,16 +762,15 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: Cgrid_ocn
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, index
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    OSS%t_ocn(i,j) = OIB%t(i2,j2) - T_0degC
     OSS%s_surf(i,j) = OIB%s(i2,j2)
     OSS%frazil(i,j) = OIB%frazil(i2,j2)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
@@ -603,10 +778,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
 
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
   if (.not. specified_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,t_surf_ocn_K,OIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
 !$OMP                           private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      t_surf_ocn_K(i,j) = OIB%t(i2,j2)
+      OSS%SST_C(i,j) = OIB%t(i2,j2) - T_0degC
     enddo ; enddo
   endif
 
@@ -693,11 +868,29 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, t_surf_ocn_K, specified_ice, ocean_f
   call pass_var(OSS%sea_lev, G%Domain)
 
 ! Transfer the ocean state for extra tracer fluxes.
+  if (OSS%num_tr<0) then
+    ! Determine the number of tracer arrays and allocate them.
+    OSS%num_tr = 0
+    do n=1,OIB%fields%num_bcs
+      OSS%num_tr = OSS%num_tr + OIB%fields%bc(n)%num_fields
+    enddo
+    if (OSS%num_tr > 0) then
+      allocate(OSS%tr_array(G%isd:G%ied,G%jsd:G%jed,OSS%num_tr)) ; OSS%tr_array(:,:,:) = 0.0
+    endif
+  endif
+  index = 0
   do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
-    ocean_fields%bc(n)%field(m)%values(:,:,1) = OIB%fields%bc(n)%field(m)%values
+    index = index+1
+    if (index == 1) then
+      i_off = LBOUND(OIB%fields%bc(n)%field(m)%values,1) - G%isc
+      j_off = LBOUND(OIB%fields%bc(n)%field(m)%values,2) - G%jsc
+    endif
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      OSS%tr_array(i,j,index) = OIB%fields%bc(n)%field(m)%values(i2,j2)
+    enddo ; enddo
   enddo ; enddo
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
 end subroutine unpack_ocn_ice_bdry
 
@@ -719,10 +912,10 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST,ITV)
   do j=jsc,jec ; do i=isc,iec
     sOSS%s_surf(i,j) = OSS%s_surf(i,j)
-    sOSS%t_ocn(i,j) = OSS%t_ocn(i,j)
+    sOSS%SST_C(i,j) = OSS%SST_C(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
-      sOSS%bheat(i,j) = OSS%kmelt*(OSS%t_ocn(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
+      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
         sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
@@ -749,6 +942,16 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
     endif
   enddo ; enddo
 
+  if (sOSS%num_tr<0) then
+    sOSS%num_tr = OSS%num_tr
+    if (sOSS%num_tr > 0) then
+      allocate(sOSS%tr_array(G%isd:G%ied,G%jsd:G%jed,sOSS%num_tr)) ; sOSS%tr_array(:,:,:) = 0.0
+    endif
+  endif
+  do m=1,OSS%num_tr ; do j=jsc,jec ; do i=isc,iec
+    sOSS%tr_array(i,j,m) = OSS%tr_array(i,j,m)
+  enddo ; enddo ; enddo
+
 end subroutine translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -758,14 +961,14 @@ subroutine set_ice_surface_fields(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type whose
                                             !! surface properties are being set.
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock1)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_fast)
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in set_ice_surface_fields.")
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
                              Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
 
-  call mpp_clock_end(iceClock1) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 end subroutine set_ice_surface_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -790,6 +993,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
+  integer :: index
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -804,11 +1008,11 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state") !, OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, IG)
-    call Ice_public_type_chksum("Start set_ice_surface_state", Ice)
+    call Ice_public_type_chksum("Start set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
   m_ice_tot(:,:) = 0.0
@@ -828,6 +1032,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       endif
     enddo
   enddo
+
+  if (.not.fCS%Eulerian_tsurf) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      Rad%t_skin(i,j,k) = IST%t_surf(i,j,k) - T_0degC
+    enddo ; enddo ; enddo
+  endif
 
   ! Determine the sea-ice optical properties.
 
@@ -851,13 +1061,13 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
   if (slab_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,i_off,j_off, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), &
+               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -873,7 +1083,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
-               IST%t_surf(i,j,k)-T_0degC, T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
+               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
@@ -895,14 +1105,21 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   endif
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state") !, OSS=OSS)
+    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
+!$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Ice%t_surf(i2,j2,1) = OSS%SST_C(i,j) + T_0degC
+    Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
+  enddo ; enddo
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
 !$OMP                          private(i2,j2,k2)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+      Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k) + T_0degC
       Ice%part_size(i2,j2,k2) = IST%part_size(i,j,k)
     enddo ; enddo
   enddo
@@ -952,9 +1169,22 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   endif
 
+  ! Copy over the additional tracer fields into the ocean_fields structure.
+  index = 0
+  do n=1,Ice%ocean_fields%num_bcs  ; do m=1,Ice%ocean_fields%bc(n)%num_fields
+    index = index+1
+    if (index == 1) then
+      i_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,1) - G%isc
+      j_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,2) - G%jsc
+    endif
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      Ice%ocean_fields%bc(n)%field(m)%values(i2,j2,1) = OSS%tr_array(i,j,index)
+    enddo ; enddo 
+  enddo ; enddo
+
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
-    call Ice_public_type_chksum("End set_ice_surface_state", Ice)
+    call Ice_public_type_chksum("End set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
   if (fCS%bounds_check) &
@@ -972,10 +1202,10 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   type(time_type) :: Time_start, Time_end, dT_fast
 
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(iceClock3)
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_fast)
 
   if (Ice%fCS%debug) &
-    call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice)
+    call Ice_public_type_chksum("Pre do_update_ice_model_fast", Ice, check_fast=.true.)
 
   dT_fast = Ice%fCS%Time_step_fast
   Time_start = Ice%fCS%Time
@@ -1003,11 +1233,11 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
                                      Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
-    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice)
+    call Ice_public_type_chksum("End do_update_ice_model_fast", Ice, check_fast=.true.)
   if (Ice%fCS%bounds_check) &
     call Ice_public_type_bounds_check(Ice, Ice%fCS%G, "End update_ice_fast")
 
-  call mpp_clock_end(iceClock3) ; call mpp_clock_end(iceClock)
+  call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 
 end subroutine update_ice_model_fast
 
@@ -1022,6 +1252,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
    
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
@@ -1043,11 +1274,12 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,io_I,jo_I ) &
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,Ice,io_I,jo_I ) &
 !$OMP                           private(i2,j2,k2)
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
-    Ice%t_surf(i2,j2,k2) = IST%t_surf(i,j,k)
+    Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k) + T_0degC
   enddo ; enddo ; enddo
 
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
@@ -1110,16 +1342,19 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   type(time_type),               intent(in)    :: Time_start, Time_end
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
+  real, dimension(G%isd:G%ied) :: Tskin_avg, ice_conc
   real :: dt_diag
   real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
                     ! strictly diagnostic purposes.
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce
-  io_A = LBOUND(ABT%t_flux,1) - G%isc ; jo_A = LBOUND(ABT%t_flux,2) - G%jsc
-  io_I = LBOUND(Ice%t_surf,1) - G%isc ; jo_I = LBOUND(Ice%t_surf,2) - G%jsc
+  io_A = LBOUND(ABT%lw_flux,1) - G%isc ; jo_A = LBOUND(ABT%lw_flux,2) - G%jsc
+  io_I = LBOUND(Ice%albedo_vis_dir,1) - G%isc
+  jo_I = LBOUND(Ice%albedo_vis_dir,2) - G%jsc
 
   dt_diag = time_type_to_real(Time_end - Time_start)
 
@@ -1135,6 +1370,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
   if (Rad%id_alb>0)         call post_avg(Rad%id_alb, Ice%albedo, &
                               IST%part_size(isc:iec,jsc:jec,:), CS%diag)
+
+  if (Rad%id_tskin>0) call post_data(Rad%id_tskin, Rad%t_skin, CS%diag)
+  if (Rad%id_cn>0) call post_data(Rad%id_cn, IST%part_size(:,:,1:), CS%diag)
+  if (Rad%id_mi>0) call post_data(Rad%id_mi, IST%mH_ice(:,:,:), CS%diag)
 
   if (Rad%id_sw_abs_sfc>0) call post_avg(Rad%id_sw_abs_sfc, Rad%sw_abs_sfc, &
                                    IST%part_size(:,:,1:), CS%diag, G=G)
@@ -1163,7 +1402,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
-                           (ABT%lw_flux(i3,j3,k2) + Stefan*IST%t_surf(i,j,k)**4)
+                           (ABT%lw_flux(i3,j3,k2) + Stefan*(Rad%t_skin(i,j,k)+T_0degC)**4)
     endif ; enddo ; enddo ; enddo
     call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
@@ -1174,11 +1413,17 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 !$OMP                          private(i2,j2,k2,i3,j3)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
-    sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
+    if (associated(ABT%sw_down_vis_dir)) then
+      sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
+            (ABT%sw_down_vis_dir(i3,j3,k2) + ABT%sw_down_vis_dif(i3,j3,k2)) + &
+            (ABT%sw_down_nir_dir(i3,j3,k2) + ABT%sw_down_nir_dif(i3,j3,k2)) )
+    else
+      sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
              ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+    endif
 
     net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
           (ABT%sw_flux_vis_dir(i3,j3,k2) + ABT%sw_flux_vis_dif(i3,j3,k2)) + &
@@ -1186,7 +1431,24 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     avg_alb(i,j) = avg_alb(i,j) + IST%part_size(i,j,k) * 0.25 * ( &
             (Ice%albedo_vis_dir(i2,j2,k2) + Ice%albedo_vis_dif(i2,j2,k2)) + &
             (Ice%albedo_nir_dir(i2,j2,k2) + Ice%albedo_nir_dif(i2,j2,k2)) )
+    ! Consider recalculating this as avg_alb(i,j) = 1.0 - net_sw(i,j) / sw_dn(i,j) ? -RWH
   endif ; enddo ; enddo ; enddo
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,IST,FIA) &
+!$OMP                          private(Tskin_avg, ice_conc)
+  do j=jsc,jec
+    Tskin_avg(:) = 0.0 ; ice_conc(:) = 0.0
+    do k=1,ncat ; do i=isc,iec
+      Tskin_avg(i) = Tskin_avg(i) + Rad%t_skin(i,j,k) * IST%part_size(i,j,k)
+      ice_conc(i) = ice_conc(i) + IST%part_size(i,j,k)
+    enddo ; enddo
+    do i=isc,iec
+      if (ice_conc(i)>0.0) then
+        FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) + (Tskin_avg(i) / ice_conc(i))
+      ! else there is nothing to add, because Tskin_avg = 0.
+      endif
+    enddo
+  enddo
 
   if (Rad%id_swdn > 0) call post_data(Rad%id_swdn, sw_dn, CS%diag)
 
@@ -1258,6 +1520,18 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
       ABT%sw_flux_vis_dir(i2,j2,k) = ABT%sw_flux_vis_dir(i2,j2,k) * diurnal_factor
       ABT%sw_flux_vis_dif(i2,j2,k) = ABT%sw_flux_vis_dif(i2,j2,k) * diurnal_factor
     enddo
+    if (associated(ABT%sw_down_nir_dir)) then ; do k=1,ncat
+      ABT%sw_down_nir_dir(i2,j2,k) = ABT%sw_down_nir_dir(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_nir_dif)) then ; do k=1,ncat
+      ABT%sw_down_nir_dif(i2,j2,k) = ABT%sw_down_nir_dif(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_vis_dir)) then ; do k=1,ncat
+      ABT%sw_down_vis_dir(i2,j2,k) = ABT%sw_down_vis_dir(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_vis_dif)) then ; do k=1,ncat
+      ABT%sw_down_vis_dif(i2,j2,k) = ABT%sw_down_vis_dif(i2,j2,k) * diurnal_factor
+    enddo ; endif
   enddo ; enddo
 
 end subroutine add_diurnal_sw
@@ -1364,19 +1638,23 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: Cgrid_dyn, slab_ice
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
-  logical :: init_coszen
+  logical :: init_coszen, init_Tskin, init_rough
   logical :: write_error_mesg
-  logical :: write_geom_files  ! If true, write out the grid geometry files.
-  logical :: symmetric         ! If true, use symmetric memory allocation.
-  logical :: global_indexing   ! If true use global horizontal index values instead
-                               ! of having the data domain on each processor start at 1.
-  integer :: first_direction   ! An integer that indicates which direction is to be
-                               ! updated first in directionally split parts of the
-                               ! calculation.  This can be altered during the course
-                               ! of the run via calls to set_first_direction.
-  logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
-  logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
-  logical :: single_IST        ! If true, fCS%IST and sCS%IST point to the same structure.
+  logical :: Eulerian_tsurf   ! If true, use previous calculations of the ice-top
+                              ! surface skin temperature for tsurf at the start of
+                              ! atmospheric time stepping, including interpolating between
+                              ! tsurf values from other categories in the same location.
+  logical :: write_geom_files ! If true, write out the grid geometry files.
+  logical :: symmetric        ! If true, use symmetric memory allocation.
+  logical :: global_indexing  ! If true use global horizontal index values instead
+                              ! of having the data domain on each processor start at 1.
+  integer :: first_direction  ! An integer that indicates which direction is to be
+                              ! updated first in directionally split parts of the
+                              ! calculation.  This can be altered during the course
+                              ! of the run via calls to set_first_direction.
+  logical :: fast_ice_PE      ! If true, fast ice processes are handled on this PE.
+  logical :: slow_ice_PE      ! If true, slow ice processes are handled on this PE.
+  logical :: single_IST       ! If true, fCS%IST and sCS%IST point to the same structure.
   logical :: Verona
   logical :: read_aux_restart
   logical :: split_restart_files
@@ -1401,7 +1679,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
 
   ! Open the parameter file.
-  call Get_SIS_Input(param_file, dirs)
+  call Get_SIS_Input(param_file, dirs, check_params=slow_ice_PE)
 
   call callTree_enter("ice_model_init(), ice_model.F90")
 
@@ -1428,6 +1706,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "single common ice_state_type.  Otherwise they point to \n"//&
                  "different ice_state_types that need to be explicitly \n"//&
                  "copied back and forth.", default=.true.)
+  call get_param(param_file, mod, "EULERIAN_TSURF", Eulerian_tsurf, &
+                 "If true, use previous calculations of the ice-top surface \n"//&
+                 "skin temperature for tsurf at the start of atmospheric \n"//&
+                 "time stepping, including interpolating between tsurf \n"//&
+                 "values from other categories in the same location.", default=.true.)
 
   call obsolete_logical(param_file, "SIS1_5L_THERMODYNAMICS", warning_val=.false.)
   call obsolete_logical(param_file, "INTERSPERSED_ICE_THERMO", warning_val=.false.)
@@ -1518,7 +1801,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, carry out all of the sea ice calls so that SIS2 \n"//&
                  "will work with the Verona and earlier releases of the \n"//&
                  "FMS coupler code in configurations that use the exchange \n"//&
-                 "grid to communicate with the atmosphere or land.", default=.true.)
+                 "grid to communicate with the atmosphere or land.", &
+                 layoutParam=.true.)
 
   call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
@@ -1678,7 +1962,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart, restart_file)
 
-    call alloc_IST_arrays(sHI, sIG, sIST)
+    call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf)
     call ice_state_register_restarts(sGD%mpp_domain, sIST, sIG, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
@@ -1711,7 +1995,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (ice_rel_salin > 0.0) then
       call register_SIS_tracer(sIST%sal_ice, sG, sIG, NkIce, "salin_ice", param_file, &
                                sIST%TrReg, snow_tracer=.false., &
-                               massless_val=massless_ice_salin)
+                               massless_val=massless_ice_salin, nonnegative=.true.)
     endif
 
   !   Register any tracers that will be handled via tracer flow control for 
@@ -1788,6 +2072,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     Ice%fCS%bounds_check = bounds_check
     Ice%fCS%debug = debug
+    Ice%fCS%Eulerian_tsurf = Eulerian_tsurf
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt)
@@ -1812,7 +2097,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                       param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
 
     if (.not.single_IST) then
-      call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, omit_velocities=.true.)
+      call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
+                            omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
 
       call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
 
@@ -1843,12 +2129,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, fG%domain_aux, symmetric=.false., &
                             domain_name="ice model aux")
 
-      ! Copy the ice model's domain into one with no halos that can be shared
-      ! publicly for use by the exchange grid.
     endif
-    call clone_MOM_domain(fGD, Ice%domain, halo_size=0, symmetric=.false., &
-                          domain_name="ice_nohalo")
 
+    ! Copy the ice model's domain into one with no halos that can be shared
+    ! publicly for use by the exchange grid.
+    call clone_MOM_domain(Ice%fCS%G%Domain, Ice%domain, halo_size=0, &
+                          symmetric=.false., domain_name="ice_nohalo")
   endif
 
 
@@ -1982,6 +2268,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
+      if (allocated(sIST%t_surf) .and. &
+          .not.query_initialized(Ice%Ice_restart, 't_surf')) then
+        sIST%t_surf(:,:,:) = T_0degC
+      endif
+
       H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
       if (sIG%H_to_kg_m2 == -1.0) then
         ! This is an older restart file, and the snow and ice thicknesses are in
@@ -2017,17 +2308,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
       endif
 
-      if (fast_ice_PE .and. .not.split_restart_files) &
+      if (fast_ice_PE .and. .not.split_restart_files) then
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+        init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_heat') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
+      endif
 
     else ! no restart file implies initialization with no ice
       sIST%part_size(:,:,:) = 0.0
       sIST%part_size(:,:,0) = 1.0
 
-      Ice%rough_mom(:,:,:)   = mom_rough_ice
-      Ice%rough_heat(:,:,:)  = heat_rough_ice
-      Ice%rough_moist(:,:,:) = heat_rough_ice
-      sIST%t_surf(:,:,:) = T_0degC
+      if (allocated(sIST%t_surf)) sIST%t_surf(:,:,:) = T_0degC
       sIST%sal_ice(:,:,:,:) = ice_bulk_salin
 
       enth_spec_snow = Enth_from_TS(0.0, 0.0, sIST%ITV)
@@ -2038,9 +2331,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       enddo
 
       allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
-      call get_sea_surface(Ice%sCS%Time, sIST%t_surf(isc:iec,jsc:jec,0), &
+      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_C(isc:iec,jsc:jec), &
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
-                           h_ice_input, ice_domain=Ice%slow_domain_NH )
+                           h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
       do j=jsc,jec ; do i=isc,iec
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
       enddo ; enddo
@@ -2066,7 +2359,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call pass_var(sIST%part_size, sGD, complete=.true. )
       call pass_var(sIST%mH_ice, sGD, complete=.true. )
 
-      init_coszen = .true.
+      init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
 
     endif ! file_exist(restart_path)
 
@@ -2174,8 +2467,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (file_exist(fast_rest_path)) then
         call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
+        init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+        init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_heat') .and. &
+                            query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
       else
-        init_coszen = .true.
+        init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
       endif
     endif
 
@@ -2196,6 +2493,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            rrsun=rrsun, dt_time=dT_rad)
         deallocate(dummy)
       endif
+    endif
+    if (init_Tskin) then
+      Ice%fCS%Rad%t_skin(:,:,:) = 0.0
+    endif
+    if (init_rough) then
+      Ice%rough_mom(:,:,:)   = mom_rough_ice
+      Ice%rough_heat(:,:,:)  = heat_rough_ice
+      Ice%rough_moist(:,:,:) = heat_rough_ice
     endif
 
     call ice_diags_fast_init(Ice%fCS%Rad, fG, Ice%fCS%IG, Ice%fCS%diag, &
@@ -2224,7 +2529,44 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   call close_param_file(param_file)
 
-  ! This code has to be called for all of the ice processors.
+  ! In the post-Verona coupler, share_ice_domains is called by the coupler
+  ! after it switches the current PE_list to the one with all ice PEs.
+  if (Verona) call share_ice_domains(Ice)
+
+  ! Ice%xtype can be REDIST or DIRECT, depending on the relationship between
+  ! the fast and slow ice PEs.  REDIST should always work but may be slower.
+  if (fast_ice_PE .neqv. slow_ice_PE) then
+    Ice%xtype = REDIST
+  elseif (single_IST .or. ((fGD%layout(1) == sGD%layout(1)) .and. &
+                           (fGD%layout(2) == sGD%layout(2))) ) then
+    Ice%xtype = DIRECT
+  else
+    Ice%xtype = REDIST
+  endif
+
+  if (Ice%shared_slow_fast_PEs) then
+    iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    ice_clock_fast = mpp_clock_id('Ice Fast', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+    ice_clock_slow = mpp_clock_id('Ice Slow', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+  else
+    iceClock = 0 ! The comprehensive ice clock can not be used with separate fast and slow ice PEs.
+    if (fast_ice_PE) then
+      ice_clock_fast = mpp_clock_id('Ice Fast', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    elseif (slow_ice_PE) then
+      ice_clock_slow = mpp_clock_id('Ice Slow', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+    endif
+  endif
+
+  call callTree_leave("ice_model_init()")
+
+end subroutine ice_model_init
+
+subroutine share_ice_domains(Ice)
+  type(ice_data_type), intent(inout) :: Ice
+
+  ! This code has to be called for all of the ice processors using the
+  ! union of the fast and slow ice PE_lists.
+
   if (associated(Ice%sCS)) then
     Ice%slow_domain => Ice%sCS%G%domain%mpp_domain
   else
@@ -2239,17 +2581,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call mpp_broadcast_domain(Ice%slow_domain_NH)
   call mpp_broadcast_domain(Ice%slow_domain)
   call mpp_broadcast_domain(Ice%fast_domain)
-  Ice%xtype = REDIST   ! value can be REDIST or DIRECT
 
-  iceClock = mpp_clock_id( 'Ice', flags=clock_flag_default, grain=CLOCK_COMPONENT )
-  iceClock1 = mpp_clock_id( 'Ice: bot to top', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock2 = mpp_clock_id( 'Ice: update slow (dn)', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-  iceClock3 = mpp_clock_id( 'Ice: update fast', flags=clock_flag_default, grain=CLOCK_ROUTINE )
-
-  call callTree_leave("ice_model_init()")
-
-end subroutine ice_model_init
-
+  if (Ice%shared_slow_fast_PEs) then
+    ice_clock_exchange = mpp_clock_id('Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_SUBCOMPONENT )
+  else
+    ice_clock_exchange = mpp_clock_id('Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_COMPONENT )
+  endif
+  
+end subroutine share_ice_domains
 
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
@@ -2370,8 +2709,7 @@ subroutine ice_model_end (Ice)
 
   call dealloc_Ice_arrays(Ice)
 
-  deallocate(Ice%Ice_restart)
-
+  if (associated(Ice%Ice_restart)) deallocate(Ice%Ice_restart)
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_end(Ice%sCS%Time, Ice%sCS%diag)

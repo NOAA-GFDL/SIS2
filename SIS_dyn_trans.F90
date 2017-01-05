@@ -63,7 +63,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum,  IST_bounds_check
-use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
+use SIS_utils, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
@@ -74,8 +74,8 @@ use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
-use ice_transport_mod, only : ice_transport_CS
+use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
+use SIS_transport, only : SIS_transport_CS
 
 use ice_bergs,     only: icebergs, icebergs_run, icebergs_init, icebergs_end
 
@@ -131,17 +131,17 @@ type dyn_trans_CS ; private
 
   ! These are the diagnostic ids for describing the ice state.
   integer, dimension(:), allocatable :: id_t, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
+  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
-  integer :: id_sitemptop=-1, id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
+  integer :: id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   logical :: module_is_initialized = .false.
 end type dyn_trans_CS
@@ -200,7 +200,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
             stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -211,7 +211,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
             stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -608,8 +608,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, OSS%sea_lev, &
-                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, &
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp,&
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -624,9 +624,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         uc, vc, IST%TrReg, OSS%sea_lev, dt_slow_dyn, G, IG, &
-                         CS%ice_transport_CSp, IST%rdg_mice, &
-                         snow2ocn, rdg_rate, rdg_open, rdg_vosh)
+                         uc, vc, IST%TrReg, &
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
+                         IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -652,11 +652,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call mpp_clock_begin(iceClock9)
 
-  ! Set appropriate surface quantities in categories with no ice.  Change <1e-10 to == 0?
+  ! Set appropriate surface quantities in categories with no ice.
+  if (allocated(IST%t_surf)) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<1e-10) &
-    IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
-  enddo ; enddo ; enddo
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
+      IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
+    enddo ; enddo ; enddo
+  endif
 
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
@@ -672,7 +674,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(CS%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                              IST%t_surf(:,:,0)-T_0degC, G)
+                  OSS%SST_C(:,:), G)
   endif
 
   call mpp_clock_end(iceClock9)
@@ -721,7 +723,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
   real :: enth_units, I_enth_units
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds
@@ -820,10 +821,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (CS%id_sivol>0) call post_avg(CS%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (CS%id_tsfc>0) call post_avg(CS%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
-  if (CS%id_sitemptop>0) call post_avg(CS%id_sitemptop, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
   if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (CS%id_sitimefrac>0) then
@@ -924,7 +921,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, diag)
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%SST_C, diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, diag)
   if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, diag)
   if (allocated(OSS%u_ocn_C)) then
@@ -1209,7 +1206,7 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
     call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
                  CS%SIS_B_dyn_CSp, Ice_restart, restart_file)
   endif
-!  call ice_transport_register_restarts(G, param_file, CS%ice_transport_CSp, &
+!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
 !                                       Ice_restart, restart_file)
 
 end subroutine SIS_dyn_trans_register_restarts
@@ -1309,7 +1306,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   else
     call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_init(CS%Time, G, param_file, CS%diag, CS%ice_transport_CSp)
+  call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp)
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
                            CS%sum_output_CSp, CS%ntrunc)
@@ -1359,11 +1356,6 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
                'g/kg',  missing_value=missing)
   enddo
-  CS%id_tsfc     = register_diag_field('ice_model', 'TS', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-  CS%id_sitemptop= register_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-
 
   ! Diagnostics that are specific to C-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
@@ -1423,13 +1415,13 @@ subroutine safe_alloc_ids_1d(ids, nids)
 end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_transport_CS returns a pointer to the ice_transport_CS type that
+!> SIS_dyn_trans_transport_CS returns a pointer to the SIS_transport_CS type that
 !!  the dyn_trans_CS points to.
 function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
   type(dyn_trans_CS), pointer :: CS
-  type(ice_transport_CS), pointer :: transport_CSp
+  type(SIS_transport_CS), pointer :: transport_CSp
 
-  transport_CSp => CS%ice_transport_CSp
+  transport_CSp => CS%SIS_transport_CSp
 end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1453,7 +1445,7 @@ subroutine SIS_dyn_trans_end(CS)
   else
     call SIS_B_dyn_end(CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_end(CS%ice_transport_CSp)
+  call SIS_transport_end(CS%SIS_transport_CSp)
 
   deallocate(CS)
 

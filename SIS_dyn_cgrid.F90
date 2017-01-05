@@ -700,8 +700,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ci_proj(i,j) = ci(i,j)
 
     ! Precompute pres_mice and the minimum value of del_sh for stability.
-    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*(1.0-ci(i,j)))
-    !### OK to change? pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
+    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical

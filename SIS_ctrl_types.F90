@@ -62,6 +62,10 @@ type SIS_fast_CS
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
   logical :: debug          ! If true, write verbose checksums for debugging purposes.
+  logical :: Eulerian_tsurf ! If true, use previous calculations of the ice-top
+                            ! surface skin temperature for tsurf at the start of
+                            ! atmospheric time stepping, including interpolating between
+                            ! tsurf values from other categories in the same location.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -244,6 +248,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
 
+  FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+  FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
+               'surface temperature', 'C', missing_value=missing)
+
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
              'sea level pressure', 'Pa', missing_value=missing)
@@ -358,6 +367,12 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
                'ice surface albedo nir_dir','0-1', missing_value=missing )
   Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name),'alb_nir_dif',diag%axesT1, Time, &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
+  Rad%id_tskin = register_SIS_diag_field(trim(comp_name),'Tskin', diag%axesTc, Time, &
+               'Skin temperature','Kelvin', missing_value=missing )
+  Rad%id_cn = register_SIS_diag_field(trim(comp_name),'CN_fast', diag%axesTc, Time, &
+               'Category concentration','0-1', missing_value=missing )
+  Rad%id_mi = register_SIS_diag_field(trim(comp_name),'MI_fast', diag%axesTc, Time, &
+               'Category concentration','0-1', missing_value=missing )
 
 end subroutine ice_diags_fast_init
 

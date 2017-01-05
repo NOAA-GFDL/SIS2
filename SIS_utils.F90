@@ -21,7 +21,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This module contains convenient utilities for use by the SIS2 sea ice model. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_utils_mod
+module SIS_utils
 
 use MOM_coms,           only : g_sum=>reproducing_sum
 use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
@@ -367,4 +367,4 @@ function is_NaN(x)
 
 end function is_nan
 
-end module ice_utils_mod
+end module SIS_utils
