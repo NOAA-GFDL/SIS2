@@ -1415,11 +1415,17 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 !$OMP                          private(i2,j2,k2,i3,j3)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
-    sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
+    if (associated(ABT%sw_down_vis_dir)) then
+      sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
+            (ABT%sw_down_vis_dir(i3,j3,k2) + ABT%sw_down_vis_dif(i3,j3,k2)) + &
+            (ABT%sw_down_nir_dir(i3,j3,k2) + ABT%sw_down_nir_dif(i3,j3,k2)) )
+    else
+      sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
              ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+    endif
 
     net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
           (ABT%sw_flux_vis_dir(i3,j3,k2) + ABT%sw_flux_vis_dif(i3,j3,k2)) + &
@@ -1427,6 +1433,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     avg_alb(i,j) = avg_alb(i,j) + IST%part_size(i,j,k) * 0.25 * ( &
             (Ice%albedo_vis_dir(i2,j2,k2) + Ice%albedo_vis_dif(i2,j2,k2)) + &
             (Ice%albedo_nir_dir(i2,j2,k2) + Ice%albedo_nir_dif(i2,j2,k2)) )
+    ! Consider recalculating this as avg_alb(i,j) = 1.0 - net_sw(i,j) / sw_dn(i,j) ? -RWH
   endif ; enddo ; enddo ; enddo
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,IST,FIA) &
@@ -1515,6 +1522,18 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
       ABT%sw_flux_vis_dir(i2,j2,k) = ABT%sw_flux_vis_dir(i2,j2,k) * diurnal_factor
       ABT%sw_flux_vis_dif(i2,j2,k) = ABT%sw_flux_vis_dif(i2,j2,k) * diurnal_factor
     enddo
+    if (associated(ABT%sw_down_nir_dir)) then ; do k=1,ncat
+      ABT%sw_down_nir_dir(i2,j2,k) = ABT%sw_down_nir_dir(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_nir_dif)) then ; do k=1,ncat
+      ABT%sw_down_nir_dif(i2,j2,k) = ABT%sw_down_nir_dif(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_vis_dir)) then ; do k=1,ncat
+      ABT%sw_down_vis_dir(i2,j2,k) = ABT%sw_down_vis_dir(i2,j2,k) * diurnal_factor
+    enddo ; endif
+    if (associated(ABT%sw_down_vis_dif)) then ; do k=1,ncat
+      ABT%sw_down_vis_dif(i2,j2,k) = ABT%sw_down_vis_dif(i2,j2,k) * diurnal_factor
+    enddo ; endif
   enddo ; enddo
 
 end subroutine add_diurnal_sw
