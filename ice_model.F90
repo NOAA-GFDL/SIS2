@@ -2269,7 +2269,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
       if (allocated(sIST%t_surf) .and. &
-          .not.query_initialized(Ice%Ice_restart, 't_surf')) then
+          .not.query_initialized(Ice%Ice_restart, 't_surf_ice')) then
         sIST%t_surf(:,:,:) = T_0degC
       endif
 
