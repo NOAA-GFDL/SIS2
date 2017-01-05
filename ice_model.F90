@@ -363,10 +363,8 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
       endif ; enddo ; enddo
 
       ! The logic for the k=1 (thinest) category is particularly simple.
-      do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
-        if (IST%part_size(i,j,1) <= 0.0) then
-          t_skin(i,j,1) = T_fr_ocn(i)
-        endif
+      do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
+        t_skin(i,j,1) = G%mask2dT(i,j)*T_fr_ocn(i)
       endif ; enddo
       do k=2,ncat ; do i=isc,iec
         if (G%mask2dT(i,j) > 0.0) then
