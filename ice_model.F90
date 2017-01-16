@@ -306,25 +306,25 @@ subroutine ice_model_fast_cleanup(Ice)
 
   if (allocated(Ice%fCS%IST%t_surf)) &
     Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
-  call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS%T_fr_ocn, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
+  call infill_array(Ice%fCS%IST, Ice%fCS%sOSS%T_fr_ocn, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
 
-!> infill_Tskin fills in array the array of tskin with actual, interpolated or
-!! plausible ice/snow-surface skin temperatures for later use.
-subroutine infill_Tskin(IST, t_ocn, t_skin, G, IG)
+!> infill_array fills in an array with actual, interpolated or plausible values
+!! from other ice categories.
+subroutine infill_array(IST, ta_ocn, ta, G, IG)
   type(ice_state_type),    intent(in)    :: IST  !< The ice state type whose values of part_size and
                                                  !! mH_ice are being used to control the infilling.
   type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
   type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: t_ocn !< The value of t_skin for ocean paritions.
+                           intent(in)    :: ta_ocn !< The value of the array for ocean partitions.
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(inout) :: t_skin  !< The ice skin temperature that is being infilled.
+                           intent(inout) :: ta   !< The array that is being infilled.
 
   integer, dimension(G%isd:G%ied) :: k_thick, k_thin
   real, dimension(G%isd:G%ied) :: &
-    t_thick, t_thin, mH_thin
+    ta_thick, ta_thin, mH_thin
   real :: wt2, mH_cat_tgt
   logical, dimension(G%isd:G%ied) :: infill
   logical :: any_ice
@@ -332,52 +332,51 @@ subroutine infill_Tskin(IST, t_ocn, t_skin, G, IG)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
-
   do j=jsc,jec
     ! Determine which categories exist.
     do i=isc,iec ; k_thick(i) = -1 ; k_thin(i) = ncat+1 ; mH_thin(i) = 0.0 ; enddo
     any_ice = .false.
     do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
       k_thick(i) = k
-      t_thick(i) = t_skin(i,j,k)
+      ta_thick(i) = ta(i,j,k)
       any_ice = .true.
     endif ; enddo ; enddo
 
     do i=isc,iec
-      if (k_thick(i) < 1) t_thick(i) = G%mask2dT(i,j) * t_ocn(i,j)
+      if (k_thick(i) < 1) ta_thick(i) = G%mask2dT(i,j) * ta_ocn(i,j)
     enddo
 
     if (.not.any_ice) then
       ! This entire row is ice free.
       do k=1,ncat ; do i=isc,iec
-        t_skin(i,j,k) = G%mask2dT(i,j)*t_ocn(i,j)
+        ta(i,j,k) = G%mask2dT(i,j)*ta_ocn(i,j)
       enddo ; enddo
     else
       do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
         k_thin(i) = k
-        t_thin(i) = t_skin(i,j,k)
+        ta_thin(i) = ta(i,j,k)
         mH_thin(i) = IST%mH_ice(i,j,k)
       endif ; enddo ; enddo
 
       ! The logic for the k=1 (thinest) category is particularly simple.
       do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
-        t_skin(i,j,1) = G%mask2dT(i,j)*t_ocn(i,j)
+        ta(i,j,1) = G%mask2dT(i,j)*ta_ocn(i,j)
       endif ; enddo
       do k=2,ncat ; do i=isc,iec
         if (G%mask2dT(i,j) > 0.0) then
           if (k > k_thick(i)) then
             ! This is the most common case, since it applies to ice-free water.
-            t_skin(i,j,k) = t_thick(i)
+            ta(i,j,k) = ta_thick(i)
           elseif (IST%part_size(i,j,k) > 0.0) then
             ! This is a valid value - no interpolation is needed.
             cycle
           elseif (k < k_thin(i)) then
             ! Linearly interpolate to the ocean's freezing temperature.
             mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
-            wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
+            wt2 = 0.0  ! If in doubt, use ta_thin.  This should not happen.
             if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
 
-            t_skin(i,j,k) = wt2*t_ocn(i,j) + (1.0-wt2)*t_thin(i)
+            ta(i,j,k) = wt2*ta_ocn(i,j) + (1.0-wt2)*ta_thin(i)
           else
             ! Linearly interpolate between bracketing neighboring
             ! categories with valid values.
@@ -390,17 +389,17 @@ subroutine infill_Tskin(IST, t_ocn, t_skin, G, IG)
               wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
                     (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
 
-            t_skin(i,j,k) = wt2*t_skin(i,j,k2) + (1.0-wt2) * t_skin(i,j,k3)
+            ta(i,j,k) = wt2*ta(i,j,k2) + (1.0-wt2) * ta(i,j,k3)
           endif
         else ! This is a land point.
-          t_skin(i,j,k) = 0.0
+          ta(i,j,k) = 0.0
         endif
       enddo ; enddo
 
     endif ! .not.any_ice
   enddo
 
-end subroutine infill_Tskin
+end subroutine infill_array
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
