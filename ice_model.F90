@@ -95,7 +95,7 @@ use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
-use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum
+use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
 use SIS_utils, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -891,66 +891,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
 end subroutine unpack_ocn_ice_bdry
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> translate_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
-!! ice processors into a simplified version with the fields that are shared with
-!! the atmosphere and the fast ice thermodynamics.
-subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(ice_state_type),       intent(in)    :: IST
-  type(simple_OSS_type),      intent(inout) :: sOSS
-  type(SIS_hor_grid_type),    intent(in)    :: G
-
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST)
-  do j=jsc,jec ; do i=isc,iec
-    sOSS%s_surf(i,j) = OSS%s_surf(i,j)
-    sOSS%SST_C(i,j) = OSS%SST_C(i,j)
-    sOSS%T_fr_ocn(i,j) = OSS%T_fr_ocn(i,j)
-
-    if (G%mask2dT(i,j) > 0.5) then
-      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - sOSS%T_fr_ocn(i,j))
-      ! Interpolate the ocean and ice velocities onto tracer cells.
-      if (OSS%Cgrid_dyn) then
-        sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
-        sOSS%v_ocn_A(i,j) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
-      else
-        sOSS%u_ocn_A(i,j) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
-                                  (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )
-        sOSS%v_ocn_A(i,j) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
-                                  (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
-      endif
-      if (IST%Cgrid_dyn) then
-        sOSS%u_ice_A(i,j) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
-        sOSS%v_ice_A(i,j) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
-      else
-        sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
-                                  (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
-        sOSS%v_ice_A(i,j) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
-                                  (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
-      endif
-    else ! This is a land point.
-      sOSS%bheat(i,j) = 0.0
-      sOSS%u_ocn_A(i,j) = 0.0 ; sOSS%v_ocn_A(i,j) = 0.0
-      sOSS%u_ice_A(i,j) = 0.0 ; sOSS%v_ice_A(i,j) = 0.0
-    endif
-  enddo ; enddo
-
-  if (sOSS%num_tr<0) then
-    sOSS%num_tr = OSS%num_tr
-    if (sOSS%num_tr > 0) then
-      allocate(sOSS%tr_array(G%isd:G%ied,G%jsd:G%jed,sOSS%num_tr)) ; sOSS%tr_array(:,:,:) = 0.0
-    endif
-  endif
-  do m=1,OSS%num_tr ; do j=jsc,jec ; do i=isc,iec
-    sOSS%tr_array(i,j,m) = OSS%tr_array(i,j,m)
-  enddo ; enddo ; enddo
-
-end subroutine translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_surface_fields prepares the ice surface state for atmosphere fast
