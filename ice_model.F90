@@ -169,9 +169,6 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
   call unpack_land_ice_boundary(Ice, Land_boundary)
 
-  !   In the case where fast and slow ice PEs are not the same, this call would
-  ! need to be replaced by a routine that does inter-processor receives.
-
   call exchange_fast_to_slow_ice(Ice)
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
@@ -309,24 +306,25 @@ subroutine ice_model_fast_cleanup(Ice)
 
   if (allocated(Ice%fCS%IST%t_surf)) &
     Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
-  call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
+  call infill_Tskin(Ice%fCS%IST, Ice%fCS%sOSS%T_fr_ocn, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
 
 !> infill_Tskin fills in array the array of tskin with actual, interpolated or
 !! plausible ice/snow-surface skin temperatures for later use.
-subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
+subroutine infill_Tskin(IST, t_ocn, t_skin, G, IG)
   type(ice_state_type),    intent(in)    :: IST  !< The ice state type whose values of part_size and
                                                  !! mH_ice are being used to control the infilling.
-  type(simple_OSS_type),   intent(in)    :: OSS  !< An ocean surface state type, used for the surface freezing point.
   type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
   type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
+  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
+                           intent(in)    :: t_ocn !< The value of t_skin for ocean paritions.
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
                            intent(inout) :: t_skin  !< The ice skin temperature that is being infilled.
 
   integer, dimension(G%isd:G%ied) :: k_thick, k_thin
   real, dimension(G%isd:G%ied) :: &
-    t_thick, t_thin, mH_thin, t_fr_ocn
+    t_thick, t_thin, mH_thin
   real :: wt2, mH_cat_tgt
   logical, dimension(G%isd:G%ied) :: infill
   logical :: any_ice
@@ -346,14 +344,13 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
     endif ; enddo ; enddo
 
     do i=isc,iec
-      T_fr_ocn(i) = G%mask2dT(i,j) * T_Freeze(OSS%s_surf(i,j), IST%ITV)
-      if (k_thick(i) < 1) t_thick(i) = T_fr_ocn(i)
+      if (k_thick(i) < 1) t_thick(i) = G%mask2dT(i,j) * t_ocn(i,j)
     enddo
 
     if (.not.any_ice) then
       ! This entire row is ice free.
       do k=1,ncat ; do i=isc,iec
-        t_skin(i,j,k) = G%mask2dT(i,j)*T_fr_ocn(i)
+        t_skin(i,j,k) = G%mask2dT(i,j)*t_ocn(i,j)
       enddo ; enddo
     else
       do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
@@ -364,7 +361,7 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
 
       ! The logic for the k=1 (thinest) category is particularly simple.
       do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
-        t_skin(i,j,1) = G%mask2dT(i,j)*T_fr_ocn(i)
+        t_skin(i,j,1) = G%mask2dT(i,j)*t_ocn(i,j)
       endif ; enddo
       do k=2,ncat ; do i=isc,iec
         if (G%mask2dT(i,j) > 0.0) then
@@ -380,7 +377,7 @@ subroutine infill_Tskin(IST, OSS, t_skin, G, IG)
             wt2 = 0.0  ! If in doubt, use t_thin.  This should not happen.
             if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
 
-            t_skin(i,j,k) = wt2*T_fr_ocn(i) + (1.0-wt2)*t_thin(i)
+            t_skin(i,j,k) = wt2*t_ocn(i,j) + (1.0-wt2)*t_thin(i)
           else
             ! Linearly interpolate between bracketing neighboring
             ! categories with valid values.
@@ -453,7 +450,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
 end subroutine unpack_land_ice_boundary
 
-!> This subroutine copies information (mostly fluxes and the updated tempertures)
+!> This subroutine copies information (mostly fluxes and the updated temperatures)
 !! from the fast part of the sea-ice to the  slow part of the sea ice.
 subroutine exchange_fast_to_slow_ice(Ice)
   type(ice_data_type), &
@@ -656,10 +653,10 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow_up.")
 
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G)
 
   call exchange_slow_to_fast_ice(Ice)
 
@@ -741,19 +738,20 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary.")
 
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%G, &
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%IST%ITV)
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G)
 
 end subroutine unpack_ocean_ice_boundary
 
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
-subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
+subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB
   type(ocean_sfc_state_type),    intent(inout) :: OSS
+  type(ice_thermo_type),         intent(in)    :: ITV
   type(SIS_hor_grid_type),       intent(inout) :: G
   logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
@@ -768,10 +766,11 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, G, specified_ice, ocean_fields)
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,ITV,i_off,j_off) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     OSS%s_surf(i,j) = OIB%s(i2,j2)
+    OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)
     OSS%frazil(i,j) = OIB%frazil(i2,j2)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
   enddo ; enddo
@@ -898,24 +897,24 @@ end subroutine unpack_ocn_ice_bdry
 !> translate_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
 !! ice processors into a simplified version with the fields that are shared with
 !! the atmosphere and the fast ice thermodynamics.
-subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, ITV)
+subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
   type(ocean_sfc_state_type), intent(in)    :: OSS
   type(ice_state_type),       intent(in)    :: IST
   type(simple_OSS_type),      intent(inout) :: sOSS
   type(SIS_hor_grid_type),    intent(in)    :: G
-  type(ice_thermo_type),      intent(in)    :: ITV
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST,ITV)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST)
   do j=jsc,jec ; do i=isc,iec
     sOSS%s_surf(i,j) = OSS%s_surf(i,j)
     sOSS%SST_C(i,j) = OSS%SST_C(i,j)
+    sOSS%T_fr_ocn(i,j) = OSS%T_fr_ocn(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
-      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - T_Freeze(OSS%s_surf(i,j), ITV))
+      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - sOSS%T_fr_ocn(i,j))
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
         sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
@@ -1067,7 +1066,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), &
+               Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), &
                Ice%albedo(i2,j2,k2))
 
       Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
@@ -1083,7 +1082,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k), T_Freeze(OSS%s_surf(i,j),IST%ITV), IG%NkIce, &
+               Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
                Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
                Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &

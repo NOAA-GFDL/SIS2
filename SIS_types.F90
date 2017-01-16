@@ -102,6 +102,7 @@ type ocean_sfc_state_type
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     SST_C  , &  ! The ocean's bulk surface temperature in degC.
+    T_fr_ocn, & ! The freezing point temperature in degC at the ocean's surface salinity.
     u_ocn_B, &  ! The ocean's zonal velocity on B-grid points in m s-1.
     v_ocn_B, &  ! The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C, &  ! The ocean's zonal and meridional velocity on C-grid
@@ -144,6 +145,7 @@ type simple_OSS_type
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     SST_C  , &  ! The ocean's bulk surface temperature in degC.
+    T_fr_ocn, & ! The freezing point temperature in degC at the ocean's surface salinity.
     u_ocn_A, &  ! The ocean's zonal surface velocity on A-grid points in m s-1.
     v_ocn_A, &  ! The ocean's meridional surface velocity on A-grid points in m s-1.
     u_ice_A, &  ! The sea ice's zonal velocity on A-grid points in m s-1.
@@ -160,7 +162,7 @@ end type simple_OSS_type
 
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
-!! atmosphere and the ice or that have been accumlated over fast thermodynamic
+!! atmosphere and the ice or that have been accumulated over fast thermodynamic
 !! steps but will be applied to the slow (mass-changing) thermodynamics.  Some
 !! of these are diagnostics, while others are averages of fluxes taken during
 !! the fast ice thermodynamics and used during the slow ice thermodynamics or dynamics.
@@ -634,6 +636,7 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   ! The ocean_sfc_state_type only occurs on slow ice PEs, so it can use the memory macros.
   allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0 
+  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0 
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
@@ -664,7 +667,8 @@ subroutine alloc_simple_OSS(OSS, HI)
 
   allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%SST_C(isd:ied, jsd:jed))  ; OSS%SST_C(:,:) = 0.0 
-  allocate(OSS%bheat(isd:ied, jsd:jed))  ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed)) ; OSS%T_fr_ocn(:,:) = 0.0 
+  allocate(OSS%bheat(isd:ied, jsd:jed))   ; OSS%bheat(:,:) = 0.0 
   allocate(OSS%u_ocn_A(isd:ied, jsd:jed)) ; OSS%u_ocn_A(:,:) = 0.0
   allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
   allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
@@ -838,6 +842,7 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     OSS_out%SST_C(i2,j2) = OSS_in%SST_C(i,j)
     OSS_out%s_surf(i2,j2) = OSS_in%s_surf(i,j)
+    OSS_out%T_fr_ocn(i2,j2) = OSS_in%T_fr_ocn(i,j)
     OSS_out%bheat(i2,j2) = OSS_in%bheat(i,j)
     OSS_out%u_ocn_A(i2,j2) = OSS_in%u_ocn_A(i,j)
     OSS_out%v_ocn_A(i2,j2) = OSS_in%v_ocn_A(i,j)
@@ -915,6 +920,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
                           OSS_out%SST_C, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
                           OSS_out%s_surf, complete=.false.)
+    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
+                          OSS_out%T_fr_ocn, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
                           OSS_out%bheat, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%u_ocn_A, domain_out, &
@@ -937,6 +944,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%s_surf, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
+                          OSS_out%T_fr_ocn, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%bheat, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%u_ocn_A, complete=.false.)
@@ -956,6 +965,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
     call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
                           null_ptr, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
+                          null_ptr, complete=.false.)
+    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
                           null_ptr, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
                           null_ptr, complete=.false.)
@@ -1351,7 +1362,7 @@ subroutine dealloc_ocean_sfc_state(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%frazil)
+  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%T_fr_ocn, OSS%frazil)
   if (allocated(OSS%u_ocn_B)) deallocate(OSS%u_ocn_B)
   if (allocated(OSS%v_ocn_B)) deallocate(OSS%v_ocn_B)
   if (allocated(OSS%u_ocn_C)) deallocate(OSS%u_ocn_C)
@@ -1370,7 +1381,7 @@ subroutine dealloc_simple_OSS(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%SST_C, OSS%bheat)
+  deallocate(OSS%s_surf, OSS%SST_C, OSS%bheat, OSS%T_fr_ocn)
   deallocate(OSS%u_ocn_A, OSS%v_ocn_A, OSS%u_ice_A, OSS%v_ice_A)
 
   deallocate(OSS)

@@ -57,7 +57,7 @@ use ice_grid, only : ice_grid_type
 
 use SIS2_ice_thm,  only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_temp_SIS2
-use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze
+use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 
 implicit none ; private
 
@@ -286,7 +286,6 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   FIA%avg_count = 0
 end subroutine avg_top_quantities
 
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> do_update_ice_model_fast applies the surface heat fluxes, shortwave radiation
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
@@ -323,8 +322,6 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
   real :: flux_sw ! sum over dir/dif vis/nir components
-  real :: T_freeze_surf ! The freezing temperature at the surface salinity of
-                        ! the ocean, in deg C.
   real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
@@ -415,12 +412,11 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
 !$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
-!$OMP                          private(T_Freeze_surf,latent,enth_col,flux_sw,dhf_dt,    &
+!$OMP                          private(latent,enth_col,flux_sw,dhf_dt,                  &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (IST%mH_ice(i,j,k) > 0.0) then
-      T_Freeze_surf = T_Freeze(sOSS%s_surf(i,j), IST%ITV)
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
@@ -453,7 +449,7 @@ subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_s
                          IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
                          IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         T_Freeze_surf, FIA%bheat(i,j), ts_new, &
+                         sOSS%T_fr_ocn(i,j), FIA%bheat(i,j), ts_new, &
                          dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
                          CS%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
