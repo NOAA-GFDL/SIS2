@@ -115,7 +115,7 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
-use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
+use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
@@ -310,100 +310,10 @@ subroutine ice_model_fast_cleanup(Ice)
 
   if (allocated(Ice%fCS%IST%t_surf)) &
     Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
-  call infill_array(Ice%fCS%IST, Ice%fCS%sOSS%T_fr_ocn, Ice%fCS%Rad%T_skin, Ice%fCS%G, Ice%fCS%IG)
+  call infill_array(Ice%fCS%IST, Ice%fCS%sOSS%T_fr_ocn, Ice%fCS%Rad%T_skin, &
+                    Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine ice_model_fast_cleanup
-
-!> infill_array fills in an array with actual, interpolated or plausible values
-!! from other ice categories.
-subroutine infill_array(IST, ta_ocn, ta, G, IG)
-  type(ice_state_type),    intent(in)    :: IST  !< The ice state type whose values of part_size and
-                                                 !! mH_ice are being used to control the infilling.
-  type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
-  type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
-  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: ta_ocn !< The value of the array for ocean partitions.
-  real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(inout) :: ta   !< The array that is being infilled.
-
-  integer, dimension(G%isd:G%ied) :: k_thick, k_thin
-  real, dimension(G%isd:G%ied) :: &
-    ta_thick, ta_thin, mH_thin
-  real :: wt2, mH_cat_tgt
-  logical, dimension(G%isd:G%ied) :: infill
-  logical :: any_ice
-  integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  ncat = IG%CatIce ; NkIce = IG%NkIce
-
-  do j=jsc,jec
-    ! Determine which categories exist.
-    do i=isc,iec ; k_thick(i) = -1 ; k_thin(i) = ncat+1 ; mH_thin(i) = 0.0 ; enddo
-    any_ice = .false.
-    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      k_thick(i) = k
-      ta_thick(i) = ta(i,j,k)
-      any_ice = .true.
-    endif ; enddo ; enddo
-
-    do i=isc,iec
-      if (k_thick(i) < 1) ta_thick(i) = G%mask2dT(i,j) * ta_ocn(i,j)
-    enddo
-
-    if (.not.any_ice) then
-      ! This entire row is ice free.
-      do k=1,ncat ; do i=isc,iec
-        ta(i,j,k) = G%mask2dT(i,j)*ta_ocn(i,j)
-      enddo ; enddo
-    else
-      do k=ncat,1,-1 ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-        k_thin(i) = k
-        ta_thin(i) = ta(i,j,k)
-        mH_thin(i) = IST%mH_ice(i,j,k)
-      endif ; enddo ; enddo
-
-      ! The logic for the k=1 (thinest) category is particularly simple.
-      do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
-        ta(i,j,1) = G%mask2dT(i,j)*ta_ocn(i,j)
-      endif ; enddo
-      do k=2,ncat ; do i=isc,iec
-        if (G%mask2dT(i,j) > 0.0) then
-          if (k > k_thick(i)) then
-            ! This is the most common case, since it applies to ice-free water.
-            ta(i,j,k) = ta_thick(i)
-          elseif (IST%part_size(i,j,k) > 0.0) then
-            ! This is a valid value - no interpolation is needed.
-            cycle
-          elseif (k < k_thin(i)) then
-            ! Linearly interpolate to the ocean's freezing temperature.
-            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
-            wt2 = 0.0  ! If in doubt, use ta_thin.  This should not happen.
-            if (mH_thin(i) > mH_cat_tgt) wt2 = (mH_thin(i) - mH_cat_tgt) / mH_thin(i)
-
-            ta(i,j,k) = wt2*ta_ocn(i,j) + (1.0-wt2)*ta_thin(i)
-          else
-            ! Linearly interpolate between bracketing neighboring
-            ! categories with valid values.
-            do k2=k+1,ncat ; if (IST%part_size(i,j,k2) > 0.0) exit ; enddo
-            do k3=k-1,1,-1 ; if (IST%part_size(i,j,k3) > 0.0) exit ; enddo
-            mH_cat_tgt = 0.5*(IG%mH_cat_bound(K) + IG%mH_cat_bound(K+1))
-            wt2 = 0.5
-            if ((IST%mH_ice(i,j,k3) > mH_cat_tgt) .and. &
-                (IST%mH_ice(i,j,k2) < mH_cat_tgt)) &
-              wt2 = (IST%mH_ice(i,j,k3) - mH_cat_tgt) / &
-                    (IST%mH_ice(i,j,k3) - IST%mH_ice(i,j,k2))
-
-            ta(i,j,k) = wt2*ta(i,j,k2) + (1.0-wt2) * ta(i,j,k3)
-          endif
-        else ! This is a land point.
-          ta(i,j,k) = 0.0
-        endif
-      enddo ; enddo
-
-    endif ! .not.any_ice
-  enddo
-
-end subroutine infill_array
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> unpack_land_ice_bdry converts the information in a publicly visible
