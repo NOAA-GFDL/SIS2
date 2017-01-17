@@ -89,6 +89,7 @@ use SIS_ctrl_types, only : ice_diagnostics_init, ice_diags_fast_init
 use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+use SIS_types, only : total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
@@ -113,7 +114,7 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init,
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
-use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities
+use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo, only : SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
@@ -303,6 +304,9 @@ subroutine ice_model_fast_cleanup(Ice)
   ! average fluxes from update_ice_model_fast
   call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
                           Ice%fCS%G, Ice%fCS%IG)
+
+  call total_top_quantities(Ice%fCS%FIA, Ice%fCS%TSF, Ice%fCS%IST%part_size, &
+                            Ice%fCS%G, Ice%fCS%IG)
 
   if (allocated(Ice%fCS%IST%t_surf)) &
     Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
@@ -2042,6 +2046,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
     endif
+    call alloc_total_sfc_flux(Ice%fCS%TSF, fHI)
     Ice%fCS%FIA%atmos_winds = atmos_winds
 
     call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
@@ -2584,12 +2589,12 @@ subroutine ice_model_end (Ice)
 
     call SIS_optics_end(Ice%fCS%optics_CSp)
 
-    if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) call astronomy_end
+    if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) &
+      call astronomy_end
 
     call dealloc_ice_rad(Ice%fCS%Rad)
-
+    call dealloc_total_sfc_flux(Ice%fCS%TSF)
     call ice_grid_end(Ice%fCS%IG)
-    
 
     if (.not.associated(Ice%sCS)) then
       call dealloc_IST_arrays(Ice%fCS%IST)
