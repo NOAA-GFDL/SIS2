@@ -49,7 +49,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
+use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -62,7 +62,7 @@ use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 implicit none ; private
 
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
-public :: fast_thermo_CS, avg_top_quantities
+public :: fast_thermo_CS, avg_top_quantities, total_top_quantities
 
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
@@ -287,11 +287,77 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> total_top_quantities determines the sum across partitions of various fluxes
+!! for later use on a potentially different ice state on the slow side.
+subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
+  type(fast_ice_avg_type),   intent(in)    :: FIA
+  type(total_sfc_flux_type), intent(inout) :: TSF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(in)    :: IG
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+                             intent(in)    :: part_size
+
+  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  integer :: isd, ied, jsd, jed
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+
+  if (TSF%num_tr_fluxes < 0) then
+    ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
+    ! the first time that total_top_quantities is called.
+    TSF%num_tr_fluxes = FIA%num_tr_fluxes
+    if (TSF%num_tr_fluxes > 0) then
+      allocate(TSF%tr_flux(G%isd:G%ied, G%jsd:G%jed, TSF%num_tr_fluxes))
+    endif
+  endif
+
+  TSF%flux_u(:,:) = 0.0 ; TSF%flux_v(:,:) = 0.0
+  TSF%flux_t(:,:) = 0.0 ; TSF%flux_q(:,:) = 0.0
+  TSF%flux_sw_nir_dir(:,:) = 0.0 ; TSF%flux_sw_nir_dif(:,:) = 0.0
+  TSF%flux_sw_vis_dir(:,:) = 0.0 ; TSF%flux_sw_vis_dif(:,:) = 0.0
+
+  TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
+  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0           
+  if (TSF%num_tr_fluxes > 0) TSF%tr_flux(:,:,:) = 0.0
+
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    TSF%flux_u(i,j) = TSF%flux_u(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+    TSF%flux_v(i,j) = TSF%flux_v(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+    TSF%flux_t(i,j) = TSF%flux_t(i,j) + part_size(i,j,k) * FIA%flux_t_top(i,j,k)
+    TSF%flux_q(i,j) = TSF%flux_q(i,j) + part_size(i,j,k) * FIA%flux_q_top(i,j,k)
+    TSF%flux_sw_nir_dir(i,j) = TSF%flux_sw_nir_dir(i,j) + &
+                                part_size(i,j,k) * FIA%flux_sw_nir_dir_top(i,j,k)
+    TSF%flux_sw_nir_dif(i,j) = TSF%flux_sw_nir_dif(i,j) + &
+                                part_size(i,j,k) * FIA%flux_sw_nir_dif_top(i,j,k)
+    TSF%flux_sw_vis_dir(i,j) = TSF%flux_sw_vis_dir(i,j) + &
+                                part_size(i,j,k) * FIA%flux_sw_vis_dir_top(i,j,k)
+    TSF%flux_sw_vis_dif(i,j) = TSF%flux_sw_vis_dif(i,j) + &
+                                part_size(i,j,k) * FIA%flux_sw_vis_dif_top(i,j,k)
+
+    TSF%flux_lw(i,j) = TSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
+    TSF%flux_lh(i,j) = TSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
+    TSF%fprec(i,j) = TSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
+    TSF%lprec(i,j) = TSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
+
+    do n=1,TSF%num_tr_fluxes
+      TSF%tr_flux(i,j,n) = TSF%tr_flux(i,j,n) + part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
+    enddo
+  enddo ; enddo ; enddo
+
+  !   If the sum of part_size across all the ice and ocean categories is not
+  ! exactly 1, rescaling might be advisable, but for now it is assumed that
+  ! part_size is properly scaled.
+
+end subroutine total_top_quantities
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> do_update_ice_model_fast applies the surface heat fluxes, shortwave radiation
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing.  Melting and freezing occur elsewhere.
-subroutine do_update_ice_model_fast( Atmos_boundary, IST, sOSS, Rad, FIA, Time_step, CS, G, IG )
+subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
+                                    Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
   type(ice_state_type),          intent(inout) :: IST
