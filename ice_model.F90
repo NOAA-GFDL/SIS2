@@ -1478,6 +1478,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                          ! be changed to reflect the turbulence in the under-ice
                          ! ocean boundary layer and the effective depth of the
                          ! reported value of t_ocn.
+  real :: ocean_part_min ! The minimum value for the fractional open-ocean
+                         ! area.  This can be 0, but for some purposes it
+                         ! may be useful to set this to a miniscule value
+                         ! (like 1e-40) that will be lost to roundoff
+                         ! during any sums so that the open ocean fluxes
+                         ! can be used in interpolation across categories.
 
   integer :: CatIce, NkIce, isd, ied, jsd, jed
   integer :: idr, id_sal
@@ -1675,6 +1681,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
+  call get_param(param_file, mod, "MIN_OCEAN_PARTSIZE", ocean_part_min, &
+                 "The minimum value for the fractional open-ocean area. \n"//&
+                 "This can be 0, but for some purposes it may be useful \n"//&
+                 "to set this to a miniscule value (like 1e-40) that will \n"//&
+                 "be lost to roundoff during any sums so that the open \n"//&
+                 "ocean fluxes can be used in with new categories.", &
+                 units="nondim", default=0.0)
   call get_param(param_file, mod, "DO_ICEBERGS", do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   if (do_icebergs) then
@@ -2146,6 +2159,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
       enddo
 
+      if (ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
+        sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), ocean_part_min)
+      enddo ; enddo ; endif
+
       !--- update the halo values.
       call pass_var(sIST%part_size, sGD)
       call pass_var(sIST%mH_ice, sGD, complete=.false.)
@@ -2206,6 +2223,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
           endif ; enddo
         endif ; enddo ; enddo
       endif
+
+      if (ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
+        sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), ocean_part_min)
+      enddo ; enddo ; endif
 
       deallocate(h_ice_input)
 
