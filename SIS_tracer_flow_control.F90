@@ -129,19 +129,26 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
       return
   else ; allocate(CS) ; endif
 
-      ! Read all relevant parameters and write them to the model log.
-      call log_version(param_file, mod, version, "")
-      call get_param(param_file, mod, "USE_ICE_AGE_TRACER", CS%use_ice_age, &
-          "If true, use the concentration based age tracer package.", &
-          default=.false.)
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mod, version, "")
+  call get_param(param_file, mod, "USE_ICE_AGE_TRACER", CS%use_ice_age, &
+      "If true, use the concentration based age tracer package.", &
+      default=.false.)
 
-      !    Add other user-provided calls to register tracers for restarting here. Each
-      !  tracer package registration call returns a logical false if it cannot be run
-      !  for some reason.  This then overrides the run-time selection from above.
 
-      if (CS%use_ice_age) CS%use_ice_age = &
-          register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-          diag, TrReg, Ice_restart, restart_file)
+  ! Set number of passive tracers to 0 initially
+  TrReg%npassive = 0
+  ! Set first passive tracer index
+  TrReg%passive_idx = TrReg%ntr + 1
+
+  !    Add other user-provided calls to register tracers for restarting here. Each
+  !  tracer package registration call returns a logical false if it cannot be run
+  !  for some reason.  This then overrides the run-time selection from above.
+  if (CS%use_ice_age) then
+    CS%use_ice_age = register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
+        diag, TrReg, Ice_restart, restart_file)
+    TrReg%npassive = TrReg%npassive + 1
+  endif
 
 
 end subroutine SIS_call_tracer_register
@@ -173,7 +180,7 @@ subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS, is_restart)
 end subroutine SIS_tracer_flow_control_init
 
 subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
-  
+
   real,                                           intent(in) :: dt
   type(SIS_hor_grid_type),                        intent(in) :: G
   type(ice_grid_type),                            intent(in) :: IG
@@ -231,10 +238,10 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
   endif
 
   if(nstocks>0) then
-      do m=1,nstocks
-          write(*,'(A,"Total ",A,A,ES24.16)') &
-              achar(9),trim(names(m)),achar(9),stocks(m)
-      enddo
+    do m=1,nstocks
+      write(*,'(A,"Total ",A,A,ES24.16)') &
+          achar(9),trim(names(m)),achar(9),stocks(m)
+    enddo
   endif
 
 end subroutine SIS_call_tracer_stocks

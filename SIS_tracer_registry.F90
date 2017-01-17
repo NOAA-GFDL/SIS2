@@ -78,6 +78,10 @@ type, public :: SIS_tracer_type
              ! layer are stored in units of CONC m3 s-1.
   real, dimension(:,:), pointer :: snow_flux_tr
              ! Concentration of the tracer in snow (for salinity = 0.0)
+  real, dimension(:,:,:), pointer :: ocean_BC
+             ! Value of the tracer at the ice-ocean boundary
+  real, dimension(:,:,:), pointer :: snow_BC
+             ! Value of the tracer at the snow-ice boundary
 
   ! @ashao: OBC NOT IMPLEMENTED YET
   real :: OBC_inflow_conc = 0.0  ! A tracer concentration for generic inflows.
@@ -99,6 +103,8 @@ type, public :: SIS_tracer_registry_type
   type(SIS_tracer_type) :: Tr_ice(MAX_FIELDS_)  ! The array of registered ice tracers.
   type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
                              ! timing of diagnostic output.
+  integer :: passive_idx    ! The index of the first passive tracer
+  integer :: npassive       ! Number of passive tracers
 end type SIS_tracer_registry_type
 
 contains
@@ -106,7 +112,7 @@ contains
 subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_tracer, &
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v, &
-                             nonnegative)
+                             nonnegative, ocean_BC, snow_BC)
   integer,                         intent(in) :: nLtr
   type(SIS_hor_grid_type),         intent(in) :: G
   type(ice_grid_type),             intent(in) :: IG
@@ -122,6 +128,8 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   real, intent(in), optional                  :: OBC_inflow
   real, pointer, dimension(:,:,:), optional   :: OBC_in_u, OBC_in_v
   logical,               intent(in), optional :: nonnegative
+  real, dimension(:,:,:),   pointer, optional :: ocean_BC
+  real, dimension(:,:,:),   pointer, optional :: snow_BC
 ! This subroutine registers a tracer to be advected.
 
 ! Arguments: tr1 - The pointer to the tracer, in arbitrary concentration units
@@ -157,6 +165,8 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
 !  (in)      OBC_in_v - The value of the tracer at inflows through v-faces of
 !                       tracer cells, in the same units as tr (CONC).
 !  (in,opt)  nonnegative - If true, this tracer should never be negative.
+!  (in,opt)  ocean_BC - Value of the tracer at the ice-ocean boundary
+!  (in,opt)  snow_BC - Value of the tracer at the snow-ice boundary
 
   logical :: snow_tr
   type(SIS_tracer_type), pointer :: Tr_here=>NULL()
@@ -182,6 +192,12 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   Tr_here%name = trim(name)
   Tr_here%t => tr1(:,:,:,1:nLtr)
   Tr_here%nL = nLtr
+  if(present(ocean_BC)) then
+    TrReg%Tr_ice(TrReg%ntr)%ocean_BC => ocean_BC
+  endif
+  if(present(snow_BC)) then
+    TrReg%Tr_ice(TrReg%ntr)%snow_BC => snow_BC
+  endif
 
   if (present(massless_val)) Tr_here%massless_val = massless_val
 

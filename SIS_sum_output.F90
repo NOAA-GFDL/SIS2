@@ -47,6 +47,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
 
 use netcdf
 
@@ -200,7 +201,7 @@ subroutine SIS_sum_output_end(CS)
   endif
 end subroutine SIS_sum_output_end
 
-subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, tracer_CSp)
   type(ice_state_type),    intent(inout) :: IST
 
   type(time_type),         intent(inout) :: day
@@ -210,7 +211,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
   type(SIS_sum_out_CS),    pointer       :: CS
   character(len=*), optional, intent(in) :: message
   logical,          optional, intent(in) :: check_column
-!  type(tracer_flow_control_CS), optional, pointer       :: tracer_CSp
+  type(SIS_tracer_flow_control_CS), optional, pointer       :: tracer_CSp
 
 !  This subroutine calculates and writes the total sea-ice mass by
 ! hemisphere, heat, salt, and other globally integrated quantities.
@@ -605,6 +606,9 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
             trim(msg_start), Heat, Heat_chg, Heat_anom, Heat_anom/Heat
       endif
 
+      if (present(tracer_CSp)) &
+          call SIS_call_tracer_stocks(G,IG,tracer_CSp,IST%mH_ice)
+      
 !     do m=1,nTr_stocks
 
 !        write(*,'("      Total ",a,": ",ES24.16,X,a)') &

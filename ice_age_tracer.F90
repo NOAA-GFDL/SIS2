@@ -52,11 +52,11 @@ module ice_age_tracer
 !   ideal_age_example.F90)
 
 use SIS_diag_mediator, only     : register_SIS_diag_field, &
-                                   safe_alloc_ptr
+                                  safe_alloc_ptr
 use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
 use SIS_hor_grid, only          : sis_hor_grid_type
-use SIS_utils, only         : post_avg
+use SIS_utils, only             : post_avg
 
 use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
 use MOM_restart, only           : query_initialized, MOM_restart_CS
@@ -92,13 +92,16 @@ type, public :: ice_age_tracer_CS
                                               ! can be found, or an empty string for internal initialization.
   type(time_type), pointer :: Time            ! A pointer to the ocean model's clock.
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
-  real, pointer :: tr(:,:,:,:,:) => NULL()     ! The array of tracers used in this
-                                               ! subroutine, in g m-3?
-  real, pointer :: tr_aux(:,:,:,:,:) => NULL() ! The masked tracer concentration
+  real, pointer :: tr(:,:,:,:,:) => NULL()    ! The array of tracers used in this
+                                              ! subroutine, in g m-3?
+  real, pointer :: tr_aux(:,:,:,:,:) => NULL()! The masked tracer concentration
                                               ! for output, in g m-3.
   type(p3d), dimension(NTR_MAX) :: &
       tr_adx, &                               ! Tracer zonal advective fluxes in g m-3 m3 s-1.
       tr_ady                                  ! Tracer meridional advective fluxes in g m-3 m3 s-1.
+
+  real, pointer :: ocean_BC(:,:,:,:)=>NULL()  ! Ocean boundary value of the tracer by category
+  real, pointer :: snow_BC(:,:,:,:)=>NULL()   ! Snow boundary value of the tracer by category
 
   real, dimension(NTR_MAX) :: &
       IC_val = 0.0, &                         ! The (uniform) initial condition value.
@@ -120,7 +123,7 @@ type, public :: ice_age_tracer_CS
                                               ! the maximum age at the grid pont
   logical :: do_ice_age_areal
   logical :: do_ice_age_mass
-  real :: min_thick_age, min_conc_age
+  real    :: min_thick_age, min_conc_age
 
   integer, dimension(NTR_MAX) :: &
       id_tracer = -1, id_tr_adx = -1, id_tr_ady = -1, id_avg =-1 ! Indices used for the diagnostic
@@ -168,7 +171,8 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   character(len=40)  :: mod = "ice_age_tracer" ! This module's name.
   character(len=200) :: inputdir ! The directory where the input files are.
   character(len=48)  :: var_name ! The variable's name.
-  integer :: isc, iec, jsc, jec, m
+  real, dimension(:,:,:), pointer :: ocean_BC_ptr, snow_BC_ptr
+  integer :: isc, iec, jsc, jec, k, m, tr
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (associated(CS)) then
@@ -202,10 +206,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
       CS%tr_desc(m) = var_desc("ice_age_areal", "years", "Area based ice age tracer", caller=mod)
       CS%tracer_ages(m) = .true.
       CS%new_ice_is_sink(m) = .false.
-      CS%uniform_vertical(m) = .false.
+      CS%uniform_vertical(m) = .true.
       CS%IC_val(m) = 0.0 ; CS%young_val(m) = 0.0 ; CS%tracer_start_year(m) = -1.0
       CS%land_val(m) = 0.0
-      CS%nlevels(m) = IG%CatIce
+      CS%nlevels(m) = IG%NkIce
   endif
   if (CS%do_ice_age_mass) then
       CS%ntr = CS%ntr + 1 ; m = CS%ntr
@@ -215,14 +219,15 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
       CS%uniform_vertical(m) = .false.
       CS%IC_val(m) = 0.0 ; CS%young_val(m) = 0.0 ; CS%tracer_start_year(m) = -1.0
       CS%land_val(m) = 0.0
-      CS%nlevels(m) = IG%CatIce
+      CS%nlevels(m) = IG%NkIce
   endif
-  CS%min_mass = 1.0e-7*IG%kg_m2_to_H
+  CS%min_mass = 0
 
-  ! Allocate the main tracer arrays, note that this creates a singleton dimension
-  ! along the ice layer (not thickness), but is necessary because the tracer
-  ! advection routine expects a 4d array per tracer
-  allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,1,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
+  ! Allocate the main tracer arrays
+  allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,IG%NkIce,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
+  ! Boundary condition arrays
+  allocate(CS%ocean_BC(SZI_(G), SZJ_(G),IG%CatIce,CS%ntr)) ; CS%ocean_BC(:,:,:,:) = 0.0
+  allocate(CS%snow_BC(SZI_(G), SZJ_(G),IG%CatIce,CS%ntr)) ; CS%snow_BC(:,:,:,:)  = 0.0
 
   ! Make sure that diag manager is assigned
   CS%diag => diag
@@ -237,12 +242,26 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
         CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
         mandatory=.false.)
 
+    ocean_BC_ptr => CS%ocean_BC(:,:,:,m)
+    snow_BC_ptr  => CS%snow_BC(:,:,:,m)
     ! Register the tracer for horizontal advection & diffusion. Note that the argument
     ! of nLTr is IG%NkIce
-    call register_SIS_tracer(CS%tr(:,:,:,IG%NkIce,m), G, IG, IG%NkIce, var_name, param_file, &
-        TrReg, snow_tracer=.false.,ad_3d_x=CS%tr_adx(m)%p, ad_3d_y=CS%tr_ady(m)%p)
+    call register_SIS_tracer(CS%tr(:,:,:,:,m), G, IG, IG%NkIce, var_name, param_file, &
+        TrReg, snow_tracer=.false.,ad_3d_x=CS%tr_adx(m)%p, &
+        ad_3d_y=CS%tr_ady(m)%p, ocean_BC=ocean_BC_ptr, snow_BC=snow_BC_ptr)
 
-
+    ! Set boundary conditions
+    if(CS%new_ice_is_sink(m)) then
+      ! Newly formed ice has zero age
+      CS%ocean_BC(:,:,:,m) = 0.0
+    else
+      ! New ice does not decrease the age (i.e. enters the ice at the same concentration as
+      ! For now, all levels within a thickness category should have the same tracer concentration
+      ! Equivalently, this statement would mean that new ice has the same age as the bottom-most
+      ! level of the ice
+      CS%ocean_BC(:,:,:,m) = CS%tr(:,:,:,IG%NkIce,m)
+    endif
+    CS%snow_BC(:,:,:,m) = CS%tr(:,:,:,1,m)
   enddo ! do m=1, CS%ntr
 
   CS%TrReg => TrReg
@@ -287,13 +306,13 @@ subroutine initialize_ice_age_tracer( day, G, IG, CS, is_restart )
   CS%Time => day
 
   do tr=1,CS%ntr
-    do k=1,CS%nlevels(tr) ; do j=jsc,jec ; do i=isc,iec
-        if (G%mask2dT(i,j) < 0.5) then
-            CS%tr(i,j,k,m,tr) = CS%land_val(tr)
-        elseif(.not. is_restart) then
-            CS%tr(i,j,k,m,tr) = CS%IC_val(tr)
-        endif
-    enddo ; enddo ; enddo
+    do m = 1,IG%NkIce ; do k=1,CS%nlevels(tr) ; do j=jsc,jec ; do i=isc,iec
+      if (G%mask2dT(i,j) < 0.5) then
+        CS%tr(i,j,k,m,tr) = CS%land_val(tr)
+      elseif(.not. is_restart) then
+        CS%tr(i,j,k,m,tr) = CS%IC_val(tr)
+      endif
+    enddo ; enddo ; enddo ; enddo
   enddo ! Tracer loop
 
   ! This needs to be changed if the units of tracer are changed above.
@@ -351,35 +370,24 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
   integer :: i, j, k, m, tr
   integer :: isc, iec, jsc, jec
 
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; 
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ;
 
   if (CS%ntr < 1) return
 
   Isecs_per_year = 1.0 / (365.0*86400.0)
   dt_year = dt * Isecs_per_year
 
-  min_age = dt_year * 1.0e-10
+  min_age = 0.0
 
   call get_time(CS%Time, secs, days)
   year = (86400.0*days + real(secs)) * Isecs_per_year
-
-
-  vertsum_mi(:,:) = 0.0
-  vertsum_mi_old(:,:) = 0.0
-
-  do j=jsc,jec; do i=isc,iec
-      do k=1,IG%CatIce
-          vertsum_mi(i,j) = vertsum_mi(i,j) + mi(i,j,k)
-!                vertsum_mi_old(i,j) = vertsum_mi_old(i,j) + mi_old(i,j,k)
-      enddo
-  enddo; enddo
 
   do tr=1,CS%ntr
     ! Increment the age of the ice if it exists
     if (CS%tracer_ages(tr) .and. &
         (year>=CS%tracer_start_year(tr))) then
-      do m=1,IG%NkIce  
-        do k=1,CS%nlevels(tr) ; do j=jsc,jec ; do i=isc,iec
+      do m=1,CS%nlevels(tr)
+        do k=1,IG%CatIce; do j=jsc,jec ; do i=isc,iec
 
           if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
 
@@ -391,55 +399,36 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
 
         enddo ; enddo ; enddo
       enddo
-    endif  
+    endif
 
-    ! If newly formed ice reduces the age, then apply the net sink term
-    if (CS%new_ice_is_sink(tr)) then
-      do m=1,IG%NkIce ; do k=1,CS%nlevels(tr) ; do j=jsc,jec ; do i=isc,iec
-      ! @ashao: Need to think about how and where the sink associated
-      ! with newly formed sea ice gets applied. For now, apply to
-      ! the entire ice pack assuming that new ice is formed equally
-      ! on every ice thickness category. New ice has an age equal 
-      ! to the length of the timestep
-
-        if(mi(i,j,k)>mi_old(i,j,k)) then
-          CS%tr(i,j,k,m,tr) = ((mi(i,j,k) - mi_old(i,j,k))*dt_year &
-              + mi_old(i,j,k)*CS%tr(i,j,k,m,tr))/mi(i,j,k)
-        endif
-
-        enddo ; enddo ; enddo ; enddo
-    endif ; 
-
-    ! If the tracer should be uniform, set age at every grid point to the maximum
-    ! Note as of May 2016, this option is not used since it tends to make all ice
-    ! the same age
     if (CS%uniform_vertical(tr)) then
-      do m=1,IG%NkIce ; do j=jsc,jec ; do i=isc,iec
-        if(vertsum_mi(i,j) > 0.0) then
-          max_age = maxval(CS%tr(i,j,:,m,tr))
-          do k=1,CS%nlevels(tr)
-            CS%tr(i,j,k,m,tr) = max_age
-          enddo
-
-        endif
+      do k=1,IG%CatIce; do j=jsc,jec ; do i=isc,iec
+        max_age = maxval(CS%tr(i,j,k,:,tr))
+        do m=1,CS%nlevels(tr)
+          CS%tr(i,j,k,m,tr) = max_age
+        enddo
       enddo ; enddo ; enddo
-    endif  
+    endif
+
+    ! Update boundary conditions
+    CS%ocean_BC(:,:,:,tr) = CS%tr(:,:,:,IG%NkIce,tr)
+    CS%snow_BC(:,:,:,tr) = CS%tr(:,:,:,1,tr)
 
     ! If levels with different thicknesses are implemented, this averaging
     ! will need to be updated
     tr_avg(:,:,:) = 0.0
     do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
       do m=1,IG%NkIce
-        tr_avg(i,j,m) = tr_avg(i,j,m) + CS%tr(i,j,k,m,tr)/IG%NkIce
+        tr_avg(i,j,k) = tr_avg(i,j,k) + CS%tr(i,j,k,m,tr)/IG%NkIce
       enddo
     enddo ; enddo ; enddo
 
     if (CS%id_tracer(tr)>0) &
-        call post_data(CS%id_tracer(m),tr_avg,CS%diag)
+        call post_data(CS%id_tracer(tr),tr_avg,CS%diag)
     if (CS%id_tr_adx(tr)>0) &
-        call post_data(CS%id_tr_adx(m),CS%tr_adx(m)%p(:,:,:),CS%diag)
+        call post_data(CS%id_tr_adx(tr),CS%tr_adx(tr)%p(:,:,:),CS%diag)
     if (CS%id_tr_ady(tr)>0) &
-        call post_data(CS%id_tr_ady(m),CS%tr_ady(m)%p(:,:,:),CS%diag)
+        call post_data(CS%id_tr_ady(tr),CS%tr_ady(tr)%p(:,:,:),CS%diag)
     if (CS%id_avg(tr)>0) then
       call post_avg(CS%id_avg(tr), tr_avg, mi, &
           CS%diag, G=G, wtd=.true.)
@@ -481,16 +470,16 @@ subroutine ice_age_stock(nstocks, stocks, names, units, G, IG, CS, mi)
 
   do tr=1,CS%ntr
     nstocks = nstocks + 1
-    call query_vardesc(CS%tr_desc(m), name=names(nstocks), units=units(nstocks), caller="ice_age_stock")
-    units(nstocks) = trim(units(m))//" kg"
-    stocks(nstocks) = 0.0    
+    call query_vardesc(CS%tr_desc(tr), name=names(nstocks), units=units(nstocks), caller="ice_age_stock")
+    units(nstocks) = trim(units(tr))//" kg"
+    stocks(nstocks) = 0.0
     do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
       avg_tr = 0.0
       ! For now an equally weighted average over the layers is used to calculate the stocks
       ! In the future, if ice levels have different thicknesses, this will need to be updated
       do m=1,IG%NkIce ; avg_tr = avg_tr + CS%tr(i,j,k,m,tr) ; enddo
       avg_tr = avg_tr/IG%NkIce
-      
+
       stocks(nstocks) = stocks(nstocks) + avg_tr * &
           (G%mask2dT(i,j) * G%areaT(i,j) * mi(i,j,k))
     enddo ; enddo ; enddo
@@ -510,6 +499,8 @@ subroutine ice_age_end(CS)
       if (associated(CS%tr_adx(m)%p)) deallocate(CS%tr_adx(m)%p)
       if (associated(CS%tr_ady(m)%p)) deallocate(CS%tr_ady(m)%p)
     enddo
+    deallocate(CS%ocean_BC)
+    deallocate(CS%snow_BC)
 
     deallocate(CS)
   endif

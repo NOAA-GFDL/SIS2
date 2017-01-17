@@ -267,7 +267,8 @@ subroutine update_ice_model_slow(Ice)
   endif
 
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
-                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, Ice%sCS%IG)
+                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, &
+                          Ice%sCS%IG, Ice%sCS%SIS_tracer_flow_CSp)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)

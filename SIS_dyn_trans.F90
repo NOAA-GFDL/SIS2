@@ -74,6 +74,7 @@ use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS
 
@@ -236,7 +237,7 @@ end subroutine update_icebergs
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG)
+subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
 
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
@@ -247,6 +248,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   type(ice_grid_type),        intent(inout) :: IG
   type(dyn_trans_CS),         pointer       :: CS
   type(icebergs),             pointer       :: icebergs_CS
+  type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -688,7 +690,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 
   if (CS%Time + set_time(int(floor(0.5*dt_slow+0.5))) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+        tracer_CSp = tracer_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)

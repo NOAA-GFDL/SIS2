@@ -43,7 +43,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !
 !             SIS2 "getting-started" melt pond scheme
-! 
+!
 ! This melt pond scheme adds a single layer melt pond to each ice thickness
 ! category.  The layer does not have heat capacity.  It is assumed to be at
 ! freshwater freezing temperature and well mixed.  All pond surface fluxes
@@ -52,31 +52,31 @@
 ! thickness categories similarly to the snow and ice layers.  As is the case
 ! with snow, pond cannot exist without an ice layer below.  Basic descriptions
 ! of pond sources and sinks, and pond fraction for radiation treatments follow:
-! 
+!
 ! Source water:  Surface melting of snow and ice are the source of pond water.
 ! The runoff scheme keys on the total ice covered area.  This is the only
 ! interaction between category variables in the scheme.  The scheme uses r, the
 ! fraction of melt (r)etained given by the CICE5 scheme (p. 42):
 ! r = r_min + (r_max-r_min)*ice_area.  The controlling namelist
 ! parameters for r_min and r_max are pond_r_min and pond_r_max.
-! 
+!
 ! Freezing sink:  The surface energy budget continues to be performed at the
 ! top of the snow or ice when pond is present but the interface is fixed at
 ! freezing temperature and the residual between the fluxes on either side of the
 ! interface is made up with melt or freezing.  Freezing in this calculation is a
 ! sink of pond water.
-! 
+!
 ! Freeboard sink:  if the pond and snow are sufficiently massive to push the top
 ! of the sea ice below sea level, pond is dumped into the ocean until the ice
 ! top is brought back to sea level, or the pond is completely depleted.  This
 ! adjustment follows the CICE5 Hunke "level ice" pond scheme.
-! 
+!
 ! Porous-ice sink:  No through-ice drainage occurs until the ice average
 ! temperature exceeds a specified value.  The namelist parameter for this is
 ! pond_porous_temp.  Once this limit is exceeded the pond drains to a minimum
 ! value intended to represent coverage by ponds at sea level.  This scheme is
 ! a placeholder for the mushy-layer thermodynamics to be implemented later.
-! 
+!
 ! Pond fraction for radiation:  In the snow-free case we assume that pond
 ! fraction ranges between a specified minimum, where surface cavities below
 ! sea level are filled with pond water, and a specified maximum value.
@@ -87,10 +87,10 @@
 ! determined by the non-negative freeboard requirement.  This pond volume
 ! is associated with the maximum pond fraction, so less pond water is needed
 ! to cover thinner ice.
-! 
+!
 ! New namelist parameters: do_pond, pond_r_max, pond_r_min, pond_porous_temp,
 ! pond_frac_max, pond_frac_min
-! 
+!
 ! New diagnostics: hp, fp, pond_source, pond_sink_freeboard, pond_sink_porous,
 ! pond_sink_tot <only hp implemented so far; add pond transport diagnostics?>
 !
@@ -428,7 +428,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, sh_T0, B, sol, t
   !  (A - B*tsurf_est) = k0skin * (tsurf_est - temp_est(0))
   tsurf_est = (A + k0skin*temp_est(0)) / (B + k0skin)
 
-  if (tsurf_est > tsf .or. m_pond > 0.0 ) then ! mw/new - liq. h2o @ sfc 
+  if (tsurf_est > tsf .or. m_pond > 0.0 ) then ! mw/new - liq. h2o @ sfc
                                                ! also pins temp at freezing
     ! The surface is melting, set tsurf to melt temp. and recalculate I_bb.
     tsurf_est = tsf
@@ -1077,7 +1077,7 @@ end subroutine ice_check
 !    temperature changes due to thermodynamic forcing.                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
-                           snow, rain, evap, tmlt, bmlt, NkIce, nTr, TrLay, &
+                           snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, CS, ablation, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
@@ -1099,8 +1099,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, intent(in   ) :: tmlt        ! top melting energy (J/m^2)
   real, intent(in   ) :: bmlt        ! bottom melting energy (J/m^2)
   integer, intent(in) :: NkIce       ! The number of ice layers.
-  integer, intent(in) :: nTr         ! Number of passive tracers
-  real, dimension(0:NkIce+1,nTr), &
+  integer, intent(in) :: npassive         ! Number of passive tracers
+  real, dimension(0:NkIce+1,npassive), &
         intent(inout) :: TrLay       ! Passive tracer slice
   real, intent(  out) :: heat_to_ocn ! energy left after ice all melted (J/m^2)
   real, intent(  out) :: h2o_ice_to_ocn ! liquid water flux to ocean (kg/m^2)
@@ -1199,17 +1199,17 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                     (m_lay(1)+m_pond) ! excess freezing energy goes to cooling
       Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_pond) ! for bulk salinity
       ! Passive tracer array
-      do tr = 1,ntr
+      do tr = 1,npassive
         TrLay(1,tr) = (m_lay(1)*TrLay(1,tr)) / (m_lay(1) + m_pond)
       enddo
-      
+
       m_lay(1) = m_lay(1)+m_pond
       m_pond = 0.0
     else
       Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / &
                   (m_lay(1)+m_freeze)
       Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_freeze) ! for bulk salinity
-      do tr = 1,ntr
+      do tr = 1,npassive
         TrLay(1,tr) = (m_lay(1)*TrLay(1,tr)) / (m_lay(1) + m_freeze) ! for passive tracers
       enddo
       m_lay(1) = m_lay(1)+m_freeze
@@ -1235,14 +1235,14 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                       (m_lay(NkIce) + m_freeze)
     Salin(NkIce) = (m_lay(NkIce)*Salin(NkIce) + m_freeze*salin_freeze) / &
                    (m_lay(NkIce) + m_freeze)
-    
-    
-    do tr=1,nTr
+
+
+    do tr=1,npassive
       ! Change passive tracer, assuming that surface boundary value is stored in NkIce+1
       TrLay(NkIce,tr) = (m_lay(NkIce)*TrLay(NkIce,tr) + m_freeze*TrLay(NkIce+1,tr)) / &
                         (m_lay(NkIce) + m_freeze)
     enddo
-                   
+
     Salt_to_ice = Salt_to_ice + m_freeze*salin_freeze
 
     m_lay(NkIce) = m_lay(NkIce) + m_freeze
@@ -1369,8 +1369,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     Salin(1) = Salin(1) * m_lay(1) / (m_lay(1) + snow_to_ice)
     ! ### THIS NEEDS TO WORK WITH THE TRACER REGISTRY TO ADD SNOW TRACERS TO
     ! ### THE CORRESPONDING ICE TRACER.
-    do tr = 1,nTr
-      TrLay(1,nTr) = TrLay(1,nTr) * m_lay(1) / (m_lay(1) + snow_to_ice)
+    do tr = 1,npassive
+      TrLay(1,tr) = TrLay(1,tr) * m_lay(1) / (m_lay(1) + snow_to_ice)
     enddo
     m_lay(1) = m_lay(1) + snow_to_ice
   else
@@ -1397,7 +1397,7 @@ end subroutine ice_resize_SIS2
 ! add_frazil_SIS2 - An n-layer code to account for the mass increases due to   !
 !      the accretion of frazil ice.                                            !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, nTr, TrLay, &
+subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, &
                            frazil, tfw, NkIce, h2o_ocn_to_ice, &
                            salt_to_ice, ITV, CS, enthalpy_freeze)
   real, dimension(0:NkIce), &
@@ -1409,8 +1409,8 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, nTr, TrLay, &
         intent(in)    :: Sice_therm  ! ice salinity by layer, as used for thermodynamics (g/kg)
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       ! Conserved ice bulk salinity by layer (g/kg)
-  integer, intent(in) :: nTr         ! Number of passive tracers
-  real, dimension(NkIce+1,nTr), &
+  integer, intent(in) :: npassive         ! Number of passive tracers
+  real, dimension(NkIce+1,npassive), &
         intent(inout) :: TrLay       ! Passive tracer in the column layer
   real, intent(in   ) :: frazil      ! frazil in energy units
   real, intent(in   ) :: tfw         ! seawater freezing temperature (deg-C)
@@ -1434,7 +1434,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, nTr, TrLay, &
                               ! the water, in Enth_unit kg-1 (perhaps J kg-1).
   real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
   real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
-  real :: enthM_freezing      ! The enthalpy gain due to the mass gain by 
+  real :: enthM_freezing      ! The enthalpy gain due to the mass gain by
                               ! freezing, in enth_unit kg m-2 (often J m-2).
   real :: enth_unit           ! The units for enthalpy (often J kg-1).
   real :: LI          ! The latent heat of fusion, in J kg-1.
@@ -1473,7 +1473,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, nTr, TrLay, &
                     (m_lay(k) + m_frazil)
       Salin(k) = (m_lay(k)*Salin(k) + m_frazil*salin_freeze) / &
                  (m_lay(k) + m_frazil)
-      do tr = 1,nTr
+      do tr = 1,npassive
         ! Passive tracer assume that the flux of tracer from frazil is in NkIce+1
         TrLay(k,tr) = (m_lay(k)*TrLay(k,tr) + m_frazil*TrLay(NkIce+1,tr)) / &
                       (m_lay(k) + m_frazil)
@@ -1509,14 +1509,14 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, nTr, TrLay, &
 end subroutine add_frazil_SIS2
 
 
-subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, TrLay)
+subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
   real, dimension(0:NkIce),   intent(inout) :: m_lay
   real,                       intent(out)   :: mtot_ice
   real, dimension(0:NkIce+1), intent(inout) :: Enthalpy
   real, dimension(NkIce+1),   intent(inout) :: Salin
   integer,                    intent(in)    :: NkIce
-  integer,                    intent(in)    :: nTr
-  real, dimension(0:NkIce+1,nTr), intent(inout) :: TrLay
+  integer,                    intent(in)    :: npassive
+  real, dimension(0:NkIce+1,npassive), intent(inout) :: TrLay
 
 ! Arguments: m_lay     ! The ice mass by layer, in kg m-2. Intent in/out.
 !  (out)     mtot_ice  ! The summed ice mass in kg m-2.
@@ -1526,7 +1526,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, Tr
 
   real :: m_k1_to_k2, m_ice_avg
   real, dimension(NkIce) :: mlay_new, enth_ice_new, sal_ice_new
-  real, dimension(NkIce,nTr) :: tr_ice_new
+  real, dimension(NkIce,npassive) :: tr_ice_new
   integer :: k, k1, k2, kold, knew, tr
 
   ! ### THIS NEEDS TO WORK WITH THE TRACER REGISTRY SO THAT IT WORKS ON ALL
@@ -1538,7 +1538,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, Tr
   else
     do k=1,NkIce ; mlay_new(k) = 0.0 ; enth_ice_new(k) = 0.0 ; enddo
     do k=1,NkIce ; sal_ice_new(k) = 0.0 ; enddo
-    do k=1,NkIce ; do tr = 1,nTr ; tr_ice_new(k,tr) = 0.0 ; enddo ; enddo
+    do k=1,NkIce ; do tr = 1,npassive ; tr_ice_new(k,tr) = 0.0 ; enddo ; enddo
     m_ice_avg = mtot_ice / NkIce
     k1 = 1 ; k2 = 1
     do  ! Add ice from k1 to k2 to even up layer thicknesses.
@@ -1550,8 +1550,8 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, Tr
         m_k1_to_k2 = m_lay(k1)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
         sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
-        do k=1,NkIce ; do tr = 1,nTr
-          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr) 
+        do k=1,NkIce ; do tr = 1,npassive
+          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr)
         enddo ; enddo
         mlay_new(k2) = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = 0.0 ! = m_lay(k1) - m_k1_to_k2
@@ -1561,8 +1561,8 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, Tr
         m_k1_to_k2 = m_ice_avg - mlay_new(k2)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
         sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
-        do k=1,NkIce ; do tr = 1,nTr
-          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr) 
+        do k=1,NkIce ; do tr = 1,npassive
+          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr)
         enddo ; enddo
         mlay_new(k2) = m_ice_avg ! = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = m_lay(k1) - m_k1_to_k2
@@ -1573,7 +1573,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, Tr
     do k=1,NkIce ; if (mlay_new(k) > 0.0) then
       Enthalpy(k) = enth_ice_new(k)/mlay_new(k)
       Salin(k) = sal_ice_new(k)/mlay_new(k)
-      do tr = 1,nTr ; TrLay(k,tr) = tr_ice_new(k,tr)/mlay_new(k) ; enddo
+      do tr = 1,npassive ; TrLay(k,tr) = tr_ice_new(k,tr)/mlay_new(k) ; enddo
     endif ; enddo
     do k=1,NkIce ; m_lay(k) = mlay_new(k) ; enddo
   endif
@@ -2062,7 +2062,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
                     !! be equal, but for computational convenience Cp_Brine has
                     !! often been set equal to Cp_Ice instead.
   real, optional, intent(out) :: &
-    rho_ice         !< A nominal density of ice in kg m-3. 
+    rho_ice         !< A nominal density of ice in kg m-3.
   real, optional, intent(out) :: &
     rho_snow        !< A nominal density of snow in kg m-3.
   real, optional, intent(out) :: &

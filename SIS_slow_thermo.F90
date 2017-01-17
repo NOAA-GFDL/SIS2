@@ -348,7 +348,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
     enddo ; enddo
-    
+
     do j=jsc,jec ; do i=isc,iec
       IOF%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_t_top(i,j,0)
       IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_q_top(i,j,0)
@@ -361,7 +361,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
       IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
     enddo ; enddo
-    
+
   endif
 
   ! IOF must be updated regardless of whether the ice is specified or the prognostic model
@@ -389,12 +389,12 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       enddo ; enddo ; enddo
     enddo
   endif
-  
-  ! No other thermodynamics need to be done for ice that is specified, 
-  if(CS%specified_ice) return ;   
+
+  ! No other thermodynamics need to be done for ice that is specified,
+  if(CS%specified_ice) return ;
   ! Otherwise, Continue with the remainder of the prognostic slow thermodynamics
-    
-  !TOM> Store old ice mass per unit area for calculating partial ice growth.  
+
+  !TOM> Store old ice mass per unit area for calculating partial ice growth.
   mi_old = IST%mH_ice
 
   !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
@@ -501,10 +501,11 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
                           ! and the surface ocean, in enth_units (often J/kg).
-  real, dimension(0:IG%NkIce+1,IST%TrReg%ntr) :: TrLay ! Passive tracer slice through categories
-                                                       ! For now, both the 0 (snow layer) boundary and
-                                                       ! the NkIce+1 (surface ocean layer) are both set to 0
-                                                       ! for all tracers
+  real, dimension(0:IG%NkIce+1,IST%TrReg%npassive) :: TrLay
+                          ! Passive tracer slice through categories
+                          ! For now, both the 0 (snow layer) boundary and
+                          ! the NkIce+1 (surface ocean layer) are both set to 0
+                          ! for all tracers
   real, dimension(IG%CatIce) :: frazil_cat  ! The frazil heating applied to each thickness
                           ! category, averaged over the area of that category in J m-2.
   real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
@@ -549,7 +550,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce, tr, nTr
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce, tr, npassive, passive_idx
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
@@ -560,7 +561,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
-  ntr = IST%TrReg%ntr
+  npassive = IST%TrReg%npassive
+  passive_idx = IST%TrReg%passive_idx
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                    rho_ice=rho_ice, specified_thermo_salinity=spec_thermo_sal, &
@@ -734,7 +736,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
 !$OMP                                  salt_change,net_melt,kg_H_nk,LatHtFus,LatHtVap,&
-!$OMP                                  IG,CS,OSS,FIA,IOF,nTr) &
+!$OMP                                  IG,CS,OSS,FIA,IOF,npassive,passive_idx) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -761,14 +763,26 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       enthalpy_ocean = enthalpy_liquid(OSS%SST_C(i,j), OSS%s_surf(i,j), IST%ITV)
       enthalpy(NkIce+1) = enthalpy_ocean
 
-      do m=1,NkIce ; do tr = 1,nTr
-        TrLay(m,tr) = IST%TrReg%Tr_ice(tr)%t(i,j,k,m)
+      ! Handle unpacking and BCs for passive tracer
+      do m=1,NkIce ; do tr = 1,npassive
+        ! Unpack a slice of the tracer array
+        TrLay(m,tr) = IST%TrReg%Tr_ice(tr+passive_idx-1)%t(i,j,k,m)
       enddo ; enddo
-      ! ashao: For now, assume that boundary conditions of passive tracers is zero
-      ! In the future, this will be added to the tracer registry so that spatially
-      ! varying boundary conditions can be used
-      TrLay(0,:) = 0.0 ; TrLay(NkIce+1,:) = 0.0
-      
+      do tr = 1,npassive
+        ! Set snow and ice boundary conditions (if they exist)
+        if(associated(IST%TrReg%Tr_ice(tr+passive_idx-1)%ocean_BC)) then
+          TrLay(NkIce+1,tr) = IST%TrReg%Tr_ice(tr+passive_idx-1)%ocean_BC(i,j,k)
+        else
+          TrLay(NkIce+1,tr) = 0.0
+        endif
+
+        if(associated(IST%TrReg%Tr_ice(tr+passive_idx-1)%snow_BC)) then
+          TrLay(0,tr) = IST%TrReg%Tr_ice(tr+passive_idx-1)%snow_BC(i,j,k)
+        else
+          TrLay(0,tr) = 0.0
+        endif
+      enddo
+
       if (CS%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
         salin(NkIce+1) = CS%ice_rel_salin * OSS%s_surf(i,j)
@@ -783,13 +797,13 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), m_lay, &
                    enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*dt_slow, &
                    FIA%lprec_top(i,j,k)*dt_slow, FIA%flux_q_top(i,j,k)*dt_slow, &
-                   FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, nTr, TrLay, &
+                   FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, npassive, TrLay, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    snow_to_ice(i,j,k), salt_to_ice, IST%ITV, CS%ice_thm_CSp, bablt, &
                    enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
 
       IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
-      call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, TrLay)
+      call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
       IST%mH_ice(i,j,k) = mtot_ice * IG%kg_m2_to_H
 
       if (IST%mH_ice(i,j,k) == 0.0) then
@@ -805,9 +819,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         endif
         salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
-      
-      do tr = 1,nTr ; do m=1,NkIce
-        IST%TrReg%Tr_ice(tr)%t(i,j,k,m) = TrLay(m,tr)
+
+      do tr = 1,npassive ; do m=1,NkIce
+        IST%TrReg%Tr_ice(tr+passive_idx-1)%t(i,j,k,m) = TrLay(m,tr)
       enddo ; enddo
 
       ! The snow enthalpy should not have changed.  This should do nothing.
@@ -876,7 +890,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,nTr,G,IG,IST,S_col0,NkIce,S_col, &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,IG,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
 !$OMP                                  salt_change,net_melt,kg_h_Nk,LatHtFus,FIA,CS,OSS,IOF) &
@@ -987,11 +1001,11 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
-      call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, nTr, TrLay, frazil_cat(k), &
+      call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, npassive, TrLay, frazil_cat(k), &
                    T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
                    CS%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
-      call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, nTr, TrLay)
+      call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
 
       ! Unpack the columns of mass, enthalpy and salinity.
       IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
@@ -1149,7 +1163,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     enddo ; enddo ; enddo ; enddo
   endif
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,h2o_change, &
-!$OMP                                  salt_change,Idt_slow,IG,IOF) 
+!$OMP                                  salt_change,Idt_slow,IG,IOF)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
       h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
