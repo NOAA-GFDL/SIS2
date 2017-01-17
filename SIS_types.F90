@@ -45,6 +45,7 @@ public :: IOF_chksum, FIA_chksum
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
+public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
 public :: translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -262,6 +263,40 @@ type fast_ice_avg_type
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
   integer :: id_tsfc=-1, id_sitemptop=-1
 end type fast_ice_avg_type
+
+!> total_sfc_flux_type contains variables that describe the fluxes between the
+!! atmosphere and the ice or ocean that have been accumulated over fast thermodynamic
+!! steps and integrated across the part-size categories.
+type total_sfc_flux_type
+
+  ! These are the arrays that are averaged over the categories and in time over
+  ! the fast thermodynamics.
+  real, allocatable, dimension(:,:) :: &
+    flux_u         , & ! The downward flux of zonal and meridional
+    flux_v         , & ! momentum on an A-grid in Pa.
+    flux_t         , & ! The upward sensible heat flux at the ice top
+                       ! in W m-2.
+    flux_q         , & ! The upward evaporative moisture flux at
+                       ! top of the ice, in kg m-2 s-1.
+    flux_lw        , & ! The downward flux of longwave radiation at
+                       ! the top of the ice, in W m-2.
+    flux_sw_vis_dir, & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif, & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir, & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif, & ! bands at the top of the ice, in W m-2.
+    flux_lh        , & ! The upward flux of latent heat at the top
+                       ! of the ice, in W m-2.
+    lprec          , & ! The downward flux of liquid precipitation
+                       ! at the top of the ice, in kg m-2 s-1.
+    fprec              ! The downward flux of frozen precipitation
+                       ! at the top of the ice, in kg m-2 s-1.
+!  logical :: first_copy = .true.
+  integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
+  real, allocatable, dimension(:,:,:) :: &
+    tr_flux        ! An array of tracer fluxes at the top of the
+                   ! sea ice.
+end type total_sfc_flux_type
+
 
 !> ice_rad_type contains variables that describe the absorption and reflection
 !! of shortwave radiation in and around the sea ice.
@@ -498,10 +533,10 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
 
-  integer :: isd, ied, jsd, jed, CatIce, NkIce
+  integer :: isd, ied, jsd, jed, CatIce
 
   if (.not.associated(FIA)) allocate(FIA)
-  CatIce = IG%CatIce ; NkIce = IG%NkIce
+  CatIce = IG%CatIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
@@ -541,6 +576,32 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
 end subroutine alloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_total_sfc_flux allocates and zeros out the arrays in a total_sfc_flux_type.
+subroutine alloc_total_sfc_flux(TSF, HI)
+  type(total_sfc_flux_type), pointer    :: TSF
+  type(hor_index_type),      intent(in) :: HI
+
+  integer :: isd, ied, jsd, jed
+
+  if (.not.associated(TSF)) allocate(TSF)
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
+  allocate(TSF%flux_v(isd:ied, jsd:jed)) ; TSF%flux_v(:,:) = 0.0
+  allocate(TSF%flux_t(isd:ied, jsd:jed)) ; TSF%flux_t(:,:) = 0.0
+  allocate(TSF%flux_q(isd:ied, jsd:jed)) ; TSF%flux_q(:,:) = 0.0
+  allocate(TSF%flux_sw_vis_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dir(:,:) = 0.0
+  allocate(TSF%flux_sw_vis_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dif(:,:) = 0.0
+  allocate(TSF%flux_sw_nir_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dir(:,:) = 0.0
+  allocate(TSF%flux_sw_nir_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dif(:,:) = 0.0
+  allocate(TSF%flux_lw(isd:ied, jsd:jed)) ; TSF%flux_lw(:,:) = 0.0
+  allocate(TSF%flux_lh(isd:ied, jsd:jed)) ; TSF%flux_lh(:,:) = 0.0
+  allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
+  allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
+
+end subroutine alloc_total_sfc_flux
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1473,6 +1534,23 @@ subroutine dealloc_fast_ice_avg(FIA)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_total_sfc_flux deallocates the arrays in a total_sfc_flux_type.
+subroutine dealloc_total_sfc_flux(TSF)
+  type(total_sfc_flux_type), pointer    :: TSF
+
+  if (.not.associated(TSF)) then
+    call SIS_error(WARNING, "dealloc_total_sfc_flux called with an unassociated pointer.")
+    return
+  endif
+
+  deallocate(TSF%flux_u, TSF%flux_v, TSF%flux_t, TSF%flux_q)
+  deallocate(TSF%flux_sw_vis_dir, TSF%flux_sw_vis_dif)
+  deallocate(TSF%flux_sw_nir_dir, TSF%flux_sw_nir_dif)
+  deallocate(TSF%flux_lw, TSF%flux_lh, TSF%lprec, TSF%fprec)
+
+end subroutine dealloc_total_sfc_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_ice_rad deallocates the arrays in a ice_rad_type.
