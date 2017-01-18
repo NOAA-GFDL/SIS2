@@ -45,6 +45,8 @@ public :: IOF_chksum, FIA_chksum
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
+public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
+public :: translate_OSS_to_sOSS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -102,6 +104,7 @@ type ocean_sfc_state_type
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     SST_C  , &  ! The ocean's bulk surface temperature in degC.
+    T_fr_ocn, & ! The freezing point temperature in degC at the ocean's surface salinity.
     u_ocn_B, &  ! The ocean's zonal velocity on B-grid points in m s-1.
     v_ocn_B, &  ! The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C, &  ! The ocean's zonal and meridional velocity on C-grid
@@ -144,6 +147,7 @@ type simple_OSS_type
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     SST_C  , &  ! The ocean's bulk surface temperature in degC.
+    T_fr_ocn, & ! The freezing point temperature in degC at the ocean's surface salinity.
     u_ocn_A, &  ! The ocean's zonal surface velocity on A-grid points in m s-1.
     v_ocn_A, &  ! The ocean's meridional surface velocity on A-grid points in m s-1.
     u_ice_A, &  ! The sea ice's zonal velocity on A-grid points in m s-1.
@@ -160,7 +164,7 @@ end type simple_OSS_type
 
 
 !> fast_ice_avg_type contains variables that describe the fluxes between the
-!! atmosphere and the ice or that have been accumlated over fast thermodynamic
+!! atmosphere and the ice or that have been accumulated over fast thermodynamic
 !! steps but will be applied to the slow (mass-changing) thermodynamics.  Some
 !! of these are diagnostics, while others are averages of fluxes taken during
 !! the fast ice thermodynamics and used during the slow ice thermodynamics or dynamics.
@@ -259,6 +263,40 @@ type fast_ice_avg_type
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
   integer :: id_tsfc=-1, id_sitemptop=-1
 end type fast_ice_avg_type
+
+!> total_sfc_flux_type contains variables that describe the fluxes between the
+!! atmosphere and the ice or ocean that have been accumulated over fast thermodynamic
+!! steps and integrated across the part-size categories.
+type total_sfc_flux_type
+
+  ! These are the arrays that are averaged over the categories and in time over
+  ! the fast thermodynamics.
+  real, allocatable, dimension(:,:) :: &
+    flux_u         , & ! The downward flux of zonal and meridional
+    flux_v         , & ! momentum on an A-grid in Pa.
+    flux_t         , & ! The upward sensible heat flux at the ice top
+                       ! in W m-2.
+    flux_q         , & ! The upward evaporative moisture flux at
+                       ! top of the ice, in kg m-2 s-1.
+    flux_lw        , & ! The downward flux of longwave radiation at
+                       ! the top of the ice, in W m-2.
+    flux_sw_vis_dir, & ! The downward diffuse flux of direct (dir)
+    flux_sw_vis_dif, & ! and diffuse (dif) shortwave radiation in
+    flux_sw_nir_dir, & ! the visible (vis) and near-infrared (nir)
+    flux_sw_nir_dif, & ! bands at the top of the ice, in W m-2.
+    flux_lh        , & ! The upward flux of latent heat at the top
+                       ! of the ice, in W m-2.
+    lprec          , & ! The downward flux of liquid precipitation
+                       ! at the top of the ice, in kg m-2 s-1.
+    fprec              ! The downward flux of frozen precipitation
+                       ! at the top of the ice, in kg m-2 s-1.
+!  logical :: first_copy = .true.
+  integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
+  real, allocatable, dimension(:,:,:) :: &
+    tr_flux        ! An array of tracer fluxes at the top of the
+                   ! sea ice.
+end type total_sfc_flux_type
+
 
 !> ice_rad_type contains variables that describe the absorption and reflection
 !! of shortwave radiation in and around the sea ice.
@@ -495,10 +533,10 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
 
-  integer :: isd, ied, jsd, jed, CatIce, NkIce
+  integer :: isd, ied, jsd, jed, CatIce
 
   if (.not.associated(FIA)) allocate(FIA)
-  CatIce = IG%CatIce ; NkIce = IG%NkIce
+  CatIce = IG%CatIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
@@ -538,6 +576,32 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
 end subroutine alloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> alloc_total_sfc_flux allocates and zeros out the arrays in a total_sfc_flux_type.
+subroutine alloc_total_sfc_flux(TSF, HI)
+  type(total_sfc_flux_type), pointer    :: TSF
+  type(hor_index_type),      intent(in) :: HI
+
+  integer :: isd, ied, jsd, jed
+
+  if (.not.associated(TSF)) allocate(TSF)
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
+  allocate(TSF%flux_v(isd:ied, jsd:jed)) ; TSF%flux_v(:,:) = 0.0
+  allocate(TSF%flux_t(isd:ied, jsd:jed)) ; TSF%flux_t(:,:) = 0.0
+  allocate(TSF%flux_q(isd:ied, jsd:jed)) ; TSF%flux_q(:,:) = 0.0
+  allocate(TSF%flux_sw_vis_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dir(:,:) = 0.0
+  allocate(TSF%flux_sw_vis_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dif(:,:) = 0.0
+  allocate(TSF%flux_sw_nir_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dir(:,:) = 0.0
+  allocate(TSF%flux_sw_nir_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dif(:,:) = 0.0
+  allocate(TSF%flux_lw(isd:ied, jsd:jed)) ; TSF%flux_lw(:,:) = 0.0
+  allocate(TSF%flux_lh(isd:ied, jsd:jed)) ; TSF%flux_lh(:,:) = 0.0
+  allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
+  allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
+
+end subroutine alloc_total_sfc_flux
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -634,6 +698,7 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   ! The ocean_sfc_state_type only occurs on slow ice PEs, so it can use the memory macros.
   allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0 
+  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0 
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
@@ -664,7 +729,8 @@ subroutine alloc_simple_OSS(OSS, HI)
 
   allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
   allocate(OSS%SST_C(isd:ied, jsd:jed))  ; OSS%SST_C(:,:) = 0.0 
-  allocate(OSS%bheat(isd:ied, jsd:jed))  ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed)) ; OSS%T_fr_ocn(:,:) = 0.0 
+  allocate(OSS%bheat(isd:ied, jsd:jed))   ; OSS%bheat(:,:) = 0.0 
   allocate(OSS%u_ocn_A(isd:ied, jsd:jed)) ; OSS%u_ocn_A(:,:) = 0.0
   allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
   allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
@@ -814,6 +880,66 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 end subroutine redistribute_IST_to_IST
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> translate_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
+!! ice processors into a simplified version with the fields that are shared with
+!! the atmosphere and the fast ice thermodynamics.
+subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
+  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ice_state_type),       intent(in)    :: IST
+  type(simple_OSS_type),      intent(inout) :: sOSS
+  type(SIS_hor_grid_type),    intent(in)    :: G
+
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST)
+  do j=jsc,jec ; do i=isc,iec
+    sOSS%s_surf(i,j) = OSS%s_surf(i,j)
+    sOSS%SST_C(i,j) = OSS%SST_C(i,j)
+    sOSS%T_fr_ocn(i,j) = OSS%T_fr_ocn(i,j)
+
+    if (G%mask2dT(i,j) > 0.5) then
+      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - sOSS%T_fr_ocn(i,j))
+      ! Interpolate the ocean and ice velocities onto tracer cells.
+      if (OSS%Cgrid_dyn) then
+        sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
+        sOSS%v_ocn_A(i,j) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
+      else
+        sOSS%u_ocn_A(i,j) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
+                                  (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )
+        sOSS%v_ocn_A(i,j) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
+                                  (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
+      endif
+      if (IST%Cgrid_dyn) then
+        sOSS%u_ice_A(i,j) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
+        sOSS%v_ice_A(i,j) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
+      else
+        sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
+                                  (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
+        sOSS%v_ice_A(i,j) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
+                                  (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
+      endif
+    else ! This is a land point.
+      sOSS%bheat(i,j) = 0.0
+      sOSS%u_ocn_A(i,j) = 0.0 ; sOSS%v_ocn_A(i,j) = 0.0
+      sOSS%u_ice_A(i,j) = 0.0 ; sOSS%v_ice_A(i,j) = 0.0
+    endif
+  enddo ; enddo
+
+  if (sOSS%num_tr<0) then
+    sOSS%num_tr = OSS%num_tr
+    if (sOSS%num_tr > 0) then
+      allocate(sOSS%tr_array(G%isd:G%ied,G%jsd:G%jed,sOSS%num_tr)) ; sOSS%tr_array(:,:,:) = 0.0
+    endif
+  endif
+  do m=1,OSS%num_tr ; do j=jsc,jec ; do i=isc,iec
+    sOSS%tr_array(i,j,m) = OSS%tr_array(i,j,m)
+  enddo ; enddo ; enddo
+
+end subroutine translate_OSS_to_sOSS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type.  Both must use the same
 !! domain decomposition and indexing convention (for now), but they may have
@@ -838,6 +964,7 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     OSS_out%SST_C(i2,j2) = OSS_in%SST_C(i,j)
     OSS_out%s_surf(i2,j2) = OSS_in%s_surf(i,j)
+    OSS_out%T_fr_ocn(i2,j2) = OSS_in%T_fr_ocn(i,j)
     OSS_out%bheat(i2,j2) = OSS_in%bheat(i,j)
     OSS_out%u_ocn_A(i2,j2) = OSS_in%u_ocn_A(i,j)
     OSS_out%v_ocn_A(i2,j2) = OSS_in%v_ocn_A(i,j)
@@ -915,6 +1042,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
                           OSS_out%SST_C, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
                           OSS_out%s_surf, complete=.false.)
+    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
+                          OSS_out%T_fr_ocn, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
                           OSS_out%bheat, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%u_ocn_A, domain_out, &
@@ -937,6 +1066,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%s_surf, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
+                          OSS_out%T_fr_ocn, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%bheat, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%u_ocn_A, complete=.false.)
@@ -956,6 +1087,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
     call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
                           null_ptr, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
+                          null_ptr, complete=.false.)
+    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
                           null_ptr, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
                           null_ptr, complete=.false.)
@@ -1351,7 +1484,7 @@ subroutine dealloc_ocean_sfc_state(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%frazil)
+  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%T_fr_ocn, OSS%frazil)
   if (allocated(OSS%u_ocn_B)) deallocate(OSS%u_ocn_B)
   if (allocated(OSS%v_ocn_B)) deallocate(OSS%v_ocn_B)
   if (allocated(OSS%u_ocn_C)) deallocate(OSS%u_ocn_C)
@@ -1370,7 +1503,7 @@ subroutine dealloc_simple_OSS(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%SST_C, OSS%bheat)
+  deallocate(OSS%s_surf, OSS%SST_C, OSS%bheat, OSS%T_fr_ocn)
   deallocate(OSS%u_ocn_A, OSS%v_ocn_A, OSS%u_ice_A, OSS%v_ice_A)
 
   deallocate(OSS)
@@ -1401,6 +1534,23 @@ subroutine dealloc_fast_ice_avg(FIA)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_total_sfc_flux deallocates the arrays in a total_sfc_flux_type.
+subroutine dealloc_total_sfc_flux(TSF)
+  type(total_sfc_flux_type), pointer    :: TSF
+
+  if (.not.associated(TSF)) then
+    call SIS_error(WARNING, "dealloc_total_sfc_flux called with an unassociated pointer.")
+    return
+  endif
+
+  deallocate(TSF%flux_u, TSF%flux_v, TSF%flux_t, TSF%flux_q)
+  deallocate(TSF%flux_sw_vis_dir, TSF%flux_sw_vis_dif)
+  deallocate(TSF%flux_sw_nir_dir, TSF%flux_sw_nir_dif)
+  deallocate(TSF%flux_lw, TSF%flux_lh, TSF%lprec, TSF%fprec)
+
+end subroutine dealloc_total_sfc_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_ice_rad deallocates the arrays in a ice_rad_type.

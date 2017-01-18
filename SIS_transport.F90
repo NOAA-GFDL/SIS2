@@ -56,9 +56,6 @@ type, public :: SIS_transport_CS ; private
 
   ! parameters for doing advective and parameterized advection.
   logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
-  real    :: chan_visc  = 0.     ! viscosity used in one-cell wide channels to parameterize transport (m^2/s)
-  real    :: smag_ocn           = 0.15   ! Smagorinksy coefficient for viscosity (dimensionless)
-  real    :: chan_cfl_limit     = 0.25   ! CFL limit for channel viscosity parameterization (dimensionless)
   real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
   real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
                               ! kg m-3.
@@ -66,6 +63,12 @@ type, public :: SIS_transport_CS ; private
                               ! amounts of thick sea-ice to become thinner by
                               ! rolling is increased, or 0 to disable rolling.
                               ! Sensible values are 0 or larger than 1.
+  real :: ocean_part_min      ! The minimum value for the fractional open-ocean
+                              ! area.  This can be 0, but for some purposes it
+                              ! may be useful to set this to a miniscule value
+                              ! (like 1e-40) that will be lost to roundoff
+                              ! during any sums so that the open ocean fluxes
+                              ! can be used in interpolation across categories.
 
   logical :: readjust_categories  ! If true, readjust the distribution into
                               ! ice thickness categories after advection.
@@ -393,19 +396,25 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     enddo
   endif
 
-  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
-  call pass_var(mH_pond, G%Domain, complete=.false.)
-  call pass_var(mH_snow, G%Domain, complete=.false.)
-  call pass_var(mH_ice, G%Domain, complete=.true.)
-
   !   Recalculate part_sz(:,:,0) to ensure that the sum of part_sz adds up to 1.
   ! Compress_ice should already have taken care of this within the computational
   ! domain, but with a slightly different order of arithmetic.  The max is here
   ! to avoid tiny negative values of order -1e-16 from round-off in the
-  ! difference between ice_cover and 1.
+  ! difference between ice_cover and 1, or to set the fractional open ocean area
+  ! to a miniscule positive value so that the ocean-air fluxes are always
+  ! calculated.
   ice_cover(:,:) = 0.0
-  do k=1,nCat ; ice_cover(:,:) = ice_cover(:,:) + part_sz(:,:,k) ; enddo
-  part_sz(:,:,0) = max(1.0 - ice_cover(:,:), 0.0)
+  do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
+    ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
+  enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec
+    part_sz(i,j,0) = max(1.0 - ice_cover(i,j), CS%ocean_part_min)
+  enddo ; enddo
+
+  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
+  call pass_var(mH_pond, G%Domain, complete=.false.)
+  call pass_var(mH_snow, G%Domain, complete=.false.)
+  call pass_var(mH_ice, G%Domain, complete=.true.)
 
   if (CS%check_conservation) then
     call get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice(2), tot_snow(2))
@@ -1047,8 +1056,16 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   endif
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
-                  "If true, readjust the distribution into ice thickness \n"//&
-                  "categories after advection.", default=.true.)
+                 "If true, readjust the distribution into ice thickness \n"//&
+                 "categories after advection.", default=.true.)
+  call get_param(param_file, mod, "MIN_OCEAN_PARTSIZE", CS%ocean_part_min, &
+                 "The minimum value for the fractional open-ocean area. \n"//&
+                 "This can be 0, but for some purposes it may be useful \n"//&
+                 "to set this to a miniscule value (like 1e-40) that will \n"//&
+                 "be lost to roundoff during any sums so that the open \n"//&
+                 "ocean fluxes can be used in with new categories.", &
+                 units="nondim", default=0.0)
+
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)

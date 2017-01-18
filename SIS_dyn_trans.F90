@@ -69,7 +69,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
+use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
 use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
@@ -658,7 +658,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   if (allocated(IST%t_surf)) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-      IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
+      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
     enddo ; enddo ; enddo
   endif
 

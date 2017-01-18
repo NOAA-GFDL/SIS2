@@ -72,7 +72,7 @@ use SIS2_ice_thm, only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
-use SIS2_ice_thm, only : T_freeze, enthalpy_liquid, calculate_T_freeze
+use SIS2_ice_thm, only : enthalpy_liquid, calculate_T_freeze
 use SIS_transport, only : adjust_ice_categories, SIS_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
@@ -511,8 +511,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
   real :: heat_fill_val   ! An enthalpy to use for massless categories, in enth_units.
 
-  real :: T_freeze_surf ! The freezing temperature at the surface salinity of
-                        ! the ocean, in deg C.
   real :: I_part        ! The inverse of a part_size, nondim.
   logical :: spec_thermo_sal  ! If true, use the specified salinities of the
                               ! various sub-layers of the ice for all thermodynamic
@@ -597,7 +595,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
              ((icec_obs(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
-          if (OSS%SST_C(i,j) > T_Freeze(OSS%s_surf(i,j), IST%ITV) ) then
+          if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
             call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
                            drho_dT,drho_dS,1,1,EOS)
             IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
@@ -744,7 +742,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay, mtot_ice, TrLay,                      &
-!$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
+!$OMP                                  I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
       ! reshape the ice based on fluxes
@@ -901,8 +899,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
-!$OMP                                  fill_frac,d_enth,TrLay,                      &
-!$OMP                                  T_Freeze_surf,I_part,sn2ic,enth_snowfall)
+!$OMP                                  fill_frac,d_enth,Tr_lay,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (FIA%frazil_left(i,j)>0.0) then
 
     frazil_cat(1:ncat) = 0.0
@@ -915,8 +912,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif ; enddo
     endif
 
-    T_Freeze_surf = T_Freeze(OSS%s_surf(i,j),IST%ITV)
-
     if (IST%part_size(i,j,0) > 0.0) then
       ! Combine the ice-free part size with one of the categories.
       !   Whether or not this is also applied when part_size(i,j,0)==0 changes
@@ -927,9 +922,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
       if (allocated(IST%t_surf)) then
         IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
-                       (T_0degC + T_Freeze_surf)*IST%part_size(i,j,0)) * I_part
+                       (T_0degC + OSS%T_fr_ocn(i,j))*IST%part_size(i,j,0)) * I_part
         if (IST%part_size(i,j,k) + IST%part_size(i,j,0) == 0.0) &
-          IST%t_surf(i,j,k) = T_Freeze_surf + T_0degC
+          IST%t_surf(i,j,k) = OSS%T_fr_ocn(i,j) + T_0degC
       endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = 0.0
@@ -1002,7 +997,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
       call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, npassive, TrLay, frazil_cat(k), &
-                   T_Freeze_surf, NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
+                   OSS%T_fr_ocn(i,j), NkIce, h2o_ocn_to_ice, salt_to_ice, IST%ITV, &
                    CS%ice_thm_CSp, Enthalpy_freeze=enth_ocn_to_ice)
 
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
