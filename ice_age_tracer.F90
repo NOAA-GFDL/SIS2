@@ -386,18 +386,24 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     ! Increment the age of the ice if it exists
     if (CS%tracer_ages(tr) .and. &
         (year>=CS%tracer_start_year(tr))) then
-      do m=1,CS%nlevels(tr)
-        do k=1,IG%CatIce; do j=jsc,jec ; do i=isc,iec
+        do j=jsc,jec ; do i=isc,iec 
+          if(G%mask2dT(i,j)>0.0 then
+            do k=1,IG%CatIce; do m=1,CS%nlevels(tr)
+              if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
 
-          if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
-
-          if(mi(i,j,k)>CS%min_mass) then
-            CS%tr(i,j,k,m,tr) = CS%tr(i,j,k,m,tr) + dt_year
+              if(mi(i,j,k)>CS%min_mass) then
+                CS%tr(i,j,k,m,tr) = CS%tr(i,j,k,m,tr) + dt_year
+              else
+                CS%tr(i,j,k,m,tr) = 0.0
+              endif
+            enddo ; enddo
           else
-            CS%tr(i,j,k,m,tr) = 0.0
+            do m=1,CS%nlevels(tr) ; do k=1,IG%CatIce
+              CS%tr(i,j,k,m,tr) = 0.0
+            enddo ; enddo
           endif
 
-        enddo ; enddo ; enddo
+        enddo ; enddo
       enddo
     endif
 
