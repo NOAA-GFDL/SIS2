@@ -1367,8 +1367,6 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     Enthalpy(1) = (m_lay(1)*Enthalpy(1) + snow_to_ice*Enthalpy(0)) / &
                   (m_lay(1) + snow_to_ice)
     Salin(1) = Salin(1) * m_lay(1) / (m_lay(1) + snow_to_ice)
-    ! ### THIS NEEDS TO WORK WITH THE TRACER REGISTRY TO ADD SNOW TRACERS TO
-    ! ### THE CORRESPONDING ICE TRACER.
     do tr = 1,npassive
       TrLay(1,tr) = TrLay(1,tr) * m_lay(1) / (m_lay(1) + snow_to_ice)
     enddo
@@ -1529,9 +1527,6 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
   real, dimension(NkIce,npassive) :: tr_ice_new
   integer :: k, k1, k2, kold, knew, tr
 
-  ! ### THIS NEEDS TO WORK WITH THE TRACER REGISTRY SO THAT IT WORKS ON ALL
-  ! ### TRACERS WITH MORE THAN 1 LAYER.
-
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
   if (mtot_ice == 0.0) then ! There is no ice, so quit.
     return
@@ -1550,9 +1545,9 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
         m_k1_to_k2 = m_lay(k1)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
         sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
-        do k=1,NkIce ; do tr = 1,npassive
-          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr)
-        enddo ; enddo
+        do tr = 1,npassive
+          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * TrLay(k1,tr)
+        enddo
         mlay_new(k2) = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = 0.0 ! = m_lay(k1) - m_k1_to_k2
         k1 = k1+1
@@ -1561,9 +1556,9 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
         m_k1_to_k2 = m_ice_avg - mlay_new(k2)
         enth_ice_new(k2) = enth_ice_new(k2) + m_k1_to_k2 * Enthalpy(k1)
         sal_ice_new(k2) = sal_ice_new(k2) + m_k1_to_k2 * Salin(k1)
-        do k=1,NkIce ; do tr = 1,npassive
-          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * tr_ice_new(k1,tr)
-        enddo ; enddo
+        do tr = 1,npassive
+          tr_ice_new(k2,tr) = tr_ice_new(k2,tr) + m_k1_to_k2 * TrLay(k1,tr)
+        enddo
         mlay_new(k2) = m_ice_avg ! = mlay_new(k2) + m_k1_to_k2
         m_lay(k1) = m_lay(k1) - m_k1_to_k2
         k2 = k2+1

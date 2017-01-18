@@ -561,6 +561,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
   npassive = IST%TrReg%npassive
   passive_idx = IST%TrReg%passive_idx
+  TrLay(:,:) = 0.0
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                    rho_ice=rho_ice, specified_thermo_salinity=spec_thermo_sal, &
@@ -993,6 +994,11 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         do m=1,NkIce+1 ; Salin(m) = CS%ice_bulk_salin ; enddo
       endif
 
+      ! Unpack a slice of the tracer array
+      do m=1,NkIce ; do tr = 1,npassive
+        TrLay(m,tr) = IST%TrReg%Tr_ice(tr+passive_idx-1)%t(i,j,k,m)
+      enddo ; enddo
+
       m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
@@ -1019,6 +1025,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         endif
         salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
       endif
+
+      do tr = 1,npassive ; do m=1,NkIce
+        IST%TrReg%Tr_ice(tr+passive_idx-1)%t(i,j,k,m) = TrLay(m,tr)
+      enddo ; enddo
 
 !      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice

@@ -63,6 +63,7 @@ module SIS_tracer_flow_control
 
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
+use MOM_coms, only : sum_across_PEs
 use ice_grid, only : ice_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
@@ -203,48 +204,71 @@ subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
 
 end subroutine SIS_call_tracer_column_fns
 
-subroutine SIS_call_tracer_stocks(G, IG, CS, mi)
-
+subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
+                                  stock_units, num_stocks)
   type(SIS_hor_grid_type),                        intent(in) :: G
   type(ice_grid_type),                            intent(in) :: IG
   type(SIS_tracer_flow_control_CS),               pointer    :: CS
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
-
-  !   This subroutine calls all registered tracer packages to enable them to
-  ! add to the surface state returned to the coupler. These routines are optional.
+  real, dimension(:),                             intent(  out) :: stock_values
+  character(len=*), dimension(:),      optional,  intent(  out) :: stock_names
+  character(len=*), dimension(:),      optional,  intent(  out) :: stock_units
+  integer,                             optional,  intent(  out) :: num_stocks
 
   ! Arguments:
-  !  (out)     stock_values - The integrated amounts of a tracer on the current
-  !                           PE, usually in kg x concentration.
   !  (in)      G - The ocean's grid structure.
   !  (in)      IG - The ocean's vertical grid structure.
   !  (in)      CS - The control structure returned by a previous call to
   !                 call_tracer_register.
+  !  (in)      mi - mass of ice in a given category, used for summing
+  !  (out)     stocks - Global integral of tracer
+  !  (out)     nstocks - Number of passive tracer stocks
 
   character(len=200), dimension(MAX_FIELDS_) :: names, units
   character(len=200) :: set_pkg_name
-  real, dimension(MAX_FIELDS_) :: stocks
-  integer :: nstocks, m
+  real, dimension(MAX_FIELDS_) :: values
+  integer :: ns_tot, ns, index, m
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_stocks: "// &
       "Module must be initialized via call_tracer_register before it is used.")
 
-  nstocks = 0
-  stocks = 0.0
+  ns_tot = 0
+  values(:) = 0.0
+  stock_values(:) = 0.0
+
   !  Add other user-provided calls here.
   if (CS%use_ice_age) then
-      call ice_age_stock(nstocks, stocks, names, units, G, IG, &
-          CS%ice_age_tracer_CSp, mi)
-  endif
+    ns = ice_age_stock(mi, values, G, IG, CS%ice_age_tracer_CSp, &
+                         names, units)
+    call SIS_store_stocks("ice_age_tracer", ns, names, units, values, stock_values, &
+        ns_tot, stock_names, stock_units)
 
-  if(nstocks>0) then
-    do m=1,nstocks
-      write(*,'(A,"Total ",A,A,ES24.16)') &
-          achar(9),trim(names(m)),achar(9),stocks(m)
-    enddo
   endif
+  num_stocks = ns_tot
 
 end subroutine SIS_call_tracer_stocks
+
+subroutine SIS_store_stocks(pkg_name, ns, names, units, values, stock_values, &
+                        ns_tot, stock_names, stock_units)
+  character(len=*),                         intent(in)    :: pkg_name
+  integer,                                  intent(in)    :: ns
+  character(len=*), dimension(:),           intent(in)    :: names, units
+  real, dimension(:),                       intent(in)    :: values
+  real, dimension(:),                       intent(inout) :: stock_values
+  integer,                                  intent(inout) :: ns_tot
+  character(len=*), dimension(:), optional, intent(inout) :: stock_names, stock_units
+
+! This routine stores the stocks for SIS_call_tracer_stocks.
+  integer :: n
+
+  do n=1,ns
+    stock_values(ns_tot+n) = values(n)
+    if (present(stock_names)) stock_names(ns_tot+n) = names(n)
+    if (present(stock_units)) stock_units(ns_tot+n) = units(n)
+  enddo
+  ns_tot = ns_tot + ns
+
+end subroutine SIS_store_stocks
 
 subroutine SIS_tracer_flow_control_end(CS)
   type(SIS_tracer_flow_control_CS), pointer :: CS

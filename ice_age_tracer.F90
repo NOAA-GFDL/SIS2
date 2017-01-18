@@ -221,7 +221,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
       CS%land_val(m) = 0.0
       CS%nlevels(m) = IG%NkIce
   endif
-  CS%min_mass = 0
+  CS%min_mass = 1.0e-7*IG%H_to_kg_m2
 
   ! Allocate the main tracer arrays
   allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,IG%NkIce,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
@@ -386,8 +386,8 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     ! Increment the age of the ice if it exists
     if (CS%tracer_ages(tr) .and. &
         (year>=CS%tracer_start_year(tr))) then
-        do j=jsc,jec ; do i=isc,iec 
-          if(G%mask2dT(i,j)>0.0 then
+        do j=jsc,jec ; do i=isc,iec
+          if(G%mask2dT(i,j)>0.0) then
             do k=1,IG%CatIce; do m=1,CS%nlevels(tr)
               if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
 
@@ -404,7 +404,6 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
           endif
 
         enddo ; enddo
-      enddo
     endif
 
     if (CS%uniform_vertical(tr)) then
@@ -430,7 +429,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     enddo ; enddo ; enddo
 
     if (CS%id_tracer(tr)>0) &
-        call post_data(CS%id_tracer(tr),tr_avg,CS%diag)
+        call post_data(CS%id_tracer(tr),CS%tr(:,:,:,1,tr),CS%diag)
     if (CS%id_tr_adx(tr)>0) &
         call post_data(CS%id_tr_adx(tr),CS%tr_adx(tr)%p(:,:,:),CS%diag)
     if (CS%id_tr_ady(tr)>0) &
@@ -443,16 +442,16 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
 
 end subroutine ice_age_tracer_column_physics
 
-subroutine ice_age_stock(nstocks, stocks, names, units, G, IG, CS, mi)
-  integer                                                 :: nstocks
-  real, dimension(:)                                      :: stocks
-  character(len=*), dimension(:)                          :: names
-  character(len=*), dimension(:)                          :: units
-  type(sis_hor_grid_type),                     intent(in) :: G
-  type(ice_grid_type),                         intent(in) :: IG
-  type(ice_age_tracer_CS)                                 :: CS
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in) :: mi
+function ice_age_stock(mi, stocks, G, IG, CS, names, units)
+  real, dimension(:),                          intent(out)   :: stocks
+  type(sis_hor_grid_type),                     intent(in)    :: G
+  type(ice_grid_type),                         intent(in)    :: IG
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(in)    :: mi
+  type(ice_age_tracer_CS), pointer                           :: CS
+  character(len=*), dimension(:),              intent(out)   :: names
+  character(len=*), dimension(:),              intent(out)   :: units
 
+  integer ice_age_stock
   ! This function calculates the mass-weighted integral of all tracer stocks,
   ! returning the number of stocks it has calculated.  If the stock_index
   ! is present, only the stock corresponding to that coded index is returned.
@@ -467,7 +466,7 @@ subroutine ice_age_stock(nstocks, stocks, names, units, G, IG, CS, mi)
   !  (out)     units - the units of the stocks calculated.
   ! Return value: the number of stocks calculated here.
 
-  integer :: i, j, k, m, tr
+  integer :: i, j, k, m, tr, nstocks
   integer :: isc, iec, jsc, jec
   real :: avg_tr
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -475,10 +474,9 @@ subroutine ice_age_stock(nstocks, stocks, names, units, G, IG, CS, mi)
   if (CS%ntr < 1) return
 
   do tr=1,CS%ntr
-    nstocks = nstocks + 1
-    call query_vardesc(CS%tr_desc(tr), name=names(nstocks), units=units(nstocks), caller="ice_age_stock")
-    units(nstocks) = trim(units(tr))//" kg"
-    stocks(nstocks) = 0.0
+    call query_vardesc(CS%tr_desc(tr), name=names(tr), units=units(tr), caller="ice_age_stock")
+    units(tr) = trim(units(tr))//" kg"
+    stocks(tr) = 0.0
     do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
       avg_tr = 0.0
       ! For now an equally weighted average over the layers is used to calculate the stocks
@@ -486,13 +484,15 @@ subroutine ice_age_stock(nstocks, stocks, names, units, G, IG, CS, mi)
       do m=1,IG%NkIce ; avg_tr = avg_tr + CS%tr(i,j,k,m,tr) ; enddo
       avg_tr = avg_tr/IG%NkIce
 
-      stocks(nstocks) = stocks(nstocks) + avg_tr * &
+      stocks(tr) = stocks(tr) + avg_tr * &
           (G%mask2dT(i,j) * G%areaT(i,j) * mi(i,j,k))
     enddo ; enddo ; enddo
+
   enddo
 
+  ice_age_stock = CS%ntr
 
-end subroutine ice_age_stock
+end function ice_age_stock
 
 subroutine ice_age_end(CS)
   type(ice_age_tracer_CS), pointer :: CS
