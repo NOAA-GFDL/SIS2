@@ -900,9 +900,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,IG,IST,S_col0,NkIce,S_col, &
-!$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
-!$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,IG,IST,S_col0,NkIce,  &
+!$OMP                                  S_col,dt_slow,snow_to_ice,heat_in,I_NK,enth_units,    &
+!$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,passive_idx, &
 !$OMP                                  salt_change,net_melt,kg_h_Nk,LatHtFus,FIA,CS,OSS,IOF) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
@@ -911,7 +911,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
-!$OMP                                  fill_frac,d_enth,Tr_lay,I_part,sn2ic,enth_snowfall)
+!$OMP                                  fill_frac,d_enth,TrLay,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (FIA%frazil_left(i,j)>0.0) then
 
     frazil_cat(1:ncat) = 0.0
