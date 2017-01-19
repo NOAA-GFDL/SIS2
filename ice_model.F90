@@ -917,7 +917,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,Ice,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
 !$OMP                          private(i2,j2,k2)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
                Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), &
@@ -932,7 +932,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,IG,i_off,j_off, &
 !$OMP                                  H_to_m_snow,H_to_m_ice,OSS,Rad,fCS) &
 !$OMP                          private(i2,j2,k2,sw_abs_lay)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, &
