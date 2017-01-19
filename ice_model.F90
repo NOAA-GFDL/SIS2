@@ -265,7 +265,8 @@ subroutine update_ice_model_slow(Ice)
   endif
 
   call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
-                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, Ice%sCS%IG)
+                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, &
+                          Ice%sCS%IG, Ice%sCS%SIS_tracer_flow_CSp)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
@@ -324,7 +325,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL()
-  
+
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
 
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
@@ -528,7 +529,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
 ! This extra block is required with the Verona and earlier versions of the coupler.
   i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
-  if (Ice%shared_slow_fast_PEs) then 
+  if (Ice%shared_slow_fast_PEs) then
     if ((Ice%fCS%G%iec-Ice%fCS%G%isc==iec-isc) .and. &
         (Ice%fCS%G%jec-Ice%fCS%G%jsc==jec-jsc)) then
       ! The fast and slow ice PEs are using the same PEs and layout, so the
@@ -905,7 +906,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   ! Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
   ! Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
-  ! Set the initial ocean albedos, either using coszen_nextrad or a 
+  ! Set the initial ocean albedos, either using coszen_nextrad or a
   ! synthetic sun angle.
   dT_r = fCS%Time_step_slow
   if (Rad%frequent_albedo_update) dT_r = fCS%Time_step_fast
@@ -1031,7 +1032,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     endif
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       Ice%ocean_fields%bc(n)%field(m)%values(i2,j2,1) = OSS%tr_array(i,j,index)
-    enddo ; enddo 
+    enddo ; enddo
   enddo ; enddo
 
   if (fCS%debug) then
@@ -1103,7 +1104,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(inout) :: IG
   type(time_type),               intent(in)    :: Time_start, Time_end
-   
+
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
@@ -1153,7 +1154,7 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
   type(time_type),         intent(in)    :: Time_start, Time_end
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
                            intent(in)    :: coszen
-   
+
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
     cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
@@ -1356,7 +1357,7 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
 !    Per Rick Hemler:
 !      Call diurnal_solar with dtime=dt_here to get cosz averaged over dt_here.
 !      Call daily_mean_solar to get cosz averaged over a day.  Then
-!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice / 
+!      diurnal_factor = cosz_dt_ice*fracday_dt_ice*rrsun_dt_ice /
 !                       cosz_day*fracday_day*rrsun_day
 
     call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, Time_start, cosz=cosz_dt, &
@@ -1605,7 +1606,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mod, "HEAT_ROUGH_ICE", heat_rough_ice, &
                  "The default roughness length scale for the turbulent \n"//&
                  "transfer of heat into the ocean.", units="m", default=1.0e-4)
-                 
+
   call get_param(param_file, mod, "CONSTANT_COSZEN_IC", coszen_IC, &
                  "A constant value to use to initialize the cosine of \n"//&
                  "the solar zenith angle for the first radiation step, \n"//&
@@ -1697,7 +1698,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call get_param(param_file, mod, "PASS_ICEBERG_AREA_TO_OCEAN", pass_iceberg_area_to_ocean, &
                  "If true, iceberg area is passed through coupler", default=.false.)
   else ; pass_iceberg_area_to_ocean = .false. ; endif
-  
+
   call get_param(param_file, mod, "ADD_DIURNAL_SW", add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
                  "radiation.", default=.false.)
@@ -1784,7 +1785,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%Cgrid_dyn = Cgrid_dyn
     Ice%sCS%bounds_check = bounds_check
     Ice%sCS%debug = debug
-    
+
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(sIG, param_file, nCat_dflt)
     if (slab_ice) sIG%CatIce = 1 ! open water and ice ... but never in same place
@@ -1796,7 +1797,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.associated(Ice%sCS%G)) allocate(Ice%sCS%G)
     sG => Ice%sCS%G
 
-    ! Set up the MOM_domain_type structures.  
+    ! Set up the MOM_domain_type structures.
 #ifdef STATIC_MEMORY_
     call MOM_domains_init(Ice%sCS%G%domain, param_file, symmetric=symmetric, &
               static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
@@ -1866,12 +1867,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                massless_val=massless_ice_salin, nonnegative=.true.)
     endif
 
-  !   Register any tracers that will be handled via tracer flow control for 
+  !   Register any tracers that will be handled via tracer flow control for
   ! restarts and advection.
     call SIS_call_tracer_register(sG, sIG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
                                   Ice%sCS%diag, sIST%TrReg, Ice%Ice_restart, restart_file)
 
-    ! Set a few final things to complete the setup of the grid. 
+    ! Set a few final things to complete the setup of the grid.
     sG%g_Earth = g_Earth
     call set_first_direction(sG, first_direction)
     call clone_MOM_domain(sGD, sG%domain_aux, symmetric=.false., &
@@ -1917,7 +1918,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (.not.associated(Ice%fCS%G)) allocate(Ice%fCS%G)
       fG => Ice%fCS%G
 
-      ! Set up the MOM_domain_type structures.  
+      ! Set up the MOM_domain_type structures.
       call MOM_domains_init(Ice%fCS%G%domain, param_file, symmetric=.true., &
                domain_name="ice model fast", include_name="SIS2_memory.h", &
                static_memory=.false., NIHALO=0, NJHALO=0, param_suffix="_FAST")
@@ -1992,7 +1993,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.single_IST) then
       call ice_thermo_init(param_file, Ice%fCS%IST%ITV, init_EOS=nudge_sea_ice)
 
-      ! Set a few final things to complete the setup of the grid. 
+      ! Set a few final things to complete the setup of the grid.
       fG%g_Earth = g_Earth
       call set_first_direction(fG, first_direction)
       call clone_MOM_domain(fGD, fG%domain_aux, symmetric=.false., &
@@ -2018,7 +2019,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                specified_thermo_salinity=spec_thermo_sal)
 
     restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
- 
+
     if (file_exist(restart_path)) then
       ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
       ! file to be detected, and its difference from the value in this run to
@@ -2308,7 +2309,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                  (sHI%jec-sHI%jsc==fHI%jec-fHI%jsc))
       else ; write_error_mesg = .true.
       endif
-      
+
       if (write_error_mesg) call SIS_error(FATAL, &
           "The Verona coupler will not work unless the fast and slow portions "//&
           "of SIS2 use the same PEs and layout.")
@@ -2400,7 +2401,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
   endif ! fast_ice_PE
 
-  !nullify_domain perhaps could be called somewhere closer to set_domain 
+  !nullify_domain perhaps could be called somewhere closer to set_domain
   !but it should be called after restore_state() otherwise it causes a restart mismatch
   call nullify_domain()
 
@@ -2464,13 +2465,13 @@ subroutine share_ice_domains(Ice)
   else
     ice_clock_exchange = mpp_clock_id('Ice Fast/Slow Exchange', flags=clock_flag_default, grain=CLOCK_COMPONENT )
   endif
-  
+
 end subroutine share_ice_domains
 
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG
-  real,                         intent(in)    :: Rho_ice 
+  real,                         intent(in)    :: Rho_ice
   type(param_file_type),        intent(in)    :: param_file
   real, dimension(:), optional, intent(in)    :: hLim_vals
 

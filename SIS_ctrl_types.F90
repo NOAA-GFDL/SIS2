@@ -23,7 +23,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, ocean_sfc_state_type
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
-use SIS_types, only : total_sfc_flux_type 
+use SIS_types, only : total_sfc_flux_type
 
 ! use SIS2_ice_thm, only : ice_thermo_type !, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 ! use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
@@ -117,7 +117,7 @@ type SIS_slow_CS
   logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
                             ! modifies the calving field among other things.
   logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
-                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input) 
+                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input)
   logical :: berg_windstress_bug = .false. ! If true, use older code that applied
                            ! an old ice-ocean stress to the icebergs in place of
                            ! the current air-ice stress.  This option exists for

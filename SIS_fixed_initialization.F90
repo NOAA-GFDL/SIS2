@@ -180,7 +180,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
   if (trim(config) .ne. "DOME") then
     call limit_topography(D, G, PF, max_depth)
   endif
-  
+
 end subroutine SIS_initialize_topography
 
 end module SIS_fixed_initialization

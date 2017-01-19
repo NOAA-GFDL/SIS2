@@ -134,7 +134,7 @@ type ocean_sfc_state_type
 
   logical :: Cgrid_dyn ! If true use a C-grid discretization of the
                        ! sea-ice dynamics.
- 
+
   ! diagnostic IDs for ocean surface  properties.
   integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1
 end type ocean_sfc_state_type
@@ -142,7 +142,7 @@ end type ocean_sfc_state_type
 !> simple_OSS_type contains variables that describe the ocean's surface
 !! state as seen by the fast sea-ice or atmosphere, on the ice grid.
 type simple_OSS_type
-  ! The following 5 variables describe the ocean state as seen by the 
+  ! The following 5 variables describe the ocean state as seen by the
   ! atmosphere and use for the rapid thermodynamic sea ice changes.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
@@ -216,7 +216,7 @@ type fast_ice_avg_type
     p_atm_surf , &   ! The atmospheric pressure at the top of the ice, in Pa.
     flux_sw_dn, &    ! The total downward shortwave flux, summed across all
                      ! wavelengths and averaged across all thickness categories
-                     ! in W m-2.  
+                     ! in W m-2.
     runoff, &        ! Liquid runoff into the ocean, in kg m-2.
     calving, &       ! Calving of ice or runoff of frozen fresh
                      ! water into the ocean, in kg m-2.
@@ -233,7 +233,7 @@ type fast_ice_avg_type
                         ! exclusive of any iceberg contributions, based on
                         ! the temperature difference relative to a
                         ! reference temperature, in ???.
-    Tskin_avg, &     ! The area-weighted average skin temperature across all 
+    Tskin_avg, &     ! The area-weighted average skin temperature across all
                      ! ice thickness categories, in deg C, or 0 if there is
                      ! no ice.
     ice_free   , &   ! The fractional open water used in calculating
@@ -437,10 +437,10 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel, do_Tsurf
-  
+
   do_vel = .true. ; if (present(omit_velocities)) do_vel = .not.omit_velocities
   do_Tsurf = .true. ; if (present(omit_Tsurf)) do_Tsurf = .not.omit_Tsurf
- 
+
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
@@ -464,7 +464,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
     endif
 
     ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0   
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif
 
   if (do_Tsurf) then
@@ -570,7 +570,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%p_atm_surf(isd:ied, jsd:jed)) ; FIA%p_atm_surf(:,:) = 0.0
   allocate(FIA%Tskin_avg(isd:ied, jsd:jed)) ; FIA%Tskin_avg(:,:) = 0.0 ! diag
   allocate(FIA%ice_free(isd:ied, jsd:jed))  ; FIA%ice_free(:,:) = 0.0
-  allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0 
+  allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0
 
   allocate(FIA%flux_sw_dn(isd:ied, jsd:jed))  ; FIA%flux_sw_dn(:,:) = 0.0
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
@@ -675,7 +675,7 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
   allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0
   allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0
 
-  !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.) 
+  !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.)
   ! Please note that these are only allocated on the computational domain so that they
   ! can be passed conveniently to the iceberg code.
   if (alloc_bergs) then
@@ -697,8 +697,8 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
 
   ! The ocean_sfc_state_type only occurs on slow ice PEs, so it can use the memory macros.
   allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
-  allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0 
-  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0 
+  allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0
+  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
@@ -728,9 +728,9 @@ subroutine alloc_simple_OSS(OSS, HI)
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
-  allocate(OSS%SST_C(isd:ied, jsd:jed))  ; OSS%SST_C(:,:) = 0.0 
-  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed)) ; OSS%T_fr_ocn(:,:) = 0.0 
-  allocate(OSS%bheat(isd:ied, jsd:jed))   ; OSS%bheat(:,:) = 0.0 
+  allocate(OSS%SST_C(isd:ied, jsd:jed))  ; OSS%SST_C(:,:) = 0.0
+  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed)) ; OSS%T_fr_ocn(:,:) = 0.0
+  allocate(OSS%bheat(isd:ied, jsd:jed))   ; OSS%bheat(:,:) = 0.0
   allocate(OSS%u_ocn_A(isd:ied, jsd:jed)) ; OSS%u_ocn_A(:,:) = 0.0
   allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
   allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
@@ -794,7 +794,7 @@ end subroutine copy_IST_to_IST
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_IST_to_IST redistributes the computational domain of one ice state type into
-!! the computational domain of another ice_state_type.  
+!! the computational domain of another ice_state_type.
 subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   type(ice_state_type), pointer    :: IST_in     !< The ice_state_type that is being copied from (intent in).
   type(ice_state_type), pointer    :: IST_out    !< The ice_state_type that is being copied into (intent inout).
@@ -1207,7 +1207,7 @@ end subroutine copy_FIA_to_FIA
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redistribute_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
-!! the computational domain of another fast_ice_avg_type. 
+!! the computational domain of another fast_ice_avg_type.
 subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out, IG)
   type(fast_ice_avg_type), pointer    :: FIA_in     !< The fast_ice_avg_type that is being copied from.
   type(fast_ice_avg_type), pointer    :: FIA_out    !< The fast_ice_avg_type that is being copied into.

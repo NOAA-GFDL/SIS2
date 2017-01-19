@@ -16,7 +16,7 @@ public :: set_ice_grid, ice_grid_end
 
 type, public :: ice_grid_type
   ! This type contains sea-ice specific grid elements, including information
-  ! about the category descreptions and the vertical layers in the snow and ice.
+  ! about the category descriptions and the vertical layers in the snow and ice.
   integer :: CatIce     ! The number of sea ice categories.
   integer :: NkIce      ! The number of vertical partitions within the
                         ! sea ice.
@@ -27,14 +27,14 @@ type, public :: ice_grid_type
   real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
                         ! the internal units of thickness.
   real :: H_subroundoff !   A thickness that is so small that it can be added to
-                        ! any physically meaningflu positive thickness without
+                        ! any physically meaningful positive thickness without
                         ! changing it at the bit level, in thickness units.
 
   real, allocatable, dimension(:) :: &
     cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
     mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
                   ! in units of H (often kg m-2).
-  
+
 end type ice_grid_type
 
 contains
