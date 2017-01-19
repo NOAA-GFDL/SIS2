@@ -32,7 +32,7 @@ use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
 
-public :: ice_data_type, dealloc_ice_arrays 
+public :: ice_data_type, dealloc_ice_arrays
 public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
@@ -338,7 +338,7 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
   ! possible do check their values.
 
   logical :: fast_fields, slow_fields
-  
+
   fast_fields = Ice%fast_ice_PE ; slow_fields = Ice%slow_ice_PE
 
   if (present(check_fast)) then
@@ -586,7 +586,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size         )
   write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf            )
   write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf            )
- 
+
   if (Ice%fast_ice_PE) then
     ! These fields are only valid on fast ice PEs.
     write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo          )

@@ -195,7 +195,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
     enddo ; enddo
     stress_stagger = AGRID
   endif
-  
+
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, CS%Time, &
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
@@ -331,7 +331,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
   IOF%stress_count = 0
-  
+
   CS%n_calls = CS%n_calls + 1
 
   if (CS%id_xprt>0) then
@@ -741,7 +741,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; 
+!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ;
   NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
@@ -1178,7 +1178,7 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 end subroutine set_ocean_top_stress_Cgrid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_register_restarts allocates and registers any variables for this 
+!> SIS_dyn_trans_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)

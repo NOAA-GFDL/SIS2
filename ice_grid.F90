@@ -34,7 +34,7 @@ type, public :: ice_grid_type
     cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
     mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
                   ! in units of H (often kg m-2).
-  
+
 end type ice_grid_type
 
 contains

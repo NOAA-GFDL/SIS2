@@ -130,7 +130,7 @@ subroutine copy_dyngrid_to_SIS_horgrid(dG, SG)
 !   SG%areaT_global = dG%areaT_global ; SG%IareaT_global = dG%IareaT_global
   SG%south_lat = dG%south_lat ; SG%west_lon  = dG%west_lon
   SG%len_lat = dG%len_lat ; SG%len_lon = dG%len_lon
-  SG%Rad_Earth = dG%Rad_Earth ; SG%max_depth = dG%max_depth 
+  SG%Rad_Earth = dG%Rad_Earth ; SG%max_depth = dG%max_depth
 
 ! Update the halos in case the dynamic grid has smaller halos than the ocean grid.
   call pass_var(SG%areaT, SG%Domain)

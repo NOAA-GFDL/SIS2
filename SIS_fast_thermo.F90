@@ -67,7 +67,7 @@ public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
 
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
-  ! conservation with the fast thermodynamics code. 
+  ! conservation with the fast thermodynamics code.
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
 
@@ -225,7 +225,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
       FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
       FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
-      
+
       ! Copy radiation fields from the fast to the slow states.
       if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
@@ -319,7 +319,7 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   TSF%flux_sw_vis_dir(:,:) = 0.0 ; TSF%flux_sw_vis_dif(:,:) = 0.0
 
   TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
-  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0           
+  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0
   if (TSF%num_tr_fluxes > 0) TSF%tr_flux(:,:,:) = 0.0
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -690,7 +690,7 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_fast_thermo" ! This module's name.
- 
+
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
 
   if (associated(CS)) then

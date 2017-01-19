@@ -495,7 +495,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
     uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
     hprev(:,:,:) = landvolfill
     h_neglect = IG%H_subroundoff
-    
+
     ! Initialize domore_u and domore_v.  Curiously, the value used for
     ! initialization does not matter to the solutions, because if .false.
     ! they are reevaluated after the first halo update (and always on the first
@@ -503,7 +503,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
     ! two choices, .false. is more efficient in that it avoids extra
     ! calculations of 0 fluxes.
     domore_u(:,:) = .false. ; domore_v(:,:) = .false.
-    
+
 !$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
 !$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
 !$OMP                               h_neglect,vh_neglect,domore_u,domore_v)

@@ -54,7 +54,7 @@ type atmos_ice_boundary_type
     lw_flux => NULL(), & ! The net flux of longwave radiation from the atmosphere into the
                          ! ice or ocean, in W m-2.
     ! sw_flux_tot_down => NULL(), & ! The total downward flux of shortwave radiation
-    !                      ! at the surface of the ice or ocean, in W m-2.                      
+    !                      ! at the surface of the ice or ocean, in W m-2.
     sw_flux_vis_dir => NULL(), & ! The visible (_vis) or near-infrared (_nir),
     sw_flux_vis_dif => NULL(), & ! direct (_dir) or diffuse (_dif) net shortwave
     sw_flux_nir_dir => NULL(), & ! radiation fluxes from the atmosphere into
@@ -63,7 +63,7 @@ type atmos_ice_boundary_type
     sw_down_vis_dif => NULL(), & ! direct (_dir) or diffuse (_dif) downward
     sw_down_nir_dir => NULL(), & ! shortwave radiation fluxes from the atmosphere
     sw_down_nir_dif => NULL(), & ! into the ice or ocean, in W m-2.
-    
+
     lprec   => NULL(), & ! The liquid precipitation from the atmosphere onto the
                          ! atmosphere or ice in each thickness category, in kg m-2 s-1.
                          ! Rain falling on snow is currently assumed to pass or drain

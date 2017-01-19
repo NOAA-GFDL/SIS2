@@ -338,10 +338,10 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   else
     call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in j-direction "//trim(diag%name))
   endif
-  
+
   ! Handle cases where the data and computational domain are the same size.
-  if (diag_cs%ied-diag_cs%isd == diag_cs%ie-diag_cs%is) i_data = j_data 
-  if (diag_cs%jed-diag_cs%jsd == diag_cs%je-diag_cs%js) j_data = i_data 
+  if (diag_cs%ied-diag_cs%isd == diag_cs%ie-diag_cs%is) i_data = j_data
+  if (diag_cs%jed-diag_cs%jsd == diag_cs%je-diag_cs%js) j_data = i_data
 
   if (present(mask)) then
     if ((size(field,1) /= size(mask,1)) .or. &
