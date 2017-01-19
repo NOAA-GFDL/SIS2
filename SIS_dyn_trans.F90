@@ -311,6 +311,17 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   if (CS%specified_ice) then
     ndyn_steps = 0 ; dt_slow_dyn = 0.0
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
+!$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
+!$OMP                                  WindStr_y_ocn_A,FIA)
+    do j=jsd,jed
+      do i=isd,ied
+        WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+        WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+        ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
+        WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+      enddo
+    enddo
   else
     ndyn_steps = 1
     if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
@@ -326,20 +337,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     ! Store values to determine the ice and snow mass change due to transport.
     h2o_chg_xprt(:,:) = 0.0
   endif
-
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
-!$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
-!$OMP                                  WindStr_y_ocn_A,FIA)
-  do j=jsd,jed
-    do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
-      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
-
-      ! This might not do anything...
-      ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
-      WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-    enddo
-  enddo
 
   do nds=1,ndyn_steps
 

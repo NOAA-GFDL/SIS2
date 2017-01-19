@@ -1688,6 +1688,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "be lost to roundoff during any sums so that the open \n"//&
                  "ocean fluxes can be used in with new categories.", &
                  units="nondim", default=0.0)
+  if ((ocean_part_min < 0.0) .or. (ocean_part_min > 1.0e-20)) &
+    call SIS_error(FATAL, "MIN_OCEAN_PARTSIZE has been set outside of the valid"//&
+                   "range of 0 to 1e-20.")
   call get_param(param_file, mod, "DO_ICEBERGS", do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   if (do_icebergs) then
