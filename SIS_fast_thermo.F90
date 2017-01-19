@@ -36,6 +36,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl
 ! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
+use MOM_checksums,     only : hchksum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -549,6 +550,23 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
   enddo
+
+  if (CS%debug) then
+    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI)
+    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI)
+    call hchksum(flux_t(:,:,1:), "Mid do_fast flux_t", G%HI)
+    call hchksum(flux_q(:,:,1:), "Mid do_fast flux_q", G%HI)
+    call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI)
+    call hchksum(flux_sw_nir_dir(:,:,1:), "Mid do_fast flux_sw_nir_dir", G%HI)
+    call hchksum(flux_sw_nir_dif(:,:,1:), "Mid do_fast flux_sw_nir_dif", G%HI)
+    call hchksum(flux_sw_vis_dir(:,:,1:), "Mid do_fast flux_sw_vis_dir", G%HI)
+    call hchksum(flux_sw_vis_dif(:,:,1:), "Mid do_fast flux_sw_vis_dif", G%HI)
+    call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI)
+    call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI)
+    call hchksum(dhdt(:,:,1:), "Mid do_fast dhdt", G%HI)
+    call hchksum(dedt(:,:,1:), "Mid do_fast dedt", G%HI)
+    call hchksum(drdt(:,:,1:), "Mid do_fast drdt", G%HI)
+  endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)

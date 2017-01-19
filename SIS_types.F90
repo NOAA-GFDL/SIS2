@@ -1628,21 +1628,35 @@ end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in a fast_ice_avg_type.
-subroutine FIA_chksum(mesg, FIA, G)
+subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
-  call hchksum(FIA%flux_t_top, trim(mesg)//" FIA%flux_t_top", G%HI)
-  call hchksum(FIA%flux_q_top, trim(mesg)//" FIA%flux_q_top", G%HI)
-  call hchksum(FIA%flux_sw_vis_dir_top, trim(mesg)//" FIA%flux_sw_vis_dir_top", G%HI)
-  call hchksum(FIA%flux_sw_vis_dif_top, trim(mesg)//" FIA%flux_sw_vis_dif_top", G%HI)
-  call hchksum(FIA%flux_sw_nir_dir_top, trim(mesg)//" FIA%flux_sw_nir_dir_top", G%HI)
-  call hchksum(FIA%flux_sw_nir_dif_top, trim(mesg)//" FIA%flux_sw_nir_dif_top", G%HI)
-  call hchksum(FIA%flux_lw_top, trim(mesg)//" FIA%flux_lw_top", G%HI)
-  call hchksum(FIA%flux_lh_top, trim(mesg)//" FIA%flux_lh_top", G%HI)
-  call hchksum(FIA%lprec_top, trim(mesg)//" FIA%lprec_top", G%HI)
-  call hchksum(FIA%fprec_top, trim(mesg)//" FIA%fprec_top", G%HI)
+  call hchksum(FIA%flux_t_top(:,:,1:), trim(mesg)//" FIA%flux_t_top", G%HI)
+  call hchksum(FIA%flux_q_top(:,:,1:), trim(mesg)//" FIA%flux_q_top", G%HI)
+  call hchksum(FIA%flux_sw_vis_dir_top(:,:,1:), trim(mesg)//" FIA%flux_sw_vis_dir_top", G%HI)
+  call hchksum(FIA%flux_sw_vis_dif_top(:,:,1:), trim(mesg)//" FIA%flux_sw_vis_dif_top", G%HI)
+  call hchksum(FIA%flux_sw_nir_dir_top(:,:,1:), trim(mesg)//" FIA%flux_sw_nir_dir_top", G%HI)
+  call hchksum(FIA%flux_sw_nir_dif_top(:,:,1:), trim(mesg)//" FIA%flux_sw_nir_dif_top", G%HI)
+  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI)
+  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI)
+  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI)
+  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI)
+
+  if (present(check_ocean)) then ; if (check_ocean) then
+    call hchksum(FIA%flux_t_top(:,:,0), trim(mesg)//" FIA%flux_t_top0", G%HI)
+    call hchksum(FIA%flux_q_top(:,:,0), trim(mesg)//" FIA%flux_q_top0", G%HI)
+    call hchksum(FIA%flux_sw_vis_dir_top(:,:,0), trim(mesg)//" FIA%flux_sw_vis_dir_top0", G%HI)
+    call hchksum(FIA%flux_sw_vis_dif_top(:,:,0), trim(mesg)//" FIA%flux_sw_vis_dif_top0", G%HI)
+    call hchksum(FIA%flux_sw_nir_dir_top(:,:,0), trim(mesg)//" FIA%flux_sw_nir_dir_top0", G%HI)
+    call hchksum(FIA%flux_sw_nir_dif_top(:,:,0), trim(mesg)//" FIA%flux_sw_nir_dif_top0", G%HI)
+    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI)
+    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI)
+    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI)
+    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI)
+  endif ; endif
 
   call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI)
   call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
@@ -1685,7 +1699,8 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   ! and js...je as their extent.
   hs=0; if (present(haloshift)) hs=haloshift
 
-  call hchksum(IST%part_size, trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
+  call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
+  call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
   call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k
