@@ -286,7 +286,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   real :: dt_slow_dyn
-  real :: max_ice_cover, FIA_ice_cover
+  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   integer :: ndyn_steps
   real :: Idt_slow
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
@@ -331,7 +331,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   IOF%stress_count = 0
   
   CS%n_calls = CS%n_calls + 1
-  max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
 
   if (CS%id_xprt>0) then
     ! Store values to determine the ice and snow mass change due to transport.
@@ -344,25 +343,28 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
     ice_cover(:,:) = 0.0
+    max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,ice_cover,IST,FIA,ice_free, &
 !$OMP                                  WindStr_x_A,WindStr_y_A,WindStr_x_ocn_A, &
 !$OMP                                  max_ice_cover, WindStr_y_ocn_A) &
-!$OMP                           private(FIA_ice_cover)
+!$OMP                           private(FIA_ice_cover, ice_cover_now)
     do j=jsd,jed
       do k=1,ncat ; do i=isd,ied
         ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
       enddo ; enddo
       do i=isd,ied
-!### These 2 lines will be uncommented soon, but they change answers at roundoff.
-!        ice_cover(i,j) = min(ice_cover(i,j), max_ice_cover)
-!        FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
-        FIA_ice_cover = FIA%ice_cover(i,j)
+        ! The use of these limits prevents the use of the ocean wind stresses
+        ! there is actually no open ocean and hence there may be no valid ocean
+        ! stresses.  This can occur when ice_cover ~= 1 for both states, but
+        ! they are not exactly 1.0 due to roundoff in the sum above.
+        ice_cover_now = min(ice_cover(i,j), max_ice_cover)
+        FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
 
-        if (ice_cover(i,j) > FIA_ice_cover) then
-          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
-                              FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover(i,j)
-          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
-                              FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover(i,j)
+        if (ice_cover_now > FIA_ice_cover) then
+          WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                              FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+          WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                              FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
         else
           WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
           WindStr_y_A(i,j) = FIA%WindStr_y(i,j)

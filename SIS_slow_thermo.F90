@@ -712,11 +712,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   ! Start accumulating the fluxes at the ocean's surface.
 !$OMP do
   do j=jsc,jec ; do i=isc,iec
-    part_ocn = IST%part_size(i,j,0)
-    ! ### The two following lines change answers in some coupled cases with
-    ! ### strange initial conditions.
-    ! part_ocn = 0.0
-    ! if (IST%part_size(i,j,0) > CS%ocean_part_min) part_ocn = IST%part_size(i,j,0)
+    part_ocn = 0.0
+    if (IST%part_size(i,j,0) > CS%ocean_part_min) part_ocn = IST%part_size(i,j,0)
 
     IOF%flux_t_ocn_top(i,j) = part_ocn * FIA%flux_t_top(i,j,0)
     IOF%flux_q_ocn_top(i,j) = part_ocn * FIA%flux_q_top(i,j,0)
@@ -733,7 +730,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
-                                 IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
+                             IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 !$OMP end parallel
 
