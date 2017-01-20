@@ -101,6 +101,12 @@ type slow_thermo_CS ; private
                             ! the thinest cells to attain similar thicknesses,
                             ! or a negative number to apply the frazil flux
                             ! uniformly, in s.
+  real :: ocean_part_min    ! The minimum value for the fractional open-ocean
+                            ! area.  This can be 0, but for some purposes it
+                            ! may be useful to set this to a miniscule value
+                            ! (like 1e-40) that will be lost to roundoff
+                            ! during any sums so that the open ocean fluxes
+                            ! can be used in interpolation across categories.
 
   logical :: do_ridging     !   If true, apply a ridging scheme to the convergent
                             ! ice.  The original SIS2 implementation is based on
@@ -545,6 +551,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
   real :: kg_H_Nk      ! The conversion factor from units of H to kg/m2 over Nk.
   real :: part_sum     ! A running sum of partition sizes.
+  real :: part_ocn     ! A slightly modified ocean part size.
   real :: d_enth       ! The change in enthalpy between categories.
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
@@ -693,7 +700,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IST,salt_change,kg_H_Nk, &
-!$OMP                               h2o_change,NkIce,IG,CS,IOF,FIA)
+!$OMP                               h2o_change,NkIce,IG,CS,IOF,FIA) &
+!$OMP                        private(part_ocn)
   if (CS%ice_rel_salin <= 0.0) then
 !$OMP do
     do j=jsc,jec ; do m=1,NkIce ; do k=1,ncat ; do i=isc,iec
@@ -710,22 +718,25 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   ! Start accumulating the fluxes at the ocean's surface.
 !$OMP do
   do j=jsc,jec ; do i=isc,iec
-    IOF%flux_t_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_t_top(i,j,0)
-    IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_q_top(i,j,0)
-    IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
-    IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
-    IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dir_top(i,j,0)
-    IOF%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dif_top(i,j,0)
-    IOF%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dir_top(i,j,0)
-    IOF%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dif_top(i,j,0)
-    IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
-    IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
+    part_ocn = 0.0
+    if (IST%part_size(i,j,0) > CS%ocean_part_min) part_ocn = IST%part_size(i,j,0)
+
+    IOF%flux_t_ocn_top(i,j) = part_ocn * FIA%flux_t_top(i,j,0)
+    IOF%flux_q_ocn_top(i,j) = part_ocn * FIA%flux_q_top(i,j,0)
+    IOF%flux_lw_ocn_top(i,j) = part_ocn * FIA%flux_lw_top(i,j,0)
+    IOF%flux_lh_ocn_top(i,j) = part_ocn * FIA%flux_lh_top(i,j,0)
+    IOF%flux_sw_vis_dir_ocn(i,j) = part_ocn * FIA%flux_sw_vis_dir_top(i,j,0)
+    IOF%flux_sw_vis_dif_ocn(i,j) = part_ocn * FIA%flux_sw_vis_dif_top(i,j,0)
+    IOF%flux_sw_nir_dir_ocn(i,j) = part_ocn * FIA%flux_sw_nir_dir_top(i,j,0)
+    IOF%flux_sw_nir_dif_ocn(i,j) = part_ocn * FIA%flux_sw_nir_dif_top(i,j,0)
+    IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
+    IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
   enddo ; enddo
 ! mw/new precip will eventually be intercepted by pond eliminating need for next 3 lines
 !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
-                                 IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
+                             IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 !$OMP end parallel
 
@@ -881,7 +892,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
-!$OMP                                  fill_frac,d_enth,Tr_lay,I_part,sn2ic,enth_snowfall)
+!$OMP                                  fill_frac,d_enth,TrLay,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (FIA%frazil_left(i,j)>0.0) then
 
     frazil_cat(1:ncat) = 0.0
@@ -894,7 +905,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif ; enddo
     endif
 
-    if (IST%part_size(i,j,0) > 0.0) then
+    if (IST%part_size(i,j,0) > CS%ocean_part_min) then
       ! Combine the ice-free part size with one of the categories.
       !   Whether or not this is also applied when part_size(i,j,0)==0 changes
       ! answers at roundoff because (t*h)*(1/h) /= t.
@@ -909,7 +920,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
           IST%t_surf(i,j,k) = OSS%T_fr_ocn(i,j) + T_0degC
       endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
-      IST%part_size(i,j,0) = 0.0
+      IST%part_size(i,j,0) = CS%ocean_part_min
     endif
 
     if (CS%filling_frazil) then
@@ -1263,6 +1274,13 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                "thinest cells to attain similar thicknesses, or a negative \n"//&
                "number to apply the frazil flux uniformly.", default=0.0, &
                units="s", do_not_log=.not.CS%filling_frazil)
+  call get_param(param_file, mod, "MIN_OCEAN_PARTSIZE", CS%ocean_part_min, &
+                 "The minimum value for the fractional open-ocean area. \n"//&
+                 "This can be 0, but for some purposes it may be useful \n"//&
+                 "to set this to a miniscule value (like 1e-40) that will \n"//&
+                 "be lost to roundoff during any sums so that the open \n"//&
+                 "ocean fluxes can be used in with new categories.", &
+                 units="nondim", default=0.0)
 
   call get_param(param_file, mod, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
                  "If true, restore the sea ice state toward climatology.", &

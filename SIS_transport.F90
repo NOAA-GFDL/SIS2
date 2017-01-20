@@ -593,7 +593,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     endif
 
     do k=1,nCat ; do i=is,ie
-      mca0_ice(i,k) = mca_ice(i,k) 
+      mca0_ice(i,k) = mca_ice(i,k)
       mca0_snow(i,k) = mca_snow(i,k)
       mca0_pond(i,k) = mca_pond(i,k)
     enddo ; enddo
@@ -747,7 +747,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
 
     if (do_j(j)) then
       do k=1,nCat ; do i=isc,iec
-        mca0_ice(i,k) = mca_ice(i,j,k) 
+        mca0_ice(i,k) = mca_ice(i,j,k)
         mca0_snow(i,k) = mca_snow(i,j,k)
         mca0_pond(i,k) = mca_pond(i,j,k)
       enddo ; enddo
@@ -816,9 +816,11 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
       k=nCat
       do i=isc,iec
         if (excess_cover(i,j) > 0.0) then
-          if (part_sz(i,j,k) <= 1.0) &
-            call SIS_error(FATAL, &
+          if (part_sz(i,j,k) <= 1.0 .and. &
+             (excess_cover(i,j) > 2.0*nCat*epsilon(Icompress_here))) then
+             call SIS_error(FATAL, &
                 "Category CatIce part_sz inconsistent with excess cover.")
+          endif
           Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
           mH_ice(i,j,k) = mH_ice(i,j,k) * Icompress_here
           mH_snow(i,j,k) = mH_snow(i,j,k) * Icompress_here

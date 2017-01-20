@@ -36,6 +36,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl
 ! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
+use MOM_checksums,     only : hchksum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -66,7 +67,7 @@ public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
 
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
-  ! conservation with the fast thermodynamics code. 
+  ! conservation with the fast thermodynamics code.
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
 
@@ -224,7 +225,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
       FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
       FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
       FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
-      
+
       ! Copy radiation fields from the fast to the slow states.
       if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
@@ -318,7 +319,7 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   TSF%flux_sw_vis_dir(:,:) = 0.0 ; TSF%flux_sw_vis_dif(:,:) = 0.0
 
   TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
-  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0           
+  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0
   if (TSF%num_tr_fluxes > 0) TSF%tr_flux(:,:,:) = 0.0
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -550,6 +551,23 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     enddo ; enddo
   enddo
 
+  if (CS%debug) then
+    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI)
+    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI)
+    call hchksum(flux_t(:,:,1:), "Mid do_fast flux_t", G%HI)
+    call hchksum(flux_q(:,:,1:), "Mid do_fast flux_q", G%HI)
+    call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI)
+    call hchksum(flux_sw_nir_dir(:,:,1:), "Mid do_fast flux_sw_nir_dir", G%HI)
+    call hchksum(flux_sw_nir_dif(:,:,1:), "Mid do_fast flux_sw_nir_dif", G%HI)
+    call hchksum(flux_sw_vis_dir(:,:,1:), "Mid do_fast flux_sw_vis_dir", G%HI)
+    call hchksum(flux_sw_vis_dif(:,:,1:), "Mid do_fast flux_sw_vis_dif", G%HI)
+    call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI)
+    call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI)
+    call hchksum(dhdt(:,:,1:), "Mid do_fast dhdt", G%HI)
+    call hchksum(dedt(:,:,1:), "Mid do_fast dedt", G%HI)
+    call hchksum(drdt(:,:,1:), "Mid do_fast drdt", G%HI)
+  endif
+
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
 
@@ -672,7 +690,7 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_fast_thermo" ! This module's name.
- 
+
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
 
   if (associated(CS)) then
