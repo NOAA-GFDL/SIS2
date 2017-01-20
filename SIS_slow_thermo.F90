@@ -1209,6 +1209,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + net_melt(i,j)
   enddo ; enddo
 
+  ! Double check to make sure TrLay is no longer allocated
+  if(allocated(TrLay)) deallocate(TrLay)
 end subroutine SIS2_thermodynamics
 
 
