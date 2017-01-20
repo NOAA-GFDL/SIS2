@@ -757,7 +757,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   ! Set up temporary tracer array
   npassive = SIS_count_passive_tracers(IST%TrReg)
   if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
-  
+
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
       ! reshape the ice based on fluxes
