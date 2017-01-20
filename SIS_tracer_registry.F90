@@ -310,7 +310,7 @@ subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, npassive)
                                                                  !! of passive tracers
   integer,                          intent(  out) :: npassive   !< Number of passive tracers
 
-  integer :: m, tr
+  integer :: m, tr, pass_idx
   logical :: copy(MAX_FIELDS_)      !< True if the tracer should be copied over to the slice
 
   copy(:) = .false.
@@ -324,24 +324,26 @@ subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, npassive)
   enddo
 
   ! Allocate the tracer slice array if it has not been done yet
-  if(.not. allocated(TrLay)) allocate(TrLay(nkice,npassive))
+  if(.not. allocated(TrLay)) allocate(TrLay(0:nkice+1,npassive))
 
+  pass_idx = 0
   do tr=1,TrReg%ntr
     if(copy(tr)) then
+      pass_idx = pass_idx + 1
       ! Copy from main tracer array
-      do m=1,nkice ; TrLay(m,tr) = TrReg%Tr_ice(tr)%t(i,j,cat,m) ; enddo
+      do m=1,nkice ; TrLay(m,pass_idx) = TrReg%Tr_ice(tr)%t(i,j,cat,m) ; enddo
 
       ! Set snow and ice boundary conditions (if they exist)
       if(associated(TrReg%Tr_ice(tr)%ocean_BC)) then
-        TrLay(NkIce+1,tr) = TrReg%Tr_ice(tr)%ocean_BC(i,j,cat)
+        TrLay(NkIce+1,pass_idx) = TrReg%Tr_ice(tr)%ocean_BC(i,j,cat)
       else
-        TrLay(NkIce+1,tr) = 0.0
+        TrLay(NkIce+1,pass_idx) = 0.0
       endif
 
       if(associated(TrReg%Tr_ice(tr)%snow_BC)) then
-        TrLay(0,tr) = TrReg%Tr_ice(tr)%snow_BC(i,j,cat)
+        TrLay(0,pass_idx) = TrReg%Tr_ice(tr)%snow_BC(i,j,cat)
       else
-        TrLay(0,tr) = 0.0
+        TrLay(0,pass_idx) = 0.0
       endif
     endif
   enddo
@@ -359,7 +361,7 @@ subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, deallocate_
                                                            !! of passive tracers
   logical, optional,                intent(in   ) :: deallocate_now
 
-  integer :: m, tr
+  integer :: m, tr, pass_idx
   logical :: copy(MAX_FIELDS_)      ! True if the tracer should be copied over to the slice
   logical :: now_deallocate
 
@@ -373,10 +375,12 @@ subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, deallocate_
         copy(tr) = .true.
   enddo
 
+  pass_idx = 0
   do tr=1,TrReg%ntr
     if(copy(tr)) then
+      pass_idx = pass_idx + 1
       ! Copy values back to tracer array
-      do m=1,nkice ; TrReg%Tr_ice(tr)%t(i,j,cat,m) = TrLay(m,tr) ; enddo
+      do m=1,nkice ; TrReg%Tr_ice(tr)%t(i,j,cat,m) = TrLay(m,pass_idx) ; enddo
     endif
   enddo
 
