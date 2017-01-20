@@ -741,6 +741,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   enddo ; enddo ; enddo
 !$OMP end parallel
 
+  ! Set up temporary tracer array
+  npassive = SIS_count_passive_tracers(IST%TrReg)
+  if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
@@ -754,10 +758,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay, mtot_ice, TrLay,                      &
 !$OMP                                  I_part,sn2ic,enth_snowfall)
-  ! Set up temporary tracer array
-  npassive = SIS_count_passive_tracers(IST%TrReg)
-  if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
-
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
       ! reshape the ice based on fluxes
@@ -889,7 +889,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK,enth_units,   &
 !$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
 !$OMP                                  salt_change,net_melt,kg_h_Nk,LatHtFus,FIA,CS,OSS,&
-!$OMP                                  IOF, npassive) &
+!$OMP                                  IOF) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
