@@ -248,7 +248,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
     ! of nLTr is IG%NkIce
     call register_SIS_tracer(CS%tr(:,:,:,:,m), G, IG, IG%NkIce, var_name, param_file, &
         TrReg, snow_tracer=.false.,ad_3d_x=CS%tr_adx(m)%p, &
-        ad_3d_y=CS%tr_ady(m)%p, ocean_BC=ocean_BC_ptr, snow_BC=snow_BC_ptr)
+        ad_3d_y=CS%tr_ady(m)%p, ocean_BC=ocean_BC_ptr, snow_BC=snow_BC_ptr, is_passive=.true.)
 
     ! Set boundary conditions
     if(CS%new_ice_is_sink(m)) then
