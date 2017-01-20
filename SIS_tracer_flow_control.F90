@@ -136,19 +136,12 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
       "If true, use the concentration based age tracer package.", &
       default=.false.)
 
-
-  ! Set number of passive tracers to 0 initially
-  TrReg%npassive = 0
-  ! Set first passive tracer index
-  TrReg%passive_idx = TrReg%ntr + 1
-
   !    Add other user-provided calls to register tracers for restarting here. Each
   !  tracer package registration call returns a logical false if it cannot be run
   !  for some reason.  This then overrides the run-time selection from above.
   if (CS%use_ice_age) then
     CS%use_ice_age = register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
         diag, TrReg, Ice_restart, restart_file)
-    TrReg%npassive = TrReg%npassive + 1
   endif
 
 
