@@ -298,65 +298,89 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 !  endif
   CS%u_file = -1 ; CS%v_file = -1 ; CS%cols_written = 0
 
-  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,         &
+  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,     &
             'first stress invariant', 'none', missing_value=missing)
-  CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,        &
+  CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
             'second stress invariant', 'none', missing_value=missing)
-  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time,     &
+  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
             'ice strength', 'Pa*m', missing_value=missing)
-  CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time,     &
+  CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time, &
             'ice strength at start of rheology', 'Pa*m', missing_value=missing)
-  CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,        &
-            'ice internal stress - x component', 'Pa', missing_value=missing)
-  CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,        &
-            'ice internal stress - y component', 'Pa', missing_value=missing)
-  CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesCu1, Time,        &
-            'Coriolis force - x component', 'Pa', missing_value=missing)
-  CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesCv1, Time,        &
-            'Coriolis force - y component', 'Pa', missing_value=missing)
-  CS%id_Coru   = register_diag_field('ice_model', 'Cor_ui', diag%axesCu1, Time,     &
-            'Coriolis ice acceleration - x component', 'm s-2', missing_value=missing)
-  CS%id_Corv   = register_diag_field('ice_model', 'Cor_vi', diag%axesCv1, Time,     &
-            'Coriolis ice acceleration - y component', 'm s-2', missing_value=missing)
-  CS%id_fpx   = register_diag_field('ice_model', 'FP_X', diag%axesCu1, Time,        &
-            'Pressure force - x component', 'Pa', missing_value=missing)
-  CS%id_fpy   = register_diag_field('ice_model', 'FP_Y', diag%axesCv1, Time,        &
-            'Pressure force - y component', 'Pa', missing_value=missing)
-  CS%id_PFu   = register_diag_field('ice_model', 'Pfa_ui', diag%axesCu1, Time,     &
-            'Pressure-force ice acceleration - x component', 'm s-2', missing_value=missing)
-  CS%id_PFv   = register_diag_field('ice_model', 'Pfa_vi', diag%axesCv1, Time,     &
-            'Pressure-force ice acceleration - y component', 'm s-2', missing_value=missing)
-  CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesCu1, Time,        &
-            'water stress on ice - x component', 'Pa', missing_value=missing)
-  CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,        &
-            'water stress on ice - y component', 'Pa', missing_value=missing)
-  CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesCu1, Time,          &
-            'ice velocity - x component', 'm/s', missing_value=missing)
-  CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,          &
-            'ice velocity - y component', 'm/s', missing_value=missing)
-  CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,          &
+  CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
+            'ice internal stress - x component', 'Pa', missing_value=missing,  &
+            interp_method='none')
+  CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,   &
+            'ice internal stress - y component', 'Pa', missing_value=missing,  &
+            interp_method='none')
+  CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesCu1, Time,   &
+            'Coriolis force - x component', 'Pa', missing_value=missing,       &
+            interp_method='none')
+  CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesCv1, Time,   &
+            'Coriolis force - y component', 'Pa', missing_value=missing,       &
+            interp_method='none')
+  CS%id_Coru   = register_diag_field('ice_model', 'Cor_ui', diag%axesCu1, Time,&
+            'Coriolis ice acceleration - x component', 'm s-2',                &
+            missing_value=missing, interp_method='none')
+  CS%id_Corv   = register_diag_field('ice_model', 'Cor_vi', diag%axesCv1, Time,&
+            'Coriolis ice acceleration - y component', 'm s-2',                &
+            missing_value=missing, interp_method='none')
+  CS%id_fpx   = register_diag_field('ice_model', 'FP_X', diag%axesCu1, Time,   &
+            'Pressure force - x component', 'Pa', missing_value=missing,       &
+            interp_method='none')
+  CS%id_fpy   = register_diag_field('ice_model', 'FP_Y', diag%axesCv1, Time,   &
+            'Pressure force - y component', 'Pa', missing_value=missing,       &
+            interp_method='none')
+  CS%id_PFu   = register_diag_field('ice_model', 'Pfa_ui', diag%axesCu1, Time, &
+            'Pressure-force ice acceleration - x component', 'm s-2',          &
+            missing_value=missing, interp_method='none')
+  CS%id_PFv   = register_diag_field('ice_model', 'Pfa_vi', diag%axesCv1, Time, &
+            'Pressure-force ice acceleration - y component', 'm s-2',          &
+            missing_value=missing,  interp_method='none')
+  CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesCu1, Time,   &
+            'water stress on ice - x component', 'Pa', missing_value=missing,  &
+            interp_method='none')
+  CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,   &
+            'water stress on ice - y component', 'Pa', missing_value=missing,  &
+            interp_method='none')
+  CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesCu1, Time,     &
+            'ice velocity - x component', 'm/s', missing_value=missing,        &
+            interp_method='none')
+  CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,     &
+            'ice velocity - y component', 'm/s', missing_value=missing,        &
+            interp_method='none')
+  CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,  &
             'Mass of ice and snow at t-points', 'kg m-2', missing_value=missing)
-  CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,          &
-            'Initial summed concentration of ice at t-points', 'nondim', missing_value=missing)
-  CS%id_ci  = register_diag_field('ice_model', 'CI_proj', diag%axesT1, Time,          &
-            'Projected summed concentration of ice at t-points', 'nondim', missing_value=missing)
-  CS%id_miu   = register_diag_field('ice_model', 'MI_U', diag%axesCu1, Time,          &
-            'Mass of ice and snow at u-points', 'kg m-2', missing_value=missing)
-  CS%id_miv   = register_diag_field('ice_model', 'MI_V', diag%axesCv1, Time,          &
-            'Mass of ice and snow at v-points', 'kg m-2', missing_value=missing)
+  CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,   &
+            'Initial summed concentration of ice at t-points', 'nondim',       &
+            missing_value=missing)
+  CS%id_ci  = register_diag_field('ice_model', 'CI_proj', diag%axesT1, Time,   &
+            'Projected summed concentration of ice at t-points', 'nondim',     &
+            missing_value=missing)
+  CS%id_miu   = register_diag_field('ice_model', 'MI_U', diag%axesCu1, Time,   &
+            'Mass of ice and snow at u-points', 'kg m-2',                      &
+            missing_value=missing, interp_method='none')
+  CS%id_miv   = register_diag_field('ice_model', 'MI_V', diag%axesCv1, Time,   &
+            'Mass of ice and snow at v-points', 'kg m-2',                      &
+            missing_value=missing, interp_method='none')
 
-  CS%id_fix_d   = register_diag_field('ice_model', 'FI_d_X', diag%axesCu1, Time,        &
-            'ice divergence internal stress - x component', 'Pa', missing_value=missing)
-  CS%id_fiy_d   = register_diag_field('ice_model', 'FI_d_Y', diag%axesCv1, Time,        &
-            'ice divergence internal stress - y component', 'Pa', missing_value=missing)
+  CS%id_fix_d   = register_diag_field('ice_model', 'FI_d_X', diag%axesCu1, Time,         &
+            'ice divergence internal stress - x component', 'Pa', missing_value=missing, &
+            interp_method='none')
+  CS%id_fiy_d   = register_diag_field('ice_model', 'FI_d_Y', diag%axesCv1, Time,         &
+            'ice divergence internal stress - y component', 'Pa', missing_value=missing, &
+            interp_method='none')
   CS%id_fix_t   = register_diag_field('ice_model', 'FI_t_X', diag%axesCu1, Time,        &
-            'ice tension internal stress - x component', 'Pa', missing_value=missing)
+            'ice tension internal stress - x component', 'Pa', missing_value=missing,   &
+            interp_method='none')
   CS%id_fiy_t   = register_diag_field('ice_model', 'FI_t_Y', diag%axesCv1, Time,        &
-            'ice tension internal stress - y component', 'Pa', missing_value=missing)
+            'ice tension internal stress - y component', 'Pa', missing_value=missing,   &
+            interp_method='none')
   CS%id_fix_s   = register_diag_field('ice_model', 'FI_s_X', diag%axesCu1, Time,        &
-            'ice shearing internal stress - x component', 'Pa', missing_value=missing)
+            'ice shearing internal stress - x component', 'Pa', missing_value=missing,  &
+            interp_method='none')
   CS%id_fiy_s   = register_diag_field('ice_model', 'FI_s_Y', diag%axesCv1, Time,        &
-            'ice shearing internal stress - y component', 'Pa', missing_value=missing)
+            'ice shearing internal stress - y component', 'Pa', missing_value=missing,  &
+            interp_method='none')
 
   CS%id_str_d   = register_diag_field('ice_model', 'str_d', diag%axesT1, Time, &
             'ice divergence internal stress', 'Pa', missing_value=missing)
@@ -364,11 +388,11 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'ice tension internal stress', 'Pa', missing_value=missing)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
             'ice shearing internal stress', 'Pa', missing_value=missing)
-  CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time, &
+  CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time,   &
             'ice divergence strain rate', 's-1', missing_value=missing)
-  CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time, &
+  CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time,   &
             'ice tension strain rate', 's-1', missing_value=missing)
-  CS%id_sh_s   = register_diag_field('ice_model', 'sh_s', diag%axesB1, Time, &
+  CS%id_sh_s   = register_diag_field('ice_model', 'sh_s', diag%axesB1, Time,   &
             'ice shearing strain rate', 's-1', missing_value=missing)
   CS%id_del_sh = register_diag_field('ice_model', 'del_sh', diag%axesT1, Time, &
             'ice strain rate magnitude', 's-1', missing_value=missing)
@@ -376,9 +400,11 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'minimum ice strain rate magnitude', 's-1', missing_value=missing)
 
   CS%id_ui_hifreq = register_diag_field('ice_model', 'ui_hf', diag%axesCu1, Time, &
-            'ice velocity - x component', 'm/s', missing_value=missing)
+            'ice velocity - x component', 'm/s', missing_value=missing,        &
+            interp_method='none')
   CS%id_vi_hifreq = register_diag_field('ice_model', 'vi_hf', diag%axesCv1, Time, &
-            'ice velocity - y component', 'm/s', missing_value=missing)
+            'ice velocity - y component', 'm/s', missing_value=missing,        &
+            interp_method='none')
   CS%id_str_d_hifreq = register_diag_field('ice_model', 'str_d_hf', diag%axesT1, Time, &
             'ice divergence internal stress', 'Pa', missing_value=missing)
   CS%id_str_t_hifreq = register_diag_field('ice_model', 'str_t_hf', diag%axesT1, Time, &
@@ -397,14 +423,16 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             'second stress invariant', 'none', missing_value=missing)
   CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
             'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
-  CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time,     &
+  CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time, &
             'ice strength', 'Pa*m', missing_value=missing)
 
-  CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time,          &
-            'ice velocity - x component', 'm/s', missing_value=missing)
-  CS%id_siv = register_diag_field('ice_model', 'siv', diag%axesT1, Time,          &
-            'ice velocity - y component', 'm/s', missing_value=missing)
-  CS%id_sispeed = register_diag_field('ice_model', 'sispeed', diag%axesT1, Time,          &
+  CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time, &
+            'ice velocity - x component', 'm/s', missing_value=missing,  &
+            interp_method='none')
+  CS%id_siv = register_diag_field('ice_model', 'siv', diag%axesT1, Time, &
+            'ice velocity - y component', 'm/s', missing_value=missing,  &
+            interp_method='none')
+  CS%id_sispeed = register_diag_field('ice_model', 'sispeed', diag%axesT1, Time, &
             'ice speed', 'm/s', missing_value=missing)
 
 end subroutine SIS_C_dyn_init

@@ -1118,9 +1118,11 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
-               'x-direction ice transport', 'kg/s', missing_value=missing)
+               'x-direction ice transport', 'kg/s', missing_value=missing, &
+               interp_method='none')
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
-               'y-direction ice transport', 'kg/s', missing_value=missing)
+               'y-direction ice transport', 'kg/s', missing_value=missing, &
+               interp_method='none')
 
 end subroutine SIS_transport_init
 

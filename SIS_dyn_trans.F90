@@ -1374,14 +1374,18 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   ! Diagnostics that are specific to C-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
-               'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
+               'Air stress on ice on C-grid - x component', 'Pa', &
+                missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
-               'Air stress on ice on C-grid - y component', 'Pa', missing_value=missing)
+               'Air stress on ice on C-grid - y component', 'Pa', &
+               missing_value=missing, interp_method='none')
   else
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
-               'air stress on ice - x component', 'Pa', missing_value=missing)
+               'air stress on ice - x component', 'Pa', &
+               missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
-               'air stress on ice - y component', 'Pa', missing_value=missing)
+               'air stress on ice - y component', 'Pa', &
+               missing_value=missing, interp_method='none')
   endif
   CS%id_xprt = register_diag_field('ice_model','XPRT',diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
