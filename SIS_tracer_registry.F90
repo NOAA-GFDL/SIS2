@@ -56,7 +56,7 @@ implicit none ; private
 #endif
 
 public register_SIS_tracer, register_SIS_tracer_pair, get_SIS_tracer_pointer
-public SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr
+public SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr, SIS_count_passive_tracers
 public SIS_tracer_chksum, add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
 public update_SIS_tracer_halos, set_massless_SIS_tracers, check_SIS_tracer_bounds
 public SIS_tracer_registry_init, SIS_tracer_registry_end
@@ -300,35 +300,20 @@ end subroutine register_SIS_tracer_pair
 
 !> Unpacks only the passive tracer arrays into TrLay which is a slice of the
 !! vertical layers within an ice thickness category
-subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, npassive)
+subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
   integer,                          intent(in)    :: i     !< Horizontal index i-direction
   integer,                          intent(in)    :: j     !< Horizontal index j-direction
   integer,                          intent(in)    :: cat   !< Index of ice thickness category
   integer,                          intent(in)    :: nkice !< Number of levels in the ice
   type(SIS_tracer_registry_type),   intent(in)    :: TrReg !< Main tracer register
-  real, dimension(:,:), allocatable,intent(inout) :: TrLay !< Array to hold vertical slice
-                                                                 !! of passive tracers
-  integer,                          intent(  out) :: npassive   !< Number of passive tracers
+  real, dimension(0:,:),            intent(inout) :: TrLay !< Array to hold vertical slice
+                                                           !! of passive tracers
 
   integer :: m, tr, pass_idx
-  logical :: copy(MAX_FIELDS_)      !< True if the tracer should be copied over to the slice
-
-  copy(:) = .false.
-  npassive = 0
-  do tr=1,TrReg%ntr
-    ! Tracer array has to be allocated and also designated passive to be copied
-    if( associated(TrReg%Tr_ice(tr)%t) .and. TrReg%Tr_ice(tr)%is_passive ) then
-      copy(tr) = .true.
-      npassive = npassive+1
-    endif
-  enddo
-
-  ! Allocate the tracer slice array if it has not been done yet
-  if(.not. allocated(TrLay)) allocate(TrLay(0:nkice+1,npassive))
 
   pass_idx = 0
   do tr=1,TrReg%ntr
-    if(copy(tr)) then
+    if(TrReg%Tr_ice(tr)%is_passive) then
       pass_idx = pass_idx + 1
       ! Copy from main tracer array
       do m=1,nkice ; TrLay(m,pass_idx) = TrReg%Tr_ice(tr)%t(i,j,cat,m) ; enddo
@@ -351,45 +336,42 @@ subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, npassive)
 end subroutine SIS_unpack_passive_ice_tr
 
 !> Copy the vertical slice of passive tracers back into their 4D arrays
-subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay, deallocate_now)
+subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
   integer,                          intent(in   ) :: i     !< Horizontal index i-direction
   integer,                          intent(in   ) :: j     !< Horizontal index j-direction
   integer,                          intent(in   ) :: cat   !< Index of ice thickness category
   integer,                          intent(in   ) :: nkice !< Number of levels in the ice
   type(SIS_tracer_registry_type),   intent(inout) :: TrReg !< Main tracer register
-  real, dimension(:,:), allocatable,intent(inout) :: TrLay !< Array to hold vertical slice
+  real, dimension(0:,:),            intent(inout) :: TrLay !< Array to hold vertical slice
                                                            !! of passive tracers
-  logical, optional,                intent(in   ) :: deallocate_now
 
   integer :: m, tr, pass_idx
-  logical :: copy(MAX_FIELDS_)      ! True if the tracer should be copied over to the slice
-  logical :: now_deallocate
-
-  ! Do nothing if there are no passive tracers
-  if(.not. allocated(TrLay)) return
-
-  copy(:) = .false.
-  do tr=1,TrReg%ntr
-    ! Tracer array has to be exist and also designated passive to be copied
-    if( associated(TrReg%Tr_ice(tr)%t) .and. TrReg%Tr_ice(tr)%is_passive ) &
-        copy(tr) = .true.
-  enddo
 
   pass_idx = 0
   do tr=1,TrReg%ntr
-    if(copy(tr)) then
+    if(TrReg%Tr_ice(tr)%is_passive) then
       pass_idx = pass_idx + 1
       ! Copy values back to tracer array
       do m=1,nkice ; TrReg%Tr_ice(tr)%t(i,j,cat,m) = TrLay(m,pass_idx) ; enddo
     endif
   enddo
 
-  ! Check to see if we can deallocate TrLay
-  now_deallocate = .true.
-  if(present(deallocate_now)) now_deallocate = deallocate_now
-  if(now_deallocate)  deallocate(TrLay)
-
 end subroutine SIS_repack_passive_ice_tr
+
+!> Returns the total amount of passive ice tracers
+integer function SIS_count_passive_tracers(TrReg)
+  type(SIS_tracer_registry_type),        intent(in) :: TrReg
+
+  integer tr
+
+  SIS_count_passive_tracers = 0
+  do tr=1,TrReg%ntr
+    if( TrReg%Tr_ice(tr)%is_passive ) then
+      SIS_count_passive_tracers = SIS_count_passive_tracers + 1
+    endif
+  enddo
+
+end function SIS_count_passive_tracers
 
 subroutine get_SIS_tracer_pointer(name, TrReg, Tr_ptr, nLayer)
   character(len=*),                      intent(in) :: name
@@ -444,7 +426,6 @@ subroutine update_SIS_tracer_halos(TrReg, G, complete)
   enddo ; enddo
 
 end subroutine update_SIS_tracer_halos
-
 
 subroutine set_massless_SIS_tracers(mass, TrReg, G, IG, compute_domain, do_snow, do_ice)
   type(SIS_hor_grid_type),                      intent(inout) :: G

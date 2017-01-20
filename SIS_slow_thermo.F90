@@ -76,6 +76,7 @@ use SIS2_ice_thm, only : enthalpy_liquid, calculate_T_freeze
 use SIS_transport, only : adjust_ice_categories, SIS_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_tracer_registry, only : SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr
+use SIS_tracer_registry, only : SIS_count_passive_tracers
 
 implicit none ; private
 
@@ -753,6 +754,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
 !$OMP                                  m_lay, mtot_ice, TrLay,                      &
 !$OMP                                  I_part,sn2ic,enth_snowfall)
+  ! Set up temporary tracer array
+  npassive = SIS_count_passive_tracers(IST%TrReg)
+  if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
+  
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (G%mask2dT(i,j) > 0 .and. IST%part_size(i,j,k) > 0) then
       ! reshape the ice based on fluxes
@@ -772,7 +777,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       enthalpy(NkIce+1) = enthalpy_ocean
 
       ! Handle unpacking and BCs for passive tracers
-      call SIS_unpack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay, npassive)
+      call SIS_unpack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay)
 
       if (CS%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
@@ -987,7 +992,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif
 
       ! Handle unpacking and BCs for passive tracers
-      call SIS_unpack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay, npassive)
+      call SIS_unpack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay)
 
       m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
@@ -1209,7 +1214,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + net_melt(i,j)
   enddo ; enddo
 
-  ! Double check to make sure TrLay is no longer allocated
+  ! Make sure TrLay is no longer allocated
   if(allocated(TrLay)) deallocate(TrLay)
 end subroutine SIS2_thermodynamics
 
