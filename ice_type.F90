@@ -32,7 +32,7 @@ use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
 
 implicit none ; private
 
-public :: ice_data_type, dealloc_ice_arrays 
+public :: ice_data_type, dealloc_ice_arrays
 public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
@@ -325,9 +325,10 @@ subroutine dealloc_Ice_arrays(Ice)
 
 end subroutine dealloc_Ice_arrays
 
-subroutine Ice_public_type_chksum(mesg, Ice)
+subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
   character(len=*),    intent(in) :: mesg
   type(ice_data_type), intent(in) :: Ice
+  logical, optional,   intent(in) :: check_fast, check_slow
 !   This subroutine writes out chksums for the model's basic state variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
 !  (in)      Ice - An ice_data_type structure whose elements are to be
@@ -336,17 +337,29 @@ subroutine Ice_public_type_chksum(mesg, Ice)
   ! Note that the publicly visible ice_data_type has no halos, so it is not
   ! possible do check their values.
 
+  logical :: fast_fields, slow_fields
+
+  fast_fields = Ice%fast_ice_PE ; slow_fields = Ice%slow_ice_PE
+
+  if (present(check_fast)) then
+    fast_fields = Ice%fast_ice_PE .and. check_fast
+    if (.not.present(check_slow)) slow_fields = .false.
+  elseif (present(check_slow)) then
+    slow_fields = Ice%slow_ice_PE .and. check_slow
+  endif
+
   ! These fields are on all PEs.
+  if (fast_fields .or. slow_fields) &
   call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
 
-  if (Ice%fast_ice_PE) then ! This is a fast-ice PE.
+  if (fast_fields) then ! This is a fast-ice PE.
     call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
     call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
     call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
     call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
     call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
     call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_heat, trim(mesg)//" Ice%rough_heat")
     call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
 
     call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
@@ -355,7 +368,7 @@ subroutine Ice_public_type_chksum(mesg, Ice)
     call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
   endif
 
-  if (Ice%slow_ice_PE) then ! This is a slow-ice PE.
+  if (slow_fields) then ! This is a slow-ice PE.
     call chksum(Ice%SST_C, trim(mesg)//" Ice%SST_C")
     call chksum(Ice%flux_u, trim(mesg)//" Ice%flux_u")
     call chksum(Ice%flux_v, trim(mesg)//" Ice%flux_v")
@@ -374,7 +387,7 @@ subroutine Ice_public_type_chksum(mesg, Ice)
     call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
   endif
 
-  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
+  if (slow_fields .and. associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     call chksum(Ice%ustar_berg, trim(mesg)//" Ice%ustar_berg")
     call chksum(Ice%area_berg, trim(mesg)//" Ice%area_berg")
     call chksum(Ice%mass_berg, trim(mesg)//" Ice%mass_berg")
@@ -573,7 +586,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size         )
   write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf            )
   write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf            )
- 
+
   if (Ice%fast_ice_PE) then
     ! These fields are only valid on fast ice PEs.
     write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo          )

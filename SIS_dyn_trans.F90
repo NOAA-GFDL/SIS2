@@ -63,19 +63,20 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_types, only : IST_chksum,  IST_bounds_check
-use ice_utils_mod, only : get_avg, post_avg, ice_line !, ice_grid_chksum
+use SIS_utils, only : get_avg, post_avg, ice_line !, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type
 
 use ice_grid, only : ice_grid_type
 
 use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S, T_freeze
+use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
 use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use ice_transport_mod, only : ice_transport, ice_transport_init, ice_transport_end
-use ice_transport_mod, only : ice_transport_CS
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
+use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
+use SIS_transport, only : SIS_transport_CS
 
 use ice_bergs,     only: icebergs, icebergs_run, icebergs_init, icebergs_end
 
@@ -131,17 +132,17 @@ type dyn_trans_CS ; private
 
   ! These are the diagnostic ids for describing the ice state.
   integer, dimension(:), allocatable :: id_t, id_sal
-  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_tsfc=-1, id_ext=-1 ! id_hp mw/new
+  integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
   integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
-  integer :: id_sitemptop=-1, id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
+  integer :: id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
-  type(ice_transport_CS), pointer :: ice_transport_CSp => NULL()
+  type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   logical :: module_is_initialized = .false.
 end type dyn_trans_CS
@@ -194,13 +195,13 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
     enddo ; enddo
     stress_stagger = AGRID
   endif
-  
+
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, CS%Time, &
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
             IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
             stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -211,7 +212,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
             FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_B(isc-1:iec+1,jsc-1:jec+1), &
             OSS%v_ocn_B(isc-1:iec+1,jsc-1:jec+1), IST%u_ice_B(isc-1:iec+1,jsc-1:jec+1), &
             IST%v_ice_B(isc-1:iec+1,jsc-1:jec+1), windstr_x, windstr_y, &
-            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), IST%t_surf(isc:iec,jsc:jec,0),  &
+            OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
             stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
@@ -236,7 +237,7 @@ end subroutine update_icebergs
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG)
+subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
 
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
@@ -247,6 +248,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   type(ice_grid_type),        intent(inout) :: IG
   type(dyn_trans_CS),         pointer       :: CS
   type(icebergs),             pointer       :: icebergs_CS
+  type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -286,6 +288,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   real :: dt_slow_dyn
+  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   integer :: ndyn_steps
   real :: Idt_slow
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce, nds
@@ -309,7 +312,18 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   if (CS%specified_ice) then
-    ndyn_steps = 0.0 ; dt_slow_dyn = 0.0
+    ndyn_steps = 0 ; dt_slow_dyn = 0.0
+!$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
+!$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
+!$OMP                                  WindStr_y_ocn_A,FIA)
+    do j=jsd,jed
+      do i=isd,ied
+        WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+        WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+        ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
+        WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+      enddo
+    enddo
   else
     ndyn_steps = 1
     if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
@@ -317,7 +331,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
   IOF%stress_count = 0
-  
+
   CS%n_calls = CS%n_calls + 1
 
   if (CS%id_xprt>0) then
@@ -325,44 +339,40 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     h2o_chg_xprt(:,:) = 0.0
   endif
 
-!$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
-!$OMP                                  ice_cover,ice_free,WindStr_x_ocn_A,       &
-!$OMP                                  WindStr_y_ocn_A,FIA)
-  do j=jsd,jed
-    do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
-      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
-
-      ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
-      WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-    enddo
-  enddo
-
   do nds=1,ndyn_steps
 
     call enable_SIS_averaging(dt_slow_dyn, CS%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), CS%diag)
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
     ice_cover(:,:) = 0.0
+    max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,ncat,ice_cover,IST,FIA,ice_free, &
-!$OMP                                  WindStr_x_A,WindStr_y_A,WindStr_x_ocn_A,WindStr_y_ocn_A)
+!$OMP                                  WindStr_x_A,WindStr_y_A,WindStr_x_ocn_A, &
+!$OMP                                  max_ice_cover, WindStr_y_ocn_A) &
+!$OMP                           private(FIA_ice_cover, ice_cover_now)
     do j=jsd,jed
       do k=1,ncat ; do i=isd,ied
         ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
       enddo ; enddo
       do i=isd,ied
-        ice_free(i,j) = IST%part_size(i,j,0)
+        ! The use of these limits prevents the use of the ocean wind stresses
+        ! there is actually no open ocean and hence there may be no valid ocean
+        ! stresses.  This can occur when ice_cover ~= 1 for both states, but
+        ! they are not exactly 1.0 due to roundoff in the sum above.
+        ice_cover_now = min(ice_cover(i,j), max_ice_cover)
+        FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
 
-        if (ice_cover(i,j) > FIA%ice_cover(i,j)) then
-          WindStr_x_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_x(i,j) + &
-                              FIA%ice_cover(i,j)*FIA%WindStr_x(i,j)) / ice_cover(i,j)
-          WindStr_y_A(i,j) = ((ice_cover(i,j)-FIA%ice_cover(i,j))*FIA%WindStr_ocn_y(i,j) + &
-                              FIA%ice_cover(i,j)*FIA%WindStr_y(i,j)) / ice_cover(i,j)
+        if (ice_cover_now > FIA_ice_cover) then
+          WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                              FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+          WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                              FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
         else
           WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
           WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
         endif
 
+        ice_free(i,j) = IST%part_size(i,j,0)
         if (ice_free(i,j) <= FIA%ice_free(i,j)) then
           WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
           WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
@@ -452,6 +462,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         call vchksum(OSS%v_ocn_C, "v_ocn_C before SIS_C_dynamics", G%HI)
         call uchksum(WindStr_x_Cu, "WindStr_x_Cu before SIS_C_dynamics", G%HI)
         call vchksum(WindStr_y_Cv, "WindStr_y_Cv before SIS_C_dynamics", G%HI)
+        call hchksum(WindStr_x_A, "WindStr_x_A before SIS_C_dynamics", G%HI, haloshift=1)
+        call hchksum(WindStr_y_A, "WindStr_y_A before SIS_C_dynamics", G%HI, haloshift=1)
+        call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call check_redundant_C("WindStr before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
       endif
 
@@ -609,7 +622,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
                          IST%u_ice_C, IST%v_ice_C, IST%TrReg, &
-                         OSS%sea_lev, dt_slow_dyn, G, IG, CS%ice_transport_CSp,&
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp,&
                          IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
@@ -624,8 +637,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         uc, vc, IST%TrReg, OSS%sea_lev, &
-                         dt_slow_dyn, G, IG, CS%ice_transport_CSp, &
+                         uc, vc, IST%TrReg, &
+                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
                          IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
@@ -653,10 +666,12 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   call mpp_clock_begin(iceClock9)
 
   ! Set appropriate surface quantities in categories with no ice.
+  if (allocated(IST%t_surf)) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,OSS)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-    IST%t_surf(i,j,k) = T_0degC + T_Freeze(OSS%s_surf(i,j),IST%ITV)
-  enddo ; enddo ; enddo
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
+      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
+    enddo ; enddo ; enddo
+  endif
 
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
   if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
@@ -672,7 +687,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
     call get_time(CS%Time-set_date(iyr,1,1,0,0,0),isec,iday)
     call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), &
-                              IST%t_surf(:,:,0)-T_0degC, G)
+                  OSS%SST_C(:,:), G)
   endif
 
   call mpp_clock_end(iceClock9)
@@ -686,7 +701,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   endif
 
   if (CS%Time + set_time(int(floor(0.5*dt_slow+0.5))) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+        tracer_CSp = tracer_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
@@ -721,12 +737,11 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
   real :: enth_units, I_enth_units
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; 
+!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ;
   NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
@@ -820,10 +835,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (CS%id_sivol>0) call post_avg(CS%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (CS%id_tsfc>0) call post_avg(CS%id_tsfc, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
-  if (CS%id_sitemptop>0) call post_avg(CS%id_sitemptop, IST%t_surf(:,:,1:), IST%part_size(:,:,1:), &
-                                 diag, G=G, offset=-T_0degC, wtd=.true.)
   if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (CS%id_sitimefrac>0) then
@@ -924,7 +935,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%t_ocn, diag)
+  if (OSS%id_sst>0) call post_data(OSS%id_sst, OSS%SST_C, diag)
   if (OSS%id_sss>0) call post_data(OSS%id_sss, OSS%s_surf, diag)
   if (OSS%id_ssh>0) call post_data(OSS%id_ssh, OSS%sea_lev, diag)
   if (allocated(OSS%u_ocn_C)) then
@@ -1167,7 +1178,7 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 end subroutine set_ocean_top_stress_Cgrid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_register_restarts allocates and registers any variables for this 
+!> SIS_dyn_trans_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
@@ -1209,7 +1220,7 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
     call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
                  CS%SIS_B_dyn_CSp, Ice_restart, restart_file)
   endif
-!  call ice_transport_register_restarts(G, param_file, CS%ice_transport_CSp, &
+!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
 !                                       Ice_restart, restart_file)
 
 end subroutine SIS_dyn_trans_register_restarts
@@ -1309,7 +1320,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   else
     call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_init(CS%Time, G, param_file, CS%diag, CS%ice_transport_CSp)
+  call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp)
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
                            CS%sum_output_CSp, CS%ntrunc)
@@ -1359,23 +1370,22 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
                'g/kg',  missing_value=missing)
   enddo
-  CS%id_tsfc     = register_diag_field('ice_model', 'TS', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-  CS%id_sitemptop= register_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
-
 
   ! Diagnostics that are specific to C-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
-               'Air stress on ice on C-grid - x component', 'Pa', missing_value=missing)
+               'Air stress on ice on C-grid - x component', 'Pa', &
+                missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
-               'Air stress on ice on C-grid - y component', 'Pa', missing_value=missing)
+               'Air stress on ice on C-grid - y component', 'Pa', &
+               missing_value=missing, interp_method='none')
   else
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
-               'air stress on ice - x component', 'Pa', missing_value=missing)
+               'air stress on ice - x component', 'Pa', &
+               missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
-               'air stress on ice - y component', 'Pa', missing_value=missing)
+               'air stress on ice - y component', 'Pa', &
+               missing_value=missing, interp_method='none')
   endif
   CS%id_xprt = register_diag_field('ice_model','XPRT',diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
@@ -1423,13 +1433,13 @@ subroutine safe_alloc_ids_1d(ids, nids)
 end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_transport_CS returns a pointer to the ice_transport_CS type that
+!> SIS_dyn_trans_transport_CS returns a pointer to the SIS_transport_CS type that
 !!  the dyn_trans_CS points to.
 function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
   type(dyn_trans_CS), pointer :: CS
-  type(ice_transport_CS), pointer :: transport_CSp
+  type(SIS_transport_CS), pointer :: transport_CSp
 
-  transport_CSp => CS%ice_transport_CSp
+  transport_CSp => CS%SIS_transport_CSp
 end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -1453,7 +1463,7 @@ subroutine SIS_dyn_trans_end(CS)
   else
     call SIS_B_dyn_end(CS%SIS_B_dyn_CSp)
   endif
-  call ice_transport_end(CS%ice_transport_CSp)
+  call SIS_transport_end(CS%SIS_transport_CSp)
 
   deallocate(CS)
 

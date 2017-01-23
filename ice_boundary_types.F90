@@ -54,11 +54,16 @@ type atmos_ice_boundary_type
     lw_flux => NULL(), & ! The net flux of longwave radiation from the atmosphere into the
                          ! ice or ocean, in W m-2.
     ! sw_flux_tot_down => NULL(), & ! The total downward flux of shortwave radiation
-    !                      ! at ths surface of the ice or ocean, in W m-2.                      
-    sw_flux_vis_dir => NULL(), &  ! The visible (_vis) or near-infrared (_nir),
-    sw_flux_vis_dif => NULL(), &  ! direct (_dir) or diffuse (_dif) shortwave
-    sw_flux_nir_dir => NULL(), &  ! radiation fluxes from the atmosphere into
-    sw_flux_nir_dif => NULL(), &  ! the ice or ocean, in W m-2.
+    !                      ! at the surface of the ice or ocean, in W m-2.
+    sw_flux_vis_dir => NULL(), & ! The visible (_vis) or near-infrared (_nir),
+    sw_flux_vis_dif => NULL(), & ! direct (_dir) or diffuse (_dif) net shortwave
+    sw_flux_nir_dir => NULL(), & ! radiation fluxes from the atmosphere into
+    sw_flux_nir_dif => NULL(), & ! the ice or ocean, in W m-2.
+    sw_down_vis_dir => NULL(), & ! The visible (_vis) or near-infrared (_nir),
+    sw_down_vis_dif => NULL(), & ! direct (_dir) or diffuse (_dif) downward
+    sw_down_nir_dir => NULL(), & ! shortwave radiation fluxes from the atmosphere
+    sw_down_nir_dif => NULL(), & ! into the ice or ocean, in W m-2.
+
     lprec   => NULL(), & ! The liquid precipitation from the atmosphere onto the
                          ! atmosphere or ice in each thickness category, in kg m-2 s-1.
                          ! Rain falling on snow is currently assumed to pass or drain
@@ -149,6 +154,14 @@ subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
   write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ',mpp_chksum(bnd_type%sw_flux_vis_dif)
   write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ',mpp_chksum(bnd_type%sw_flux_nir_dir)
   write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ',mpp_chksum(bnd_type%sw_flux_nir_dif)
+  if (associated(bnd_type%sw_down_vis_dir)) &
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dir ',mpp_chksum(bnd_type%sw_down_vis_dir)
+  if (associated(bnd_type%sw_down_vis_dif)) &
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dif ',mpp_chksum(bnd_type%sw_down_vis_dif)
+  if (associated(bnd_type%sw_down_nir_dir)) &
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dir ',mpp_chksum(bnd_type%sw_down_nir_dir)
+  if (associated(bnd_type%sw_down_nir_dif)) &
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dif ',mpp_chksum(bnd_type%sw_down_nir_dif)
   write(outunit,100) 'atm_ice_bnd_type%lprec           ',mpp_chksum(bnd_type%lprec)
   write(outunit,100) 'atm_ice_bnd_type%fprec           ',mpp_chksum(bnd_type%fprec)
   write(outunit,100) 'atm_ice_bnd_type%dhdt            ',mpp_chksum(bnd_type%dhdt)
@@ -158,6 +171,7 @@ subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
   write(outunit,100) 'atm_ice_bnd_type%p               ',mpp_chksum(bnd_type%p)
 !    write(outunit,100) 'atm_ice_bnd_type%data            ',mpp_chksum(bnd_type%data)
 100 FORMAT("CHECKSUM::",A32," = ",Z20)
+
 end subroutine atm_ice_bnd_type_chksum
 
 subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)

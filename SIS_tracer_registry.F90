@@ -56,6 +56,7 @@ implicit none ; private
 #endif
 
 public register_SIS_tracer, register_SIS_tracer_pair, get_SIS_tracer_pointer
+public SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr, SIS_count_passive_tracers
 public SIS_tracer_chksum, add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
 public update_SIS_tracer_halos, set_massless_SIS_tracers, check_SIS_tracer_bounds
 public SIS_tracer_registry_init, SIS_tracer_registry_end
@@ -66,25 +67,32 @@ type, public :: SIS_tracer_type
              ! of x-, y-, category, and layer.
   integer :: nL = 0 ! The number of vertical layers for this tracer.
   real :: massless_val = 0.0 ! A value to use in massless layers.
-  real, dimension(:,:), pointer :: ad2d_x => NULL(), ad2d_y => NULL()
+  real, dimension(:,:), pointer     :: ad2d_x => NULL(), ad2d_y => NULL()
              ! The arrays in which x- & y- advective fluxes summed
              ! vertically and across ice category are stored in units of
              ! CONC m3 s-1.
-  real, dimension(:,:,:), pointer :: ad3d_x => NULL(), ad3d_y => NULL()
+  real, dimension(:,:,:), pointer   :: ad3d_x => NULL(), ad3d_y => NULL()
              ! The arrays in which vertically summed x- & y- advective fluxes
              ! are stored in units of CONC m3 s-1.
   real, dimension(:,:,:,:), pointer :: ad4d_x => NULL(), ad4d_y => NULL()
              ! The arrays in which x- & y- advective fluxes by ice category and
              ! layer are stored in units of CONC m3 s-1.
+  real, dimension(:,:), pointer :: snow_flux_tr
+             ! Concentration of the tracer in snow (for salinity = 0.0)
+  real, dimension(:,:,:), pointer :: ocean_BC
+             ! Value of the tracer at the ice-ocean boundary
+  real, dimension(:,:,:), pointer :: snow_BC
+             ! Value of the tracer at the snow-ice boundary
 
   ! @ashao: OBC NOT IMPLEMENTED YET
-  real :: OBC_inflow_conc = 0.0  ! A tracer concentration for generic inflows.
+  real :: OBC_inflow_conc = 0.0  !< A tracer concentration for generic inflows.
   real, dimension(:,:,:), pointer :: OBC_in_u => NULL(), OBC_in_v => NULL()
-             ! These arrays contain structured values for flow into the domain
-             ! that are specified in open boundary conditions through u- and
-             ! v- faces of the tracer cell.
-  character(len=32) :: name  ! A tracer name for error messages.
+             !< These arrays contain structured values for flow into the domain
+             !! that are specified in open boundary conditions through u- and
+             !! v- faces of the tracer cell.
+  character(len=32) :: name         !< A tracer name for error messages.
   logical :: nonnegative = .false.
+  logical :: is_passive  = .false. !< True if this ice tracer is passive
 end type SIS_tracer_type
 
 type, public :: p3d
@@ -101,17 +109,17 @@ end type SIS_tracer_registry_type
 
 contains
 
-subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tracer, &
+subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_tracer, &
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v, &
-                             nonnegative)
+                             nonnegative, ocean_BC, snow_BC, is_passive)
   integer,                         intent(in) :: nLtr
   type(SIS_hor_grid_type),         intent(in) :: G
   type(ice_grid_type),             intent(in) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nLtr), target :: tr1
   character(len=*), intent(in)                :: name
   type(param_file_type), intent(in)           :: param_file
-  type(SIS_tracer_registry_type), pointer     :: Reg
+  type(SIS_tracer_registry_type), pointer     :: TrReg
   logical,               intent(in), optional :: snow_tracer
   real,                  intent(in), optional :: massless_val
   real, dimension(:,:),     pointer, optional :: ad_2d_x, ad_2d_y
@@ -120,6 +128,9 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tra
   real, intent(in), optional                  :: OBC_inflow
   real, pointer, dimension(:,:,:), optional   :: OBC_in_u, OBC_in_v
   logical,               intent(in), optional :: nonnegative
+  real, dimension(:,:,:),   pointer, optional :: ocean_BC
+  real, dimension(:,:,:),   pointer, optional :: snow_BC
+  logical,                           optional :: is_passive
 ! This subroutine registers a tracer to be advected.
 
 ! Arguments: tr1 - The pointer to the tracer, in arbitrary concentration units
@@ -130,7 +141,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tra
 !  (in)      name - The name to be used in messages about the tracer.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (in/out)  Reg - A pointer to the tracer registry.
+!  (in/out)  TrReg - A pointer to the tracer registry.
 !  (in,opt)  snow_tracer - If present and true, this is a snow tracer.
 !  (in,opt)  massless_val - The value to use to fill in massless categories.
 !  (in,opt)  ad_2d_x - An array in which the zonal advective fluxes summed
@@ -155,31 +166,39 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tra
 !  (in)      OBC_in_v - The value of the tracer at inflows through v-faces of
 !                       tracer cells, in the same units as tr (CONC).
 !  (in,opt)  nonnegative - If true, this tracer should never be negative.
+!  (in,opt)  ocean_BC - Value of the tracer at the ice-ocean boundary
+!  (in,opt)  snow_BC - Value of the tracer at the snow-ice boundary
 
   logical :: snow_tr
   type(SIS_tracer_type), pointer :: Tr_here=>NULL()
   character(len=256) :: mesg    ! Message for error messages.
 
-  if (.not. associated(Reg)) call SIS_tracer_registry_init(param_file, Reg)
+  if (.not. associated(TrReg)) call SIS_tracer_registry_init(param_file, TrReg)
 
   snow_tr = .false. ; if (present(snow_tracer)) snow_tr = snow_tracer
 
-  if (Reg%ntr>=MAX_FIELDS_) then
+  if (TrReg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
-        &all the tracers being registered via register_SIS_tracer.")') Reg%ntr+1
+        &all the tracers being registered via register_SIS_tracer.")') TrReg%ntr+1
     call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
   endif
 
-  Reg%ntr = Reg%ntr + 1
+  TrReg%ntr = TrReg%ntr + 1
   if (snow_tr) then
-    Tr_here => Reg%Tr_snow(Reg%ntr)
+    Tr_here => TrReg%Tr_snow(TrReg%ntr)
   else
-    Tr_here => Reg%Tr_ice(Reg%ntr)
+    Tr_here => TrReg%Tr_ice(TrReg%ntr)
   endif
 
   Tr_here%name = trim(name)
   Tr_here%t => tr1(:,:,:,1:nLtr)
   Tr_here%nL = nLtr
+  if(present(ocean_BC)) then
+    TrReg%Tr_ice(TrReg%ntr)%ocean_BC => ocean_BC
+  endif
+  if(present(snow_BC)) then
+    TrReg%Tr_ice(TrReg%ntr)%snow_BC => snow_BC
+  endif
 
   if (present(massless_val)) Tr_here%massless_val = massless_val
 
@@ -207,11 +226,16 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, Reg, snow_tra
   Tr_here%nonnegative = .false.
   if (present(nonnegative)) Tr_here%nonnegative = nonnegative
 
+  ! This is set as the default to guard against operations being performed on
+  ! active tracers twice
+  TrReg%Tr_ice(TrReg%ntr)%is_passive = .false.
+  if(present(is_passive)) TrReg%Tr_ice(TrReg%ntr)%is_passive = is_passive
+
 end subroutine register_SIS_tracer
 
 subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, &
-                                    name_snow, G, IG, param_file, Reg, &
-                                    massless_iceval, massless_snowval, nonnegative)
+                                    name_snow, G, IG, param_file, TrReg, &
+                                    massless_iceval, massless_snowval, nonnegative, is_passive)
   integer,                                          intent(in) :: nL_ice, nL_snow
   type(SIS_hor_grid_type),                          intent(in) :: G
   type(ice_grid_type),                              intent(in) :: IG
@@ -219,9 +243,10 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow),  target :: snow_tr
   character(len=*),                                 intent(in) :: name_ice, name_snow
   type(param_file_type),                            intent(in) :: param_file
-  type(SIS_tracer_registry_type),                   pointer    :: Reg
+  type(SIS_tracer_registry_type),                   pointer    :: TrReg
   real,                                   optional, intent(in) :: massless_iceval, massless_snowval
   logical,                                optional, intent(in) :: nonnegative
+  logical,                                optional, intent(in) :: is_passive
 ! This subroutine registers a pair of ice and snow tracers to be advected.
 
 ! Arguments: ice_tr - The pointer to the ice tracer, in arbitrary concentration
@@ -235,58 +260,136 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
 !  (in)      G - The sea ice grid type.
 !  (in)      param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (in/out)  Reg - A pointer to the tracer registry.
+!  (in/out)  TrReg - A pointer to the tracer registry.
 !  (in,opt)  massless_iceval - The values to use to fill in massless ice categories.
 !  (in,opt)  massless_snowval - The values to use to fill in massless snow categories.
 !  (in,opt)  nonnegative - If true, this tracer should never be negative.
 
   character(len=256) :: mesg    ! Message for error messages.
 
-  if (.not. associated(Reg)) call SIS_tracer_registry_init(param_file, Reg)
+  if (.not. associated(TrReg)) call SIS_tracer_registry_init(param_file, TrReg)
 
-  if (Reg%ntr>=MAX_FIELDS_) then
+  if (TrReg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
-        &all the tracers being registered via register_SIS_tracer.")') Reg%ntr+1
+        &all the tracers being registered via register_SIS_tracer.")') TrReg%ntr+1
     call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
   endif
 
-  Reg%ntr = Reg%ntr + 1
-  Reg%Tr_ice(Reg%ntr)%name = trim(name_ice)
-  Reg%Tr_ice(Reg%ntr)%t => ice_tr(:,:,:,1:nL_ice)
-  Reg%Tr_ice(Reg%ntr)%nL = nL_ice
+  TrReg%ntr = TrReg%ntr + 1
+  TrReg%Tr_ice(TrReg%ntr)%name = trim(name_ice)
+  TrReg%Tr_ice(TrReg%ntr)%t => ice_tr(:,:,:,1:nL_ice)
+  TrReg%Tr_ice(TrReg%ntr)%nL = nL_ice
 
   if (present(massless_iceval)) &
-    Reg%Tr_ice(Reg%ntr)%massless_val = massless_iceval
+    TrReg%Tr_ice(TrReg%ntr)%massless_val = massless_iceval
 
-  Reg%Tr_snow(Reg%ntr)%name = trim(name_snow)
-  Reg%Tr_snow(Reg%ntr)%t => snow_tr(:,:,:,1:nL_snow)
-  Reg%Tr_snow(Reg%ntr)%nL = nL_snow
+  TrReg%Tr_snow(TrReg%ntr)%name = trim(name_snow)
+  TrReg%Tr_snow(TrReg%ntr)%t => snow_tr(:,:,:,1:nL_snow)
+  TrReg%Tr_snow(TrReg%ntr)%nL = nL_snow
 
   if (present(massless_snowval)) &
-    Reg%Tr_snow(Reg%ntr)%massless_val = massless_snowval
+    TrReg%Tr_snow(TrReg%ntr)%massless_val = massless_snowval
 
-  Reg%Tr_ice(Reg%ntr)%nonnegative = .false.
-  if (present(nonnegative)) Reg%Tr_ice(Reg%ntr)%nonnegative = nonnegative
+  TrReg%Tr_ice(TrReg%ntr)%nonnegative = .false.
+  if (present(nonnegative)) TrReg%Tr_ice(TrReg%ntr)%nonnegative = nonnegative
+
+  TrReg%Tr_ice(TrReg%ntr)%is_passive = .false.
+  if (present(is_passive)) TrReg%Tr_ice(TrReg%ntr)%is_passive = is_passive
 
 end subroutine register_SIS_tracer_pair
 
-subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
+!> Unpacks only the passive tracer arrays into TrLay which is a slice of the
+!! vertical layers within an ice thickness category
+subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
+  integer,                          intent(in)    :: i     !< Horizontal index i-direction
+  integer,                          intent(in)    :: j     !< Horizontal index j-direction
+  integer,                          intent(in)    :: cat   !< Index of ice thickness category
+  integer,                          intent(in)    :: nkice !< Number of levels in the ice
+  type(SIS_tracer_registry_type),   intent(in)    :: TrReg !< Main tracer register
+  real, dimension(0:,:),            intent(inout) :: TrLay !< Array to hold vertical slice
+                                                           !! of passive tracers
+
+  integer :: m, tr, pass_idx
+
+  pass_idx = 0
+  do tr=1,TrReg%ntr
+    if(TrReg%Tr_ice(tr)%is_passive) then
+      pass_idx = pass_idx + 1
+      ! Copy from main tracer array
+      do m=1,nkice ; TrLay(m,pass_idx) = TrReg%Tr_ice(tr)%t(i,j,cat,m) ; enddo
+
+      ! Set snow and ice boundary conditions (if they exist)
+      if(associated(TrReg%Tr_ice(tr)%ocean_BC)) then
+        TrLay(NkIce+1,pass_idx) = TrReg%Tr_ice(tr)%ocean_BC(i,j,cat)
+      else
+        TrLay(NkIce+1,pass_idx) = 0.0
+      endif
+
+      if(associated(TrReg%Tr_ice(tr)%snow_BC)) then
+        TrLay(0,pass_idx) = TrReg%Tr_ice(tr)%snow_BC(i,j,cat)
+      else
+        TrLay(0,pass_idx) = 0.0
+      endif
+    endif
+  enddo
+
+end subroutine SIS_unpack_passive_ice_tr
+
+!> Copy the vertical slice of passive tracers back into their 4D arrays
+subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
+  integer,                          intent(in   ) :: i     !< Horizontal index i-direction
+  integer,                          intent(in   ) :: j     !< Horizontal index j-direction
+  integer,                          intent(in   ) :: cat   !< Index of ice thickness category
+  integer,                          intent(in   ) :: nkice !< Number of levels in the ice
+  type(SIS_tracer_registry_type),   intent(inout) :: TrReg !< Main tracer register
+  real, dimension(0:,:),            intent(inout) :: TrLay !< Array to hold vertical slice
+                                                           !! of passive tracers
+
+  integer :: m, tr, pass_idx
+
+  pass_idx = 0
+  do tr=1,TrReg%ntr
+    if(TrReg%Tr_ice(tr)%is_passive) then
+      pass_idx = pass_idx + 1
+      ! Copy values back to tracer array
+      do m=1,nkice ; TrReg%Tr_ice(tr)%t(i,j,cat,m) = TrLay(m,pass_idx) ; enddo
+    endif
+  enddo
+
+end subroutine SIS_repack_passive_ice_tr
+
+!> Returns the total amount of passive ice tracers
+integer function SIS_count_passive_tracers(TrReg)
+  type(SIS_tracer_registry_type),        intent(in) :: TrReg
+
+  integer tr
+
+  SIS_count_passive_tracers = 0
+  do tr=1,TrReg%ntr
+    if( TrReg%Tr_ice(tr)%is_passive ) then
+      SIS_count_passive_tracers = SIS_count_passive_tracers + 1
+    endif
+  enddo
+
+end function SIS_count_passive_tracers
+
+subroutine get_SIS_tracer_pointer(name, TrReg, Tr_ptr, nLayer)
   character(len=*),                      intent(in) :: name
-  type(SIS_tracer_registry_type),        intent(in) :: Reg
+  type(SIS_tracer_registry_type),        intent(in) :: TrReg
   real, dimension(:,:,:,:),              pointer    :: Tr_ptr
   integer,                               intent(out):: nLayer
 
   integer :: m
 
-  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr) then ! This is an ice tracer.
-    Tr_ptr => Reg%Tr_ice(m)%t
-    nLayer = Reg%Tr_ice(m)%nL
+  do m=1,TrReg%ntr ; if (TrReg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= TrReg%ntr) then ! This is an ice tracer.
+    Tr_ptr => TrReg%Tr_ice(m)%t
+    nLayer = TrReg%Tr_ice(m)%nL
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr) then ! This is a snow tracer.
-      Tr_ptr => Reg%Tr_snow(m)%t
-      nLayer = Reg%Tr_snow(m)%nL
+    do m=1,TrReg%ntr ; if (TrReg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= TrReg%ntr) then ! This is a snow tracer.
+      Tr_ptr => TrReg%Tr_snow(m)%t
+      nLayer = TrReg%Tr_snow(m)%nL
     else
       call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
                trim(name)//" before get_registered_tracer_pointer is called for it.")
@@ -295,8 +398,8 @@ subroutine get_SIS_tracer_pointer(name, Reg, Tr_ptr, nLayer)
 
 end subroutine get_SIS_tracer_pointer
 
-subroutine update_SIS_tracer_halos(Reg, G, complete)
-  type(SIS_tracer_registry_type), intent(inout) :: Reg
+subroutine update_SIS_tracer_halos(TrReg, G, complete)
+  type(SIS_tracer_registry_type), intent(inout) :: TrReg
   type(SIS_hor_grid_type),        intent(inout) :: G
   logical,              optional, intent(in)    :: complete
 
@@ -304,32 +407,31 @@ subroutine update_SIS_tracer_halos(Reg, G, complete)
   integer :: m, n, last_ice_tr
 
   do_complete = .true. ; if (present(complete)) do_complete=complete
-  if (Reg%ntr==0) return
+  if (TrReg%ntr==0) return
 
   last_ice_tr = -1
-  do n=Reg%ntr,1,-1 ; if (Reg%Tr_ice(n)%nL > 0) then
+  do n=TrReg%ntr,1,-1 ; if (TrReg%Tr_ice(n)%nL > 0) then
     last_ice_tr = n ; exit
   endif ; enddo
   if (last_ice_tr < 0) &
     call SIS_error(FATAL, "At least 1 ice tracer needs to be registered for "//&
                    "update_SIS_tracer_halos to work as currently written.")
 
-  do n=1,Reg%ntr ; do m=1,Reg%Tr_snow(n)%nL
-    call pass_var(Reg%Tr_snow(n)%t(:,:,:,m), G%Domain, complete=.false.)
+  do n=1,TrReg%ntr ; do m=1,TrReg%Tr_snow(n)%nL
+    call pass_var(TrReg%Tr_snow(n)%t(:,:,:,m), G%Domain, complete=.false.)
   enddo ; enddo
-  do n=1,Reg%ntr ; do m=1,Reg%Tr_ice(n)%nL
-    comp_here = (do_complete .and. (n==last_ice_tr) .and. (m==Reg%Tr_ice(n)%nL))
-    call pass_var(Reg%Tr_ice(n)%t(:,:,:,m), G%Domain, complete=comp_here)
+  do n=1,TrReg%ntr ; do m=1,TrReg%Tr_ice(n)%nL
+    comp_here = (do_complete .and. (n==last_ice_tr) .and. (m==TrReg%Tr_ice(n)%nL))
+    call pass_var(TrReg%Tr_ice(n)%t(:,:,:,m), G%Domain, complete=comp_here)
   enddo ; enddo
 
 end subroutine update_SIS_tracer_halos
 
-
-subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, do_ice)
+subroutine set_massless_SIS_tracers(mass, TrReg, G, IG, compute_domain, do_snow, do_ice)
   type(SIS_hor_grid_type),                      intent(inout) :: G
   type(ice_grid_type),                          intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in)    :: mass
-  type(SIS_tracer_registry_type),               intent(inout) :: Reg
+  type(SIS_tracer_registry_type),               intent(inout) :: TrReg
   logical,                               optional, intent(in) :: compute_domain, do_snow, do_ice
 
   integer :: i, j, k, m, n, is, ie, js, je, nCat
@@ -345,27 +447,27 @@ subroutine set_massless_SIS_tracers(mass, Reg, G, IG, compute_domain, do_snow, d
   if (present(do_ice))  do_ice_tr = do_ice
 
   if (do_snow_tr) then
-    do n=1,Reg%ntr ; do m=1,Reg%Tr_snow(n)%nL
+    do n=1,TrReg%ntr ; do m=1,TrReg%Tr_snow(n)%nL
       do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
-        Reg%Tr_snow(n)%t(i,j,k,m) = Reg%Tr_snow(n)%massless_val
+        TrReg%Tr_snow(n)%t(i,j,k,m) = TrReg%Tr_snow(n)%massless_val
       enddo ; enddo ; enddo
     enddo ; enddo
   endif
   if (do_ice_tr) then
-    do n=1,Reg%ntr ; do m=1,Reg%Tr_ice(n)%nL
+    do n=1,TrReg%ntr ; do m=1,TrReg%Tr_ice(n)%nL
       do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mass(i,j,k)<=0.0) &
-        Reg%Tr_ice(n)%t(i,j,k,m) = Reg%Tr_ice(n)%massless_val
+        TrReg%Tr_ice(n)%t(i,j,k,m) = TrReg%Tr_ice(n)%massless_val
       enddo ; enddo ; enddo
     enddo ; enddo
   endif
 
 end subroutine set_massless_SIS_tracers
 
-subroutine check_SIS_tracer_bounds(Reg, G, IG, msg, data_domain)
+subroutine check_SIS_tracer_bounds(TrReg, G, IG, msg, data_domain)
   type(SIS_hor_grid_type),            intent(in) :: G
   type(ice_grid_type),                intent(in) :: IG
   character(len=*),                   intent(in)    :: msg
-  type(SIS_tracer_registry_type),     intent(inout) :: Reg
+  type(SIS_tracer_registry_type),     intent(inout) :: TrReg
   logical,                  optional, intent(in) :: data_domain
 
   character(len=512) :: mesg1, mesg2
@@ -376,41 +478,41 @@ subroutine check_SIS_tracer_bounds(Reg, G, IG, msg, data_domain)
     is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
   endif ; endif
 
-  do n=1,Reg%ntr ; if (Reg%Tr_ice(n)%nonnegative) then
-    do m=1,Reg%Tr_ice(n)%nL ; do k=1,nCat ; do j=js,je ; do i=is,ie
-      if (Reg%Tr_ice(n)%t(i,j,k,m) < 0.0) then
+  do n=1,TrReg%ntr ; if (TrReg%Tr_ice(n)%nonnegative) then
+    do m=1,TrReg%Tr_ice(n)%nL ; do k=1,nCat ; do j=js,je ; do i=is,ie
+      if (TrReg%Tr_ice(n)%t(i,j,k,m) < 0.0) then
         write(mesg1,'(" = ",1pe12.4," at ", 2(F7.1)," or i,j,k,m = ",4i4,"; on pe ",i4)') &
-           Reg%Tr_ice(n)%t(i,j,k,m), G%geolonT(i,j), G%geolatT(i,j), i, j, k, m, pe_here()
+           TrReg%Tr_ice(n)%t(i,j,k,m), G%geolonT(i,j), G%geolatT(i,j), i, j, k, m, pe_here()
         call SIS_error(WARNING, trim(msg)//": Negative ice tracer "//&
-                       trim(Reg%Tr_ice(n)%name)// trim(mesg1), all_print=.true.)
-        Reg%Tr_ice(n)%t(i,j,k,m) = 0.0
+                       trim(TrReg%Tr_ice(n)%name)// trim(mesg1), all_print=.true.)
+        TrReg%Tr_ice(n)%t(i,j,k,m) = 0.0
       endif
     enddo ; enddo ; enddo ; enddo
   endif ; enddo
-  do n=1,Reg%ntr ; if (Reg%Tr_snow(n)%nonnegative) then
-    do m=1,Reg%Tr_snow(n)%nL ; do k=1,nCat ; do j=js,je ; do i=is,ie
-      if (Reg%Tr_snow(n)%t(i,j,k,m) < 0.0) then
+  do n=1,TrReg%ntr ; if (TrReg%Tr_snow(n)%nonnegative) then
+    do m=1,TrReg%Tr_snow(n)%nL ; do k=1,nCat ; do j=js,je ; do i=is,ie
+      if (TrReg%Tr_snow(n)%t(i,j,k,m) < 0.0) then
         write(mesg1,'(" = ",1pe12.4," at ", 2(F7.1)," or i,j,k,m = ",4i4,"; on pe ",i4)') &
-           Reg%Tr_snow(n)%t(i,j,k,m), G%geolonT(i,j), G%geolatT(i,j), i, j, k, m, pe_here()
+           TrReg%Tr_snow(n)%t(i,j,k,m), G%geolonT(i,j), G%geolatT(i,j), i, j, k, m, pe_here()
         call SIS_error(WARNING, trim(msg)//": Negative snow tracer "//&
-                       trim(Reg%Tr_snow(n)%name)// trim(mesg1), all_print=.true.)
-        Reg%Tr_snow(n)%t(i,j,k,m) = 0.0
+                       trim(TrReg%Tr_snow(n)%name)// trim(mesg1), all_print=.true.)
+        TrReg%Tr_snow(n)%t(i,j,k,m) = 0.0
       endif
     enddo ; enddo ; enddo ; enddo
   endif ; enddo
 
 end subroutine check_SIS_tracer_bounds
 
-subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
+subroutine add_SIS_tracer_OBC_values(name, TrReg, OBC_inflow, OBC_in_u, OBC_in_v)
   character(len=*), intent(in)                  :: name
-  type(SIS_tracer_registry_type), pointer       :: Reg
+  type(SIS_tracer_registry_type), pointer       :: TrReg
   real, intent(in), optional                    :: OBC_inflow
   real, pointer, dimension(:,:,:), optional     :: OBC_in_u, OBC_in_v
 ! This subroutine adds open boundary condition concentrations for a tracer that
 ! has previously been registered by a call to register_SIS_tracer.
 
 ! Arguments: name - The name of the tracer for which the diagnostic pointers.
-!  (in/out)  Reg - A pointer to the tracer registry.
+!  (in/out)  TrReg - A pointer to the tracer registry.
 !  (in)      OBC_inflow - The value of the tracer for all inflows via the open
 !                         boundary conditions for which OBC_in_u or OBC_in_v are
 !                         not specified, in the same units as tr (CONC).
@@ -420,14 +522,14 @@ subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
   type(SIS_tracer_type), pointer :: Tr_here=>NULL()
   integer :: m
 
-  if (.not. associated(Reg)) call SIS_error(FATAL, "add_SIS_tracer_OBC_values :"// &
+  if (.not. associated(TrReg)) call SIS_error(FATAL, "add_SIS_tracer_OBC_values :"// &
        "register_SIS_tracer must be called before add_SIS_tracer_OBC_values")
 
-  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_ice(m)
+  do m=1,TrReg%ntr ; if (TrReg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= TrReg%ntr) then ; Tr_here => TrReg%Tr_ice(m)
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_snow(m)
+    do m=1,TrReg%ntr ; if (TrReg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= TrReg%ntr) then ; Tr_here => TrReg%Tr_snow(m)
     else
       call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
                trim(name)//" before add_SIS_tracer_OBC_values is called for it.")
@@ -442,10 +544,10 @@ subroutine add_SIS_tracer_OBC_values(name, Reg, OBC_inflow, OBC_in_u, OBC_in_v)
 
 end subroutine add_SIS_tracer_OBC_values
 
-subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
+subroutine add_SIS_tracer_diagnostics(name, TrReg, ad_2d_x, ad_2d_y, ad_3d_x, &
                                       ad_3d_y, ad_4d_x, ad_4d_y)
   character(len=*), intent(in)                :: name
-  type(SIS_tracer_registry_type), pointer     :: Reg
+  type(SIS_tracer_registry_type), pointer     :: TrReg
   real, dimension(:,:),     pointer, optional :: ad_2d_x, ad_2d_y
   real, dimension(:,:,:),   pointer, optional :: ad_3d_x, ad_3d_y
   real, dimension(:,:,:,:), pointer, optional :: ad_4d_x, ad_4d_y
@@ -453,7 +555,7 @@ subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
 ! registered by a call to register_SIS_tracer.
 
 ! Arguments: name - The name of the tracer for which the diagnostic pointers.
-!  (in/out)  Reg - A pointer to the tracer registry.
+!  (in/out)  TrReg - A pointer to the tracer registry.
 !  (in,opt)  ad_2d_x - An array in which the zonal advective fluxes summed
 !                      vertically and across ice category are stored in units of
 !                      CONC m3 s-1.
@@ -471,14 +573,14 @@ subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
   type(SIS_tracer_type), pointer :: Tr_here=>NULL()
   integer :: m
 
-  if (.not. associated(Reg)) call SIS_error(FATAL, "add_SIS_tracer_diagnostics: "// &
+  if (.not. associated(TrReg)) call SIS_error(FATAL, "add_SIS_tracer_diagnostics: "// &
        "register_SIS_tracer must be called before add_SIS_tracer_diagnostics")
 
-  do m=1,Reg%ntr ; if (Reg%Tr_ice(m)%name == trim(name)) exit ; enddo
-  if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_ice(m)
+  do m=1,TrReg%ntr ; if (TrReg%Tr_ice(m)%name == trim(name)) exit ; enddo
+  if (m <= TrReg%ntr) then ; Tr_here => TrReg%Tr_ice(m)
   else  ! See whether this is a snow tracer.
-    do m=1,Reg%ntr ; if (Reg%Tr_snow(m)%name == trim(name)) exit ; enddo
-    if (m <= Reg%ntr) then ; Tr_here => Reg%Tr_snow(m)
+    do m=1,TrReg%ntr ; if (TrReg%Tr_snow(m)%name == trim(name)) exit ; enddo
+    if (m <= TrReg%ntr) then ; Tr_here => TrReg%Tr_snow(m)
     else
       call SIS_error(FATAL, "SIS_tracer: register_SIS_tracer must be called for "//&
                trim(name)//" before add_SIS_tracer_OBC_values is called for it.")
@@ -504,44 +606,44 @@ subroutine add_SIS_tracer_diagnostics(name, Reg, ad_2d_x, ad_2d_y, ad_3d_x, &
 
 end subroutine add_SIS_tracer_diagnostics
 
-subroutine SIS_tracer_chksum(mesg, Reg, G)
+subroutine SIS_tracer_chksum(mesg, TrReg, G)
   character(len=*),               intent(in) :: mesg
-  type(SIS_tracer_registry_type), pointer    :: Reg
+  type(SIS_tracer_registry_type), pointer    :: TrReg
   type(SIS_hor_grid_type),        intent(in) :: G
 !   This subroutine writes out chksums for the model's thermodynamic state
 ! variables.
 ! Arguments: mesg - A message that appears on the chksum lines.
-!  (in)      Reg - A pointer to the tracer registry.
+!  (in)      TrReg - A pointer to the tracer registry.
 !  (in)      G - The ocean's grid structure.
   integer :: is, ie, js, je, l, m
   character(len=8) :: mesg_l
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
-  do m=1,Reg%ntr ; do l=1,Reg%Tr_ice(m)%nL
+  do m=1,TrReg%ntr ; do l=1,TrReg%Tr_ice(m)%nL
     write(mesg_l,'("i")') l
-    call hchksum(Reg%Tr_ice(m)%t(:,:,:,l), mesg//trim(Reg%Tr_ice(m)%name)//" "//&
+    call hchksum(TrReg%Tr_ice(m)%t(:,:,:,l), mesg//trim(TrReg%Tr_ice(m)%name)//" "//&
                                  trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
-  do m=1,Reg%ntr ; do l=1,Reg%Tr_snow(m)%nL
+  do m=1,TrReg%ntr ; do l=1,TrReg%Tr_snow(m)%nL
     write(mesg_l,'("i")') l
-    call hchksum(Reg%Tr_snow(m)%t(:,:,:,l), mesg//trim(Reg%Tr_snow(m)%name)//" "//&
+    call hchksum(TrReg%Tr_snow(m)%t(:,:,:,l), mesg//trim(TrReg%Tr_snow(m)%name)//" "//&
                                  trim(adjustl(mesg_l)), G%HI)
   enddo ; enddo
 end subroutine SIS_tracer_chksum
 
-subroutine SIS_tracer_registry_init(param_file, Reg)
+subroutine SIS_tracer_registry_init(param_file, TrReg)
   type(param_file_type),      intent(in) :: param_file
-  type(SIS_tracer_registry_type), pointer    :: Reg
+  type(SIS_tracer_registry_type), pointer    :: TrReg
 ! Arguments: param_file - A structure indicating the open file to parse for
 !                         model parameter values.
-!  (in/out)  Reg - A pointer that is set to point to the tracer registry.
+!  (in/out)  TrReg - A pointer that is set to point to the tracer registry.
   integer, save :: init_calls = 0
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_tracer_registry" ! This module's name.
   character(len=256) :: mesg    ! Message for error messages.
 
-  if (.not.associated(Reg)) then ; allocate(Reg)
+  if (.not.associated(TrReg)) then ; allocate(TrReg)
   else ; return ; endif
 
   ! Read all relevant parameters and write them to the model log.
@@ -556,9 +658,9 @@ subroutine SIS_tracer_registry_init(param_file, Reg)
 
 end subroutine SIS_tracer_registry_init
 
-subroutine SIS_tracer_registry_end(Reg)
-  type(SIS_tracer_registry_type), pointer :: Reg
-  if (associated(Reg)) deallocate(Reg)
+subroutine SIS_tracer_registry_end(TrReg)
+  type(SIS_tracer_registry_type), pointer :: TrReg
+  if (associated(TrReg)) deallocate(TrReg)
 end subroutine SIS_tracer_registry_end
 
 end module SIS_tracer_registry

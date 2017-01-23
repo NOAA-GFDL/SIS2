@@ -47,6 +47,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
 
 use netcdf
 
@@ -200,7 +201,7 @@ subroutine SIS_sum_output_end(CS)
   endif
 end subroutine SIS_sum_output_end
 
-subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, tracer_CSp)
   type(ice_state_type),    intent(inout) :: IST
 
   type(time_type),         intent(inout) :: day
@@ -210,7 +211,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
   type(SIS_sum_out_CS),    pointer       :: CS
   character(len=*), optional, intent(in) :: message
   logical,          optional, intent(in) :: check_column
-!  type(tracer_flow_control_CS), optional, pointer       :: tracer_CSp
+  type(SIS_tracer_flow_control_CS), optional, pointer       :: tracer_CSp
 
 !  This subroutine calculates and writes the total sea-ice mass by
 ! hemisphere, heat, salt, and other globally integrated quantities.
@@ -308,6 +309,12 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 
   integer :: isc, iec, jsc, jec
 
+  real :: Tr_stocks(MAX_FIELDS_)
+  character(len=40), dimension(MAX_FIELDS_) :: &
+      Tr_names, Tr_units
+  integer :: nTr_stocks
+
+
 ! real :: Tr_stocks(MAX_FIELDS_)
 ! real :: Tr_min(MAX_FIELDS_),Tr_max(MAX_FIELDS_)
 ! real :: Tr_min_x(MAX_FIELDS_), Tr_min_y(MAX_FIELDS_), Tr_min_z(MAX_FIELDS_)
@@ -344,6 +351,12 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
+
+  nTr_stocks = 0
+  if (present(tracer_CSp)) then
+    call SIS_call_tracer_stocks(G, IG, tracer_CSp, IST%mH_ice, Tr_stocks, &
+                                stock_names=Tr_names, stock_units=Tr_units, num_stocks=nTr_stocks)
+  endif
 
 ! nTr_stocks = 0
 ! if (present(tracer_CSp)) then
@@ -481,7 +494,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
   endif
 
   call sum_across_PEs(CS%ntrunc)
-!  if (nTr_stocks > 0) call sum_across_PEs(Tr_stocks,nTr_stocks)
+  if (nTr_stocks > 0) call sum_across_PEs(Tr_stocks,nTr_stocks)
   call max_across_PEs(max_CFL)
 
   if (CS%previous_calls == 0) then
@@ -603,6 +616,13 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column) !
       else
         write(*,'(A," Ice Heat: ",ES24.16,", Change: ",ES12.5," Error: ",ES12.5," (",ES8.1,")")') &
             trim(msg_start), Heat, Heat_chg, Heat_anom, Heat_anom/Heat
+      endif
+
+      if (present(tracer_CSp)) then
+        do m=1,nTr_stocks
+          write(*,'("      Total ",a,": ",ES24.16,X,a)') &
+             trim(Tr_names(m)), Tr_stocks(m), trim(Tr_units(m))
+        enddo
       endif
 
 !     do m=1,nTr_stocks
@@ -778,7 +798,7 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
   integer :: i, j, k, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
- 
+
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0

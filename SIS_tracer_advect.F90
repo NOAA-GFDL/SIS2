@@ -86,7 +86,7 @@ integer :: id_clock_advect, id_clock_pass, id_clock_sync
 
 contains
 
-subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, snow_tr ) ! (, OBC)
+subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, snow_tr ) ! (, OBC)
   type(SIS_hor_grid_type),                     intent(inout) :: G
   type(ice_grid_type),                         intent(inout) :: IG
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),  intent(in) :: h_prev, h_end
@@ -94,7 +94,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, sno
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), intent(in) :: vhtr
   real,                                        intent(in)    :: dt
   type(SIS_tracer_advect_CS),                  pointer       :: CS
-  type(SIS_tracer_registry_type),              pointer       :: Reg
+  type(SIS_tracer_registry_type),              pointer       :: TrReg
   logical,                                     intent(in) :: snow_tr
 
 ! Arguments: h_prev - Category thickness times fractional coverage before advection, in m or kg m-2.
@@ -110,7 +110,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, sno
 !  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_tracer_advect_init.
-!  (in)      Reg - A pointer to the tracer registry.
+!  (in)      TrReg - A pointer to the tracer registry.
 !  (in)      snow_tr - If true, advect the snow tracers, otherwise advect the
 !                      ice tracers.
 
@@ -118,23 +118,23 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, Reg, sno
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracer.")
-  if (.not. associated(Reg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
+  if (.not. associated(TrReg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "register_tracer must be called before advect_tracer.")
-  ntr = Reg%ntr
+  ntr = TrReg%ntr
   if (ntr==0) return
 
   call cpu_clock_begin(id_clock_advect)
   if (snow_tr) then
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
+      call advect_upwind_2d(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
     else
-      call advect_tracer(Reg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
+      call advect_tracer(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
     endif
   else
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
+      call advect_upwind_2d(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
     else
-      call advect_tracer(Reg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
+      call advect_tracer(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
     endif
   endif
   call cpu_clock_end(id_clock_advect)
@@ -168,7 +168,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
 !  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 SIS_tracer_advect_init.
-!  (in)      Reg - A pointer to the tracer registry.
+!  (in)      TrReg - A pointer to the tracer registry.
 
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     hprev           ! The cell volume at the end of the previous tracer
@@ -495,7 +495,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
     uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
     hprev(:,:,:) = landvolfill
     h_neglect = IG%H_subroundoff
-    
+
     ! Initialize domore_u and domore_v.  Curiously, the value used for
     ! initialization does not matter to the solutions, because if .false.
     ! they are reevaluated after the first halo update (and always on the first
@@ -503,7 +503,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
     ! two choices, .false. is more efficient in that it avoids extra
     ! calculations of 0 fluxes.
     domore_u(:,:) = .false. ; domore_v(:,:) = .false.
-    
+
 !$OMP parallel default(none) shared(is,ie,js,je,ncat,domore_k,uhr,vhr,uhtr,vhtr,dt,G, &
 !$OMP                               hprev,h_prev,h_end,isd,ied,jsd,jed,uh_neglect,    &
 !$OMP                               h_neglect,vh_neglect,domore_u,domore_v)
@@ -1676,7 +1676,7 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
 !  (in)      IG - The sea-ice-specific grid structure.
 !  (in)      CS - The control structure returned by a previous call to
 !                 tracer_advect_init.
-!  (in)      Reg - A pointer to the tracer registry.
+!  (in)      TrReg - A pointer to the tracer registry.
 
   real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
   real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
@@ -1739,12 +1739,12 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
 end subroutine advect_upwind_2d
 
 subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
-                                  Reg, snow_tr, j, is, ie)
+                                  TrReg, snow_tr, j, is, ie)
   type(SIS_hor_grid_type),             intent(in) :: G
   type(ice_grid_type),                 intent(inout) :: IG
   real, dimension(SZI_(G),SZCAT_(IG)), intent(in) :: vol_start, vol_trans
   type(SIS_tracer_advect_CS),          pointer    :: CS
-  type(SIS_tracer_registry_type),      pointer    :: Reg
+  type(SIS_tracer_registry_type),      pointer    :: TrReg
   logical,                             intent(in) :: snow_tr
   integer,                             intent(in) :: j, is, ie
 
@@ -1755,23 +1755,23 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracers_thicker.")
-  if (.not. associated(Reg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
+  if (.not. associated(TrReg)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "register_tracer must be called before advect_tracers_thicker.")
-  if (Reg%ntr==0) return
+  if (TrReg%ntr==0) return
 
   ncat = IG%CatIce
 
   if (snow_tr) then
-    Tr => Reg%Tr_snow
+    Tr => TrReg%Tr_snow
   else
-    Tr => Reg%Tr_ice
+    Tr => TrReg%Tr_ice
   endif
 
   do k=1,ncat ; do i=is,ie ; vol(i,k) = vol_start(i,k) ; enddo ; enddo
   do K=1,ncat-1 ; do i=is,ie ; if (vol_trans(i,K) > 0.0) then
     Ivol_new = 1.0 / (vol(i,k+1) + vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
-    do n=1,Reg%ntr ; do m=1,Tr(n)%nL
+    do n=1,TrReg%ntr ; do m=1,Tr(n)%nL
       Tr(n)%t(i,j,k+1,m) = (vol_trans(i,K)*Tr(n)%t(i,j,k,m) + &
                        vol(i,k+1)*Tr(n)%t(i,j,k+1,m)) * Ivol_new
     enddo ; enddo
@@ -1782,7 +1782,7 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
   do K=ncat-1,1,-1 ; do i=is,ie ; if (vol_trans(i,K) < 0.0) then
     Ivol_new = 1.0 / (vol(i,k) - vol_trans(i,K))
     ! This is upwind advection across categories.  Improve it later.
-    do n=1,Reg%ntr ; do m=1,Tr(n)%nL
+    do n=1,TrReg%ntr ; do m=1,Tr(n)%nL
       Tr(n)%t(i,j,k,m) = (vol(i,k)*Tr(n)%t(i,j,k,m) - &
                          vol_trans(i,K)*Tr(n)%t(i,j,k+1,m)) * Ivol_new
     enddo ; enddo
@@ -1832,7 +1832,7 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
     call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
-          "  PCM    - Directionally split peicewise constant\n"//&
+          "  PCM    - Directionally split piecewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')
