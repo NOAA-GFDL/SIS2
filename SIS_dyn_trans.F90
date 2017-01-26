@@ -35,8 +35,8 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
+use SIS_debugging,     only : chksum, Bchksum, hchksum, uchksum, vchksum
+use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 
 use mpp_domains_mod,  only  : domain2D

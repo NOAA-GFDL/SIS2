@@ -36,7 +36,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl
 ! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
-use MOM_checksums,     only : hchksum
+use SIS_debugging,     only : hchksum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type

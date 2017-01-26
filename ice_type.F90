@@ -23,9 +23,9 @@ use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
+use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field
-use MOM_checksums,      only : chksum, Bchksum, hchksum, uchksum, vchksum
 
 use SIS_types, only : ice_state_type, fast_ice_avg_type
 use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS

@@ -28,9 +28,8 @@ module SIS_dyn_bgrid
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-use MOM_checksums,      only : chksum, Bchksum, hchksum
+use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
 use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
-use SIS_error_checking, only : check_redundant_B
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,    only : hor_index_type

@@ -28,8 +28,8 @@ use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler,  only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler,  only : is_root_pe
 use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
-use MOM_checksums,      only : hchksum, Bchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B
+use SIS_debugging,      only : hchksum, Bchksum, uchksum, vchksum
+use SIS_debugging,      only : check_redundant_B
 use SIS_hor_grid,       only : SIS_hor_grid_type
 
 implicit none ; private

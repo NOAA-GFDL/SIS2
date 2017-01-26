@@ -38,6 +38,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_model_mod
 
+use SIS_debugging,     only : chksum, uchksum, vchksum, Bchksum, SIS_debugging_init
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -47,7 +48,6 @@ use SIS_get_input, only : Get_SIS_input, directories
 use SIS_sum_output, only : SIS_sum_output_init,  write_ice_statistics
 use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
 
-use MOM_checksums,     only : chksum, uchksum, vchksum, Bchksum
 use MOM_domains,       only : MOM_domain_type
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
@@ -1748,6 +1748,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 #else
   symmetric = .false.
 #endif
+
+  call SIS_debugging_init(param_file)
 
   ! Interpret and do error checking on some of the parameters.
   split_restart_files = (trim(restart_file) /= trim(fast_rest_file))

@@ -1,4 +1,4 @@
-module SIS_error_checking
+module SIS_debugging
 
 !***********************************************************************
 !*                   GNU General Public License                        *
@@ -41,7 +41,7 @@ use MOM_hor_index, only : hor_index_type
 implicit none ; private
 
 public :: check_redundant_C, check_redundant_B, check_redundant_T
-public :: SIS_error_checking_init
+public :: SIS_debugging_init
 public :: vec_chksum, vec_chksum_C, vec_chksum_B, vec_chksum_A
 
 ! These interfaces come from MOM_checksums.
@@ -82,13 +82,13 @@ contains
 
 ! =====================================================================
 
-!> SIS_error_checking_init initializes the SIS_error_checking module, and sets
+!> SIS_debugging_init initializes the SIS_debugging module, and sets
 !! the parameterts that control which checks are active for SIS2.
-subroutine SIS_error_checking_init(param_file)
+subroutine SIS_debugging_init(param_file)
   type(param_file_type),   intent(in)    :: param_file
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_error_checking" ! This module's name.
+  character(len=40)  :: mod = "SIS_debugging" ! This module's name.
 
   call log_version(param_file, mod, version)
   call get_param(param_file, mod, "DEBUG", debug, &
@@ -102,7 +102,7 @@ subroutine SIS_error_checking_init(param_file)
 
   call MOM_checksums_init(param_file)
 
-end subroutine SIS_error_checking_init
+end subroutine SIS_debugging_init
 
 subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
@@ -726,4 +726,4 @@ subroutine chksum_vec_A2d(mesg, u_comp, v_comp, G, halos, scalars)
 
 end subroutine chksum_vec_A2d
 
-end module SIS_error_checking
+end module SIS_debugging
