@@ -98,9 +98,9 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
     flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
@@ -461,7 +461,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce) :: &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce) :: &
     flux_t, flux_q, flux_lh, flux_lw, &
     flux_sw_nir_dir, flux_sw_nir_dif, &
     flux_sw_vis_dir, flux_sw_vis_dif, &
