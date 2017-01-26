@@ -29,7 +29,7 @@ use MOM_error_handler,  only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>M
 use MOM_error_handler,  only : is_root_pe
 use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
 use SIS_debugging,      only : hchksum, Bchksum, uchksum, vchksum
-use SIS_debugging,      only : check_redundant_B
+use SIS_debugging,      only : check_redundant_B, vec_chksum_A, vec_chksum_B, vec_chksum_C
 use SIS_hor_grid,       only : SIS_hor_grid_type
 
 implicit none ; private
@@ -315,44 +315,33 @@ subroutine ice_grid_chksum(G, haloshift)
   call Bchksum(G%mask2dBu, "G%mask2dBu", G%HI, haloshift=hs)
   call Bchksum(G%geoLatBu, "G%geoLatBu", G%HI, haloshift=hs)
   call Bchksum(G%geoLonBu, "G%geoLonBu", G%HI, haloshift=hs)
-  call Bchksum(G%dxBu, "G%dxBu", G%HI, haloshift=hs)
-  call Bchksum(G%dyBu, "G%dyBu", G%HI, haloshift=hs)
-  call Bchksum(G%IdxBu, "G%IdxBu", G%HI, haloshift=hs)
-  call Bchksum(G%IdyBu, "G%IdyBu", G%HI, haloshift=hs)
+  call vec_chksum_B("G%d[xy]Bu", G%dxBu, G%dyBu, G, halos=hs, scalars=.true.)
+  call vec_chksum_B("G%Id[xy]Bu", G%IdxBu, G%IdyBu, G, halos=hs, scalars=.true.)
   call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs)
   call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs)
 
-  call check_redundant_B("G%dx/dyBu", G%dxBu, G%dyBu, G, &
-             isc-1, iec+1, jsc-1, jec+1, To_All+Scalar_Pair)
-  call check_redundant_B("G%Idx/dyBu", G%IdxBu, G%IdyBu, G, &
-             isc-1, iec+1, jsc-1, jec+1, To_All+Scalar_Pair)
   call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1)
   call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1)
 
   call uchksum(G%mask2dCu, "G%mask2dCu", G%HI, haloshift=hs)
   call uchksum(G%geoLatCu, "G%geoLatCu", G%HI, haloshift=hs)
   call uchksum(G%geoLonCu, "G%geolonCu", G%HI, haloshift=hs)
-  call uchksum(G%dxCu, "G%dxCu", G%HI, haloshift=hs)
-  call uchksum(G%dyCu, "G%dyCu", G%HI, haloshift=hs)
-  call uchksum(G%IdxCu, "G%IdxCu", G%HI, haloshift=hs)
-  call uchksum(G%IdyCu, "G%IdyCu", G%HI, haloshift=hs)
+  call vec_chksum_C("G%d[xy]C[uv]", G%dxCu, G%dyCv, G, halos=hs, scalars=.true.)
+  call vec_chksum_C("G%d[yx]C[uv]", G%dyCu, G%dxCv, G, halos=hs, scalars=.true.)
+  call vec_chksum_C("G%Id[xy]C[uv]", G%IdxCu, G%IdyCv, G, halos=hs, scalars=.true.)
+  call vec_chksum_C("G%Id[yx]C[uv]", G%IdyCu, G%IdxCv, G, halos=hs, scalars=.true.)
   call uchksum(G%areaCu, "G%areaCu", G%HI, haloshift=hs)
   call uchksum(G%IareaCu, "G%IareaCu", G%HI, haloshift=hs)
 
   call vchksum(G%mask2dCv, "G%mask2dCv", G%HI, haloshift=hs)
   call vchksum(G%geoLatCv, "G%geoLatCv", G%HI, haloshift=hs)
   call vchksum(G%geoLonCv, "G%geoLonCv", G%HI, haloshift=hs)
-  call vchksum(G%dxCv, "G%dxCv", G%HI, haloshift=hs)
-  call vchksum(G%dyCv, "G%dyCv", G%HI, haloshift=hs)
-  call vchksum(G%IdxCv, "G%IdxCv", G%HI, haloshift=hs)
-  call vchksum(G%IdyCv, "G%IdyCv", G%HI, haloshift=hs)
   call uchksum(G%areaCu, "G%areaCv", G%HI, haloshift=hs)
   call uchksum(G%IareaCu, "G%IareaCv", G%HI, haloshift=hs)
 
   call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs)
   call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs)
-  call hchksum(G%dF_dx, "G%dF_dx", G%HI, haloshift=hs)
-  call hchksum(G%dF_dy, "G%dF_dy", G%HI, haloshift=hs)
+  call vec_chksum_A("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs)
 
 end subroutine ice_grid_chksum
 

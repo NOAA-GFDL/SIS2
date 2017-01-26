@@ -33,8 +33,8 @@ module SIS_dyn_cgrid
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_debugging,     only : chksum, Bchksum, uchksum, vchksum, hchksum
-use SIS_debugging,     only : check_redundant_B, check_redundant_C
+use SIS_debugging,     only : chksum, Bchksum, hchksum, vec_chksum_C
+use SIS_debugging,     only : check_redundant_B, check_redundant_C, vec_chksum_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
@@ -867,18 +867,11 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   enddo ; enddo
 !$OMP end parallel
 
-  if (CS%debug) then
-    call uchksum(PFu, "PFu in SIS_C_dynamics", G%HI)
-    call vchksum(PFv, "PFv in SIS_C_dynamics", G%HI)
-
-    call uchksum(ui, "ui pre-steps SIS_C_dynamics", G%HI)
-    call vchksum(vi, "vi pre-steps SIS_C_dynamics", G%HI)
-  endif
-  if (CS%debug_redundant) then
-    call check_redundant_C("PFu/PFv in SIS_C_dynamics", PFu, PFv, G)
-    call check_redundant_C("fxat/fyat in SIS_C_dynamics", fxat, fyat, G)
-    call check_redundant_C("uo/vo in SIS_C_dynamics",uo, vo, G)
-    call check_redundant_C("ui/vi pre-steps SIS_C_dynamics",ui, vi, G)
+  if (CS%debug .or. CS%debug_redundant) then
+    call vec_chksum_C("PF[uv] in SIS_C_dynamics", PFu, PFv, G)
+    call vec_chksum_C("f[xy]at in SIS_C_dynamics", fxat, fyat, G)
+    call vec_chksum_C("[uv]i pre-steps SIS_C_dynamics", ui, vi, G)
+    call vec_chksum_C("[uv]o in SIS_C_dynamics", uo, vo, G)
   endif
 
   dt_cumulative = 0.0
@@ -1197,31 +1190,18 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1)
       call Bchksum(CS%str_s, "str_s in SIS_C_dynamics", G%HI, &
                    haloshift=0, symmetric=.true.)
-
-      call uchksum(fxic, "fxic in SIS_C_dynamics", G%HI)
-      call vchksum(fyic, "fyic in SIS_C_dynamics", G%HI)
-      call uchksum(fxoc, "fxoc in SIS_C_dynamics", G%HI)
-      call vchksum(fyoc, "fyoc in SIS_C_dynamics", G%HI)
-      call uchksum(Cor_u, "Cor_u in SIS_C_dynamics", G%HI)
-      call vchksum(Cor_v, "Cor_v in SIS_C_dynamics", G%HI)
-      call uchksum(ui, "ui in SIS_C_dynamics", G%HI)
-      call vchksum(vi, "vi in SIS_C_dynamics", G%HI)
     endif
-    if (CS%debug_redundant) then
-      call check_redundant_C("fxic/fyic in SIS_C_dynamics steps",fxic, fyic, G)
-      call check_redundant_C("Cor_u/Cor_v in SIS_C_dynamics steps", Cor_u, Cor_v, G)
-      call check_redundant_C("fxoc in SIS_C_dynamics steps", fxoc, fyoc, G)
-      call check_redundant_C("ui/vi in SIS_C_dynamics steps", ui, vi, G)
+    if (CS%debug .or. CS%debug_redundant) then
+      call vec_chksum_C("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
+      call vec_chksum_C("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
+      call vec_chksum_C("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)
+      call vec_chksum_C("[uv]i in SIS_C_dynamics", ui, vi, G)
     endif
 
   enddo ! l=1,EVP_steps
 
-  if (CS%debug) then
-    call uchksum(ui, "ui end SIS_C_dynamics", G%HI)
-    call vchksum(vi, "vi end SIS_C_dynamics", G%HI)
-  endif
-  if (CS%debug_redundant) &
-    call check_redundant_C("ui/vi end SIS_C_dynamics", ui, vi, G)
+  if (CS%debug .or. CS%debug_redundant) &
+    call vec_chksum_C("[uv]i end SIS_C_dynamics", ui, vi, G)
 
   ! Reset the time information in the diag type.
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
