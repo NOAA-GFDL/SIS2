@@ -2325,7 +2325,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     ! Do any error checking here.
-    if (debug) call ice_grid_chksum(sG, haloshift=2)
+    if (debug) call ice_grid_chksum(sG, haloshift=1)
 
     call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
                    SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
