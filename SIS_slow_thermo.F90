@@ -250,6 +250,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_sh_cat>0) call post_data(FIA%id_sh_cat, FIA%flux_t_top, CS%diag)
   if (FIA%id_evap_cat>0) call post_data(FIA%id_evap_cat, FIA%flux_q_top, CS%diag)
   if (FIA%id_lw_cat>0) call post_data(FIA%id_lw_cat, FIA%flux_lw_top, CS%diag)
+  if (FIA%id_Tsfc_cat>0) call post_data(FIA%id_Tsfc_cat, FIA%Tskin_cat, CS%diag)
 
   if (FIA%id_sw_vis>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)

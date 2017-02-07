@@ -199,6 +199,7 @@ type fast_ice_avg_type
                            ! at the top of the ice, in kg m-2 s-1.
     tmelt              , & ! Ice-top melt energy into the ice/snow in J m-2.
     bmelt              , & ! Ice-bottom melting energy into the ice in J m-2.
+    Tskin_cat          , & ! The ice skin temperature by category, in degC.
     sw_abs_ocn      !  The fraction of the absorbed shortwave radiation that is
                     !  absorbed in the ocean, nondim and <=1.
                     !  Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type
@@ -281,7 +282,7 @@ type fast_ice_avg_type
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
   integer :: id_tsfc=-1, id_sitemptop=-1
 
-  integer :: id_evap_cat=-1, id_lw_cat=-1, id_sh_cat=-1
+  integer :: id_evap_cat=-1, id_lw_cat=-1, id_sh_cat=-1, id_tsfc_cat=-1
   integer :: id_evap0=-1, id_lw0=-1, id_sh0=-1
   integer :: id_dedt=-1, id_dlwdt=-1, id_dshdt=-1
 end type fast_ice_avg_type
@@ -602,6 +603,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
     allocate(FIA%dhdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dhdt(:,:,:) = 0.0
     allocate(FIA%dedt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dedt(:,:,:) = 0.0
     allocate(FIA%dlwdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dlwdt(:,:,:) = 0.0
+    allocate(FIA%Tskin_cat(isd:ied, jsd:jed, 0:CatIce)) ; FIA%Tskin_cat(:,:,:) = 0.0
   endif
 
   allocate(FIA%flux_sw_dn(isd:ied, jsd:jed))  ; FIA%flux_sw_dn(:,:) = 0.0
@@ -1217,6 +1219,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
       FIA_out%dhdt(i2,j2,k) = FIA_in%dhdt(i,j,k)
       FIA_out%dedt(i2,j2,k) = FIA_in%dedt(i,j,k)
       FIA_out%dlwdt(i2,j2,k) = FIA_in%dlwdt(i,j,k)
+      FIA_out%Tskin_cat(i2,j2,k) = FIA_in%Tskin_cat(i,j,k)
     enddo ; enddo ; enddo
   endif
 
@@ -1375,6 +1378,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                             FIA_out%dedt, complete=.false.)
       call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
                             FIA_out%dlwdt, complete=.true.)
+      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
+                            FIA_out%Tskin_cat, complete=.true.)
     endif
 
     if (FIA_in%num_tr_fluxes > 0) then
@@ -1453,6 +1458,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                             FIA_out%dedt, complete=.false.)
       call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                             FIA_out%dlwdt, complete=.true.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%Tskin_cat, complete=.true.)
     endif
 
 
@@ -1531,6 +1538,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
       call mpp_redistribute(domain_in, FIA_in%dedt, domain_out, &
                             null_ptr3D, complete=.false.)
       call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
+                            null_ptr3D, complete=.true.)
+      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
                             null_ptr3D, complete=.true.)
     endif
 
@@ -1627,6 +1636,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   if (allocated(FIA%dhdt))  deallocate(FIA%dhdt)
   if (allocated(FIA%dedt))  deallocate(FIA%dedt)
   if (allocated(FIA%dlwdt)) deallocate(FIA%dlwdt)
+  if (allocated(FIA%Tskin_cat)) deallocate(FIA%Tskin_cat)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg

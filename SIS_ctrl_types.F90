@@ -212,9 +212,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 
   FIA%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
-  FIA%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
+  FIA%id_runoff_hflx  = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
                'liquid runoff sensible heat flux', 'W/m^2', missing_value=missing)
-  FIA%id_calving_hflx  = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
+  FIA%id_calving_hflx = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
                'frozen runoff sensible heat flux', 'W/m^2', missing_value=missing)
   FIA%id_evap     = register_SIS_diag_field('ice_model','EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', missing_value=missing)
@@ -232,9 +232,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 !               'strain angle', 'none', missing_value=missing)
 
   FIA%id_sw_dn   = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
-               'Downward shortwave heat flux at the bottom of the atmosphere', 'W/m^2', missing_value=missing)
+               'Downward shortwave heat flux at the bottom of the atmosphere', &
+               'W/m^2', missing_value=missing)
   FIA%id_albedo  = register_SIS_diag_field('ice_model','ALB' ,diag%axesT1, Time, &
-               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', missing_value=missing)
+               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', &
+               missing_value=missing)
   FIA%id_sw_vis   = register_SIS_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time, &
                'visible shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
@@ -258,11 +260,16 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
     FIA%id_sh0  = register_SIS_diag_field('ice_model','SH_T0' ,diag%axesTc0, Time, &
                'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
     FIA%id_dedt  = register_SIS_diag_field('ice_model','dEVAP_dT',diag%axesTc0, Time, &
-               'evaporation at 0 degC', 'kg/(m^2*s)', missing_value=missing)
+               'partial derivative of evaporation with ice skin temperature', &
+               'kg/(m^2*s*K)', missing_value=missing)
     FIA%id_dlwdt = register_SIS_diag_field('ice_model','dLW_dT',diag%axesTc0, Time, &
-               'longwave heat flux over ice at 0 degC', 'W/m^2', missing_value=missing)
+               'partial derivative of longwave heat flux with ice skin temperature', &
+               'W/(m^2*K)', missing_value=missing)
     FIA%id_dshdt = register_SIS_diag_field('ice_model','dSH_dT' ,diag%axesTc0, Time, &
-               'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
+               'partial derivative of sensible heat flux with ice skin temperature', &
+               'W/(m^2*K)',  missing_value=missing)
+    FIA%id_tsfc_cat =register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
+               'surface temperature by category', 'C', missing_value=missing)
   endif
   FIA%id_evap_cat  = register_SIS_diag_field('ice_model','EVAP_CAT',diag%axesTc0, Time, &
              'evaporation by category', 'kg/(m^2*s)', missing_value=missing)

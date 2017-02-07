@@ -141,8 +141,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
     FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
-    FIA%flux_sw_dn(:,:) = 0.0
-    FIA%Tskin_avg(:,:) = 0.0
+    FIA%flux_sw_dn(:,:) = 0.0 ; FIA%Tskin_avg(:,:) = 0.0
+
+    if (allocated(FIA%flux_t0)) then
+      FIA%dhdt(:,:,:) = 0.0 ; FIA%dedt(:,:,:) = 0.0 ; FIA%dlwdt(:,:,:) = 0.0
+      FIA%flux_t0(:,:,:) = 0.0 ; FIA%flux_q0(:,:,:) = 0.0
+      FIA%flux_lw0(:,:,:) = 0.0 ; FIA%Tskin_cat(:,:,:) = 0.0
+    endif
 
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
@@ -189,6 +194,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
       FIA%flux_q0(i,j,k) = FIA%flux_q0(i,j,k) + (flux_q(i,j,k) - t_sfc*dedt(i,j,k))
       ! Note the wierd sign convention on flux_lw - it was inhereted from the atmosphere.
       FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) + t_sfc*drdt(i,j,k))
+      FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) + t_sfc
     enddo ; enddo ; enddo
   endif
 
@@ -309,6 +315,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
       FIA%flux_t0(i,j,k) = FIA%flux_t0(i,j,k) * I_avc
       FIA%flux_q0(i,j,k) = FIA%flux_q0(i,j,k) * I_avc
       FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) * I_avc
+      FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) * I_avc
     enddo ; enddo ; enddo
 
     ! Fill in the information to reconstruct the fluxes for any area-less categories.
@@ -319,6 +326,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
     call infill_array(IST, FIA%flux_t0(:,:,0), FIA%flux_t0(:,:,1:), G, IG)
     call infill_array(IST, FIA%flux_q0(:,:,0), FIA%flux_q0(:,:,1:), G, IG)
     call infill_array(IST, FIA%flux_lw0(:,:,0), FIA%flux_lw0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%Tskin_cat(:,:,0), FIA%Tskin_cat(:,:,1:), G, IG)
   endif
 
   ! set count to zero and fluxes will be zeroed before the next sum
