@@ -250,6 +250,28 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
 
+  if (allocated(FIA%flux_t0)) then
+    FIA%id_evap0  = register_SIS_diag_field('ice_model','EVAP_T0',diag%axesTc0, Time, &
+               'evaporation at 0 degC', 'kg/(m^2*s)', missing_value=missing)
+    FIA%id_lw0  = register_SIS_diag_field('ice_model','LW_T0',diag%axesTc0, Time, &
+               'longwave heat flux over ice at 0 degC', 'W/m^2', missing_value=missing)
+    FIA%id_sh0  = register_SIS_diag_field('ice_model','SH_T0' ,diag%axesTc0, Time, &
+               'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
+    FIA%id_dedt  = register_SIS_diag_field('ice_model','dEVAP_dT',diag%axesTc0, Time, &
+               'evaporation at 0 degC', 'kg/(m^2*s)', missing_value=missing)
+    FIA%id_dlwdt = register_SIS_diag_field('ice_model','dLW_dT',diag%axesTc0, Time, &
+               'longwave heat flux over ice at 0 degC', 'W/m^2', missing_value=missing)
+    FIA%id_dshdt = register_SIS_diag_field('ice_model','dSH_dT' ,diag%axesTc0, Time, &
+               'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
+  endif
+  FIA%id_evap_cat  = register_SIS_diag_field('ice_model','EVAP_CAT',diag%axesTc0, Time, &
+             'evaporation by category', 'kg/(m^2*s)', missing_value=missing)
+  FIA%id_lw_cat  = register_SIS_diag_field('ice_model','LW_CAT',diag%axesTc0, Time, &
+             'longwave heat flux by category', 'W/m^2', missing_value=missing)
+  FIA%id_sh_cat  = register_SIS_diag_field('ice_model','SH_CAT' ,diag%axesTc0, Time, &
+             'sensible heat flux by category', 'W/m^2',  missing_value=missing)
+
+
   FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
   FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &

@@ -239,6 +239,18 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_sw_dn>0) call post_data(FIA%id_sw_dn, FIA%flux_sw_dn, CS%diag)
   if (FIA%id_tsfc>0) call post_data(FIA%id_tsfc, FIA%Tskin_avg, CS%diag)
   if (FIA%id_sitemptop>0) call post_data(FIA%id_sitemptop, FIA%Tskin_avg, CS%diag)
+
+  if (FIA%id_sh0>0) call post_data(FIA%id_sh0, FIA%flux_t0, CS%diag)
+  if (FIA%id_evap0>0) call post_data(FIA%id_evap0, FIA%flux_q0, CS%diag)
+  if (FIA%id_lw0>0) call post_data(FIA%id_lw0, FIA%flux_lw0, CS%diag)
+  if (FIA%id_dshdt>0) call post_data(FIA%id_dshdt, FIA%dhdt, CS%diag)
+  if (FIA%id_dedt>0) call post_data(FIA%id_dedt, FIA%dedt, CS%diag)
+  if (FIA%id_dlwdt>0) call post_data(FIA%id_dlwdt, FIA%dlwdt, CS%diag)
+
+  if (FIA%id_sh_cat>0) call post_data(FIA%id_sh_cat, FIA%flux_t_top, CS%diag)
+  if (FIA%id_evap_cat>0) call post_data(FIA%id_evap_cat, FIA%flux_q_top, CS%diag)
+  if (FIA%id_lw_cat>0) call post_data(FIA%id_lw_cat, FIA%flux_lw_top, CS%diag)
+
   if (FIA%id_sw_vis>0) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,tmp2d,IST,FIA)
     do j=jsc,jec

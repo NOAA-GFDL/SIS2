@@ -93,16 +93,21 @@ contains
 !!   after it has passed through avg_top_quantities.
 subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
        flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
-       flux_lw, lprec, fprec, flux_lh, G, IG)
+       flux_lw, lprec, fprec, flux_lh, t_skin, dhdt, dedt, drdt, SST, G, IG)
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
-    flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
-    flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
+    flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh, &
+    flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
+    dhdt, dedt, drdt
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), intent(in) :: &
+    t_skin
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
+    SST
 
+  real :: t_sfc
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind
 
@@ -173,6 +178,20 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     enddo ; enddo ; enddo
   enddo ; enddo
 
+  if (allocated(FIA%flux_t0)) then
+    !$OMP parallel do default(shared) private(t_sfc)
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+      t_sfc = SST(i,j) ; if (k>0) t_sfc = t_skin(i,j,k)
+      FIA%dhdt(i,j,k) = FIA%dhdt(i,j,k) + dhdt(i,j,k)
+      FIA%dedt(i,j,k) = FIA%dedt(i,j,k) + dedt(i,j,k)
+      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + drdt(i,j,k)
+      FIA%flux_t0(i,j,k) = FIA%flux_t0(i,j,k) + (flux_t(i,j,k) - t_sfc*dhdt(i,j,k))
+      FIA%flux_q0(i,j,k) = FIA%flux_q0(i,j,k) + (flux_q(i,j,k) - t_sfc*dedt(i,j,k))
+      ! Note the wierd sign convention on flux_lw - it was inhereted from the atmosphere.
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) + t_sfc*drdt(i,j,k))
+    enddo ; enddo ; enddo
+  endif
+
   FIA%avg_count = FIA%avg_count + 1
 
 end subroutine sum_top_quantities
@@ -180,15 +199,15 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> avg_top_quantities determines time average fluxes for later use by the
 !!    slow ice physics and by the ocean.
-subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
+subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA
   type(ice_rad_type),      intent(in)    :: Rad
+  type(ice_state_type),    intent(in)    :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-                           intent(in)    :: part_size
 
   real    :: u, v, divid, sign
+  real    :: I_avc    ! The inverse of the number of contributions.
   real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0, nondim.
   integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
@@ -205,26 +224,26 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   ! Rotate the stress from lat/lon to ocean coordinates and possibly change the
   ! sign to positive for downward fluxes of positive momentum.
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
-  divid = 1.0/real(FIA%avg_count)
+  I_avc = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,I_avc,G,FIA,Rad) &
 !$OMP                          private(u,v)
   do j=jsc,jec
     do k=0,ncat ; do i=isc,iec
-      u = FIA%flux_u_top(i,j,k) * (sign*divid)
-      v = FIA%flux_v_top(i,j,k) * (sign*divid)
+      u = FIA%flux_u_top(i,j,k) * (sign*I_avc)
+      v = FIA%flux_v_top(i,j,k) * (sign*I_avc)
       FIA%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
       FIA%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
-      FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  * divid
-      FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  * divid
-      FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) * divid
-      FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) * divid
-      FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) * divid
-      FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) * divid
-      FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * divid
-      FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
-      FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
-      FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
+      FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  * I_avc
+      FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  * I_avc
+      FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) * I_avc
+      FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) * I_avc
+      FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) * I_avc
+      FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) * I_avc
+      FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * I_avc
+      FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * I_avc
+      FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * I_avc
+      FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * I_avc
 
       ! Copy radiation fields from the fast to the slow states.
       if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
@@ -234,12 +253,12 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
         FIA%flux_q_top(i,j,k) = 0.0
       endif
       do n=1,FIA%num_tr_fluxes
-        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
+        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * I_avc
       enddo
     enddo ; enddo
     do i=isc,iec
-      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*divid
-      FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * divid
+      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*I_avc
+      FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * I_avc
     enddo
   enddo
 
@@ -247,13 +266,13 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,Rad,part_size) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,Rad,IST) &
 !$OMP                           private(I_wts)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
-      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
-      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
+      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
     enddo ; enddo
     do i=isc,iec
       FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
@@ -267,7 +286,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
         ! The max with 0 in the following line is here for safety; the only known
         ! instance where it has been required is when reading a SIS-1-derived
         ! restart file with tiny negative concentrations. SIS2 should not need it.
-        FIA%ice_free(i,j) = max(part_size(i,j,0), 0.0)
+        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
 
     !    Rescale to add up to 1?
     !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
@@ -281,10 +300,30 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
     enddo
   enddo
 
-  !
+  if (allocated(FIA%flux_t0)) then
+    !$OMP parallel do default(shared)
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+      FIA%dhdt(i,j,k) = FIA%dhdt(i,j,k) * I_avc
+      FIA%dedt(i,j,k) = FIA%dedt(i,j,k) * I_avc
+      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) * I_avc
+      FIA%flux_t0(i,j,k) = FIA%flux_t0(i,j,k) * I_avc
+      FIA%flux_q0(i,j,k) = FIA%flux_q0(i,j,k) * I_avc
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) * I_avc
+    enddo ; enddo ; enddo
+
+    ! Fill in the information to reconstruct the fluxes for any area-less categories.
+    ! The open-ocean category must always be calculated for this to work properly.
+    call infill_array(IST, FIA%dhdt(:,:,0), FIA%dhdt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%dedt(:,:,0), FIA%dedt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%dlwdt(:,:,0), FIA%dlwdt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%flux_t0(:,:,0), FIA%flux_t0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%flux_q0(:,:,0), FIA%flux_q0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%flux_lw0(:,:,0), FIA%flux_lw0(:,:,1:), G, IG)
+  endif
+
   ! set count to zero and fluxes will be zeroed before the next sum
-  !
   FIA%avg_count = 0
+
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -591,7 +630,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    if (IST%mH_ice(i,j,k) > 0.0) then
+    if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
@@ -666,7 +705,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
-    flux_lw, lprec, fprec, flux_lh, G, IG )
+    flux_lw, lprec, fprec, flux_lh, Rad%t_skin, dhdt, dedt, drdt, sOSS%SST_C, &
+    G, IG )
 
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)

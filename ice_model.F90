@@ -303,7 +303,7 @@ subroutine ice_model_fast_cleanup(Ice)
       "The pointer to Ice%fCS must be associated in ice_model_fast_cleanup.")
 
   ! average fluxes from update_ice_model_fast
-  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST%part_size, &
+  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST, &
                           Ice%fCS%G, Ice%fCS%IG)
 
   call total_top_quantities(Ice%fCS%FIA, Ice%fCS%TSF, Ice%fCS%IST%part_size, &
@@ -1514,6 +1514,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: fast_ice_PE      ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE      ! If true, slow ice processes are handled on this PE.
   logical :: single_IST       ! If true, fCS%IST and sCS%IST point to the same structure.
+  logical :: interp_fluxes    ! If true, interpolate a linearized version of the
+                              ! fast fluxes into arealess categories.
   logical :: Verona
   logical :: read_aux_restart
   logical :: split_restart_files
@@ -1736,6 +1738,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If =1, write the geometry and vertical grid files only for\n"//&
                  "a new simulation. If =2, always write the geometry and\n"//&
                  "vertical grid files. Other values are invalid.", default=1)
+  call get_param(param_file, "MOM", "INTERPOLATE_FLUXES", interp_fluxes, &
+                 "If true, interpolate a linearized version of the fast \n"//&
+                 "fluxes into arealess categories.", default=.true.)
   if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
          "WRITE_GEOM must be equal to 0, 1 or 2.")
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
@@ -1844,7 +1849,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG)
+    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes)
 
     call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file,&
                                 Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
@@ -1971,7 +1976,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
                             omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
 
-      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG)
+      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes)
 
       call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
     endif
