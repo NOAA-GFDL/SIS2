@@ -252,7 +252,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
 
-  if (allocated(FIA%flux_t0)) then
+  if (allocated(FIA%flux_sh0)) then
     FIA%id_evap0  = register_SIS_diag_field('ice_model','EVAP_T0',diag%axesTc0, Time, &
                'evaporation at 0 degC', 'kg/(m^2*s)', missing_value=missing)
     FIA%id_lw0  = register_SIS_diag_field('ice_model','LW_T0',diag%axesTc0, Time, &

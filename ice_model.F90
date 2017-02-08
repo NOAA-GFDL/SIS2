@@ -486,7 +486,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
     Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
-    Ice%flux_t(i2,j2) = IOF%flux_t_ocn_top(i,j)
+    Ice%flux_t(i2,j2) = IOF%flux_sh_ocn_top(i,j)
     Ice%flux_q(i2,j2) = IOF%flux_q_ocn_top(i,j)
     Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_vis_dir_ocn(i,j)
     Ice%flux_sw_vis_dif(i2,j2) = IOF%flux_sw_vis_dif_ocn(i,j)
