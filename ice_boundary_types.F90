@@ -77,8 +77,8 @@ type atmos_ice_boundary_type
                          ! surface temperature in W m-2 K-1.
     dedt    => NULL(), & ! The derivative of the sublimation and evaporation rate
                          ! with the surface temperature, in kg m-2 s-1 K-1.
-    drdt    => NULL(), & ! The derivative of the downward longwave radiative heat
-                         ! flux with surface temperature, in W m-2 K-1.
+    drdt    => NULL(), & ! The derivative of the net UPWARD longwave radiative
+                         ! heat flux (-lw_flux) with surface temperature, in W m-2 K-1.
     coszen  => NULL(), & ! The cosine of the solar zenith angle averged over the
                          ! next radiation timestep (not the one that was used to
                          ! calculate the sw_flux fields), nondim and <=1.

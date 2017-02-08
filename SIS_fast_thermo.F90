@@ -92,16 +92,23 @@ contains
 !!   physics and the ocean.  Nothing here will be exposed to other modules until
 !!   after it has passed through avg_top_quantities.
 subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
-       flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
-       flux_lw, lprec, fprec, flux_lh, t_skin, dhdt, dedt, drdt, SST, G, IG)
+       flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
+       flux_lw, lprec, fprec, flux_lh, t_skin, dhdt, dedt, &
+       dlwdt, SST, G, IG)
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
-    flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh, &
+    flux_u, flux_v, flux_t, flux_q, &
+    flux_lw, &  ! The net longwave heat flux from the atmosphere into the
+                ! ice or ocean, in W m-2.
+    lprec, fprec, flux_lh, &
     flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
-    dhdt, dedt, drdt
+    dhdt, dedt, &
+    dlwdt       ! The partial derivative of the longwave heat flux from the
+                ! atmosphere into the ice or ocean with ice skin temperature,
+                ! in W m-2 K-1.
   real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), intent(in) :: &
     t_skin
   real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
@@ -189,11 +196,10 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
       t_sfc = SST(i,j) ; if (k>0) t_sfc = t_skin(i,j,k)
       FIA%dhdt(i,j,k) = FIA%dhdt(i,j,k) + dhdt(i,j,k)
       FIA%dedt(i,j,k) = FIA%dedt(i,j,k) + dedt(i,j,k)
-      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + drdt(i,j,k)
+      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + dlwdt(i,j,k)
       FIA%flux_t0(i,j,k) = FIA%flux_t0(i,j,k) + (flux_t(i,j,k) - t_sfc*dhdt(i,j,k))
       FIA%flux_q0(i,j,k) = FIA%flux_q0(i,j,k) + (flux_q(i,j,k) - t_sfc*dedt(i,j,k))
-      ! Note the wierd sign convention on flux_lw - it was inhereted from the atmosphere.
-      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) + t_sfc*drdt(i,j,k))
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) - t_sfc*dlwdt(i,j,k))
       FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) + t_sfc
     enddo ; enddo ; enddo
   endif
@@ -509,7 +515,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   type(ice_grid_type),           intent(in)    :: IG
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce) :: &
-    flux_t, flux_q, flux_lh, flux_lw, &
+    flux_t, flux_q, flux_lh, &
+    flux_lw, &  ! The net longwave heat flux into the ice, in W m-2.
     flux_sw_nir_dir, flux_sw_nir_dif, &
     flux_sw_vis_dir, flux_sw_vis_dif, &
     flux_u, flux_v, lprec, fprec, &
@@ -517,8 +524,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
               ! temperature in W m-2 K-1.
     dedt, &   ! The derivative of the sublimation rate with the surface
               ! temperature, in kg m-2 s-1 K-1.
-    drdt      ! The derivative of the upward radiative heat flux with surface
-              ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
+    dlwdt     ! The derivative of the downward radiative heat flux with surface
+              ! temperature (i.e. d(flux_lw)/d(surf_temp)) in W m-2 K-1.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
@@ -574,7 +581,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 !$OMP                                  j_off,flux_u,flux_v,flux_t,flux_q,flux_lw, &
 !$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif,               &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,               &
-!$OMP                                  lprec,fprec,dhdt,dedt,drdt        )            &
+!$OMP                                  lprec,fprec,dhdt,dedt,dlwdt        )            &
 !$OMP                           private(i2,j2,k2)
   do j=jsc,jec
     !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
@@ -594,7 +601,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       fprec(i,j,k)   = Atmos_boundary%fprec(i2,j2,k2)
       dhdt(i,j,k) = Atmos_boundary%dhdt(i2,j2,k2)
       dedt(i,j,k) = Atmos_boundary%dedt(i2,j2,k2)
-      drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
+      dlwdt(i,j,k) = -1.*Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
   enddo
 
@@ -612,7 +619,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI)
     call hchksum(dhdt(:,:,1:), "Mid do_fast dhdt", G%HI)
     call hchksum(dedt(:,:,1:), "Mid do_fast dedt", G%HI)
-    call hchksum(drdt(:,:,1:), "Mid do_fast drdt", G%HI)
+    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI)
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
@@ -629,7 +636,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dhdt,dedt,drdt,   &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dhdt,dedt,dlwdt,   &
 !$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
 !$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
@@ -655,7 +662,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
                 (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
 
-      dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
+      dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) - dlwdt(i,j,k)
       hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
               (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
              dhf_dt * Rad%t_skin(i,j,k)
@@ -681,7 +688,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       Rad%t_skin(i,j,k) = ts_new
       flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
       flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
-      flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
+      flux_lw(i,j,k) = flux_lw(i,j,k) + dts * dlwdt(i,j,k)
       flux_lh(i,j,k) = latent * flux_q(i,j,k)
 
       if (CS%column_check) then
@@ -713,7 +720,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
     flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
-    flux_lw, lprec, fprec, flux_lh, Rad%t_skin, dhdt, dedt, drdt, sOSS%SST_C, &
+    flux_lw, lprec, fprec, flux_lh, Rad%t_skin, dhdt, dedt, dlwdt, sOSS%SST_C, &
     G, IG )
 
   if (CS%debug) &

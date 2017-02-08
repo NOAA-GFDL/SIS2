@@ -185,8 +185,8 @@ type fast_ice_avg_type
                            ! in W m-2.
     flux_q_top         , & ! The upward evaporative moisture flux at
                            ! top of the ice, in kg m-2 s-1.
-    flux_lw_top        , & ! The net flux of longwave radiation at the top of
-                           ! the ice, positive downward, in W m-2.
+    flux_lw_top        , & ! The net downward flux of longwave radiation at the
+                           ! top of the ice, in W m-2.
     flux_sw_vis_dir_top, & ! The downward diffuse flux of direct (dir)
     flux_sw_vis_dif_top, & ! and diffuse (dif) shortwave radiation in
     flux_sw_nir_dir_top, & ! the visible (vis) and near-infrared (nir)
@@ -257,15 +257,14 @@ type fast_ice_avg_type
                 ! extrapolated to a skin temperature of 0 deg C, in W m-2.
     flux_q0, &  ! The upward evaporative moisture flux at the top of the ice
                 ! extrapolated to a skin temperature of 0 deg C, in kg m-2 s-1.
-    flux_lw0, & ! The net flux of longwave radiation at the top of the ice
-                ! extrapolated to a skin temperature of 0 deg C,
-                ! positive downward in W m-2.
+    flux_lw0, & ! The net downward flux of longwave radiation at the top of the
+                ! ice extrapolated to a skin temperature of 0 deg C, in W m-2.
     dhdt, &     ! The partial derivative of flux_t0 with ice skin temperature
                 ! in W m-2 K-1.
     dedt, &     ! The partial derivative of flux_q0 with ice skin temperature
                 ! in kg m-2 s-1 K-1.
-    dlwdt       ! NEGATIVE the partial derivative of flux_lw0 with ice skin
-                ! temperature in W m-2 K-1.
+    dlwdt       ! The partial derivative of flux_lw0 with ice skin temperature
+                ! in W m-2 K-1.
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: &
