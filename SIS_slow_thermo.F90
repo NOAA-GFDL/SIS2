@@ -198,7 +198,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                  CS%diag, G=G)
   if (FIA%id_lh>0) call post_avg(FIA%id_lh, FIA%flux_lh_top, IST%part_size, &
                                  CS%diag, G=G)
-  if (FIA%id_evap>0) call post_avg(FIA%id_evap, FIA%flux_q_top, IST%part_size, &
+  if (FIA%id_evap>0) call post_avg(FIA%id_evap, FIA%evap_top, IST%part_size, &
                                  CS%diag, G=G)
   if (FIA%id_slp>0) &
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
@@ -241,14 +241,14 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   if (FIA%id_sitemptop>0) call post_data(FIA%id_sitemptop, FIA%Tskin_avg, CS%diag)
 
   if (FIA%id_sh0>0) call post_data(FIA%id_sh0, FIA%flux_sh0, CS%diag)
-  if (FIA%id_evap0>0) call post_data(FIA%id_evap0, FIA%flux_q0, CS%diag)
+  if (FIA%id_evap0>0) call post_data(FIA%id_evap0, FIA%evap0, CS%diag)
   if (FIA%id_lw0>0) call post_data(FIA%id_lw0, FIA%flux_lw0, CS%diag)
   if (FIA%id_dshdt>0) call post_data(FIA%id_dshdt, FIA%dshdt, CS%diag)
-  if (FIA%id_dedt>0) call post_data(FIA%id_dedt, FIA%dedt, CS%diag)
+  if (FIA%id_devdt>0) call post_data(FIA%id_devdt, FIA%devapdt, CS%diag)
   if (FIA%id_dlwdt>0) call post_data(FIA%id_dlwdt, FIA%dlwdt, CS%diag)
 
   if (FIA%id_sh_cat>0) call post_data(FIA%id_sh_cat, FIA%flux_sh_top, CS%diag)
-  if (FIA%id_evap_cat>0) call post_data(FIA%id_evap_cat, FIA%flux_q_top, CS%diag)
+  if (FIA%id_evap_cat>0) call post_data(FIA%id_evap_cat, FIA%evap_top, CS%diag)
   if (FIA%id_lw_cat>0) call post_data(FIA%id_lw_cat, FIA%flux_lw_top, CS%diag)
   if (FIA%id_Tsfc_cat>0) call post_data(FIA%id_Tsfc_cat, FIA%Tskin_cat, CS%diag)
 
@@ -372,7 +372,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
     do j=jsc,jec ; do i=isc,iec
       IOF%flux_sh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_sh_top(i,j,0)
-      IOF%flux_q_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_q_top(i,j,0)
+      IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%evap_top(i,j,0)
       IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
       IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
       IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dir_top(i,j,0)
@@ -736,7 +736,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     if (IST%part_size(i,j,0) > CS%ocean_part_min) part_ocn = IST%part_size(i,j,0)
 
     IOF%flux_sh_ocn_top(i,j) = part_ocn * FIA%flux_sh_top(i,j,0)
-    IOF%flux_q_ocn_top(i,j) = part_ocn * FIA%flux_q_top(i,j,0)
+    IOF%evap_ocn_top(i,j) = part_ocn * FIA%evap_top(i,j,0)
     IOF%flux_lw_ocn_top(i,j) = part_ocn * FIA%flux_lw_top(i,j,0)
     IOF%flux_lh_ocn_top(i,j) = part_ocn * FIA%flux_lh_top(i,j,0)
     IOF%flux_sw_vis_dir_ocn(i,j) = part_ocn * FIA%flux_sw_vis_dir_top(i,j,0)
@@ -805,7 +805,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       ! mw/new - melt pond size is now adjusted here (rain ignored in resize, for now)
       call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), m_lay, &
                    enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*dt_slow, &
-                   FIA%lprec_top(i,j,k)*dt_slow, FIA%flux_q_top(i,j,k)*dt_slow, &
+                   FIA%lprec_top(i,j,k)*dt_slow, FIA%evap_top(i,j,k)*dt_slow, &
                    FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, npassive, TrLay, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    snow_to_ice(i,j,k), salt_to_ice, IST%ITV, CS%ice_thm_CSp, bablt, &
@@ -859,7 +859,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         heat_mass_in = enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap
         mass_in = dt_slow*FIA%fprec_top(i,j,k) & ! +FIA%lprec_top(i,j,k) <- eventually
                 + h2o_ocn_to_ice - h2o_ice_to_ocn &
-                - (dt_slow*FIA%flux_q_top(i,j,k)-evap_from_ocn)
+                - (dt_slow*FIA%evap_top(i,j,k)-evap_from_ocn)
 
         mass_here = IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k) + IST%mH_ice(i,j,k)
         enth_here = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
@@ -881,7 +881,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
           (enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap)
       endif
 
-      IOF%flux_q_ocn_top(i,j) = IOF%flux_q_ocn_top(i,j) + IST%part_size(i,j,k) * &
+      IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                   (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                  ((LatHtVap*evap_from_ocn)*Idt_slow)

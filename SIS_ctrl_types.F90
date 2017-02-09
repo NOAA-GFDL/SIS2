@@ -259,7 +259,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
                'net downward longwave heat flux over ice at 0 degC', 'W/m^2', missing_value=missing)
     FIA%id_sh0  = register_SIS_diag_field('ice_model','SH_T0' ,diag%axesTc0, Time, &
                'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
-    FIA%id_dedt  = register_SIS_diag_field('ice_model','dEVAP_dT',diag%axesTc0, Time, &
+    FIA%id_devdt  = register_SIS_diag_field('ice_model','dEVAP_dT',diag%axesTc0, Time, &
                'partial derivative of evaporation with ice skin temperature', &
                'kg/(m^2*s*K)', missing_value=missing)
     FIA%id_dlwdt = register_SIS_diag_field('ice_model','dLW_dT',diag%axesTc0, Time, &
