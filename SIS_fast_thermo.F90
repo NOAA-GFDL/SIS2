@@ -51,7 +51,7 @@ use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
-use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF, NBANDS
+use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -120,19 +120,20 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
                 ! temperature, in kg m-2 s-1 K-1.
     dlwdt       ! The derivative of the longwave heat flux from the atmosphere
                 ! into the ice or ocean with ice skin temperature, in W m-2 K-1.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,NBANDS), intent(in) :: &
-    flux_sw     ! The downward shortwave heat fluxes in W m-2.  The fourth
-                ! dimension is a combination of angular orientation and frequency.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
+    intent(in) :: flux_sw ! The downward shortwave heat fluxes in W m-2. The 4th
+                ! dimension is a combination of angular orientation & frequency.
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
     t_skin
   real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
     SST
 
   real :: t_sfc
-  integer :: i, j, k, m, n, b, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
+  integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top,4)
 
   i_off = LBOUND(ABT%t_flux,1) - G%isc
   j_off = LBOUND(ABT%t_flux,2) - G%jsc
@@ -172,15 +173,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_u,flux_v,flux_sh, &
-!$OMP                                  evap,flux_sw,flux_lw,       &
-!$OMP                                  lprec,fprec,flux_lh,FIA)
+  !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
     FIA%flux_u_top(i,j,k)  = FIA%flux_u_top(i,j,k)  + flux_u(i,j,k)
     FIA%flux_v_top(i,j,k)  = FIA%flux_v_top(i,j,k)  + flux_v(i,j,k)
     FIA%flux_sh_top(i,j,k)  = FIA%flux_sh_top(i,j,k) + flux_sh(i,j,k)
     FIA%evap_top(i,j,k)  = FIA%evap_top(i,j,k)  + evap(i,j,k)
-    do b=1,NBANDS ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) + flux_sw(i,j,k,b) ; enddo
+    do b=1,nb ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) + flux_sw(i,j,k,b) ; enddo
     FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) + flux_lw(i,j,k)
     FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   + lprec(i,j,k)
     FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   + fprec(i,j,k)
@@ -230,11 +229,12 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
   real    :: u, v, divid, sign
   real    :: I_avc    ! The inverse of the number of contributions.
   real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0, nondim.
-  integer :: i, j, k, m, n, b, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4)
 
   !
   ! compute average fluxes
@@ -247,8 +247,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
   I_avc = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,I_avc,G,FIA,Rad) &
-!$OMP                          private(u,v)
+  !$OMP parallel do default(shared) private(u,v)
   do j=jsc,jec
     do k=0,ncat ; do i=isc,iec
       u = FIA%flux_u_top(i,j,k) * (sign*I_avc)
@@ -257,7 +256,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
       FIA%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
       FIA%flux_sh_top(i,j,k)  = FIA%flux_sh_top(i,j,k)  * I_avc
       FIA%evap_top(i,j,k)  = FIA%evap_top(i,j,k)  * I_avc
-      do b=1,NBANDS ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) * I_avc ; enddo
+      do b=1,nb ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) * I_avc ; enddo
       FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * I_avc
       FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * I_avc
       FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * I_avc
@@ -357,11 +356,12 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
                              intent(in)    :: part_size
 
-  integer :: i, j, k, m, n, b, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4)
 
   if (TSF%num_tr_fluxes < 0) then
     ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
@@ -385,9 +385,9 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
     TSF%flux_v(i,j) = TSF%flux_v(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
     TSF%flux_sh(i,j) = TSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
     TSF%evap(i,j) = TSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
-    do b=1,NBANDS
+    do b=1,nb
       TSF%flux_sw(i,j,b) = TSF%flux_sw(i,j,b) + &
-                                part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+                           part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
     enddo
     TSF%flux_lw(i,j) = TSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
     TSF%flux_lh(i,j) = TSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
@@ -529,7 +529,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! temperature, in kg m-2 s-1 K-1.
     dlwdt       ! The derivative of the downward radiative heat flux with surface
                 ! temperature (i.e. d(flux_lw)/d(surf_temp)) in W m-2 K-1.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,NBANDS) :: &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)) :: &
     flux_sw     ! The downward shortwave heat fluxes in W m-2.  The fourth
                 ! dimension is a combination of angular orientation and frequency.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.

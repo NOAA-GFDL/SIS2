@@ -47,11 +47,12 @@ public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sO
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
 public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
 public :: translate_OSS_to_sOSS
-public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF, NBANDS
+public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 ! These parameters facilitate the use of 4-D arrays for shortwave radiation and
 ! albedos within SIS2.
-integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4, NBANDS=4
+integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
+integer, parameter :: NBANDS=4
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -184,77 +185,77 @@ type fast_ice_avg_type
   ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
-    flux_u_top         , & ! The downward flux of zonal and meridional
-    flux_v_top         , & ! momentum on an A-grid in Pa.
-    flux_sh_top        , & ! The upward sensible heat flux at the ice top
-                           ! in W m-2.
-    evap_top           , & ! The upward evaporative moisture flux at
-                           ! top of the ice, in kg m-2 s-1.
-    flux_lw_top        , & ! The net downward flux of longwave radiation at the
-                           ! top of the ice, in W m-2.
-    flux_lh_top        , & ! The upward flux of latent heat at the top
-                           ! of the ice, in W m-2.
-    lprec_top          , & ! The downward flux of liquid precipitation
-                           ! at the top of the ice, in kg m-2 s-1.
-    fprec_top          , & ! The downward flux of frozen precipitation
-                           ! at the top of the ice, in kg m-2 s-1.
-    tmelt              , & ! Ice-top melt energy into the ice/snow in J m-2.
-    bmelt              , & ! Ice-bottom melting energy into the ice in J m-2.
-    Tskin_cat          , & ! The ice skin temperature by category, in degC.
+    flux_u_top  , & ! The downward flux of zonal and meridional
+    flux_v_top  , & ! momentum on an A-grid in Pa.
+    flux_sh_top , & ! The upward sensible heat flux at the ice top
+                    ! in W m-2.
+    evap_top    , & ! The upward evaporative moisture flux at
+                    ! top of the ice, in kg m-2 s-1.
+    flux_lw_top , & ! The net downward flux of longwave radiation at the
+                    ! top of the ice, in W m-2.
+    flux_lh_top , & ! The upward flux of latent heat at the top
+                    ! of the ice, in W m-2.
+    lprec_top   , & ! The downward flux of liquid precipitation
+                    ! at the top of the ice, in kg m-2 s-1.
+    fprec_top   , & ! The downward flux of frozen precipitation
+                    ! at the top of the ice, in kg m-2 s-1.
+    tmelt       , & ! Ice-top melt energy into the ice/snow in J m-2.
+    bmelt       , & ! Ice-bottom melting energy into the ice in J m-2.
+    Tskin_cat   , & ! The ice skin temperature by category, in degC.
     sw_abs_ocn      !  The fraction of the absorbed shortwave radiation that is
                     !  absorbed in the ocean, nondim and <=1.
                     !  Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type
                     !  and the ice_rad_type because it is used as a part of the slow
                     !  thermodynamic updates.
   real, allocatable, dimension(:,:,:,:) :: &
-    flux_sw_top      ! The downward flux of shortwave radiation at the top of
-                     ! the sea-ice in W m-2.  The fourth dimension combines
-                     ! angular orientation (direct or diffuse) and frequency
-                     ! (visible or near-IR) bands, with the integer parameters
-                     ! from this module helping to distinguish them.
+    flux_sw_top     ! The downward flux of shortwave radiation at the top of
+                    ! the sea-ice in W m-2.  The fourth dimension combines
+                    ! angular orientation (direct or diffuse) and frequency
+                    ! (visible or near-IR) bands, with the integer parameters
+                    ! from this module helping to distinguish them.
   real, allocatable, dimension(:,:) :: &
-    bheat      , &   ! The upward diffusive heat flux from the ocean
-                     ! to the ice at the base of the ice, in W m-2.
-    WindStr_x  , &   ! The zonal wind stress averaged over the ice
-                     ! categories on an A-grid, in Pa.
-    WindStr_y  , &   ! The meridional wind stress averaged over the
-                     ! ice categories on an A-grid, in Pa.
+    bheat      , &  ! The upward diffusive heat flux from the ocean
+                    ! to the ice at the base of the ice, in W m-2.
+    WindStr_x  , &  ! The zonal wind stress averaged over the ice
+                    ! categories on an A-grid, in Pa.
+    WindStr_y  , &  ! The meridional wind stress averaged over the
+                    ! ice categories on an A-grid, in Pa.
     WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
     WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
-    p_atm_surf , &   ! The atmospheric pressure at the top of the ice, in Pa.
-    flux_sw_dn, &    ! The total downward shortwave flux, summed across all
-                     ! wavelengths and averaged across all thickness categories
-                     ! in W m-2.
-    runoff, &        ! Liquid runoff into the ocean, in kg m-2.
-    calving, &       ! Calving of ice or runoff of frozen fresh
-                     ! water into the ocean, in kg m-2.
-    runoff_hflx, &   ! The heat flux associated with runoff, based
-                     ! on the temperature difference relative to a
-                     ! reference temperature, in ???.
-    calving_hflx, &  ! The heat flux associated with calving, based
-                     ! on the temperature difference relative to a
-                     ! reference temperature, in ???.
+    p_atm_surf , &  ! The atmospheric pressure at the top of the ice, in Pa.
+    flux_sw_dn, &   ! The total downward shortwave flux, summed across all
+                    ! wavelengths and averaged across all thickness categories
+                    ! in W m-2.
+    runoff, &       ! Liquid runoff into the ocean, in kg m-2.
+    calving, &      ! Calving of ice or runoff of frozen fresh
+                    ! water into the ocean, in kg m-2.
+    runoff_hflx, &  ! The heat flux associated with runoff, based
+                    ! on the temperature difference relative to a
+                    ! reference temperature, in ???.
+    calving_hflx, & ! The heat flux associated with calving, based
+                    ! on the temperature difference relative to a
+                    ! reference temperature, in ???.
     calving_preberg, &  ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, exclusive of any
-                        ! iceberg contributions, in kg m-2.
+                    ! water into the ocean, exclusive of any
+                    ! iceberg contributions, in kg m-2.
     calving_hflx_preberg, & ! The heat flux associated with calving,
-                        ! exclusive of any iceberg contributions, based on
-                        ! the temperature difference relative to a
-                        ! reference temperature, in ???.
-    Tskin_avg, &     ! The area-weighted average skin temperature across all
-                     ! ice thickness categories, in deg C, or 0 if there is
-                     ! no ice.
-    ice_free   , &   ! The fractional open water used in calculating
-                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ice_cover        ! The fractional ice coverage, summed across all
-                     ! thickness categories, used in calculating
-                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+                    ! exclusive of any iceberg contributions, based on
+                    ! the temperature difference relative to a
+                    ! reference temperature, in ???.
+    Tskin_avg, &    ! The area-weighted average skin temperature across all
+                    ! ice thickness categories, in deg C, or 0 if there is
+                    ! no ice.
+    ice_free   , &  ! The fractional open water used in calculating
+                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_cover       ! The fractional ice coverage, summed across all
+                    ! thickness categories, used in calculating
+                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
   logical :: first_copy = .true.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
-    tr_flux_top    ! An array of tracer fluxes at the top of the
-                   ! sea ice.
+    tr_flux_top     ! An array of tracer fluxes at the top of the
+                    ! sea ice.
 
   ! These are the arrays that are averaged over the fast thermodynamics and
   ! then interpolated into unoccupied categories for the purpose of redoing
@@ -275,10 +276,10 @@ type fast_ice_avg_type
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: &
-    frazil_left    ! The frazil heat flux that has not yet been
-                   ! consumed in making ice, in J m-2. This array
-                   ! is decremented by the ice model as the heat
-                   ! flux is used up.
+    frazil_left     ! The frazil heat flux that has not yet been
+                    ! consumed in making ice, in J m-2. This array
+                    ! is decremented by the ice model as the heat
+                    ! flux is used up.
 !SLOW ONLY
   integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
@@ -301,27 +302,27 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u         , & ! The downward flux of zonal and meridional
-    flux_v         , & ! momentum on an A-grid in Pa.
-    flux_sh        , & ! The upward sensible heat flux at the ice top
-                       ! in W m-2.
-    evap           , & ! The upward evaporative moisture flux at
-                       ! top of the ice, in kg m-2 s-1.
-    flux_lw        , & ! The downward flux of longwave radiation at
-                       ! the top of the ice, in W m-2.
-    flux_lh        , & ! The upward flux of latent heat at the top
-                       ! of the ice, in W m-2.
-    lprec          , & ! The downward flux of liquid precipitation
-                       ! at the top of the ice, in kg m-2 s-1.
-    fprec              ! The downward flux of frozen precipitation
-                       ! at the top of the ice, in kg m-2 s-1.
+    flux_u  , & ! The downward flux of zonal and meridional
+    flux_v  , & ! momentum on an A-grid in Pa.
+    flux_sh , & ! The upward sensible heat flux at the ice top
+                ! in W m-2.
+    evap    , & ! The upward evaporative moisture flux at
+                ! top of the ice, in kg m-2 s-1.
+    flux_lw , & ! The downward flux of longwave radiation at
+                ! the top of the ice, in W m-2.
+    flux_lh , & ! The upward flux of latent heat at the top
+                ! of the ice, in W m-2.
+    lprec   , & ! The downward flux of liquid precipitation
+                ! at the top of the ice, in kg m-2 s-1.
+    fprec       ! The downward flux of frozen precipitation
+                ! at the top of the ice, in kg m-2 s-1.
 !  logical :: first_copy = .true.
   real, allocatable, dimension(:,:,:) :: &
-    flux_sw          ! The downward flux of shortwave radiation at the top of
-                     ! the sea-ice in W m-2.  The third dimension combines
-                     ! angular orientation (direct or diffuse) and frequency
-                     ! (visible or near-IR) bands, with the integer parameters
-                     ! from this module helping to distinguish them.
+    flux_sw     ! The downward flux of shortwave radiation at the top of
+                ! the sea-ice in W m-2.  The third dimension combines
+                ! angular orientation (direct or diffuse) and frequency
+                ! (visible or near-IR) bands, with the integer parameters
+                ! from this module helping to distinguish them.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
     tr_flux        ! An array of tracer fluxes at the top of the
@@ -1153,13 +1154,13 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   type(hor_index_type),    intent(in)    :: HI_in, HI_out
   type(ice_grid_type),     intent(in)    :: IG
 
-  integer :: b, i, j, k, m, n, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, i_off, j_off
   integer :: isd, ied, jsd, jed
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
-  ncat = IG%CatIce ; NkIce = IG%NkIce
-
+  ncat = IG%CatIce ; NkIce = IG%NkIce ; nb = size(FIA_in%flux_sw_top,4)
+  
   if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
       (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
@@ -1175,9 +1176,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%flux_lh_top(i2,j2,k) = FIA_in%flux_lh_top(i,j,k)
     FIA_out%lprec_top(i2,j2,k) = FIA_in%lprec_top(i,j,k)
     FIA_out%fprec_top(i2,j2,k) = FIA_in%fprec_top(i,j,k)
-    do b=1,NBANDS
-      FIA_out%flux_sw_top(i2,j2,k,b) = FIA_in%flux_sw_top(i,j,k,b)
-    enddo
+    do b=1,nb ; FIA_out%flux_sw_top(i2,j2,k,b) = FIA_in%flux_sw_top(i,j,k,b) ; enddo
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec

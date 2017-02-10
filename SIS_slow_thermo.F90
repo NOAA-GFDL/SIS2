@@ -59,7 +59,7 @@ use data_override_mod, only : data_override
 
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF, NBANDS
+use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 use SIS_utils, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -180,9 +180,10 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
   real :: sw_cat
-  integer :: i, j, k, m, n, b, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top,4)
   ! Flux diagnostics
   !
   if (FIA%id_runoff>0) &
@@ -206,11 +207,11 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
     call post_data(FIA%id_slp, FIA%p_atm_surf, CS%diag)
 
   if ((FIA%id_sw>0) .or. (FIA%id_albedo>0)) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,net_sw,IST,FIA)
+    !$OMP parallel do default(shared) private(sw_cat)
     do j=jsc,jec
       do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
-        sw_cat = 0 ; do b=1,NBANDS ; sw_cat = sw_cat + FIA%flux_sw_top(i,j,k,b) ; enddo
+        sw_cat = 0 ; do b=1,nb ; sw_cat = sw_cat + FIA%flux_sw_top(i,j,k,b) ; enddo
         net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * sw_cat
       enddo ; enddo
     enddo
@@ -319,7 +320,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: Idt_slow
-  integer :: i, j, k, l, m, b, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
@@ -330,6 +331,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   mi_old(:,:,:) = 0.0
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
+  nb = size(FIA%flux_sw_top,4)
 !  I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
@@ -376,7 +378,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%evap_top(i,j,0)
       IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
       IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
-      do b=1,NBANDS
+      do b=1,nb
         IOF%flux_sw_ocn(i,j,b) = IST%part_size(i,j,0) * FIA%flux_sw_top(i,j,0,b)
       enddo
       IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
@@ -570,7 +572,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  integer :: i, j, k, l, m, n, b, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
+  integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
@@ -580,6 +582,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
+  nb = size(FIA%flux_sw_top,4)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
@@ -713,8 +716,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   bsnk(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IST,salt_change,kg_H_Nk, &
-!$OMP                               h2o_change,NkIce,IG,CS,IOF,FIA) &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,nb,G,IST,salt_change, &
+!$OMP                               kg_H_Nk,h2o_change,NkIce,IG,CS,IOF,FIA) &
 !$OMP                        private(part_ocn)
   if (CS%ice_rel_salin <= 0.0) then
 !$OMP do
@@ -739,7 +742,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%evap_ocn_top(i,j) = part_ocn * FIA%evap_top(i,j,0)
     IOF%flux_lw_ocn_top(i,j) = part_ocn * FIA%flux_lw_top(i,j,0)
     IOF%flux_lh_ocn_top(i,j) = part_ocn * FIA%flux_lh_top(i,j,0)
-    do b=1,NBANDS ; IOF%flux_sw_ocn(i,j,b) = part_ocn * FIA%flux_sw_top(i,j,0,b) ; enddo
+    do b=1,nb ; IOF%flux_sw_ocn(i,j,b) = part_ocn * FIA%flux_sw_top(i,j,0,b) ; enddo
     IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
     IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
   enddo ; enddo
