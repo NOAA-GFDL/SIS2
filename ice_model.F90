@@ -97,6 +97,7 @@ use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
+use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_utils, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -488,10 +489,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
     Ice%flux_t(i2,j2) = IOF%flux_sh_ocn_top(i,j)
     Ice%flux_q(i2,j2) = IOF%evap_ocn_top(i,j)
-    Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_vis_dir_ocn(i,j)
-    Ice%flux_sw_vis_dif(i2,j2) = IOF%flux_sw_vis_dif_ocn(i,j)
-    Ice%flux_sw_nir_dir(i2,j2) = IOF%flux_sw_nir_dir_ocn(i,j)
-    Ice%flux_sw_nir_dif(i2,j2) = IOF%flux_sw_nir_dif_ocn(i,j)
+    Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_ocn(i,j,VIS_DIR)
+    Ice%flux_sw_vis_dif(i2,j2) = IOF%flux_sw_ocn(i,j,VIS_DIF)
+    Ice%flux_sw_nir_dir(i2,j2) = IOF%flux_sw_ocn(i,j,NIR_DIR)
+    Ice%flux_sw_nir_dif(i2,j2) = IOF%flux_sw_ocn(i,j,NIR_DIF)
     Ice%flux_lw(i2,j2) = IOF%flux_lw_ocn_top(i,j)
     Ice%flux_lh(i2,j2) = IOF%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = IOF%fprec_ocn_top(i,j)

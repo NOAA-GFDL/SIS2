@@ -42,7 +42,7 @@ use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type
+use SIS_types, only : ocean_sfc_state_type, VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF ! , NBANDS
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -744,8 +744,8 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
               (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
-    Flux_SW = (IOF%flux_sw_vis_dir_ocn(i,j) + IOF%flux_sw_vis_dif_ocn(i,j)) + &
-              (IOF%flux_sw_nir_dir_ocn(i,j) + IOF%flux_sw_nir_dif_ocn(i,j))
+    Flux_SW = (IOF%flux_sw_ocn(i,j,vis_dir) + IOF%flux_sw_ocn(i,j,vis_dif)) + &
+              (IOF%flux_sw_ocn(i,j,nir_dir) + IOF%flux_sw_ocn(i,j,nir_dif))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
            ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
@@ -807,8 +807,8 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
 !$OMP                          private(area_pt,Flux_SW)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     area_pt = IST%part_size(i,j,k)
-    Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
-              (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
+    Flux_SW = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
+              (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
@@ -878,8 +878,8 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       area_pt = part_size(i,j,k)
       pen_frac = 1.0 ; if (k>0) pen_frac = FIA%sw_abs_ocn(i,j,k)
-      Flux_SW = (FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
-                (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))
+      Flux_SW = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
+                (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
 
       CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )

@@ -58,8 +58,9 @@ use time_manager_mod, only : time_type, time_type_to_real! , get_date, get_time
 use data_override_mod, only : data_override
 
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type
-use SIS_types, only : IST_chksum, IST_bounds_check
+use SIS_types, only : ocean_sfc_state_type, IST_chksum, IST_bounds_check
+use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF, NBANDS
+
 use SIS_utils, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -178,7 +179,8 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   real,                      intent(in) :: Idt_slow
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
-  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  real :: sw_cat
+  integer :: i, j, k, m, n, b, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   ! Flux diagnostics
@@ -208,9 +210,8 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
     do j=jsc,jec
       do i=isc,iec ; net_sw(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
-        net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
-              FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k) + &
-              FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
+        sw_cat = 0 ; do b=1,NBANDS ; sw_cat = sw_cat + FIA%flux_sw_top(i,j,k,b) ; enddo
+        net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * sw_cat
       enddo ; enddo
     enddo
     if (FIA%id_sw>0) call post_data(FIA%id_sw, net_sw, CS%diag)
@@ -258,7 +259,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
       do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
         tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
-              FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k) )
+              FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,VIS_DIF) )
       enddo ; enddo
     enddo
     call post_data(FIA%id_sw_vis, tmp2d, CS%diag)
@@ -269,7 +270,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
       do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
         tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
-              FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_nir_dir_top(i,j,k) )
+              FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,NIR_DIR) )
       enddo ; enddo
     enddo
     call post_data(FIA%id_sw_dir, tmp2d, CS%diag)
@@ -280,18 +281,18 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
       do i=isc,iec ; tmp2d(i,j) = 0.0 ; enddo
       do k=0,ncat ; do i=isc,iec
         tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k) * ( &
-              FIA%flux_sw_vis_dif_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k) )
+              FIA%flux_sw_top(i,j,k,VIS_DIF) + FIA%flux_sw_top(i,j,k,NIR_DIF) )
       enddo ; enddo
     enddo
     call post_data(FIA%id_sw_dif, tmp2d, CS%diag)
   endif
-  if (FIA%id_sw_nir_dir>0) call post_avg(FIA%id_sw_nir_dir, FIA%flux_sw_nir_dir_top, &
+  if (FIA%id_sw_nir_dir>0) call post_avg(FIA%id_sw_nir_dir, FIA%flux_sw_top(:,:,:,nir_dir), &
                              IST%part_size, CS%diag, G=G)
-  if (FIA%id_sw_nir_dif>0) call post_avg(FIA%id_sw_nir_dif, FIA%flux_sw_nir_dif_top, &
+  if (FIA%id_sw_nir_dif>0) call post_avg(FIA%id_sw_nir_dif, FIA%flux_sw_top(:,:,:,nir_dif), &
                              IST%part_size, CS%diag, G=G)
-  if (FIA%id_sw_vis_dir>0) call post_avg(FIA%id_sw_vis_dir, FIA%flux_sw_vis_dir_top, &
+  if (FIA%id_sw_vis_dir>0) call post_avg(FIA%id_sw_vis_dir, FIA%flux_sw_top(:,:,:,vis_dir), &
                              IST%part_size, CS%diag, G=G)
-  if (FIA%id_sw_vis_dif>0) call post_avg(FIA%id_sw_vis_dif, FIA%flux_sw_vis_dif_top, &
+  if (FIA%id_sw_vis_dif>0) call post_avg(FIA%id_sw_vis_dif, FIA%flux_sw_top(:,:,:,vis_dif), &
                              IST%part_size, CS%diag, G=G)
 
   if (CS%nudge_sea_ice .and. CS%id_fwnudge>0) then
@@ -318,7 +319,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
 
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: Idt_slow
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i, j, k, l, m, b, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
@@ -375,10 +376,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%evap_top(i,j,0)
       IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
       IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
-      IOF%flux_sw_vis_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dir_top(i,j,0)
-      IOF%flux_sw_vis_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_vis_dif_top(i,j,0)
-      IOF%flux_sw_nir_dir_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dir_top(i,j,0)
-      IOF%flux_sw_nir_dif_ocn(i,j) = IST%part_size(i,j,0) * FIA%flux_sw_nir_dif_top(i,j,0)
+      do b=1,NBANDS
+        IOF%flux_sw_ocn(i,j,b) = IST%part_size(i,j,0) * FIA%flux_sw_top(i,j,0,b)
+      enddo
       IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
       IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
     enddo ; enddo
@@ -570,7 +570,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
+  integer :: i, j, k, l, m, n, b, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
@@ -739,10 +739,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%evap_ocn_top(i,j) = part_ocn * FIA%evap_top(i,j,0)
     IOF%flux_lw_ocn_top(i,j) = part_ocn * FIA%flux_lw_top(i,j,0)
     IOF%flux_lh_ocn_top(i,j) = part_ocn * FIA%flux_lh_top(i,j,0)
-    IOF%flux_sw_vis_dir_ocn(i,j) = part_ocn * FIA%flux_sw_vis_dir_top(i,j,0)
-    IOF%flux_sw_vis_dif_ocn(i,j) = part_ocn * FIA%flux_sw_vis_dif_top(i,j,0)
-    IOF%flux_sw_nir_dir_ocn(i,j) = part_ocn * FIA%flux_sw_nir_dir_top(i,j,0)
-    IOF%flux_sw_nir_dif_ocn(i,j) = part_ocn * FIA%flux_sw_nir_dif_top(i,j,0)
+    do b=1,NBANDS ; IOF%flux_sw_ocn(i,j,b) = part_ocn * FIA%flux_sw_top(i,j,0,b) ; enddo
     IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
     IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
   enddo ; enddo
@@ -887,9 +884,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                  ((LatHtVap*evap_from_ocn)*Idt_slow)
       IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) + IST%part_size(i,j,k) * &
              (FIA%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
-      IOF%flux_sw_vis_dif_ocn(i,j) = IOF%flux_sw_vis_dif_ocn(i,j) + IST%part_size(i,j,k) * &
-             (((FIA%flux_sw_vis_dir_top(i,j,k) + FIA%flux_sw_vis_dif_top(i,j,k)) + &
-               (FIA%flux_sw_nir_dir_top(i,j,k) + FIA%flux_sw_nir_dif_top(i,j,k))) * &
+      IOF%flux_sw_ocn(i,j,vis_dif) = IOF%flux_sw_ocn(i,j,vis_dif) + IST%part_size(i,j,k) * &
+             (((FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
+               (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))) * &
                FIA%sw_abs_ocn(i,j,k))
       net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
