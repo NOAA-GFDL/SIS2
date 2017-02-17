@@ -46,6 +46,8 @@ public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
 public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
+public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF
+public :: copy_Rad_to_Rad, redistribute_Rad_to_Rad, alloc_ice_Rad
 public :: translate_OSS_to_sOSS
 public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
@@ -323,6 +325,7 @@ type total_sfc_flux_type
                 ! angular orientation (direct or diffuse) and frequency
                 ! (visible or near-IR) bands, with the integer parameters
                 ! from this module helping to distinguish them.
+  logical :: first_copy = .true.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
     tr_flux        ! An array of tracer fluxes at the top of the
@@ -633,10 +636,10 @@ subroutine alloc_total_sfc_flux(TSF, HI)
   allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
   allocate(TSF%flux_v(isd:ied, jsd:jed)) ; TSF%flux_v(:,:) = 0.0
   allocate(TSF%flux_sh(isd:ied, jsd:jed)) ; TSF%flux_sh(:,:) = 0.0
-  allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
   allocate(TSF%flux_sw(isd:ied, jsd:jed, NBANDS)) ; TSF%flux_sw(:,:,:) = 0.0
   allocate(TSF%flux_lw(isd:ied, jsd:jed)) ; TSF%flux_lw(:,:) = 0.0
   allocate(TSF%flux_lh(isd:ied, jsd:jed)) ; TSF%flux_lh(:,:) = 0.0
+  allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
   allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
   allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
 
@@ -679,6 +682,29 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
                                domain=mpp_domain, mandatory=.false.)
 
 end subroutine ice_rad_register_restarts
+
+subroutine alloc_ice_rad(Rad, HI, IG)
+  type(ice_rad_type),      pointer       :: Rad
+  type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG
+
+  integer :: isd, ied, jsd, jed, CatIce, NkIce
+
+  if (.not.associated(Rad)) allocate(Rad)
+  CatIce = IG%CatIce ; NkIce = IG%NkIce
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
+
+  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
+  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
+  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
+  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
+  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
+
+  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
+
+end subroutine alloc_ice_rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
@@ -848,7 +874,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_out%t_surf) .or. allocated(IST_in%t_surf)) then
       call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                          IST_out%t_surf, complete=.false.)
+                            IST_out%t_surf, complete=.false.)
     endif
     call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
                           IST_out%mH_pond, complete=.false.)
@@ -870,7 +896,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_out%t_surf)) then
       call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%t_surf, complete=.false.)
+                            IST_out%t_surf, complete=.false.)
     endif
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           IST_out%mH_pond, complete=.false.)
@@ -892,7 +918,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_in%t_surf)) then
       call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                          null_ptr3D, complete=.false.)
+                            null_ptr3D, complete=.false.)
     endif
     call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
                           null_ptr3D, complete=.false.)
@@ -978,8 +1004,8 @@ end subroutine translate_OSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type.  Both must use the same
-!! domain decomposition and indexing convention (for now), but they may have
-!! different halo sizes.
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
 subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   type(simple_OSS_type), intent(inout) :: OSS_in
   type(simple_OSS_type), intent(inout) :: OSS_out
@@ -1146,8 +1172,8 @@ end subroutine redistribute_sOSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
 !! the computational domain of another fast_ice_avg_type.  Both must use the same
-!! domain decomposition and indexing convention (for now), but they may have
-!! different halo sizes.
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
 subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA_in
   type(fast_ice_avg_type), intent(inout) :: FIA_out
@@ -1265,7 +1291,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
   logical :: first_copy
-  integer :: i, j, isd, ied, jsd, jed, ncat
+  integer :: i, j, b, isd, ied, jsd, jed, ncat
   integer :: num_tr
 
 
@@ -1307,8 +1333,10 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 
   if (associated(FIA_out) .and. associated(FIA_in)) then
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_top, domain_out, &
-                          FIA_out%flux_sw_top, complete=.true.)
+    do b=1,size(FIA_in%flux_sw_top,4)
+      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+    enddo
     call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
                           FIA_out%flux_sh_top, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
@@ -1381,8 +1409,10 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     endif
   elseif (associated(FIA_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
-    call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
-                          FIA_out%flux_sw_top, complete=.true.)
+    do b=1,size(FIA_out%flux_sw_top,4)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+    enddo
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           FIA_out%flux_sh_top, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
@@ -1456,8 +1486,10 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     endif
   elseif (associated(FIA_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_top, domain_out, &
-                          null_ptr4D, complete=.true.)
+    do b=1,size(FIA_in%flux_sw_top,4)
+      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                            null_ptr3D, complete=.false.)
+    enddo
     call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
                           null_ptr3D, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
@@ -1535,6 +1567,264 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
 
 end subroutine redistribute_FIA_to_FIA
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_TSF_to_TSF copies the computational domain of one fast_ice_avg_type into
+!! the computational domain of another fast_ice_avg_type.  Both must use the same
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
+subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
+  type(total_sfc_flux_type), intent(inout) :: TSF_in
+  type(total_sfc_flux_type), intent(inout) :: TSF_out
+  type(hor_index_type),      intent(in)    :: HI_in, HI_out
+
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat
+  integer :: i2, j2, i_off, j_off
+  integer :: isd, ied, jsd, jed
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  nb = size(TSF_in%flux_sw,3)
+  
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
+    call SIS_error(FATAL, "copy_TSF_to_TSF called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
+
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    TSF_out%flux_sh(i2,j2) = TSF_in%flux_sh(i,j)
+    TSF_out%flux_lw(i2,j2) = TSF_in%flux_lw(i,j)
+    TSF_out%flux_lh(i2,j2) = TSF_in%flux_lh(i,j)
+    TSF_out%evap(i2,j2) = TSF_in%evap(i,j)
+    TSF_out%lprec(i2,j2) = TSF_in%lprec(i,j)
+    TSF_out%fprec(i2,j2) = TSF_in%fprec(i,j)
+    do b=1,nb ; TSF_out%flux_sw(i2,j2,b) = TSF_in%flux_sw(i,j,b) ; enddo
+  enddo ; enddo
+
+  if (TSF_in%first_copy .or. TSF_out%first_copy) then ; if (TSF_in%num_tr_fluxes >= 0) then
+    if (TSF_out%num_tr_fluxes < 0) then
+      ! Allocate the tr_flux_top arrays to accommodate the size of the input
+      ! fluxes.  This only occurs the first time TSF_out is copied from a fully
+      ! initialized TSF_in.
+      TSF_out%num_tr_fluxes = TSF_in%num_tr_fluxes
+      if (TSF_out%num_tr_fluxes > 0) then
+        isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
+        allocate(TSF_out%tr_flux(isd:ied, jsd:jed, TSF_out%num_tr_fluxes))
+        TSF_out%tr_flux(:,:,:) = 0.0
+      endif
+    endif
+    TSF_in%first_copy = .false. ; TSF_out%first_copy = .false.
+  endif ; endif
+
+  if (TSF_in%num_tr_fluxes >= 0) then
+    if (TSF_in%num_tr_fluxes /= TSF_out%num_tr_fluxes) &
+      call SIS_error(FATAL, "copy_TSF_to_TSF called with different num_tr_fluxes.")
+
+    do n=1,TSF_in%num_tr_fluxes ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off
+      TSF_out%tr_flux(i2,j2,n) = TSF_in%tr_flux(i,j,n)
+    enddo ; enddo ; enddo
+  endif
+
+end subroutine copy_TSF_to_TSF
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_TSF_to_TSF redistributes the computational domain of one
+!! total_sfc_flux_type into the computational domain of another total_sfc_flux_type.
+subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_out)
+  type(total_sfc_flux_type), pointer    :: TSF_in     !< The total_sfc_flux_type that is being copied from (intent in).
+  type(total_sfc_flux_type), pointer    :: TSF_out    !< The total_sfc_flux_type that is being copied into (intent inout).
+  type(domain2d),            intent(in) :: domain_in  !< The source data domain.
+  type(domain2d),            intent(in) :: domain_out !< The target data domain.
+  type(hor_index_type), optional, intent(in) :: HI_out !< The hor_index_type on the target domain; HI_out
+                                                       !! may be omitted if this is not a target PE.
+
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
+  logical :: first_copy
+  integer :: b, m, num_tr
+
+  if (.not. (associated(TSF_out) .or. associated(TSF_in))) &
+    call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
+                          "neither TSF_in nor TSF_out associated.")
+  first_copy = .false.
+  if (associated(TSF_out)) first_copy = TSF_out%first_copy
+  if (associated(TSF_in)) first_copy = first_copy .or. TSF_in%first_copy
+
+  if (first_copy) then
+    ! Determine the number of fluxes.
+    num_tr = 0 ; if (associated(TSF_in)) num_tr = TSF_in%num_tr_fluxes
+    call max_across_PEs(num_tr)
+
+    if (associated(TSF_out)) then
+      if (.not. present(HI_out)) &
+        call SIS_error(FATAL, "redistribute_TSF_to_TSF called with an "//&
+                              "associated TSF_out but without HI_out.")
+      TSF_out%num_tr_fluxes = num_tr
+      if ((num_tr > 0) .and. .not.allocated(TSF_out%tr_flux)) then
+        allocate(TSF_out%tr_flux(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,num_tr))
+        TSF_out%tr_flux(:,:,:) = 0.0
+      endif
+      TSF_out%first_copy = .false.
+    endif
+
+    if (associated(TSF_in)) TSF_in%first_copy = .false.
+  endif
+
+  if (associated(TSF_out) .and. associated(TSF_in)) then
+    ! The extra tracer arrays are copied first so that they can all have
+    ! complete=.false.
+    do m=1,TSF_in%num_tr_fluxes
+      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
+                            TSF_out%tr_flux(:,:,m), complete=.false.)
+    enddo
+    do b=1,size(TSF_in%flux_sw,3)
+      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                          TSF_out%flux_sw(:,:,b), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
+                          TSF_out%flux_sh, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
+                          TSF_out%flux_lw, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
+                          TSF_out%flux_lh, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
+                          TSF_out%evap, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
+                          TSF_out%lprec, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
+                          TSF_out%fprec, complete=.true.)
+  elseif (associated(TSF_out)) then
+    ! Use the null pointer in place of the unneeded input arrays.
+    do m=1,TSF_out%num_tr_fluxes
+      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                            TSF_out%tr_flux(:,:,m), complete=.false.)
+    enddo
+    do b=1,size(TSF_out%flux_sw,3)
+      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_sw(:,:,b), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_sh, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_lw, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_lh, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%evap, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%lprec, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%fprec, complete=.true.)
+  elseif (associated(TSF_in)) then
+    ! Use the null pointer in place of the unneeded output arrays.
+    do m=1,TSF_in%num_tr_fluxes
+      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
+                            null_ptr2D, complete=.false.)
+    enddo
+    do b=1,size(TSF_in%flux_sw,3)
+      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                            null_ptr2D, complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
+                          null_ptr2D, complete=.true.)
+  else
+    call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
+                          "neither TSF_in nor TSF_out associated.")
+  endif
+
+
+end subroutine redistribute_TSF_to_TSF
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_Rad_to_Rad copies the computational domains of several fields from one
+!! ice_rad_type into the computational domain of another ice_rad_type.  Both must
+!! use the same domain decomposition and indexing convention, but they may have
+!! different halo sizes.
+subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
+  type(ice_rad_type),   intent(inout) :: Rad_in
+  type(ice_rad_type),   intent(inout) :: Rad_out
+  type(hor_index_type), intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),  intent(in)    :: IG
+
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i2, j2, i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
+    call SIS_error(FATAL, "copy_Rad_to_Rad called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Rad_out%sw_abs_sfc(i2,j2,k) = Rad_in%sw_abs_sfc(i,j,k)
+    Rad_out%sw_abs_snow(i2,j2,k) = Rad_in%sw_abs_snow(i,j,k)
+    do m=1,NkIce ; Rad_out%sw_abs_ice(i2,j2,k,m) = Rad_in%sw_abs_ice(i,j,k,m) ; enddo
+  enddo ; enddo ; enddo
+
+end subroutine copy_Rad_to_Rad
+
+subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
+  type(ice_rad_type), pointer    :: Rad_in     !< The ice_rad_type that is being copied from (intent in).
+  type(ice_rad_type), pointer    :: Rad_out    !< The ice_rad_type that is being copied into (intent inout).
+  type(domain2d),     intent(in) :: domain_in  !< The source data domain.
+  type(domain2d),     intent(in) :: domain_out !< The target data domain.
+
+  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
+  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  integer :: m
+
+  if (associated(Rad_out) .and. associated(Rad_in)) then
+    do m=1,size(Rad_in%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
+                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
+                          Rad_out%sw_abs_snow, complete=.false.)
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
+                          Rad_out%sw_abs_sfc, complete=.true.)
+  elseif (associated(Rad_out)) then
+    ! Use the null pointers in place of the unneeded input arrays.
+    do m=1,size(Rad_out%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%sw_abs_snow, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%sw_abs_sfc, complete=.true.)
+  elseif (associated(Rad_in)) then
+    ! Use the null pointers in place of the unneeded output arrays.
+    do m=1,size(Rad_in%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
+                            null_ptr3D, complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
+                          null_ptr3D, complete=.false.)
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
+                          null_ptr3D, complete=.true.)
+  else
+    call SIS_error(FATAL, "redistribute_Rad_to_Rad called with "//&
+                          "neither Rad_in nor Rad_out associated.")
+  endif
+
+
+end subroutine redistribute_Rad_to_Rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_IST_arrays deallocates the arrays in an ice_state_type.

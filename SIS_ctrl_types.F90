@@ -65,6 +65,9 @@ type SIS_fast_CS
                             ! surface skin temperature for tsurf at the start of
                             ! atmospheric time stepping, including interpolating between
                             ! tsurf values from other categories in the same location.
+  logical :: redo_fast_update=.false. ! If true, recalculate the thermal updates from the fast
+                              ! dynamics on the slowly evolving ice state, rather than
+                              ! copying over the slow ice state to the fast ice state.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -120,6 +123,9 @@ type SIS_slow_CS
                            ! an old ice-ocean stress to the icebergs in place of
                            ! the current air-ice stress.  This option exists for
                            ! backward compatibility, but should be avoided.
+  logical :: redo_fast_update=.false. ! If true, recalculate the thermal updates from the fast
+                              ! dynamics on the slowly evolving ice state, rather than
+                              ! copying over the slow ice state to the fast ice state.
 
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
@@ -130,10 +136,15 @@ type SIS_slow_CS
   type(ice_state_type), pointer :: IST => NULL()
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL()
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
+  type(SIS_optics_CS),  pointer :: optics_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
   type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
                                ! the ice to the ocean that are calculated by the ice model.
+  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
+                             ! the absorption, reflection and transmission of
+                             ! shortwave radiation.
 
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 
@@ -150,6 +161,13 @@ type SIS_slow_CS
   type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
                              ! fields that are calculated during the fast ice step but
                              ! stored for later use by the slow ice step or the ocean.
+  type(total_sfc_flux_type), pointer :: TSF => NULL()  ! A structure of the fluxes
+                             ! between the atmosphere and the ice or ocean that have
+                             ! been accumulated over fast thermodynamic steps and
+                             ! integrated across the part-size categories.
+  type(total_sfc_flux_type), pointer :: XSF => NULL()  ! A structure of the excess
+                             ! fluxes between the atmosphere and the ice or ocean
+                             ! relative to those stored in TSF.
 
 end type SIS_slow_CS
 

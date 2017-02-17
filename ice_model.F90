@@ -90,11 +90,13 @@ use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_oce
 use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use SIS_types, only : total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
-use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
+use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, alloc_ice_rad
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
+use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
+use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
 use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
@@ -116,6 +118,7 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
+use SIS_fast_thermo, only : redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
@@ -209,7 +212,7 @@ subroutine update_ice_model_slow(Ice)
   endif
 
   ! Store some diagnostic fluxes...
-!$OMP parallel do default(none) shared(Ice)
+  !$OMP parallel do default(none) shared(Ice)
   do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
     Ice%sCS%FIA%calving_preberg(i,j) = Ice%sCS%FIA%calving(i,j)
     Ice%sCS%FIA%calving_hflx_preberg(i,j) = Ice%sCS%FIA%calving_hflx(i,j)
@@ -220,7 +223,7 @@ subroutine update_ice_model_slow(Ice)
       ! This code is only required to reproduce an old bug.
       i_off = LBOUND(Ice%flux_t,1) - Ice%sCS%G%isc
       j_off = LBOUND(Ice%flux_t,2) - Ice%sCS%G%jsc
-!$OMP parallel do default(none) shared(Ice,i_off,j_off) private(i2,j2)
+      !$OMP parallel do default(none) shared(Ice,i_off,j_off) private(i2,j2)
       do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
         i2 = i+i_off ; j2 = j+j_off
         Ice%sCS%IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
@@ -244,7 +247,8 @@ subroutine update_ice_model_slow(Ice)
   endif
 
   call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
-                           Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, Ice%sCS%G, Ice%sCS%IG)
+                           Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%XSF, Ice%sCS%IOF, &
+                           Ice%sCS%G, Ice%sCS%IG)
 
   ! Do halo updates on the forcing fields, as necessary.  This must occur before
   ! the call to SIS_dynamics_trans, because update_icebergs does its own halo
