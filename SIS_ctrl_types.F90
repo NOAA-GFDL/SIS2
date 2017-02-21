@@ -65,7 +65,7 @@ type SIS_fast_CS
                             ! surface skin temperature for tsurf at the start of
                             ! atmospheric time stepping, including interpolating between
                             ! tsurf values from other categories in the same location.
-  logical :: redo_fast_update=.false. ! If true, recalculate the thermal updates from the fast
+  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
                               ! dynamics on the slowly evolving ice state, rather than
                               ! copying over the slow ice state to the fast ice state.
 
@@ -123,7 +123,7 @@ type SIS_slow_CS
                            ! an old ice-ocean stress to the icebergs in place of
                            ! the current air-ice stress.  This option exists for
                            ! backward compatibility, but should be avoided.
-  logical :: redo_fast_update=.false. ! If true, recalculate the thermal updates from the fast
+  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
                               ! dynamics on the slowly evolving ice state, rather than
                               ! copying over the slow ice state to the fast ice state.
 
