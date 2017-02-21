@@ -384,9 +384,9 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
         call open_file(CS%statsfile_ascii, trim(CS%statsfile), &
                        action=WRITEONLY_FILE, form=ASCII_FILE, nohdrs=.true.)
         if (abs(CS%timeunit - 86400.0) < 1.0) then
-          write(CS%statsfile_ascii,'("  Step,",7x,"Day,",20x,"Area(N/S),",22x,"Extent(N/S),",17x,&
+          write(CS%statsfile_ascii,'("  Step,",7x,"Day,",28x,"Area(N/S),",22x,"Extent(N/S),",27x,&
               &"Mass(N/S),",22x,"Heat(N/S),",14x,"Salinty(N/S),   Frac Mass Err,   Temp Err,   Salin Err")')
-          write(CS%statsfile_ascii,'(12x,"[days]",23x,"[m2]",28x,"[m2]",24x,"[kg]",29x,&
+          write(CS%statsfile_ascii,'(12x,"[days]",31x,"[m2]",28x,"[m2]",34x,"[kg]",29x,&
               &"[J]",21x,"[g/kg]",10x,"[Nondim]",6x,"[Nondim]",6x,"[Nondim]")')
         else
           if ((CS%timeunit >= 0.99) .and. (CS%timeunit < 1.01)) then
