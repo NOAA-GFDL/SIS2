@@ -36,7 +36,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl
 ! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
 ! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 
-use MOM_checksums,     only : hchksum
+use SIS_debugging,     only : hchksum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
@@ -51,6 +51,8 @@ use coupler_types_mod, only : coupler_3d_bc_type
 
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
+use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 
@@ -65,6 +67,7 @@ implicit none ; private
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
 public :: do_update_ice_atm_deposition_flux
 public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
+public :: redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
@@ -92,22 +95,47 @@ contains
 !> sum_top_quantities does a running sum of fluxes for later use by the slow ice
 !!   physics and the ocean.  Nothing here will be exposed to other modules until
 !!   after it has passed through avg_top_quantities.
-subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
-       flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif,&
-       flux_lw, lprec, fprec, flux_lh, G, IG)
+subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
+       flux_sw, flux_lw, lprec, fprec, flux_lh, t_skin, dshdt, devapdt, &
+       dlwdt, SST, G, IG)
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
-    flux_u, flux_v, flux_t, flux_q, flux_lw, lprec, fprec, flux_lh
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce), intent(in) :: &
-    flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
+    flux_u, &
+    flux_v, &
+    flux_sh, &  ! The upward sensible heat flux from the top of the ice into
+                ! the atmosphere in W m-2.
+    evap, &     ! The upward flux of water due to sublimation or evaporation
+                ! from the top of the ice to the atmosphere, in kg m-2 s-1.
+    flux_lw, &  ! The net longwave heat flux from the atmosphere into the
+                ! ice or ocean, in W m-2.
+    lprec, fprec, & ! The liquid and frozen precipitation onto the ice
+                ! in kg m-2 s-1.
+    flux_lh, &  ! The upward latent heat flux associated with sublimation or
+                ! evaporation, in W m-2.
+    dshdt, &    ! The derivative of the upward sensible heat flux from the
+                ! the top of the ice into the atmosphere with ice skin
+                ! temperature in W m-2 K-1.
+    devapdt, &  ! The derivative of the sublimation rate with the surface
+                ! temperature, in kg m-2 s-1 K-1.
+    dlwdt       ! The derivative of the longwave heat flux from the atmosphere
+                ! into the ice or ocean with ice skin temperature, in W m-2 K-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
+    intent(in) :: flux_sw ! The downward shortwave heat fluxes in W m-2. The 4th
+                ! dimension is a combination of angular orientation & frequency.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
+    t_skin
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
+    SST
 
-  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
+  real :: t_sfc
+  integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: ind
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top,4)
 
   i_off = LBOUND(ABT%t_flux,1) - G%isc
   j_off = LBOUND(ABT%t_flux,2) - G%jsc
@@ -132,30 +160,28 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
   if (FIA%avg_count == 0) then
     ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
     FIA%flux_u_top(:,:,:) = 0.0 ; FIA%flux_v_top(:,:,:) = 0.0
-    FIA%flux_t_top(:,:,:) = 0.0 ; FIA%flux_q_top(:,:,:) = 0.0
+    FIA%flux_sh_top(:,:,:) = 0.0 ; FIA%evap_top(:,:,:) = 0.0
     FIA%flux_lw_top(:,:,:) = 0.0 ; FIA%flux_lh_top(:,:,:) = 0.0
-    FIA%flux_sw_nir_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
-    FIA%flux_sw_vis_dir_top(:,:,:) = 0.0 ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
+    FIA%flux_sw_top(:,:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
-    FIA%flux_sw_dn(:,:) = 0.0
-    FIA%Tskin_avg(:,:) = 0.0
+    FIA%flux_sw_dn(:,:) = 0.0 ; FIA%Tskin_avg(:,:) = 0.0
+
+    if (allocated(FIA%flux_sh0)) then
+      FIA%dshdt(:,:,:) = 0.0 ; FIA%devapdt(:,:,:) = 0.0 ; FIA%dlwdt(:,:,:) = 0.0
+      FIA%flux_sh0(:,:,:) = 0.0 ; FIA%evap0(:,:,:) = 0.0
+      FIA%flux_lw0(:,:,:) = 0.0 ; FIA%Tskin_cat(:,:,:) = 0.0
+    endif
 
     if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,flux_u,flux_v,flux_t, &
-!$OMP                                  flux_q,flux_sw_nir_dir,flux_sw_nir_dif,        &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_lw,       &
-!$OMP                                  lprec,fprec,flux_lh,FIA)
+  !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
     FIA%flux_u_top(i,j,k)  = FIA%flux_u_top(i,j,k)  + flux_u(i,j,k)
     FIA%flux_v_top(i,j,k)  = FIA%flux_v_top(i,j,k)  + flux_v(i,j,k)
-    FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  + flux_t(i,j,k)
-    FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  + flux_q(i,j,k)
-    FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) + flux_sw_nir_dir(i,j,k)
-    FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) + flux_sw_nir_dif(i,j,k)
-    FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) + flux_sw_vis_dir(i,j,k)
-    FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) + flux_sw_vis_dif(i,j,k)
+    FIA%flux_sh_top(i,j,k)  = FIA%flux_sh_top(i,j,k) + flux_sh(i,j,k)
+    FIA%evap_top(i,j,k)  = FIA%evap_top(i,j,k)  + evap(i,j,k)
+    do b=1,nb ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) + flux_sw(i,j,k,b) ; enddo
     FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) + flux_lw(i,j,k)
     FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   + lprec(i,j,k)
     FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   + fprec(i,j,k)
@@ -177,6 +203,20 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
     endif
   enddo ; enddo
 
+  if (allocated(FIA%flux_sh0)) then
+    !$OMP parallel do default(shared) private(t_sfc)
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+      t_sfc = SST(i,j) ; if (k>0) t_sfc = t_skin(i,j,k)
+      FIA%dshdt(i,j,k) = FIA%dshdt(i,j,k) + dshdt(i,j,k)
+      FIA%devapdt(i,j,k) = FIA%devapdt(i,j,k) + devapdt(i,j,k)
+      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + dlwdt(i,j,k)
+      FIA%flux_sh0(i,j,k) = FIA%flux_sh0(i,j,k) + (flux_sh(i,j,k) - t_sfc*dshdt(i,j,k))
+      FIA%evap0(i,j,k) = FIA%evap0(i,j,k) + (evap(i,j,k) - t_sfc*devapdt(i,j,k))
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) - t_sfc*dlwdt(i,j,k))
+      FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) + t_sfc
+    enddo ; enddo ; enddo
+  endif
+
   FIA%avg_count = FIA%avg_count + 1
 
 end subroutine sum_top_quantities
@@ -184,21 +224,22 @@ end subroutine sum_top_quantities
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> avg_top_quantities determines time average fluxes for later use by the
 !!    slow ice physics and by the ocean.
-subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
+subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA
   type(ice_rad_type),      intent(in)    :: Rad
+  type(ice_state_type),    intent(in)    :: IST
   type(SIS_hor_grid_type), intent(inout) :: G
   type(ice_grid_type),     intent(in)    :: IG
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-                           intent(in)    :: part_size
 
   real    :: u, v, divid, sign
+  real    :: I_avc    ! The inverse of the number of contributions.
   real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0, nondim.
-  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4)
 
   !
   ! compute average fluxes
@@ -209,41 +250,37 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   ! Rotate the stress from lat/lon to ocean coordinates and possibly change the
   ! sign to positive for downward fluxes of positive momentum.
   sign = 1.0 ; if (FIA%atmos_winds) sign = -1.0
-  divid = 1.0/real(FIA%avg_count)
+  I_avc = 1.0/real(FIA%avg_count)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,sign,divid,G,FIA,Rad) &
-!$OMP                          private(u,v)
+  !$OMP parallel do default(shared) private(u,v)
   do j=jsc,jec
     do k=0,ncat ; do i=isc,iec
-      u = FIA%flux_u_top(i,j,k) * (sign*divid)
-      v = FIA%flux_v_top(i,j,k) * (sign*divid)
+      u = FIA%flux_u_top(i,j,k) * (sign*I_avc)
+      v = FIA%flux_v_top(i,j,k) * (sign*I_avc)
       FIA%flux_u_top(i,j,k) = u*G%cos_rot(i,j)-v*G%sin_rot(i,j) ! rotate stress from lat/lon
       FIA%flux_v_top(i,j,k) = v*G%cos_rot(i,j)+u*G%sin_rot(i,j) ! to ocean coordinates
-      FIA%flux_t_top(i,j,k)  = FIA%flux_t_top(i,j,k)  * divid
-      FIA%flux_q_top(i,j,k)  = FIA%flux_q_top(i,j,k)  * divid
-      FIA%flux_sw_nir_dir_top(i,j,k) = FIA%flux_sw_nir_dir_top(i,j,k) * divid
-      FIA%flux_sw_nir_dif_top(i,j,k) = FIA%flux_sw_nir_dif_top(i,j,k) * divid
-      FIA%flux_sw_vis_dir_top(i,j,k) = FIA%flux_sw_vis_dir_top(i,j,k) * divid
-      FIA%flux_sw_vis_dif_top(i,j,k) = FIA%flux_sw_vis_dif_top(i,j,k) * divid
-      FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * divid
-      FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * divid
-      FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * divid
-      FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * divid
+      FIA%flux_sh_top(i,j,k)  = FIA%flux_sh_top(i,j,k)  * I_avc
+      FIA%evap_top(i,j,k)  = FIA%evap_top(i,j,k)  * I_avc
+      do b=1,nb ; FIA%flux_sw_top(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) * I_avc ; enddo
+      FIA%flux_lw_top(i,j,k) = FIA%flux_lw_top(i,j,k) * I_avc
+      FIA%fprec_top(i,j,k)   = FIA%fprec_top(i,j,k)   * I_avc
+      FIA%lprec_top(i,j,k)   = FIA%lprec_top(i,j,k)   * I_avc
+      FIA%flux_lh_top(i,j,k) = FIA%flux_lh_top(i,j,k) * I_avc
 
       ! Copy radiation fields from the fast to the slow states.
       if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
-      if ((k>0) .and. (FIA%flux_q_top(i,j,k) < 0.0)) then
-        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%flux_q_top(i,j,k)
-        FIA%flux_q_top(i,j,k) = 0.0
+      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
+        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
+        FIA%evap_top(i,j,k) = 0.0
       endif
       do n=1,FIA%num_tr_fluxes
-        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * divid
+        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * I_avc
       enddo
     enddo ; enddo
     do i=isc,iec
-      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*divid
-      FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * divid
+      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*I_avc
+      FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * I_avc
     enddo
   enddo
 
@@ -251,13 +288,13 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
   ! across all the ice thickness categories on an A-grid.
   FIA%WindStr_x(:,:) = 0.0 ; FIA%WindStr_y(:,:) = 0.0 ; FIA%ice_cover(:,:) = 0.0
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,Rad,part_size) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,FIA,Rad,IST) &
 !$OMP                           private(I_wts)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
-      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
-      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + part_size(i,j,k)
+      FIA%WindStr_x(i,j) = FIA%WindStr_x(i,j) + IST%part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+      FIA%WindStr_y(i,j) = FIA%WindStr_y(i,j) + IST%part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+      FIA%ice_cover(i,j) = FIA%ice_cover(i,j) + IST%part_size(i,j,k)
     enddo ; enddo
     do i=isc,iec
       FIA%WindStr_ocn_x(i,j) = FIA%flux_u_top(i,j,0)
@@ -271,7 +308,7 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
         ! The max with 0 in the following line is here for safety; the only known
         ! instance where it has been required is when reading a SIS-1-derived
         ! restart file with tiny negative concentrations. SIS2 should not need it.
-        FIA%ice_free(i,j) = max(part_size(i,j,0), 0.0)
+        FIA%ice_free(i,j) = max(IST%part_size(i,j,0), 0.0)
 
     !    Rescale to add up to 1?
     !    I_wts = 1.0 / (FIA%ice_free(i,j) + FIA%ice_cover(i,j))
@@ -285,10 +322,32 @@ subroutine avg_top_quantities(FIA, Rad, part_size, G, IG)
     enddo
   enddo
 
-  !
+  if (allocated(FIA%flux_sh0)) then
+    !$OMP parallel do default(shared)
+    do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
+      FIA%dshdt(i,j,k) = FIA%dshdt(i,j,k) * I_avc
+      FIA%devapdt(i,j,k) = FIA%devapdt(i,j,k) * I_avc
+      FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) * I_avc
+      FIA%flux_sh0(i,j,k) = FIA%flux_sh0(i,j,k) * I_avc
+      FIA%evap0(i,j,k) = FIA%evap0(i,j,k) * I_avc
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) * I_avc
+      FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) * I_avc
+    enddo ; enddo ; enddo
+
+    ! Fill in the information to reconstruct the fluxes for any area-less categories.
+    ! The open-ocean category must always be calculated for this to work properly.
+    call infill_array(IST, FIA%dshdt(:,:,0), FIA%dshdt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%devapdt(:,:,0), FIA%devapdt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%dlwdt(:,:,0), FIA%dlwdt(:,:,1:), G, IG)
+    call infill_array(IST, FIA%flux_sh0(:,:,0), FIA%flux_sh0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%evap0(:,:,0), FIA%evap0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%flux_lw0(:,:,0), FIA%flux_lw0(:,:,1:), G, IG)
+    call infill_array(IST, FIA%Tskin_cat(:,:,0), FIA%Tskin_cat(:,:,1:), G, IG)
+  endif
+
   ! set count to zero and fluxes will be zeroed before the next sum
-  !
   FIA%avg_count = 0
+
 end subroutine avg_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -302,11 +361,12 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
                              intent(in)    :: part_size
 
-  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4)
 
   if (TSF%num_tr_fluxes < 0) then
     ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
@@ -318,30 +378,22 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   endif
 
   TSF%flux_u(:,:) = 0.0 ; TSF%flux_v(:,:) = 0.0
-  TSF%flux_t(:,:) = 0.0 ; TSF%flux_q(:,:) = 0.0
-  TSF%flux_sw_nir_dir(:,:) = 0.0 ; TSF%flux_sw_nir_dif(:,:) = 0.0
-  TSF%flux_sw_vis_dir(:,:) = 0.0 ; TSF%flux_sw_vis_dif(:,:) = 0.0
-
-  TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
-  TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0
+  TSF%flux_sh(:,:) = 0.0 ; TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
+  TSF%flux_sw(:,:,:) = 0.0
+  TSF%evap(:,:) = 0.0 ; TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0
   if (TSF%num_tr_fluxes > 0) TSF%tr_flux(:,:,:) = 0.0
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     TSF%flux_u(i,j) = TSF%flux_u(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
     TSF%flux_v(i,j) = TSF%flux_v(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
-    TSF%flux_t(i,j) = TSF%flux_t(i,j) + part_size(i,j,k) * FIA%flux_t_top(i,j,k)
-    TSF%flux_q(i,j) = TSF%flux_q(i,j) + part_size(i,j,k) * FIA%flux_q_top(i,j,k)
-    TSF%flux_sw_nir_dir(i,j) = TSF%flux_sw_nir_dir(i,j) + &
-                                part_size(i,j,k) * FIA%flux_sw_nir_dir_top(i,j,k)
-    TSF%flux_sw_nir_dif(i,j) = TSF%flux_sw_nir_dif(i,j) + &
-                                part_size(i,j,k) * FIA%flux_sw_nir_dif_top(i,j,k)
-    TSF%flux_sw_vis_dir(i,j) = TSF%flux_sw_vis_dir(i,j) + &
-                                part_size(i,j,k) * FIA%flux_sw_vis_dir_top(i,j,k)
-    TSF%flux_sw_vis_dif(i,j) = TSF%flux_sw_vis_dif(i,j) + &
-                                part_size(i,j,k) * FIA%flux_sw_vis_dif_top(i,j,k)
-
+    TSF%flux_sh(i,j) = TSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
     TSF%flux_lw(i,j) = TSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
     TSF%flux_lh(i,j) = TSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
+    do b=1,nb
+      TSF%flux_sw(i,j,b) = TSF%flux_sw(i,j,b) + &
+                           part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+    enddo
+    TSF%evap(i,j) = TSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
     TSF%fprec(i,j) = TSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
     TSF%lprec(i,j) = TSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
 
@@ -356,6 +408,126 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
 
 end subroutine total_top_quantities
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> find_excess_fluxes determines the difference between the sum across
+!! partitions of various fluxes amd the sum previously found by total_top_quantities.
+subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
+  type(fast_ice_avg_type),   intent(in)    :: FIA
+  type(total_sfc_flux_type), intent(in)    :: TSF
+  type(total_sfc_flux_type), intent(inout) :: XSF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(in)    :: IG
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+                             intent(in)    :: part_size
+  integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
+  integer :: isd, ied, jsd, jed
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4)
+
+  if (XSF%num_tr_fluxes < 0) then
+    ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
+    ! the first time that total_top_quantities is called.
+    XSF%num_tr_fluxes = FIA%num_tr_fluxes
+    if (XSF%num_tr_fluxes > 0) then
+      allocate(XSF%tr_flux(G%isd:G%ied, G%jsd:G%jed, XSF%num_tr_fluxes))
+    endif
+  endif
+
+  ! Note that XSF%flux_u and XSF%flux_v are not necessary as the changing ice cover is
+  ! already being taken into account.
+
+  ! This could be done more succinctly by initializing XSF = -TSF, but the
+  ! answers would then be more accutely impacted by roundoff.
+  XSF%flux_sh(:,:) = 0.0 ; XSF%flux_lw(:,:) = 0.0 ; XSF%flux_lh(:,:) = 0.0
+  XSF%flux_sw(:,:,:) = 0.0
+  XSF%evap(:,:) = 0.0 ; XSF%fprec(:,:) = 0.0 ; XSF%lprec(:,:) = 0.0
+  if (XSF%num_tr_fluxes > 0) XSF%tr_flux(:,:,:) = 0.0
+
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+    XSF%flux_sh(i,j) = XSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
+    XSF%flux_lw(i,j) = XSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
+    XSF%flux_lh(i,j) = XSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
+    do b=1,nb
+      XSF%flux_sw(i,j,b) = XSF%flux_sw(i,j,b) + &
+                           part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+    enddo
+    XSF%evap(i,j) = XSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
+    XSF%fprec(i,j) = XSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
+    XSF%lprec(i,j) = XSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
+
+    do n=1,XSF%num_tr_fluxes
+      XSF%tr_flux(i,j,n) = XSF%tr_flux(i,j,n) + part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
+    enddo
+  enddo ; enddo ; enddo
+
+  do j=jsc,jec ; do i=isc,iec
+    XSF%flux_sh(i,j) = XSF%flux_sh(i,j) - TSF%flux_sh(i,j)
+    XSF%flux_lw(i,j) = XSF%flux_lw(i,j) - TSF%flux_lw(i,j)
+    XSF%flux_lh(i,j) = XSF%flux_lh(i,j) - TSF%flux_lh(i,j)
+    do b=1,nb ; XSF%flux_sw(i,j,b) = XSF%flux_sw(i,j,b) - TSF%flux_sw(i,j,b) ; enddo
+    XSF%evap(i,j) = XSF%evap(i,j)   - TSF%evap(i,j)
+    XSF%fprec(i,j) = XSF%fprec(i,j) - TSF%fprec(i,j)
+    XSF%lprec(i,j) = XSF%lprec(i,j) - TSF%lprec(i,j)
+
+    do n=1,XSF%num_tr_fluxes
+      XSF%tr_flux(i,j,n) = XSF%tr_flux(i,j,n) - TSF%tr_flux(i,j,n)
+    enddo
+  enddo ; enddo
+
+end subroutine find_excess_fluxes
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> rescale_shortwave determines whether any shortwave frequency bands exceed their
+!! intensity during the atmospheric steps and if so scales them back for energy
+!! conservation.  If the shortwave heating in any bands have decreased, the
+!! difference will later be applied to the ocean. 
+subroutine rescale_shortwave(FIA, TSF, part_size, G, IG)
+  type(fast_ice_avg_type),   intent(inout) :: FIA
+  type(total_sfc_flux_type), intent(in)    :: TSF
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(in)    :: IG
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+                             intent(in)    :: part_size
+
+  real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
+    sw_tot_band
+  real    :: rescale    !  A rescaling factor between 0 and 1.
+  integer :: i, j, k, m, n, b, nb, nfb, isc, iec, jsc, jec, ncat
+  integer :: isd, ied, jsd, jed
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  nb = size(FIA%flux_sw_top,4) ; nfb = nb/2
+
+  do j=jsc,jec
+    sw_tot_band(:,:) = 0.0
+    do k=0,ncat ; do b=1,nb ; do i=isc,iec
+      sw_tot_band(i,b) = sw_tot_band(i,b) + &
+                         part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+    enddo ; enddo ; enddo
+
+    do i=isc,iec ; do b=1,nb-1,2
+      ! Ice can scatter direct shortwave into diffuse without loss of energy
+      ! conservation, so it only the total of the shortwave in each frequency
+      ! band that needs to be considered.  If there are more than 2 angular
+      ! bands (direct and diffuse), this code will need to be modified.
+      if (abs(sw_tot_band(i,b) + sw_tot_band(i,b+1)) > &
+          abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1))) then
+        rescale = abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1)) / &
+                  abs(sw_tot_band(i,b) + sw_tot_band(i,b+1))
+        do k=0,ncat
+          FIA%flux_sw_top(i,j,k,b) = rescale * FIA%flux_sw_top(i,j,k,b) 
+          FIA%flux_sw_top(i,j,k,b+1) = rescale * FIA%flux_sw_top(i,j,k,b+1) 
+        enddo
+      endif
+    enddo ; enddo
+  enddo
+
+end subroutine rescale_shortwave
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> infill_array fills in an array with actual, interpolated or plausible values
 !! from other ice categories.
 subroutine infill_array(IST, ta_ocn, ta, G, IG)
@@ -465,17 +637,24 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   type(SIS_hor_grid_type),       intent(inout) :: G
   type(ice_grid_type),           intent(in)    :: IG
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,0:IG%CatIce) :: &
-    flux_t, flux_q, flux_lh, flux_lw, &
-    flux_sw_nir_dir, flux_sw_nir_dif, &
-    flux_sw_vis_dir, flux_sw_vis_dif, &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce) :: &
+    flux_sh, &  ! The upward sensible heat flux from the ice to the atmosphere
+                ! at the surface of the ice, in W m-2.
+    evap, &     ! The upward flux of water due to sublimation or evaporation
+                ! from the top of the ice to the atmosphere, in kg m-2 s-1.
+    flux_lh, &  ! The upward latent heat flux associated with sublimation or
+                ! evaporation, in W m-2.
+    flux_lw, &  ! The net downward longwave heat flux into the ice, in W m-2.
     flux_u, flux_v, lprec, fprec, &
-    dhdt, &   ! The derivative of the upward sensible heat flux with the surface
-              ! temperature in W m-2 K-1.
-    dedt, &   ! The derivative of the sublimation rate with the surface
-              ! temperature, in kg m-2 s-1 K-1.
-    drdt      ! The derivative of the upward radiative heat flux with surface
-              ! temperature (i.e. d(flux)/d(surf_temp)) in W m-2 K-1.
+    dshdt, &    ! The derivative of the upward sensible heat flux with the surface
+                ! temperature in W m-2 K-1.
+    devapdt, &  ! The derivative of the sublimation rate with the surface
+                ! temperature, in kg m-2 s-1 K-1.
+    dlwdt       ! The derivative of the downward radiative heat flux with surface
+                ! temperature (i.e. d(flux_lw)/d(surf_temp)) in W m-2 K-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)) :: &
+    flux_sw     ! The downward shortwave heat fluxes in W m-2.  The fourth
+                ! dimension is a combination of angular orientation and frequency.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
@@ -483,7 +662,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real :: dt_fast, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-  real :: flux_sw ! sum over dir/dif vis/nir components
+  real :: sw_tot ! sum over all shortwave (dir/dif and vis/nir) components
   real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
@@ -528,10 +707,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
-!$OMP                                  j_off,flux_u,flux_v,flux_t,flux_q,flux_lw, &
-!$OMP                                  flux_sw_nir_dir,flux_sw_nir_dif,               &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,               &
-!$OMP                                  lprec,fprec,dhdt,dedt,drdt        )            &
+!$OMP                                  j_off,flux_u,flux_v,flux_sh,evap,flux_lw,flux_sw, &
+!$OMP                                  lprec,fprec,dshdt,devapdt,dlwdt        )            &
 !$OMP                           private(i2,j2,k2)
   do j=jsc,jec
     !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
@@ -540,43 +717,43 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       flux_u(i,j,k)  = Atmos_boundary%u_flux(i2,j2,k2)
       flux_v(i,j,k)  = Atmos_boundary%v_flux(i2,j2,k2)
-      flux_t(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
-      flux_q(i,j,k)  = Atmos_boundary%q_flux(i2,j2,k2)
+      flux_sh(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
+      evap(i,j,k)  = Atmos_boundary%q_flux(i2,j2,k2)
       flux_lw(i,j,k) = Atmos_boundary%lw_flux(i2,j2,k2)
-      flux_sw_nir_dir(i,j,k) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
-      flux_sw_nir_dif(i,j,k) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
-      flux_sw_vis_dir(i,j,k) = Atmos_boundary%sw_flux_vis_dir(i2,j2,k2)
-      flux_sw_vis_dif(i,j,k) = Atmos_boundary%sw_flux_vis_dif(i2,j2,k2)
+      flux_sw(i,j,k,nir_dir) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
+      flux_sw(i,j,k,nir_dif) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
+      flux_sw(i,j,k,vis_dir) = Atmos_boundary%sw_flux_vis_dir(i2,j2,k2)
+      flux_sw(i,j,k,vis_dif) = Atmos_boundary%sw_flux_vis_dif(i2,j2,k2)
       lprec(i,j,k)   = Atmos_boundary%lprec(i2,j2,k2)
       fprec(i,j,k)   = Atmos_boundary%fprec(i2,j2,k2)
-      dhdt(i,j,k) = Atmos_boundary%dhdt(i2,j2,k2)
-      dedt(i,j,k) = Atmos_boundary%dedt(i2,j2,k2)
-      drdt(i,j,k) = Atmos_boundary%drdt(i2,j2,k2)
+      dshdt(i,j,k) = Atmos_boundary%dhdt(i2,j2,k2)
+      devapdt(i,j,k) = Atmos_boundary%dedt(i2,j2,k2)
+      dlwdt(i,j,k) = -1.*Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
   enddo
 
   if (CS%debug) then
     call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI)
     call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI)
-    call hchksum(flux_t(:,:,1:), "Mid do_fast flux_t", G%HI)
-    call hchksum(flux_q(:,:,1:), "Mid do_fast flux_q", G%HI)
+    call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI)
+    call hchksum(evap(:,:,1:), "Mid do_fast evap", G%HI)
     call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI)
-    call hchksum(flux_sw_nir_dir(:,:,1:), "Mid do_fast flux_sw_nir_dir", G%HI)
-    call hchksum(flux_sw_nir_dif(:,:,1:), "Mid do_fast flux_sw_nir_dif", G%HI)
-    call hchksum(flux_sw_vis_dir(:,:,1:), "Mid do_fast flux_sw_vis_dir", G%HI)
-    call hchksum(flux_sw_vis_dif(:,:,1:), "Mid do_fast flux_sw_vis_dif", G%HI)
+    call hchksum(flux_sw(:,:,1:,nir_dir), "Mid do_fast flux_sw_nir_dir", G%HI)
+    call hchksum(flux_sw(:,:,1:,nir_dif), "Mid do_fast flux_sw_nir_dif", G%HI)
+    call hchksum(flux_sw(:,:,1:,vis_dir), "Mid do_fast flux_sw_vis_dir", G%HI)
+    call hchksum(flux_sw(:,:,1:,vis_dif), "Mid do_fast flux_sw_vis_dif", G%HI)
     call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI)
     call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI)
-    call hchksum(dhdt(:,:,1:), "Mid do_fast dhdt", G%HI)
-    call hchksum(dedt(:,:,1:), "Mid do_fast dedt", G%HI)
-    call hchksum(drdt(:,:,1:), "Mid do_fast drdt", G%HI)
+    call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI)
+    call hchksum(devapdt(:,:,1:), "Mid do_fast devapdt", G%HI)
+    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI)
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
 
   do j=jsc,jec ; do i=isc,iec
-    flux_lh(i,j,0) = LatHtVap * flux_q(i,j,0)
+    flux_lh(i,j,0) = LatHtVap * evap(i,j,0)
   enddo ; enddo
 
   !
@@ -586,16 +763,15 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dhdt,dedt,drdt,   &
-!$OMP                                  flux_sw_vis_dir,flux_sw_vis_dif,flux_sw_nir_dir, &
-!$OMP                                  flux_sw_nir_dif,flux_t,flux_q,flux_lw,enth_liq_0,&
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dshdt,devapdt,dlwdt, &
+!$OMP                                  flux_sw,flux_sh,evap,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
 !$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
-!$OMP                          private(latent,enth_col,flux_sw,dhf_dt,                  &
+!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,                   &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    if (IST%mH_ice(i,j,k) > 0.0) then
+    if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
@@ -609,16 +785,16 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       else
         latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
       endif
-      flux_sw = (flux_sw_vis_dir(i,j,k) + flux_sw_vis_dif(i,j,k)) + &
-                (flux_sw_nir_dir(i,j,k) + flux_sw_nir_dif(i,j,k))
+      sw_tot = (flux_sw(i,j,k,vis_dir) + flux_sw(i,j,k,vis_dif)) + &
+               (flux_sw(i,j,k,nir_dir) + flux_sw(i,j,k,nir_dif))
 
-      dhf_dt = (dhdt(i,j,k) + dedt(i,j,k)*latent) + drdt(i,j,k)
-      hf_0 = ((flux_t(i,j,k) + flux_q(i,j,k)*latent) - &
-              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw)) - &
+      dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
+      hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
+              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)* sw_tot)) - &
              dhf_dt * Rad%t_skin(i,j,k)
 
-      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*flux_sw
-      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*flux_sw ; enddo
+      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
+      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
@@ -636,17 +812,17 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
       dts               = ts_new - Rad%t_skin(i,j,k)
       Rad%t_skin(i,j,k) = ts_new
-      flux_t(i,j,k)  = flux_t(i,j,k)  + dts * dhdt(i,j,k)
-      flux_q(i,j,k)  = flux_q(i,j,k)  + dts * dedt(i,j,k)
-      flux_lw(i,j,k) = flux_lw(i,j,k) - dts * drdt(i,j,k)
-      flux_lh(i,j,k) = latent * flux_q(i,j,k)
+      flux_sh(i,j,k)  = flux_sh(i,j,k)  + dts * dshdt(i,j,k)
+      evap(i,j,k)  = evap(i,j,k)  + dts * devapdt(i,j,k)
+      flux_lw(i,j,k) = flux_lw(i,j,k) + dts * dlwdt(i,j,k)
+      flux_lh(i,j,k) = latent * evap(i,j,k)
 
       if (CS%column_check) then
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
-          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*flux_sw) + SW_absorbed + &
-           FIA%bheat(i,j) - (flux_t(i,j,k) + flux_lh(i,j,k)))
+          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) + SW_absorbed + &
+           FIA%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
@@ -664,13 +840,13 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       endif
 
     else ! IST%mH_ice <= 0
-      flux_lh(i,j,k) = LatHtVap * flux_q(i,j,k)
+      flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
     endif
   enddo ; enddo ; enddo
 
-  call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_t, &
-    flux_q, flux_sw_nir_dir, flux_sw_nir_dif, flux_sw_vis_dir, flux_sw_vis_dif, &
-    flux_lw, lprec, fprec, flux_lh, G, IG )
+  call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_sh, evap, &
+                          flux_sw, flux_lw, lprec, fprec, flux_lh, Rad%t_skin, &
+                          dshdt, devapdt, dlwdt, sOSS%SST_C, G, IG )
 
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
@@ -708,6 +884,141 @@ subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, FIA, G, IG )
   enddo; enddo
 
 end subroutine do_update_ice_atm_deposition_flux
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redo_update_ice_model_fast applies the surface heat fluxes, shortwave radiation
+!!   diffusion of heat to the sea-ice to implicitly determine a new temperature
+!!   profile, subject to the constraint that ice and snow temperatures are never
+!!   above freezing, using fluxes that have been determined during previous calls
+!!   to do_update_ice_model_fast and stored in the fast_ice_avg_type.
+subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
+                                      Time_step, CS, G, IG )
+  type(ice_state_type),          intent(inout) :: IST
+  type(simple_OSS_type),         intent(in)    :: sOSS
+  type(ice_rad_type),            intent(inout) :: Rad
+  type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
+  type(fast_thermo_CS),          pointer       :: CS
+  type(SIS_hor_grid_type),       intent(inout) :: G
+  type(ice_grid_type),           intent(in)    :: IG
+
+  real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
+  real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
+  real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
+  real, dimension(0:IG%NkIce) :: SW_abs_col
+  real :: dt_here, ts_new, dts, hf, hfd, latent
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
+  real :: sw_tot ! sum over dir/dif vis/nir components
+  real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
+  real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
+  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
+  type(time_type) :: Dt_ice
+  logical :: sent
+  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
+
+  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
+  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
+                     ! enthalpy units (sometimes J kg-1).
+  real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
+  real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
+  real :: I_Nk
+  real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
+
+  if (.not.associated(CS)) call SIS_error(FATAL, &
+         "SIS_fast_thermo: Module must be initialized before it is used.")
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
+
+  if (CS%debug) &
+    call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
+
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
+
+  !
+  ! implicit update of ice surface temperature
+  !
+  dt_here = time_type_to_real(Time_step)
+
+  enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
+
+!###  RESCALE THE RADIATION
+!###  IS Rad A VALID TYPE TO USE?
+!###  DO WE NEED TO UPDATE RAD%T_SKIN?  (PROBABLY ONLY FOR DIAGNOSTICS?)
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,enth_liq_0,&
+!$OMP                                  dt_here,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
+!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
+!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,                  &
+!$OMP                                  hf_0,ts_new,SW_abs_col,SW_absorbed,enth_here,&
+!$OMP                                  tot_heat_in,enth_imb,norm_enth_imb )
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    if (IST%part_size(i,j,k) > 0.0) then
+      enth_col(0) = IST%enth_snow(i,j,k,1)
+      do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
+
+      ! In the case of sublimation of either snow or ice, the vapor is at 0 C.
+      ! If the vapor should be at a different temperature, a correction would be
+      ! made here.
+      if (slab_ice) then
+        latent = LatHtVap + LatHtFus
+      elseif (IST%mH_snow(i,j,k)>0.0) then
+        latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
+      else
+        latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
+      endif
+      sw_tot = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
+               (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
+
+!  This was:
+!      hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
+!              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)) - &
+!             dhf_dt * Rad%t_skin(i,j,k)
+
+      dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k)
+      hf_0 = ((FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
+              (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot))
+
+      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
+      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
+
+      !   This call updates the snow and ice temperatures and accumulates the
+      ! surface and bottom melting/freezing energy.  The ice and snow do not
+      ! actually lose or gain any mass from freezing or melting.
+      ! mw/new - pass melt pond (surface temp fixed at freezing when present)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+                         IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
+                         enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
+                         sOSS%T_fr_ocn(i,j), FIA%bheat(i,j), ts_new, &
+                         dt_here, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
+                         CS%ice_thm_CSp, IST%ITV, CS%column_check)
+      IST%enth_snow(i,j,k,1) = enth_col(0)
+      do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
+
+!      Rad%t_skin(i,j,k) = ts_new
+      FIA%flux_sh_top(i,j,k)  = FIA%flux_sh0(i,j,k)  + ts_new * FIA%dshdt(i,j,k)
+      FIA%evap_top(i,j,k)  = FIA%evap0(i,j,k) + ts_new * FIA%devapdt(i,j,k)
+      FIA%flux_lw_top(i,j,k) = FIA%flux_lw0(i,j,k) + ts_new * FIA%dlwdt(i,j,k)
+      FIA%flux_lh_top(i,j,k) = latent * FIA%evap_top(i,j,k)
+
+!    else ! IST%mH_ice <= 0
+!      flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
+    endif
+  enddo ; enddo ; enddo
+
+  if (CS%debug) &
+    call IST_chksum("End redo_update_ice_model_fast", IST, G, IG)
+
+  if (CS%bounds_check) &
+    call IST_bounds_check(IST, G, IG, "End of redo_update_ice_fast", Rad=Rad) !, OSS=sOSS)
+
+end subroutine redo_update_ice_model_fast
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_fast_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_fast_thermo module.

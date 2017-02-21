@@ -1,4 +1,4 @@
-module SIS_error_checking
+module SIS_debugging
 
 !***********************************************************************
 !*                   GNU General Public License                        *
@@ -20,19 +20,32 @@ module SIS_error_checking
 !* or see:   http://www.gnu.org/licenses/gpl.html                      *
 !***********************************************************************
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!   This module contains subroutines that perform various error checking and   !
+! debugging functions for SIS2.  This routine is similar to it counterpart in  !  
+! the MOM6 code, except for the use of the SIS_hor_grid_type and by keeping it !
+! separate we retain the ability to set up MOM6 and SIS2 debugging separately. !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+
+use MOM_checksums, only : hchksum, Bchksum, uchksum, vchksum, qchksum
+use MOM_checksums, only : is_NaN, chksum, MOM_checksums_init
 use MOM_coms, only : PE_here, root_PE, num_PEs, sum_across_PEs
 use MOM_coms, only : min_across_PEs, max_across_PEs, reproducing_sum
 use MOM_domains, only : pass_vector, pass_var, pe_here
 use MOM_domains, only : BGRID_NE, AGRID, To_All, Scalar_Pair
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
-use MOM_file_parser, only : log_version, param_file_type
+use MOM_file_parser, only : log_version, param_file_type, get_param
 use SIS_hor_grid, only : SIS_hor_grid_type
 use MOM_hor_index, only : hor_index_type
 
 implicit none ; private
 
 public :: check_redundant_C, check_redundant_B, check_redundant_T
-public :: SIS_error_checking_init
+public :: SIS_debugging_init
+public :: vec_chksum, vec_chksum_C, vec_chksum_B, vec_chksum_A
+
+! These interfaces come from MOM_checksums.
+public :: hchksum, Bchksum, uchksum, vchksum, qchksum, is_NaN, chksum
 
 interface check_redundant_C
   module procedure check_redundant_vC3d, check_redundant_vC2d
@@ -46,24 +59,50 @@ interface check_redundant_T
   module procedure check_redundant_vT3d, check_redundant_vT2d
 end interface check_redundant_T
 
+interface vec_chksum
+  module procedure chksum_vec_C3d, chksum_vec_C2d
+end interface vec_chksum
+interface vec_chksum_C
+  module procedure chksum_vec_C3d, chksum_vec_C2d
+end interface vec_chksum_C
+interface vec_chksum_B
+  module procedure chksum_vec_B3d, chksum_vec_B2d
+end interface vec_chksum_B
+interface vec_chksum_A
+  module procedure chksum_vec_A3d, chksum_vec_A2d
+end interface vec_chksum_A
+
 integer :: max_redundant_prints = 100
 integer :: redundant_prints(3) = 0
+logical :: debug = .false.
+logical :: debug_chksums = .true.
+logical :: debug_redundant = .true.
 
 contains
 
 ! =====================================================================
 
-!> SIS_error_checking_init initializes the SIS_error_checking module. As it
-!! happens, the only thing that it does is to log the version of this module.
-subroutine SIS_error_checking_init(param_file)
+!> SIS_debugging_init initializes the SIS_debugging module, and sets
+!! the parameterts that control which checks are active for SIS2.
+subroutine SIS_debugging_init(param_file)
   type(param_file_type),   intent(in)    :: param_file
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_error_checking" ! This module's name.
+  character(len=40)  :: mod = "SIS_debugging" ! This module's name.
 
   call log_version(param_file, mod, version)
+  call get_param(param_file, mod, "DEBUG", debug, &
+                 "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_CHKSUMS", debug_chksums, &
+                 "If true, checksums are performed on arrays in the \n"//&
+                 "various vec_chksum routines.", default=debug)
+  call get_param(param_file, mod, "DEBUG_REDUNDANT", debug_redundant, &
+                 "If true, debug redundant data points during calls to \n"//&
+                 "the various vec_chksum routines.", default=debug)
 
-end subroutine SIS_error_checking_init
+  call MOM_checksums_init(param_file)
+
+end subroutine SIS_debugging_init
 
 subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
@@ -189,16 +228,16 @@ subroutine check_redundant_sB3d(mesg, array, G, is, ie, js, je)
     else ; write(mesg_k,'(" Layer",i9," ")') k ; endif
 
     call check_redundant_sB2d(trim(mesg)//trim(mesg_k), array(:,:,k), &
-                             G, is, ie, js, je)
+                              G, is, ie, js, je)
   enddo
 end subroutine  check_redundant_sB3d
 
 
 subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
-  character(len=*),                intent(in)    :: mesg
-  type(SIS_hor_grid_type),         intent(inout) :: G
+  character(len=*),                 intent(in)    :: mesg
+  type(SIS_hor_grid_type),          intent(inout) :: G
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: array
-  integer,               optional, intent(in)    :: is, ie, js, je
+  integer,                optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
 !  (in)      G - The ocean's grid structure.
@@ -361,7 +400,7 @@ end subroutine  check_redundant_vB2d
 subroutine check_redundant_sT3d(mesg, array, G, is, ie, js, je)
   character(len=*),                     intent(in)    :: mesg
   type(SIS_hor_grid_type),              intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:,:),   intent(in)    :: array
+  real, dimension(G%isd:,G%jsd:,:),     intent(in)    :: array
   integer,                    optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
@@ -378,7 +417,7 @@ subroutine check_redundant_sT3d(mesg, array, G, is, ie, js, je)
     else ; write(mesg_k,'(" Layer",i9," ")') k ; endif
 
     call check_redundant_sT2d(trim(mesg)//trim(mesg_k), array(:,:,k), &
-                             G, is, ie, js, je)
+                              G, is, ie, js, je)
   enddo
 end subroutine  check_redundant_sT3d
 
@@ -386,7 +425,7 @@ end subroutine  check_redundant_sT3d
 subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
   character(len=*),                 intent(in)    :: mesg
   type(SIS_hor_grid_type),          intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: array
+  real, dimension(G%isd:,G%jsd:),   intent(in)    :: array
   integer,                optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
@@ -397,10 +436,8 @@ subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
   character(len=128) :: mesg2
 
   integer :: i, j, is_ch, ie_ch, js_ch, je_ch
-  integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
-  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
+  integer :: Isq, Ieq, Jsq, Jeq, isd, ied, jsd, jed
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
 
   is_ch = G%isc ; ie_ch = G%iec ; js_ch = G%jsc ; je_ch = G%jec
   if (present(is)) is_ch = is ; if (present(ie)) ie_ch = ie
@@ -522,4 +559,171 @@ subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
 
 end subroutine  check_redundant_vT2d
 
-end module SIS_error_checking
+! =====================================================================
+
+! This function does a checksum and redundant point check on a 3d C-grid vector.
+subroutine chksum_vec_C3d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),                  intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),           intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,                 optional, intent(in)    :: scalars !< If true this is a pair of
+                                                              !! scalars that are being checked.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call uchksum(u_comp, mesg//"(u)", G%HI, halos)
+    call vchksum(v_comp, mesg//"(v)", G%HI, halos)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_C(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_C(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_C3d
+
+! This function does a checksum and redundant point check on a 2d C-grid vector.
+subroutine chksum_vec_C2d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),                intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),         intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,               optional, intent(in)    :: scalars !< If true this is a pair of
+                                                            !! scalars that are being checked.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call uchksum(u_comp, mesg//"(u)", G%HI, halos)
+    call vchksum(v_comp, mesg//"(v)", G%HI, halos)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_C(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_C(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_C2d
+
+! This function does a checksum and redundant point check on a 3d B-grid vector.
+subroutine chksum_vec_B3d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),                   intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),            intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                  optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,                  optional, intent(in)    :: scalars !< If true this is a pair of
+                                                               !! scalars that are being checked.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call Bchksum(u_comp, mesg//"(u)", G%HI, halos)
+    call Bchksum(v_comp, mesg//"(v)", G%HI, halos)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_B(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_B(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_B3d
+
+! This function does a checksum and redundant point check on a 2d B-grid vector.
+subroutine chksum_vec_B2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
+  character(len=*),                 intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,                optional, intent(in)    :: scalars !< If true this is a pair of
+                                                             !! scalars that are being checked.
+  logical,                optional, intent(in)    :: symmetric !< If true, do the checksums on the
+                                                               !! full symmetric computational domain.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call Bchksum(u_comp, mesg//"(u)", G%HI, halos, symmetric=symmetric)
+    call Bchksum(v_comp, mesg//"(v)", G%HI, halos, symmetric=symmetric)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_B(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_B(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_B2d
+
+! This function does a checksum and redundant point check on a 3d C-grid vector.
+subroutine chksum_vec_A3d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),                 intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%isd:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%jsd:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,                optional, intent(in)    :: scalars !< If true this is a pair of
+                                                             !! scalars that are being checked.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call hchksum(u_comp, mesg//"(u)", G%HI, halos)
+    call hchksum(v_comp, mesg//"(v)", G%HI, halos)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_T(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_T(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_A3d
+
+
+! This function does a checksum and redundant point check on a 2d C-grid vector.
+subroutine chksum_vec_A2d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),               intent(in)    :: mesg   !< An identifying message
+  type(SIS_hor_grid_type),        intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%isd:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%jsd:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,              optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,              optional, intent(in)    :: scalars !< If true this is a pair of
+                                                           !! scalars that are being checked.
+
+  logical :: are_scalars
+  are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
+
+  if (debug_chksums) then
+    call hchksum(u_comp, mesg//"(u)", G%HI, halos)
+    call hchksum(v_comp, mesg//"(v)", G%HI, halos)
+  endif
+  if (debug_redundant) then
+    if (are_scalars) then
+      call check_redundant_T(mesg, u_comp, v_comp, G, direction=To_All+Scalar_Pair)
+    else
+      call check_redundant_T(mesg, u_comp, v_comp, G)
+    endif
+  endif
+
+end subroutine chksum_vec_A2d
+
+end module SIS_debugging

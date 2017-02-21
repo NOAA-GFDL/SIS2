@@ -37,8 +37,8 @@ module SIS_tracer_registry
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
+use SIS_debugging,     only : hchksum
 use SIS_diag_mediator, only : SIS_diag_ctrl
-use MOM_checksums,     only : hchksum
 use MOM_domains,       only : pass_var, pe_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg

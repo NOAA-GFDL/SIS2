@@ -95,6 +95,7 @@ type, public :: SIS_diag_ctrl
   type(axesType) :: axesBL, axesTL, axesCuL, axesCvL
   type(axesType) :: axesBi, axesTi, axesCui, axesCvi
   type(axesType) :: axesBc, axesTc, axesCuc, axesCvc
+  type(axesType) :: axesBc0, axesTc0, axesCuc0, axesCvc0
   type(axesType) :: axesB1, axesT1, axesCu1, axesCv1
   type(axesType) :: axeszi, axeszL
   ! Mask arrays for diagnostics
@@ -144,7 +145,8 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 !  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 !  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
 !  (in,opt)  axes_set_name - A name to use for this set of axes.  The default is "ice".
-  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_xhe, id_yhe
+  integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_ct0
+  integer :: id_xhe, id_yhe
   integer :: k
   real :: zlev_ice(IG%NkIce), zinter_ice(IG%NkIce+1)
   logical :: set_vert, Cartesian_grid
@@ -221,6 +223,8 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 
   id_ct = diag_axis_init('ct', IG%cat_thick_lim(1:IG%CatIce), 'meters', 'n', & ! 'z',?
                          'Ice thickness category bounds', set_name=set_name)
+  id_ct0 = diag_axis_init('ctu', IG%cat_thick_lim(1:IG%CatIce+1), 'meters', 'n', & ! 'z',?
+                         'Ice thickness category upper bounds', set_name=set_name)
 
   ! Note that there are no 4-d spatial axis groupings yet.  Ferret only started
   ! allowing for 5-d data with version 6.8, which is later than the default for
@@ -248,6 +252,12 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   call defineAxes(diag_cs, (/ id_xq, id_yh, id_ct /), diag_cs%axesCuc)
   call defineAxes(diag_cs, (/ id_xh, id_yq, id_ct /), diag_cs%axesCvc)
   call defineAxes(diag_cs, (/ id_xq, id_yq, id_ct /), diag_cs%axesBc)
+
+  ! Axis groupings for the ocean and ice thickness categories.
+  call defineAxes(diag_cs, (/ id_xh, id_yh, id_ct0 /), diag_cs%axesTc0)
+  call defineAxes(diag_cs, (/ id_xq, id_yh, id_ct0 /), diag_cs%axesCuc0)
+  call defineAxes(diag_cs, (/ id_xh, id_yq, id_ct0 /), diag_cs%axesCvc0)
+  call defineAxes(diag_cs, (/ id_xq, id_yq, id_ct0 /), diag_cs%axesBc0)
 
   ! Axis groupings for 2-D arrays.
   call defineAxes(diag_cs, (/ id_xh, id_yh /), diag_cs%axesT1)
@@ -630,13 +640,21 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
       elseif (axes%id == diag_cs%axesCvi%id) then
         diag%mask3d =>  diag_cs%mask3dCvi
       elseif (axes%id == diag_cs%axesTc%id) then
-        diag%mask3d =>  diag_cs%mask3dTC
+        diag%mask3d =>  diag_cs%mask3dTC(:,:,1:)
       elseif (axes%id == diag_cs%axesBc%id) then
-        diag%mask3d =>  diag_cs%mask3dBuC
+        diag%mask3d =>  diag_cs%mask3dBuC(:,:,1:)
       elseif (axes%id == diag_cs%axesCuc%id ) then
-        diag%mask3d =>  diag_cs%mask3dCuC
+        diag%mask3d =>  diag_cs%mask3dCuC(:,:,1:)
       elseif (axes%id == diag_cs%axesCvc%id) then
-        diag%mask3d =>  diag_cs%mask3dCvC
+        diag%mask3d =>  diag_cs%mask3dCvC(:,:,1:)
+      elseif (axes%id == diag_cs%axesTc0%id) then
+        diag%mask3d =>  diag_cs%mask3dTC(:,:,0:)
+      elseif (axes%id == diag_cs%axesBc0%id) then
+        diag%mask3d =>  diag_cs%mask3dBuC(:,:,0:)
+      elseif (axes%id == diag_cs%axesCuc0%id ) then
+        diag%mask3d =>  diag_cs%mask3dCuC(:,:,0:)
+      elseif (axes%id == diag_cs%axesCvc0%id) then
+        diag%mask3d =>  diag_cs%mask3dCvC(:,:,0:)
   !   else
   !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))
@@ -872,11 +890,11 @@ subroutine diag_masks_set(G, IG, missing_value, diag_cs)
     diag_cs%mask3dCvi(:,:,k) = diag_cs%mask2dCv(:,:)
   enddo
 
-  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,CatIce))
-  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,CatIce))
-  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,CatIce))
-  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,CatIce))
-  do k=1,CatIce
+  allocate(diag_cs%mask3dTC(G%isd:G%ied,G%jsd:G%jed,0:CatIce))
+  allocate(diag_cs%mask3dBuC(G%IsdB:G%IedB,G%JsdB:G%JedB,0:CatIce))
+  allocate(diag_cs%mask3dCuC(G%IsdB:G%IedB,G%jsd:G%jed,0:CatIce))
+  allocate(diag_cs%mask3dCvC(G%isd:G%ied,G%JsdB:G%JedB,0:CatIce))
+  do k=0,CatIce
     diag_cs%mask3dTC(:,:,k)  = diag_cs%mask2dT(:,:)
     diag_cs%mask3dBuC(:,:,k) = diag_cs%mask2dBu(:,:)
     diag_cs%mask3dCuC(:,:,k) = diag_cs%mask2dCu(:,:)

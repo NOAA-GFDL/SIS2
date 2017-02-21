@@ -35,8 +35,8 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use MOM_checksums,     only :  chksum, Bchksum, hchksum, uchksum, vchksum
-use SIS_error_checking, only : check_redundant_B, check_redundant_C
+use SIS_debugging,     only : chksum, Bchksum, hchksum
+use SIS_debugging,     only : vec_chksum_A, vec_chksum_B, vec_chksum_C
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 
 use mpp_domains_mod,  only  : domain2D
@@ -458,15 +458,11 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         call hchksum(ms_sum, "ms_sum before SIS_C_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
-        call uchksum(OSS%u_ocn_C, "u_ocn_C before SIS_C_dynamics", G%HI)
-        call vchksum(OSS%v_ocn_C, "v_ocn_C before SIS_C_dynamics", G%HI)
-        call uchksum(WindStr_x_Cu, "WindStr_x_Cu before SIS_C_dynamics", G%HI)
-        call vchksum(WindStr_y_Cv, "WindStr_y_Cv before SIS_C_dynamics", G%HI)
-        call hchksum(WindStr_x_A, "WindStr_x_A before SIS_C_dynamics", G%HI, haloshift=1)
-        call hchksum(WindStr_y_A, "WindStr_y_A before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
-        call check_redundant_C("WindStr before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G)
-      endif
+        call vec_chksum_C("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
+        call vec_chksum_C("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
+        call vec_chksum_A("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
+     endif
 
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
@@ -545,11 +541,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         call hchksum(ms_sum, "ms_sum before ice_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before ice_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
-        call Bchksum(OSS%u_ocn_B, "u_ocn before ice_dynamics", G%HI, symmetric=.true.)
-        call Bchksum(OSS%v_ocn_B, "v_ocn before ice_dynamics", G%HI, symmetric=.true.)
-        call Bchksum(WindStr_x_B, "WindStr_x_B before ice_dynamics", G%HI, symmetric=.true.)
-        call Bchksum(WindStr_y_B, "WindStr_y_B before ice_dynamics", G%HI, symmetric=.true.)
-        call check_redundant_B("WindStr before ice_dynamics",WindStr_x_B, WindStr_y_B, G)
+        call vec_chksum_B("uv_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G)
+        call vec_chksum_B("WindStr_x_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1)
       endif
 
       rdg_rate(:,:) = 0.0

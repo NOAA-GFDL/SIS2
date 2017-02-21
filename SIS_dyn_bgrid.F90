@@ -28,9 +28,9 @@ module SIS_dyn_bgrid
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-use MOM_checksums,      only : chksum, Bchksum, hchksum
+use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
+use SIS_debugging,     only : vec_chksum_A, vec_chksum_B, vec_chksum_C
 use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
-use SIS_error_checking, only : check_redundant_B
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,    only : hor_index_type
@@ -453,22 +453,16 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
      endif
   enddo ; enddo
 
-  if (CS%debug) then
-     call Bchksum(sldx, "sldx in SIS_B_dynamics", G%HI, symmetric=.true.)
-     call Bchksum(sldy, "sldy in SIS_B_dynamics", G%HI, symmetric=.true.)
-
-     call Bchksum(ui, "ui pre-steps SIS_B_dynamics", G%HI, symmetric=.true.)
-     call Bchksum(vi, "vi pre-steps SIS_B_dynamics", G%HI, symmetric=.true.)
+  if (CS%debug .or. CS%debug_redundant) then
+    call vec_chksum_B("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true.)
+    call vec_chksum_B("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true.)
+    call vec_chksum_B("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true.)
+    call vec_chksum_B("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true.)
+    call vec_chksum_B("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true.)
   endif
   if (CS%debug_redundant) then
-     call check_redundant_B("sldx/sldy in SIS_B_dynamics", sldx, sldy, G)
-     call check_redundant_B("fxat/fyat in SIS_B_dynamics", fxat, fyat, G)
-     call check_redundant_B("uo/vo in SIS_B_dynamics",uo, vo, G)
-     call check_redundant_B("civ in SIS_B_dynamics", civ, G)
-     call check_redundant_B("miv in SIS_B_dynamics", miv, G)
-     call check_redundant_B("dydx/dxdy in SIS_B_dynamics",dydx, dxdy, G)
-
-     call check_redundant_B("ui/vi pre-steps SIS_B_dynamics",ui, vi, G)
+    call check_redundant_B("civ in SIS_B_dynamics", civ, G)
+    call check_redundant_B("miv in SIS_B_dynamics", miv, G)
   endif
 
   do l=1,EVP_steps
