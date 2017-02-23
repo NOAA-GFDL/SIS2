@@ -63,6 +63,7 @@ use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 implicit none ; private
 
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
+public :: do_update_ice_atm_deposition_flux
 public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
 
 type fast_thermo_CS ; private
@@ -166,11 +167,14 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_t, flux_q, &
   ind = 0
   do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = ind + 1
+    !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
+    if(ABT%fluxes%bc(n)%flux_type  .ne. 'air_sea_deposition') then
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
       FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
             ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
     enddo ; enddo ; enddo
+    endif
   enddo ; enddo
 
   FIA%avg_count = FIA%avg_count + 1
@@ -676,6 +680,34 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
 end subroutine do_update_ice_model_fast
 
+subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, FIA, G, IG )
+
+  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
+  type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(SIS_hor_grid_type),       intent(in)    :: G
+  type(ice_grid_type),           intent(in)    :: IG
+
+  integer :: i, j, k, m, n , i_off, j_off, i2, j2, k2, isc, iec, jsc, jec, ncat, ind
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
+  j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
+
+  ind = 0 
+  do n=1,Atmos_boundary%fluxes%num_bcs; do m=1,Atmos_boundary%fluxes%bc(n)%num_fields
+     ind = ind + 1
+     if(Atmos_boundary%fluxes%bc(n)%flux_type  .eq. 'air_sea_deposition') then
+       if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+       do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+          i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+          FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
+            Atmos_boundary%fluxes%bc(n)%field(m)%values(i2,j2,k2)
+       enddo ; enddo ; enddo
+     endif
+  enddo; enddo
+
+end subroutine do_update_ice_atm_deposition_flux
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_fast_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_fast_thermo module.

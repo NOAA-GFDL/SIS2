@@ -114,10 +114,10 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init,
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
+use SIS_fast_thermo, only : do_update_ice_atm_deposition_flux
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
-
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
 use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
@@ -132,6 +132,7 @@ public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona in
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
+public :: update_ice_atm_deposition_flux
 public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
@@ -2504,6 +2505,16 @@ subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
     IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (Rho_ice*IG%kg_m2_to_H)
   enddo
 end subroutine initialize_ice_categories
+
+subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
+
+  type(ice_data_type),           intent(inout) :: Ice
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+
+  call do_update_ice_atm_deposition_flux( Atmos_boundary, Ice%sCS%FIA, Ice%sCS%G, Ice%fCS%IG )
+
+end subroutine update_ice_atm_deposition_flux
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_model_end - writes the restart file and deallocates memory               !
