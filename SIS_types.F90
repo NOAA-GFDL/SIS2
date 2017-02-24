@@ -46,7 +46,15 @@ public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
 public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
+public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF
+public :: copy_Rad_to_Rad, redistribute_Rad_to_Rad, alloc_ice_Rad
 public :: translate_OSS_to_sOSS
+public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+
+! These parameters facilitate the use of 4-D arrays for shortwave radiation and
+! albedos within SIS2.
+integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
+integer, parameter :: NBANDS=4
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model state, and is intended to be private   !
@@ -179,81 +187,101 @@ type fast_ice_avg_type
   ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
-    flux_u_top         , & ! The downward flux of zonal and meridional
-    flux_v_top         , & ! momentum on an A-grid in Pa.
-    flux_t_top         , & ! The upward sensible heat flux at the ice top
-                           ! in W m-2.
-    flux_q_top         , & ! The upward evaporative moisture flux at
-                           ! top of the ice, in kg m-2 s-1.
-    flux_lw_top        , & ! The downward flux of longwave radiation at
-                           ! the top of the ice, in W m-2.
-    flux_sw_vis_dir_top, & ! The downward diffuse flux of direct (dir)
-    flux_sw_vis_dif_top, & ! and diffuse (dif) shortwave radiation in
-    flux_sw_nir_dir_top, & ! the visible (vis) and near-infrared (nir)
-    flux_sw_nir_dif_top, & ! bands at the top of the ice, in W m-2.
-    flux_lh_top        , & ! The upward flux of latent heat at the top
-                           ! of the ice, in W m-2.
-    lprec_top          , & ! The downward flux of liquid precipitation
-                           ! at the top of the ice, in kg m-2 s-1.
-    fprec_top          , & ! The downward flux of frozen precipitation
-                           ! at the top of the ice, in kg m-2 s-1.
-    tmelt              , & ! Ice-top melt energy into the ice/snow in J m-2.
-    bmelt              , & ! Ice-bottom melting energy into the ice in J m-2.
+    flux_u_top  , & ! The downward flux of zonal and meridional
+    flux_v_top  , & ! momentum on an A-grid in Pa.
+    flux_sh_top , & ! The upward sensible heat flux at the ice top
+                    ! in W m-2.
+    evap_top    , & ! The upward evaporative moisture flux at
+                    ! top of the ice, in kg m-2 s-1.
+    flux_lw_top , & ! The net downward flux of longwave radiation at the
+                    ! top of the ice, in W m-2.
+    flux_lh_top , & ! The upward flux of latent heat at the top
+                    ! of the ice, in W m-2.
+    lprec_top   , & ! The downward flux of liquid precipitation
+                    ! at the top of the ice, in kg m-2 s-1.
+    fprec_top   , & ! The downward flux of frozen precipitation
+                    ! at the top of the ice, in kg m-2 s-1.
+    tmelt       , & ! Ice-top melt energy into the ice/snow in J m-2.
+    bmelt       , & ! Ice-bottom melting energy into the ice in J m-2.
+    Tskin_cat   , & ! The ice skin temperature by category, in degC.
     sw_abs_ocn      !  The fraction of the absorbed shortwave radiation that is
                     !  absorbed in the ocean, nondim and <=1.
                     !  Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type
                     !  and the ice_rad_type because it is used as a part of the slow
                     !  thermodynamic updates.
+  real, allocatable, dimension(:,:,:,:) :: &
+    flux_sw_top     ! The downward flux of shortwave radiation at the top of
+                    ! the sea-ice in W m-2.  The fourth dimension combines
+                    ! angular orientation (direct or diffuse) and frequency
+                    ! (visible or near-IR) bands, with the integer parameters
+                    ! from this module helping to distinguish them.
   real, allocatable, dimension(:,:) :: &
-    bheat      , &   ! The upward diffusive heat flux from the ocean
-                     ! to the ice at the base of the ice, in W m-2.
-    WindStr_x  , &   ! The zonal wind stress averaged over the ice
-                     ! categories on an A-grid, in Pa.
-    WindStr_y  , &   ! The meridional wind stress averaged over the
-                     ! ice categories on an A-grid, in Pa.
+    bheat      , &  ! The upward diffusive heat flux from the ocean
+                    ! to the ice at the base of the ice, in W m-2.
+    WindStr_x  , &  ! The zonal wind stress averaged over the ice
+                    ! categories on an A-grid, in Pa.
+    WindStr_y  , &  ! The meridional wind stress averaged over the
+                    ! ice categories on an A-grid, in Pa.
     WindStr_ocn_x, & ! The zonal wind stress on open water on an A-grid, in Pa.
     WindStr_ocn_y, & ! The meridional wind stress on open water on an A-grid, in Pa.
-    p_atm_surf , &   ! The atmospheric pressure at the top of the ice, in Pa.
-    flux_sw_dn, &    ! The total downward shortwave flux, summed across all
-                     ! wavelengths and averaged across all thickness categories
-                     ! in W m-2.
-    runoff, &        ! Liquid runoff into the ocean, in kg m-2.
-    calving, &       ! Calving of ice or runoff of frozen fresh
-                     ! water into the ocean, in kg m-2.
-    runoff_hflx, &   ! The heat flux associated with runoff, based
-                     ! on the temperature difference relative to a
-                     ! reference temperature, in ???.
-    calving_hflx, &  ! The heat flux associated with calving, based
-                     ! on the temperature difference relative to a
-                     ! reference temperature, in ???.
+    p_atm_surf , &  ! The atmospheric pressure at the top of the ice, in Pa.
+    flux_sw_dn, &   ! The total downward shortwave flux, summed across all
+                    ! wavelengths and averaged across all thickness categories
+                    ! in W m-2.
+    runoff, &       ! Liquid runoff into the ocean, in kg m-2.
+    calving, &      ! Calving of ice or runoff of frozen fresh
+                    ! water into the ocean, in kg m-2.
+    runoff_hflx, &  ! The heat flux associated with runoff, based
+                    ! on the temperature difference relative to a
+                    ! reference temperature, in ???.
+    calving_hflx, & ! The heat flux associated with calving, based
+                    ! on the temperature difference relative to a
+                    ! reference temperature, in ???.
     calving_preberg, &  ! Calving of ice or runoff of frozen fresh
-                        ! water into the ocean, exclusive of any
-                        ! iceberg contributions, in kg m-2.
+                    ! water into the ocean, exclusive of any
+                    ! iceberg contributions, in kg m-2.
     calving_hflx_preberg, & ! The heat flux associated with calving,
-                        ! exclusive of any iceberg contributions, based on
-                        ! the temperature difference relative to a
-                        ! reference temperature, in ???.
-    Tskin_avg, &     ! The area-weighted average skin temperature across all
-                     ! ice thickness categories, in deg C, or 0 if there is
-                     ! no ice.
-    ice_free   , &   ! The fractional open water used in calculating
-                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
-    ice_cover        ! The fractional ice coverage, summed across all
-                     ! thickness categories, used in calculating
-                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+                    ! exclusive of any iceberg contributions, based on
+                    ! the temperature difference relative to a
+                    ! reference temperature, in ???.
+    Tskin_avg, &    ! The area-weighted average skin temperature across all
+                    ! ice thickness categories, in deg C, or 0 if there is
+                    ! no ice.
+    ice_free   , &  ! The fractional open water used in calculating
+                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
+    ice_cover       ! The fractional ice coverage, summed across all
+                    ! thickness categories, used in calculating
+                    ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
   logical :: first_copy = .true.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
-    tr_flux_top    ! An array of tracer fluxes at the top of the
-                   ! sea ice.
+    tr_flux_top     ! An array of tracer fluxes at the top of the
+                    ! sea ice.
+
+  ! These are the arrays that are averaged over the fast thermodynamics and
+  ! then interpolated into unoccupied categories for the purpose of redoing
+  ! the application of the fast thermodynamics
+  real, allocatable, dimension(:,:,:) :: &
+    flux_sh0, & ! The upward sensible heat flux at the ice top
+                ! extrapolated to a skin temperature of 0 deg C, in W m-2.
+    evap0, &    ! The upward evaporative moisture flux at the top of the ice
+                ! extrapolated to a skin temperature of 0 deg C, in kg m-2 s-1.
+    flux_lw0, & ! The net downward flux of longwave radiation at the top of the
+                ! ice extrapolated to a skin temperature of 0 deg C, in W m-2.
+    dshdt, &    ! The partial derivative of flux_sh0 with ice skin temperature
+                ! in W m-2 K-1.
+    devapdt, &  ! The partial derivative of evap0 with ice skin temperature
+                ! in kg m-2 s-1 K-1.
+    dlwdt       ! The partial derivative of flux_lw0 with ice skin temperature
+                ! in W m-2 K-1.
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: &
-    frazil_left    ! The frazil heat flux that has not yet been
-                   ! consumed in making ice, in J m-2. This array
-                   ! is decremented by the ice model as the heat
-                   ! flux is used up.
+    frazil_left     ! The frazil heat flux that has not yet been
+                    ! consumed in making ice, in J m-2. This array
+                    ! is decremented by the ice model as the heat
+                    ! flux is used up.
 !SLOW ONLY
   integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
   integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1
@@ -262,6 +290,10 @@ type fast_ice_avg_type
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
   integer :: id_tsfc=-1, id_sitemptop=-1
+
+  integer :: id_evap_cat=-1, id_lw_cat=-1, id_sh_cat=-1, id_tsfc_cat=-1
+  integer :: id_evap0=-1, id_lw0=-1, id_sh0=-1
+  integer :: id_devdt=-1, id_dlwdt=-1, id_dshdt=-1
 end type fast_ice_avg_type
 
 !> total_sfc_flux_type contains variables that describe the fluxes between the
@@ -272,25 +304,28 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u         , & ! The downward flux of zonal and meridional
-    flux_v         , & ! momentum on an A-grid in Pa.
-    flux_t         , & ! The upward sensible heat flux at the ice top
-                       ! in W m-2.
-    flux_q         , & ! The upward evaporative moisture flux at
-                       ! top of the ice, in kg m-2 s-1.
-    flux_lw        , & ! The downward flux of longwave radiation at
-                       ! the top of the ice, in W m-2.
-    flux_sw_vis_dir, & ! The downward diffuse flux of direct (dir)
-    flux_sw_vis_dif, & ! and diffuse (dif) shortwave radiation in
-    flux_sw_nir_dir, & ! the visible (vis) and near-infrared (nir)
-    flux_sw_nir_dif, & ! bands at the top of the ice, in W m-2.
-    flux_lh        , & ! The upward flux of latent heat at the top
-                       ! of the ice, in W m-2.
-    lprec          , & ! The downward flux of liquid precipitation
-                       ! at the top of the ice, in kg m-2 s-1.
-    fprec              ! The downward flux of frozen precipitation
-                       ! at the top of the ice, in kg m-2 s-1.
+    flux_u  , & ! The downward flux of zonal and meridional
+    flux_v  , & ! momentum on an A-grid in Pa.
+    flux_sh , & ! The upward sensible heat flux at the ice top
+                ! in W m-2.
+    evap    , & ! The upward evaporative moisture flux at
+                ! top of the ice, in kg m-2 s-1.
+    flux_lw , & ! The downward flux of longwave radiation at
+                ! the top of the ice, in W m-2.
+    flux_lh , & ! The upward flux of latent heat at the top
+                ! of the ice, in W m-2.
+    lprec   , & ! The downward flux of liquid precipitation
+                ! at the top of the ice, in kg m-2 s-1.
+    fprec       ! The downward flux of frozen precipitation
+                ! at the top of the ice, in kg m-2 s-1.
 !  logical :: first_copy = .true.
+  real, allocatable, dimension(:,:,:) :: &
+    flux_sw     ! The downward flux of shortwave radiation at the top of
+                ! the sea-ice in W m-2.  The third dimension combines
+                ! angular orientation (direct or diffuse) and frequency
+                ! (visible or near-IR) bands, with the integer parameters
+                ! from this module helping to distinguish them.
+  logical :: first_copy = .true.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
     tr_flux        ! An array of tracer fluxes at the top of the
@@ -350,16 +385,12 @@ end type ice_rad_type
 type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
-    flux_t_ocn_top , &  ! The upward sensible heat flux from the ocean
+    flux_sh_ocn_top , & ! The upward sensible heat flux from the ocean
                         ! to the ice or atmosphere, in W m-2.
-    flux_q_ocn_top , &  ! The upward evaporative moisture flux at
+    evap_ocn_top , &    ! The upward evaporative moisture flux at
                         ! the ocean surface, in kg m-2 s-1.
     flux_lw_ocn_top, &  ! The downward flux of longwave radiation at
                         ! the ocean surface, in W m-2.
-    flux_sw_vis_dir_ocn, & ! The downward diffuse flux of direct (dir)
-    flux_sw_vis_dif_ocn, & ! and diffuse (dif) shortwave radiation in
-    flux_sw_nir_dir_ocn, & ! the visible (vis) and near-infrared (nir)
-    flux_sw_nir_dif_ocn, & ! bands at the ocean surface, in W m-2.
     flux_lh_ocn_top, &  ! The upward flux of latent heat at the
                         ! ocean surface, in W m-2.
     lprec_ocn_top, &    ! The downward flux of liquid precipitation at
@@ -376,6 +407,12 @@ type ice_ocean_flux_type
                         ! acts to nudge the ocean surface salinity to
                         ! facilitate the retention of sea ice, in kg m-2 s-1.
     flux_salt           ! The flux of salt out of the ocean in kg m-2.
+  real, allocatable, dimension(:,:,:) :: &
+    flux_sw_ocn      ! The downward flux of shortwave radiation at ocean
+                     ! surface in W m-2.  The third dimension combines
+                     ! angular orientation (direct or diffuse) and frequency
+                     ! (visible or near-IR) bands, with the integer parameters
+                     ! from this module helping to distinguish them.
 
   !Iceberg fields
   real, pointer, dimension(:,:)   :: &
@@ -528,10 +565,11 @@ end subroutine ice_state_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
-subroutine alloc_fast_ice_avg(FIA, HI, IG)
+subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
   type(fast_ice_avg_type), pointer    :: FIA
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
+  logical,                 intent(in) :: interp_fluxes
 
   integer :: isd, ied, jsd, jed, CatIce
 
@@ -542,12 +580,9 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   FIA%avg_count = 0
   allocate(FIA%flux_u_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0
   allocate(FIA%flux_v_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0
-  allocate(FIA%flux_t_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_t_top(:,:,:) = 0.0
-  allocate(FIA%flux_q_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_q_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_vis_dir_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_vis_dir_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_vis_dif_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_vis_dif_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_nir_dir_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_nir_dir_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_nir_dif_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sw_nir_dif_top(:,:,:) = 0.0
+  allocate(FIA%flux_sh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sh_top(:,:,:) = 0.0
+  allocate(FIA%evap_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%evap_top(:,:,:) = 0.0
+  allocate(FIA%flux_sw_top(isd:ied, jsd:jed, 0:CatIce, NBANDS)) ; FIA%flux_sw_top(:,:,:,:) = 0.0
   allocate(FIA%flux_lw_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0
   allocate(FIA%flux_lh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
   allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
@@ -572,6 +607,16 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG)
   allocate(FIA%ice_free(isd:ied, jsd:jed))  ; FIA%ice_free(:,:) = 0.0
   allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0
 
+  if (interp_fluxes) then
+    allocate(FIA%flux_sh0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sh0(:,:,:) = 0.0
+    allocate(FIA%evap0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%evap0(:,:,:) = 0.0
+    allocate(FIA%flux_lw0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lw0(:,:,:) = 0.0
+    allocate(FIA%dshdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dshdt(:,:,:) = 0.0
+    allocate(FIA%devapdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%devapdt(:,:,:) = 0.0
+    allocate(FIA%dlwdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dlwdt(:,:,:) = 0.0
+    allocate(FIA%Tskin_cat(isd:ied, jsd:jed, 0:CatIce)) ; FIA%Tskin_cat(:,:,:) = 0.0
+  endif
+
   allocate(FIA%flux_sw_dn(isd:ied, jsd:jed))  ; FIA%flux_sw_dn(:,:) = 0.0
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
@@ -590,14 +635,11 @@ subroutine alloc_total_sfc_flux(TSF, HI)
 
   allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
   allocate(TSF%flux_v(isd:ied, jsd:jed)) ; TSF%flux_v(:,:) = 0.0
-  allocate(TSF%flux_t(isd:ied, jsd:jed)) ; TSF%flux_t(:,:) = 0.0
-  allocate(TSF%flux_q(isd:ied, jsd:jed)) ; TSF%flux_q(:,:) = 0.0
-  allocate(TSF%flux_sw_vis_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dir(:,:) = 0.0
-  allocate(TSF%flux_sw_vis_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_vis_dif(:,:) = 0.0
-  allocate(TSF%flux_sw_nir_dir(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dir(:,:) = 0.0
-  allocate(TSF%flux_sw_nir_dif(isd:ied, jsd:jed)) ; TSF%flux_sw_nir_dif(:,:) = 0.0
+  allocate(TSF%flux_sh(isd:ied, jsd:jed)) ; TSF%flux_sh(:,:) = 0.0
+  allocate(TSF%flux_sw(isd:ied, jsd:jed, NBANDS)) ; TSF%flux_sw(:,:,:) = 0.0
   allocate(TSF%flux_lw(isd:ied, jsd:jed)) ; TSF%flux_lw(:,:) = 0.0
   allocate(TSF%flux_lh(isd:ied, jsd:jed)) ; TSF%flux_lh(:,:) = 0.0
+  allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
   allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
   allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
 
@@ -641,6 +683,29 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
 
 end subroutine ice_rad_register_restarts
 
+subroutine alloc_ice_rad(Rad, HI, IG)
+  type(ice_rad_type),      pointer       :: Rad
+  type(hor_index_type),    intent(in)    :: HI
+  type(ice_grid_type),     intent(in)    :: IG
+
+  integer :: isd, ied, jsd, jed, CatIce, NkIce
+
+  if (.not.associated(Rad)) allocate(Rad)
+  CatIce = IG%CatIce ; NkIce = IG%NkIce
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
+
+  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
+
+  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
+  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
+  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
+  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
+  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
+
+  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
+
+end subroutine alloc_ice_rad
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
 subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
@@ -657,14 +722,11 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
 
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0
 
-  allocate(IOF%flux_t_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_t_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_q_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_q_ocn_top(:,:) = 0.0
+  allocate(IOF%flux_sh_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sh_ocn_top(:,:) = 0.0
+  allocate(IOF%evap_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%evap_ocn_top(:,:) = 0.0
   allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0
   allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_sw_vis_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dir_ocn(:,:) = 0.0
-  allocate(IOF%flux_sw_vis_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_vis_dif_ocn(:,:) = 0.0
-  allocate(IOF%flux_sw_nir_dir_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dir_ocn(:,:) = 0.0
-  allocate(IOF%flux_sw_nir_dif_ocn(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sw_nir_dif_ocn(:,:) = 0.0
+  allocate(IOF%flux_sw_ocn(SZI_(HI), SZJ_(HI), NBANDS)) ;  IOF%flux_sw_ocn(:,:,:) = 0.0
   allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0
   allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0
   allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0
@@ -812,7 +874,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_out%t_surf) .or. allocated(IST_in%t_surf)) then
       call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                          IST_out%t_surf, complete=.false.)
+                            IST_out%t_surf, complete=.false.)
     endif
     call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
                           IST_out%mH_pond, complete=.false.)
@@ -834,7 +896,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_out%t_surf)) then
       call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%t_surf, complete=.false.)
+                            IST_out%t_surf, complete=.false.)
     endif
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           IST_out%mH_pond, complete=.false.)
@@ -856,7 +918,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
     if (allocated(IST_in%t_surf)) then
       call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                          null_ptr3D, complete=.false.)
+                            null_ptr3D, complete=.false.)
     endif
     call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
                           null_ptr3D, complete=.false.)
@@ -942,8 +1004,8 @@ end subroutine translate_OSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_sOSS_to_sOSS copies the computational domain of one simple_OSS_type into
 !! the computational domain of another simple_OSS_type.  Both must use the same
-!! domain decomposition and indexing convention (for now), but they may have
-!! different halo sizes.
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
 subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   type(simple_OSS_type), intent(inout) :: OSS_in
   type(simple_OSS_type), intent(inout) :: OSS_out
@@ -1110,21 +1172,21 @@ end subroutine redistribute_sOSS_to_sOSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_FIA_to_FIA copies the computational domain of one fast_ice_avg_type into
 !! the computational domain of another fast_ice_avg_type.  Both must use the same
-!! domain decomposition and indexing convention (for now), but they may have
-!! different halo sizes.
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
 subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   type(fast_ice_avg_type), intent(inout) :: FIA_in
   type(fast_ice_avg_type), intent(inout) :: FIA_out
   type(hor_index_type),    intent(in)    :: HI_in, HI_out
   type(ice_grid_type),     intent(in)    :: IG
 
-  integer :: i, j, k, m, n, isc, iec, jsc, jec, ncat, NkIce ! , i_off, j_off
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, i_off, j_off
   integer :: isd, ied, jsd, jed
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
-  ncat = IG%CatIce ; NkIce = IG%NkIce
-
+  ncat = IG%CatIce ; NkIce = IG%NkIce ; nb = size(FIA_in%flux_sw_top,4)
+  
   if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
       (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
@@ -1134,16 +1196,13 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    FIA_out%flux_t_top(i2,j2,k) = FIA_in%flux_t_top(i,j,k)
-    FIA_out%flux_q_top(i2,j2,k) = FIA_in%flux_q_top(i,j,k)
-    FIA_out%flux_sw_vis_dir_top(i2,j2,k) = FIA_in%flux_sw_vis_dir_top(i,j,k)
-    FIA_out%flux_sw_vis_dif_top(i2,j2,k) = FIA_in%flux_sw_vis_dif_top(i,j,k)
-    FIA_out%flux_sw_nir_dir_top(i2,j2,k) = FIA_in%flux_sw_nir_dir_top(i,j,k)
-    FIA_out%flux_sw_nir_dif_top(i2,j2,k) = FIA_in%flux_sw_nir_dif_top(i,j,k)
+    FIA_out%flux_sh_top(i2,j2,k) = FIA_in%flux_sh_top(i,j,k)
+    FIA_out%evap_top(i2,j2,k) = FIA_in%evap_top(i,j,k)
     FIA_out%flux_lw_top(i2,j2,k) = FIA_in%flux_lw_top(i,j,k)
     FIA_out%flux_lh_top(i2,j2,k) = FIA_in%flux_lh_top(i,j,k)
     FIA_out%lprec_top(i2,j2,k) = FIA_in%lprec_top(i,j,k)
     FIA_out%fprec_top(i2,j2,k) = FIA_in%fprec_top(i,j,k)
+    do b=1,nb ; FIA_out%flux_sw_top(i2,j2,k,b) = FIA_in%flux_sw_top(i,j,k,b) ; enddo
   enddo ; enddo ; enddo
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -1176,6 +1235,18 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
   ! the slow_ice_PEs.
   !   FIA%calving_preberg and FIA%calving_hflx_preberg are deliberately not
   ! being copied over.
+  if (allocated(FIA_out%flux_sh0)) then
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off
+      FIA_out%flux_sh0(i2,j2,k) = FIA_in%flux_sh0(i,j,k)
+      FIA_out%evap0(i2,j2,k) = FIA_in%evap0(i,j,k)
+      FIA_out%flux_lw0(i2,j2,k) = FIA_in%flux_lw0(i,j,k)
+      FIA_out%dshdt(i2,j2,k) = FIA_in%dshdt(i,j,k)
+      FIA_out%devapdt(i2,j2,k) = FIA_in%devapdt(i,j,k)
+      FIA_out%dlwdt(i2,j2,k) = FIA_in%dlwdt(i,j,k)
+      FIA_out%Tskin_cat(i2,j2,k) = FIA_in%Tskin_cat(i,j,k)
+    enddo ; enddo ; enddo
+  endif
 
   if (FIA_in%first_copy .or. FIA_out%first_copy) then ; if (FIA_in%num_tr_fluxes >= 0) then
     if (FIA_out%num_tr_fluxes < 0) then
@@ -1220,7 +1291,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
   logical :: first_copy
-  integer :: i, j, isd, ied, jsd, jed, ncat
+  integer :: i, j, b, isd, ied, jsd, jed, ncat
   integer :: num_tr
 
 
@@ -1262,18 +1333,14 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 
   if (associated(FIA_out) .and. associated(FIA_in)) then
-    call mpp_redistribute(domain_in, FIA_in%flux_t_top, domain_out, &
-                          FIA_out%flux_t_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_q_top, domain_out, &
-                          FIA_out%flux_q_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dir_top, domain_out, &
-                          FIA_out%flux_sw_vis_dir_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dif_top, domain_out, &
-                          FIA_out%flux_sw_vis_dif_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dir_top, domain_out, &
-                          FIA_out%flux_sw_nir_dir_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dif_top, domain_out, &
-                          FIA_out%flux_sw_nir_dif_top, complete=.false.)
+    do b=1,size(FIA_in%flux_sw_top,4)
+      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
+                          FIA_out%flux_sh_top, complete=.false.)
+    call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
+                          FIA_out%evap_top, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%flux_lw_top, domain_out, &
                           FIA_out%flux_lw_top, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%flux_lh_top, domain_out, &
@@ -1319,24 +1386,37 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call mpp_redistribute(domain_in, FIA_in%flux_sw_dn, domain_out, &
                           FIA_out%flux_sw_dn, complete=.true.)
 
+    if (allocated(FIA_in%flux_sh0)) then
+      call mpp_redistribute(domain_in, FIA_in%flux_sh0, domain_out, &
+                            FIA_out%flux_sh0, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%evap0, domain_out, &
+                            FIA_out%evap0, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%flux_lw0, domain_out, &
+                            FIA_out%flux_lw0, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%dshdt, domain_out, &
+                            FIA_out%dshdt, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%devapdt, domain_out, &
+                            FIA_out%devapdt, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
+                            FIA_out%dlwdt, complete=.true.)
+      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
+                            FIA_out%Tskin_cat, complete=.true.)
+    endif
+
     if (FIA_in%num_tr_fluxes > 0) then
       call mpp_redistribute(domain_in, FIA_in%tr_flux_top, domain_out, &
                             FIA_out%tr_flux_top)
     endif
   elseif (associated(FIA_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
+    do b=1,size(FIA_out%flux_sw_top,4)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+    enddo
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_t_top, complete=.false.)
+                          FIA_out%flux_sh_top, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_q_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_sw_vis_dir_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_sw_vis_dif_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_sw_nir_dir_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_sw_nir_dif_top, complete=.false.)
+                          FIA_out%evap_top, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           FIA_out%flux_lw_top, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
@@ -1382,23 +1462,37 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           FIA_out%flux_sw_dn, complete=.true.)
 
+    if (allocated(FIA_out%flux_sh0)) then
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%flux_sh0, complete=.false.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%evap0, complete=.false.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%flux_lw0, complete=.false.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%dshdt, complete=.false.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%devapdt, complete=.false.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%dlwdt, complete=.true.)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            FIA_out%Tskin_cat, complete=.true.)
+    endif
+
+
     if (FIA_out%num_tr_fluxes > 0) then
       call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
                             FIA_out%tr_flux_top)
     endif
   elseif (associated(FIA_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
-    call mpp_redistribute(domain_in, FIA_in%flux_t_top, domain_out, &
+    do b=1,size(FIA_in%flux_sw_top,4)
+      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                            null_ptr3D, complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
                           null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_q_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dir_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_vis_dif_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dir_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_sw_nir_dif_top, domain_out, &
+    call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
                           null_ptr3D, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%flux_lw_top, domain_out, &
                           null_ptr3D, complete=.false.)
@@ -1445,6 +1539,23 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call mpp_redistribute(domain_in, FIA_in%flux_sw_dn, domain_out, &
                           null_ptr2D, complete=.true.)
 
+    if (allocated(FIA_in%flux_sh0)) then
+      call mpp_redistribute(domain_in, FIA_in%flux_sh0, domain_out, &
+                            null_ptr3D, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%evap0, domain_out, &
+                            null_ptr3D, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%flux_lw0, domain_out, &
+                            null_ptr3D, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%dshdt, domain_out, &
+                            null_ptr3D, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%devapdt, domain_out, &
+                            null_ptr3D, complete=.false.)
+      call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
+                            null_ptr3D, complete=.true.)
+      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
+                            null_ptr3D, complete=.true.)
+    endif
+
     if (FIA_in%num_tr_fluxes > 0) then
       call mpp_redistribute(domain_in, FIA_in%tr_flux_top, domain_out, &
                             null_ptr4D)
@@ -1456,6 +1567,264 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
 
 end subroutine redistribute_FIA_to_FIA
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_TSF_to_TSF copies the computational domain of one fast_ice_avg_type into
+!! the computational domain of another fast_ice_avg_type.  Both must use the same
+!! domain decomposition and indexing convention, but they may have different
+!! halo sizes.
+subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
+  type(total_sfc_flux_type), intent(inout) :: TSF_in
+  type(total_sfc_flux_type), intent(inout) :: TSF_out
+  type(hor_index_type),      intent(in)    :: HI_in, HI_out
+
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat
+  integer :: i2, j2, i_off, j_off
+  integer :: isd, ied, jsd, jed
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  nb = size(TSF_in%flux_sw,3)
+  
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
+    call SIS_error(FATAL, "copy_TSF_to_TSF called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
+
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    TSF_out%flux_sh(i2,j2) = TSF_in%flux_sh(i,j)
+    TSF_out%flux_lw(i2,j2) = TSF_in%flux_lw(i,j)
+    TSF_out%flux_lh(i2,j2) = TSF_in%flux_lh(i,j)
+    TSF_out%evap(i2,j2) = TSF_in%evap(i,j)
+    TSF_out%lprec(i2,j2) = TSF_in%lprec(i,j)
+    TSF_out%fprec(i2,j2) = TSF_in%fprec(i,j)
+    do b=1,nb ; TSF_out%flux_sw(i2,j2,b) = TSF_in%flux_sw(i,j,b) ; enddo
+  enddo ; enddo
+
+  if (TSF_in%first_copy .or. TSF_out%first_copy) then ; if (TSF_in%num_tr_fluxes >= 0) then
+    if (TSF_out%num_tr_fluxes < 0) then
+      ! Allocate the tr_flux_top arrays to accommodate the size of the input
+      ! fluxes.  This only occurs the first time TSF_out is copied from a fully
+      ! initialized TSF_in.
+      TSF_out%num_tr_fluxes = TSF_in%num_tr_fluxes
+      if (TSF_out%num_tr_fluxes > 0) then
+        isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
+        allocate(TSF_out%tr_flux(isd:ied, jsd:jed, TSF_out%num_tr_fluxes))
+        TSF_out%tr_flux(:,:,:) = 0.0
+      endif
+    endif
+    TSF_in%first_copy = .false. ; TSF_out%first_copy = .false.
+  endif ; endif
+
+  if (TSF_in%num_tr_fluxes >= 0) then
+    if (TSF_in%num_tr_fluxes /= TSF_out%num_tr_fluxes) &
+      call SIS_error(FATAL, "copy_TSF_to_TSF called with different num_tr_fluxes.")
+
+    do n=1,TSF_in%num_tr_fluxes ; do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off
+      TSF_out%tr_flux(i2,j2,n) = TSF_in%tr_flux(i,j,n)
+    enddo ; enddo ; enddo
+  endif
+
+end subroutine copy_TSF_to_TSF
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_TSF_to_TSF redistributes the computational domain of one
+!! total_sfc_flux_type into the computational domain of another total_sfc_flux_type.
+subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_out)
+  type(total_sfc_flux_type), pointer    :: TSF_in     !< The total_sfc_flux_type that is being copied from (intent in).
+  type(total_sfc_flux_type), pointer    :: TSF_out    !< The total_sfc_flux_type that is being copied into (intent inout).
+  type(domain2d),            intent(in) :: domain_in  !< The source data domain.
+  type(domain2d),            intent(in) :: domain_out !< The target data domain.
+  type(hor_index_type), optional, intent(in) :: HI_out !< The hor_index_type on the target domain; HI_out
+                                                       !! may be omitted if this is not a target PE.
+
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
+  logical :: first_copy
+  integer :: b, m, num_tr
+
+  if (.not. (associated(TSF_out) .or. associated(TSF_in))) &
+    call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
+                          "neither TSF_in nor TSF_out associated.")
+  first_copy = .false.
+  if (associated(TSF_out)) first_copy = TSF_out%first_copy
+  if (associated(TSF_in)) first_copy = first_copy .or. TSF_in%first_copy
+
+  if (first_copy) then
+    ! Determine the number of fluxes.
+    num_tr = 0 ; if (associated(TSF_in)) num_tr = TSF_in%num_tr_fluxes
+    call max_across_PEs(num_tr)
+
+    if (associated(TSF_out)) then
+      if (.not. present(HI_out)) &
+        call SIS_error(FATAL, "redistribute_TSF_to_TSF called with an "//&
+                              "associated TSF_out but without HI_out.")
+      TSF_out%num_tr_fluxes = num_tr
+      if ((num_tr > 0) .and. .not.allocated(TSF_out%tr_flux)) then
+        allocate(TSF_out%tr_flux(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,num_tr))
+        TSF_out%tr_flux(:,:,:) = 0.0
+      endif
+      TSF_out%first_copy = .false.
+    endif
+
+    if (associated(TSF_in)) TSF_in%first_copy = .false.
+  endif
+
+  if (associated(TSF_out) .and. associated(TSF_in)) then
+    ! The extra tracer arrays are copied first so that they can all have
+    ! complete=.false.
+    do m=1,TSF_in%num_tr_fluxes
+      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
+                            TSF_out%tr_flux(:,:,m), complete=.false.)
+    enddo
+    do b=1,size(TSF_in%flux_sw,3)
+      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                          TSF_out%flux_sw(:,:,b), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
+                          TSF_out%flux_sh, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
+                          TSF_out%flux_lw, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
+                          TSF_out%flux_lh, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
+                          TSF_out%evap, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
+                          TSF_out%lprec, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
+                          TSF_out%fprec, complete=.true.)
+  elseif (associated(TSF_out)) then
+    ! Use the null pointer in place of the unneeded input arrays.
+    do m=1,TSF_out%num_tr_fluxes
+      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                            TSF_out%tr_flux(:,:,m), complete=.false.)
+    enddo
+    do b=1,size(TSF_out%flux_sw,3)
+      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_sw(:,:,b), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_sh, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_lw, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%flux_lh, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%evap, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%lprec, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          TSF_out%fprec, complete=.true.)
+  elseif (associated(TSF_in)) then
+    ! Use the null pointer in place of the unneeded output arrays.
+    do m=1,TSF_in%num_tr_fluxes
+      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
+                            null_ptr2D, complete=.false.)
+    enddo
+    do b=1,size(TSF_in%flux_sw,3)
+      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                            null_ptr2D, complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
+                          null_ptr2D, complete=.false.)
+    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
+                          null_ptr2D, complete=.true.)
+  else
+    call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
+                          "neither TSF_in nor TSF_out associated.")
+  endif
+
+
+end subroutine redistribute_TSF_to_TSF
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> copy_Rad_to_Rad copies the computational domains of several fields from one
+!! ice_rad_type into the computational domain of another ice_rad_type.  Both must
+!! use the same domain decomposition and indexing convention, but they may have
+!! different halo sizes.
+subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
+  type(ice_rad_type),   intent(inout) :: Rad_in
+  type(ice_rad_type),   intent(inout) :: Rad_out
+  type(hor_index_type), intent(in)    :: HI_in, HI_out
+  type(ice_grid_type),  intent(in)    :: IG
+
+  integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
+  integer :: i2, j2, i_off, j_off
+
+  isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
+      (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
+    call SIS_error(FATAL, "copy_Rad_to_Rad called with inconsistent domain "//&
+                          "decompositions of the two ice types.")
+  endif
+  i_off = HI_out%iec-HI_in%iec ;  j_off = HI_out%jec-HI_in%jec
+
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Rad_out%sw_abs_sfc(i2,j2,k) = Rad_in%sw_abs_sfc(i,j,k)
+    Rad_out%sw_abs_snow(i2,j2,k) = Rad_in%sw_abs_snow(i,j,k)
+    do m=1,NkIce ; Rad_out%sw_abs_ice(i2,j2,k,m) = Rad_in%sw_abs_ice(i,j,k,m) ; enddo
+  enddo ; enddo ; enddo
+
+end subroutine copy_Rad_to_Rad
+
+subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
+  type(ice_rad_type), pointer    :: Rad_in     !< The ice_rad_type that is being copied from (intent in).
+  type(ice_rad_type), pointer    :: Rad_out    !< The ice_rad_type that is being copied into (intent inout).
+  type(domain2d),     intent(in) :: domain_in  !< The source data domain.
+  type(domain2d),     intent(in) :: domain_out !< The target data domain.
+
+  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
+  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  integer :: m
+
+  if (associated(Rad_out) .and. associated(Rad_in)) then
+    do m=1,size(Rad_in%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
+                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
+                          Rad_out%sw_abs_snow, complete=.false.)
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
+                          Rad_out%sw_abs_sfc, complete=.true.)
+  elseif (associated(Rad_out)) then
+    ! Use the null pointers in place of the unneeded input arrays.
+    do m=1,size(Rad_out%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%sw_abs_snow, complete=.false.)
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%sw_abs_sfc, complete=.true.)
+  elseif (associated(Rad_in)) then
+    ! Use the null pointers in place of the unneeded output arrays.
+    do m=1,size(Rad_in%sw_abs_ice,4)
+      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
+                            null_ptr3D, complete=.false.)
+    enddo
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
+                          null_ptr3D, complete=.false.)
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
+                          null_ptr3D, complete=.true.)
+  else
+    call SIS_error(FATAL, "redistribute_Rad_to_Rad called with "//&
+                          "neither Rad_in nor Rad_out associated.")
+  endif
+
+
+end subroutine redistribute_Rad_to_Rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_IST_arrays deallocates the arrays in an ice_state_type.
@@ -1520,10 +1889,9 @@ subroutine dealloc_fast_ice_avg(FIA)
   endif
 
   deallocate(FIA%flux_u_top, FIA%flux_v_top )
-  deallocate(FIA%flux_t_top, FIA%flux_q_top, FIA%flux_lw_top)
+  deallocate(FIA%flux_sh_top, FIA%evap_top, FIA%flux_lw_top)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
-  deallocate(FIA%flux_sw_vis_dir_top, FIA%flux_sw_vis_dif_top)
-  deallocate(FIA%flux_sw_nir_dir_top, FIA%flux_sw_nir_dif_top)
+  deallocate(FIA%flux_sw_top)
   deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
   deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
@@ -1531,6 +1899,14 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
   deallocate(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y)
   deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn, FIA%Tskin_avg)
+
+  if (allocated(FIA%flux_sh0)) deallocate(FIA%flux_sh0)
+  if (allocated(FIA%evap0)) deallocate(FIA%evap0)
+  if (allocated(FIA%flux_lw0)) deallocate(FIA%flux_lw0)
+  if (allocated(FIA%dshdt))  deallocate(FIA%dshdt)
+  if (allocated(FIA%devapdt))  deallocate(FIA%devapdt)
+  if (allocated(FIA%dlwdt)) deallocate(FIA%dlwdt)
+  if (allocated(FIA%Tskin_cat)) deallocate(FIA%Tskin_cat)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg
@@ -1545,9 +1921,8 @@ subroutine dealloc_total_sfc_flux(TSF)
     return
   endif
 
-  deallocate(TSF%flux_u, TSF%flux_v, TSF%flux_t, TSF%flux_q)
-  deallocate(TSF%flux_sw_vis_dir, TSF%flux_sw_vis_dif)
-  deallocate(TSF%flux_sw_nir_dir, TSF%flux_sw_nir_dif)
+  deallocate(TSF%flux_u, TSF%flux_v, TSF%flux_sh, TSF%evap)
+  deallocate(TSF%flux_sw)
   deallocate(TSF%flux_lw, TSF%flux_lh, TSF%lprec, TSF%fprec)
 
 end subroutine dealloc_total_sfc_flux
@@ -1580,10 +1955,9 @@ subroutine dealloc_ice_ocean_flux(IOF)
     return
   endif
 
-  deallocate(IOF%flux_t_ocn_top, IOF%flux_q_ocn_top)
+  deallocate(IOF%flux_sh_ocn_top, IOF%evap_ocn_top)
   deallocate(IOF%flux_lw_ocn_top, IOF%flux_lh_ocn_top)
-  deallocate(IOF%flux_sw_vis_dir_ocn, IOF%flux_sw_vis_dif_ocn)
-  deallocate(IOF%flux_sw_nir_dir_ocn, IOF%flux_sw_nir_dif_ocn)
+  deallocate(IOF%flux_sw_ocn)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
 
@@ -1607,14 +1981,11 @@ subroutine IOF_chksum(mesg, IOF, G)
 
   call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI)
 
-  call hchksum(IOF%flux_t_ocn_top, trim(mesg)//"  IOF%flux_t_ocn_top", G%HI)
-  call hchksum(IOF%flux_q_ocn_top, trim(mesg)//"  IOF%flux_q_ocn_top", G%HI)
+  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI)
+  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI)
   call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI)
   call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI)
-  call hchksum(IOF%flux_sw_vis_dir_ocn, trim(mesg)//"  IOF%flux_sw_vis_dir_ocn", G%HI)
-  call hchksum(IOF%flux_sw_vis_dif_ocn, trim(mesg)//"  IOF%flux_sw_vis_dif_ocn", G%HI)
-  call hchksum(IOF%flux_sw_nir_dir_ocn, trim(mesg)//"  IOF%flux_sw_nir_dir_ocn", G%HI)
-  call hchksum(IOF%flux_sw_nir_dif_ocn, trim(mesg)//"  IOF%flux_sw_nir_dif_ocn", G%HI)
+  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
   call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
   call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
@@ -1634,24 +2005,24 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
-  call hchksum(FIA%flux_t_top(:,:,1:), trim(mesg)//" FIA%flux_t_top", G%HI)
-  call hchksum(FIA%flux_q_top(:,:,1:), trim(mesg)//" FIA%flux_q_top", G%HI)
-  call hchksum(FIA%flux_sw_vis_dir_top(:,:,1:), trim(mesg)//" FIA%flux_sw_vis_dir_top", G%HI)
-  call hchksum(FIA%flux_sw_vis_dif_top(:,:,1:), trim(mesg)//" FIA%flux_sw_vis_dif_top", G%HI)
-  call hchksum(FIA%flux_sw_nir_dir_top(:,:,1:), trim(mesg)//" FIA%flux_sw_nir_dir_top", G%HI)
-  call hchksum(FIA%flux_sw_nir_dif_top(:,:,1:), trim(mesg)//" FIA%flux_sw_nir_dif_top", G%HI)
+  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI)
+  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI)
+  call hchksum(FIA%flux_sw_top(:,:,1:,VIS_DIR), trim(mesg)//" FIA%flux_sw_top(vis_dir)", G%HI)
+  call hchksum(FIA%flux_sw_top(:,:,1:,VIS_DIF), trim(mesg)//" FIA%flux_sw_top(vis_dif)", G%HI)
+  call hchksum(FIA%flux_sw_top(:,:,1:,NIR_DIR), trim(mesg)//" FIA%flux_sw_top(nir_dir)", G%HI)
+  call hchksum(FIA%flux_sw_top(:,:,1:,NIR_DIF), trim(mesg)//" FIA%flux_sw_top(nir_dif)", G%HI)
   call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI)
   call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI)
   call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI)
   call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI)
 
   if (present(check_ocean)) then ; if (check_ocean) then
-    call hchksum(FIA%flux_t_top(:,:,0), trim(mesg)//" FIA%flux_t_top0", G%HI)
-    call hchksum(FIA%flux_q_top(:,:,0), trim(mesg)//" FIA%flux_q_top0", G%HI)
-    call hchksum(FIA%flux_sw_vis_dir_top(:,:,0), trim(mesg)//" FIA%flux_sw_vis_dir_top0", G%HI)
-    call hchksum(FIA%flux_sw_vis_dif_top(:,:,0), trim(mesg)//" FIA%flux_sw_vis_dif_top0", G%HI)
-    call hchksum(FIA%flux_sw_nir_dir_top(:,:,0), trim(mesg)//" FIA%flux_sw_nir_dir_top0", G%HI)
-    call hchksum(FIA%flux_sw_nir_dif_top(:,:,0), trim(mesg)//" FIA%flux_sw_nir_dif_top0", G%HI)
+    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI)
+    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI)
+    call hchksum(FIA%flux_sw_top(:,:,0,VIS_DIR), trim(mesg)//" FIA%flux_sw_top0(vis_dir)", G%HI)
+    call hchksum(FIA%flux_sw_top(:,:,0,VIS_DIF), trim(mesg)//" FIA%flux_sw_top0(vis_dif)", G%HI)
+    call hchksum(FIA%flux_sw_top(:,:,0,NIR_DIR), trim(mesg)//" FIA%flux_sw_top0(nir_dir)", G%HI)
+    call hchksum(FIA%flux_sw_top(:,:,0,NIR_DIF), trim(mesg)//" FIA%flux_sw_top0(nir_dif)", G%HI)
     call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI)
     call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI)
     call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI)
@@ -1703,8 +2074,7 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
   call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs)
   do k=1,IG%NkIce
-    write(k_str1,'(I8)') k
-    k_str = "("//trim(adjustl(k_str1))//")"
+    write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
   enddo

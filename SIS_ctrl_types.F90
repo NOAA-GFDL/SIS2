@@ -65,6 +65,9 @@ type SIS_fast_CS
                             ! surface skin temperature for tsurf at the start of
                             ! atmospheric time stepping, including interpolating between
                             ! tsurf values from other categories in the same location.
+  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
+                              ! dynamics on the slowly evolving ice state, rather than
+                              ! copying over the slow ice state to the fast ice state.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -120,6 +123,9 @@ type SIS_slow_CS
                            ! an old ice-ocean stress to the icebergs in place of
                            ! the current air-ice stress.  This option exists for
                            ! backward compatibility, but should be avoided.
+  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
+                              ! dynamics on the slowly evolving ice state, rather than
+                              ! copying over the slow ice state to the fast ice state.
 
   logical :: bounds_check   ! If true, check for sensible values of thicknesses
                             ! temperatures, fluxes, etc.
@@ -130,10 +136,15 @@ type SIS_slow_CS
   type(ice_state_type), pointer :: IST => NULL()
   type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
   type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL()
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
+  type(SIS_optics_CS),  pointer :: optics_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
 
   type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
                                ! the ice to the ocean that are calculated by the ice model.
+  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
+                             ! the absorption, reflection and transmission of
+                             ! shortwave radiation.
 
   type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
 
@@ -150,6 +161,13 @@ type SIS_slow_CS
   type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
                              ! fields that are calculated during the fast ice step but
                              ! stored for later use by the slow ice step or the ocean.
+  type(total_sfc_flux_type), pointer :: TSF => NULL()  ! A structure of the fluxes
+                             ! between the atmosphere and the ice or ocean that have
+                             ! been accumulated over fast thermodynamic steps and
+                             ! integrated across the part-size categories.
+  type(total_sfc_flux_type), pointer :: XSF => NULL()  ! A structure of the excess
+                             ! fluxes between the atmosphere and the ice or ocean
+                             ! relative to those stored in TSF.
 
 end type SIS_slow_CS
 
@@ -212,9 +230,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 
   FIA%id_calving  = register_SIS_diag_field('ice_model','CALVING',diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', missing_value=missing)
-  FIA%id_runoff_hflx   = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
+  FIA%id_runoff_hflx  = register_SIS_diag_field('ice_model','RUNOFF_HFLX' ,diag%axesT1, Time, &
                'liquid runoff sensible heat flux', 'W/m^2', missing_value=missing)
-  FIA%id_calving_hflx  = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
+  FIA%id_calving_hflx = register_SIS_diag_field('ice_model','CALVING_HFLX',diag%axesT1, Time, &
                'frozen runoff sensible heat flux', 'W/m^2', missing_value=missing)
   FIA%id_evap     = register_SIS_diag_field('ice_model','EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', missing_value=missing)
@@ -232,9 +250,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 !               'strain angle', 'none', missing_value=missing)
 
   FIA%id_sw_dn   = register_SIS_diag_field('ice_model','SWDN' ,diag%axesT1, Time, &
-               'Downward shortwave heat flux at the bottom of the atmosphere', 'W/m^2', missing_value=missing)
+               'Downward shortwave heat flux at the bottom of the atmosphere', &
+               'W/m^2', missing_value=missing)
   FIA%id_albedo  = register_SIS_diag_field('ice_model','ALB' ,diag%axesT1, Time, &
-               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', missing_value=missing)
+               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', &
+               missing_value=missing)
   FIA%id_sw_vis   = register_SIS_diag_field('ice_model','SW_VIS' ,diag%axesT1, Time, &
                'visible shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_dir   = register_SIS_diag_field('ice_model','SW_DIR' ,diag%axesT1, Time, &
@@ -249,6 +269,33 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
                'near IR direct shortwave heat flux', 'W/m^2', missing_value=missing)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model','SW_NIR_DIF' ,diag%axesT1, Time, &
                'near IR diffuse shortwave heat flux', 'W/m^2', missing_value=missing)
+
+  if (allocated(FIA%flux_sh0)) then
+    FIA%id_evap0  = register_SIS_diag_field('ice_model','EVAP_T0',diag%axesTc0, Time, &
+               'evaporation at 0 degC', 'kg/(m^2*s)', missing_value=missing)
+    FIA%id_lw0  = register_SIS_diag_field('ice_model','LW_T0',diag%axesTc0, Time, &
+               'net downward longwave heat flux over ice at 0 degC', 'W/m^2', missing_value=missing)
+    FIA%id_sh0  = register_SIS_diag_field('ice_model','SH_T0' ,diag%axesTc0, Time, &
+               'sensible heat flux at 0 degC', 'W/m^2',  missing_value=missing)
+    FIA%id_devdt  = register_SIS_diag_field('ice_model','dEVAP_dT',diag%axesTc0, Time, &
+               'partial derivative of evaporation with ice skin temperature', &
+               'kg/(m^2*s*K)', missing_value=missing)
+    FIA%id_dlwdt = register_SIS_diag_field('ice_model','dLW_dT',diag%axesTc0, Time, &
+               'partial derivative of net downward longwave heat flux with ice skin temperature', &
+               'W/(m^2*K)', missing_value=missing)
+    FIA%id_dshdt = register_SIS_diag_field('ice_model','dSH_dT' ,diag%axesTc0, Time, &
+               'partial derivative of sensible heat flux with ice skin temperature', &
+               'W/(m^2*K)',  missing_value=missing)
+    FIA%id_tsfc_cat =register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
+               'surface temperature by category', 'C', missing_value=missing)
+  endif
+  FIA%id_evap_cat  = register_SIS_diag_field('ice_model','EVAP_CAT',diag%axesTc0, Time, &
+             'evaporation by category', 'kg/(m^2*s)', missing_value=missing)
+  FIA%id_lw_cat  = register_SIS_diag_field('ice_model','LW_CAT',diag%axesTc0, Time, &
+             'longwave heat flux by category', 'W/m^2', missing_value=missing)
+  FIA%id_sh_cat  = register_SIS_diag_field('ice_model','SH_CAT' ,diag%axesTc0, Time, &
+             'sensible heat flux by category', 'W/m^2',  missing_value=missing)
+
 
   FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
