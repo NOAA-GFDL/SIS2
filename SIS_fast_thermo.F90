@@ -96,8 +96,8 @@ contains
 !!   physics and the ocean.  Nothing here will be exposed to other modules until
 !!   after it has passed through avg_top_quantities.
 subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
-       flux_sw, flux_lw, lprec, fprec, flux_lh, t_skin, dshdt, devapdt, &
-       dlwdt, SST, G, IG)
+       flux_sw, flux_lw, lprec, fprec, flux_lh, t_skin, SST, &
+       sh_T0, evap_T0, lw_T0, dshdt, devapdt, dlwdt, G, IG)
   type(fast_ice_avg_type),       intent(inout) :: FIA
   type(atmos_ice_boundary_type), intent(in)    :: ABT
   type(SIS_hor_grid_type),       intent(in)    :: G
@@ -115,6 +115,12 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
                 ! in kg m-2 s-1.
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
                 ! evaporation, in W m-2.
+    sh_T0, &    ! The upward sensible heat flux from the top of the ice into
+                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+    evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
+                ! in kg m-2 s-1.
+    lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
+                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
     dshdt, &    ! The derivative of the upward sensible heat flux from the
                 ! the top of the ice into the atmosphere with ice skin
                 ! temperature in W m-2 K-1.
@@ -122,13 +128,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
                 ! temperature, in kg m-2 s-1 K-1.
     dlwdt       ! The derivative of the longwave heat flux from the atmosphere
                 ! into the ice or ocean with ice skin temperature, in W m-2 K-1.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
-    intent(in) :: flux_sw ! The downward shortwave heat fluxes in W m-2. The 4th
-                ! dimension is a combination of angular orientation & frequency.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), intent(in) :: &
     t_skin
   real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
     SST
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
+    intent(in) :: flux_sw ! The downward shortwave heat fluxes in W m-2. The 4th
+                ! dimension is a combination of angular orientation & frequency.
 
   real :: t_sfc
   integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
@@ -206,13 +212,13 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   if (allocated(FIA%flux_sh0)) then
     !$OMP parallel do default(shared) private(t_sfc)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-      t_sfc = SST(i,j) ; if (k>0) t_sfc = t_skin(i,j,k)
       FIA%dshdt(i,j,k) = FIA%dshdt(i,j,k) + dshdt(i,j,k)
       FIA%devapdt(i,j,k) = FIA%devapdt(i,j,k) + devapdt(i,j,k)
       FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + dlwdt(i,j,k)
-      FIA%flux_sh0(i,j,k) = FIA%flux_sh0(i,j,k) + (flux_sh(i,j,k) - t_sfc*dshdt(i,j,k))
-      FIA%evap0(i,j,k) = FIA%evap0(i,j,k) + (evap(i,j,k) - t_sfc*devapdt(i,j,k))
-      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + (flux_lw(i,j,k) - t_sfc*dlwdt(i,j,k))
+      FIA%flux_sh0(i,j,k) = FIA%flux_sh0(i,j,k) + sh_T0(i,j,k)
+      FIA%evap0(i,j,k) = FIA%evap0(i,j,k) + evap_T0(i,j,k)
+      FIA%flux_lw0(i,j,k) = FIA%flux_lw0(i,j,k) + lw_T0(i,j,k)
+      t_sfc = SST(i,j) ; if (k>0) t_sfc = t_skin(i,j,k)
       FIA%Tskin_cat(i,j,k) = FIA%Tskin_cat(i,j,k) + t_sfc
     enddo ; enddo ; enddo
   endif
@@ -646,6 +652,13 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! evaporation, in W m-2.
     flux_lw, &  ! The net downward longwave heat flux into the ice, in W m-2.
     flux_u, flux_v, lprec, fprec, &
+    
+    sh_T0, &    ! The upward sensible heat flux from the top of the ice into
+                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+    evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
+                ! in kg m-2 s-1.
+    lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
+                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
     dshdt, &    ! The derivative of the upward sensible heat flux with the surface
                 ! temperature in W m-2 K-1.
     devapdt, &  ! The derivative of the sublimation rate with the surface
@@ -706,10 +719,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   if (CS%debug) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Atmos_boundary,i_off, &
-!$OMP                                  j_off,flux_u,flux_v,flux_sh,evap,flux_lw,flux_sw, &
-!$OMP                                  lprec,fprec,dshdt,devapdt,dlwdt        )            &
-!$OMP                           private(i2,j2,k2)
+  !$OMP parallel do default(shared) private(i2,j2,k2)
   do j=jsc,jec
     !   Set up local copies of fluxes.  The Atmos_boundary arrays may have
     ! different index conventions than are used internally in this component.
@@ -729,6 +739,16 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       dshdt(i,j,k) = Atmos_boundary%dhdt(i2,j2,k2)
       devapdt(i,j,k) = Atmos_boundary%dedt(i2,j2,k2)
       dlwdt(i,j,k) = -1.*Atmos_boundary%drdt(i2,j2,k2)
+    enddo ; enddo
+    do i=isc,iec
+      sh_T0(i,j,0) = flux_sh(i,j,0) - dshdt(i,j,0) * sOSS%SST_C(i,j)
+      evap_T0(i,j,0) = evap(i,j,0) - devapdt(i,j,0) * sOSS%SST_C(i,j)
+      lw_T0(i,j,0) = flux_lw(i,j,0) - dlwdt(i,j,0) * sOSS%SST_C(i,j)
+    enddo
+    do k=1,ncat ; do i=isc,iec
+      sh_T0(i,j,k) = flux_sh(i,j,k) - dshdt(i,j,k) * Rad%t_skin(i,j,k)
+      evap_T0(i,j,k) = evap(i,j,k) - devapdt(i,j,k) * Rad%t_skin(i,j,k)
+      lw_T0(i,j,k) = flux_lw(i,j,k) - dlwdt(i,j,k) * Rad%t_skin(i,j,k)
     enddo ; enddo
   enddo
 
@@ -838,15 +858,14 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
           enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         endif
       endif
-
     else ! IST%mH_ice <= 0
       flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
     endif
   enddo ; enddo ; enddo
 
   call sum_top_quantities(FIA, Atmos_boundary, flux_u, flux_v, flux_sh, evap, &
-                          flux_sw, flux_lw, lprec, fprec, flux_lh, Rad%t_skin, &
-                          dshdt, devapdt, dlwdt, sOSS%SST_C, G, IG )
+                          flux_sw, flux_lw, lprec, fprec, flux_lh, Rad%t_skin, sOSS%SST_C, &
+                          sh_T0, evap_T0, lw_T0, dshdt, devapdt, dlwdt, G, IG )
 
   if (CS%debug) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
@@ -874,7 +893,7 @@ subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, FIA, G, IG )
   do n=1,Atmos_boundary%fluxes%num_bcs; do m=1,Atmos_boundary%fluxes%bc(n)%num_fields
      ind = ind + 1
      if(Atmos_boundary%fluxes%bc(n)%flux_type  .eq. 'air_sea_deposition') then
-       if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in sum_top_quantities.")
+       if (ind < 1) call SIS_error(FATAL, "Bad boundary flux index in deposition_flux.")
        do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
           i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
           FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
@@ -884,6 +903,7 @@ subroutine do_update_ice_atm_deposition_flux( Atmos_boundary, FIA, G, IG )
   enddo; enddo
 
 end subroutine do_update_ice_atm_deposition_flux
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> redo_update_ice_model_fast applies the surface heat fluxes, shortwave radiation
 !!   diffusion of heat to the sea-ice to implicitly determine a new temperature
@@ -934,7 +954,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
   if (CS%debug) &
-    call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
+    call IST_chksum("Start redo_update_ice_model_fast", IST, G, IG)
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
@@ -950,6 +970,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
 !###  IS Rad A VALID TYPE TO USE?
 !###  DO WE NEED TO UPDATE RAD%T_SKIN?  (PROBABLY ONLY FOR DIAGNOSTICS?)
 
+! I do not know if this is necessary or whether it would work. - RWH
+!  do j=jsc,jec ; do i=isc,iec
+!    FIA%bheat(i,j) = sOSS%bheat(i,j)
+!  enddo ; enddo
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,enth_liq_0,&
 !$OMP                                  dt_here,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
 !$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
@@ -957,6 +982,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
 !$OMP                                  hf_0,ts_new,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    ! If there are multiple calls to redo_update_ice_model_fast between calls to
+    ! slow_thermodynamics, this call would only occur during the first such call.
+    FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
+
     if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
@@ -1006,8 +1035,17 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
       FIA%flux_lw_top(i,j,k) = FIA%flux_lw0(i,j,k) + ts_new * FIA%dlwdt(i,j,k)
       FIA%flux_lh_top(i,j,k) = latent * FIA%evap_top(i,j,k)
 
+      ! Convert frost forming atop sea ice into frozen precip.
+      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
+        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
+        FIA%evap_top(i,j,k) = 0.0
+      endif
 !    else ! IST%mH_ice <= 0
 !      flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
+
+      ! Copy radiation fields from the fast to the slow states.
+      FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
+
     endif
   enddo ; enddo ; enddo
 
