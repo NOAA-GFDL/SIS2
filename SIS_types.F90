@@ -1775,6 +1775,7 @@ subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
     Rad_out%sw_abs_sfc(i2,j2,k) = Rad_in%sw_abs_sfc(i,j,k)
     Rad_out%sw_abs_snow(i2,j2,k) = Rad_in%sw_abs_snow(i,j,k)
     do m=1,NkIce ; Rad_out%sw_abs_ice(i2,j2,k,m) = Rad_in%sw_abs_ice(i,j,k,m) ; enddo
+    Rad_out%sw_abs_ocn(i2,j2,k) = Rad_in%sw_abs_ocn(i,j,k)
   enddo ; enddo ; enddo
 
 end subroutine copy_Rad_to_Rad
@@ -1790,6 +1791,8 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   integer :: m
 
   if (associated(Rad_out) .and. associated(Rad_in)) then
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
+                          Rad_out%sw_abs_ocn, complete=.false.)
     do m=1,size(Rad_in%sw_abs_ice,4)
       call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
                             Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
@@ -1800,6 +1803,8 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
                           Rad_out%sw_abs_sfc, complete=.true.)
   elseif (associated(Rad_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%sw_abs_ocn, complete=.false.)
     do m=1,size(Rad_out%sw_abs_ice,4)
       call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                             Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
@@ -1810,6 +1815,8 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
                           Rad_out%sw_abs_sfc, complete=.true.)
   elseif (associated(Rad_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
+    call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
+                          null_ptr3D, complete=.false.)
     do m=1,size(Rad_in%sw_abs_ice,4)
       call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
                             null_ptr3D, complete=.false.)
