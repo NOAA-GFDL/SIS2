@@ -2334,7 +2334,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, sIG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=sIST%Cgrid_dyn)
-    Ice%axes(1:2) = Ice%sCS%diag%axesTc%handles(1:2)
+    Ice%axes(1:3) = Ice%sCS%diag%axesTc0%handles(1:3)
 
     Ice%sCS%Time_step_slow = Time_step_slow
 
@@ -2488,7 +2488,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
     enddo ; enddo
     if (.not.slow_ice_PE) then
-      Ice%axes(1:2) = Ice%fCS%diag%axesTc%handles(1:2)
+      Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
     endif
   endif ! fast_ice_PE
 
