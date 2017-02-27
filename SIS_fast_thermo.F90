@@ -84,6 +84,12 @@ type fast_thermo_CS ; private
 
   integer :: n_fast = 0   ! The number of times update_ice_model_fast
                           ! has been called.
+  logical :: Reorder_0C_heatflux=.false. ! If true, rearrange the calculation
+                          ! of the heat fluxes projected back to 0C to work
+                          ! on each contribution separately, so that they
+                          ! can be indentically replicated if there is
+                          ! a single fast timestep per coupled timestep and
+                          ! REDO_FAST_ICE_UPDATE=True
 
   ! These are pointers to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
@@ -809,9 +815,20 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                (flux_sw(i,j,k,nir_dir) + flux_sw(i,j,k,nir_dif))
 
       dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
-      hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
-              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)* sw_tot)) - &
-             dhf_dt * Rad%t_skin(i,j,k)
+      if (CS%Reorder_0C_heatflux) then
+        ! This form seperately projects each contribution to the surface heat
+        ! flux back to its value when T=0, so that a bitwise identical result
+        ! can be obtained if the heating is redone.  The two forms are
+        ! mathematically equivalent.
+        hf_0 = ((flux_sh(i,j,k)  - dshdt(i,j,k) * Rad%t_skin(i,j,k)) + &
+                (evap(i,j,k) - devapdt(i,j,k) * Rad%t_skin(i,j,k)) * latent) - &
+               ((flux_lw(i,j,k) - dlwdt(i,j,k) * Rad%t_skin(i,j,k)) + &
+                Rad%sw_abs_sfc(i,j,k) * sw_tot)
+      else
+        hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
+                (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)* sw_tot)) - &
+               dhf_dt * Rad%t_skin(i,j,k)
+      endif
 
       SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
       do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
@@ -830,12 +847,21 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
-      dts               = ts_new - Rad%t_skin(i,j,k)
-      Rad%t_skin(i,j,k) = ts_new
-      flux_sh(i,j,k)  = flux_sh(i,j,k)  + dts * dshdt(i,j,k)
-      evap(i,j,k)  = evap(i,j,k)  + dts * devapdt(i,j,k)
-      flux_lw(i,j,k) = flux_lw(i,j,k) + dts * dlwdt(i,j,k)
+      if (CS%Reorder_0C_heatflux) then
+        ! These extended expressions for the new fluxes will reproduce answers
+        ! with redo_update_ice_model_fast.  They are mathematically equivalent
+        ! to the next set of expressions.
+        flux_sh(i,j,k) = (flux_sh(i,j,k)  - dshdt(i,j,k) * Rad%t_skin(i,j,k)) + ts_new * dshdt(i,j,k)
+        evap(i,j,k)    = (evap(i,j,k) - devapdt(i,j,k) * Rad%t_skin(i,j,k)) + ts_new * devapdt(i,j,k)
+        flux_lw(i,j,k) = (flux_lw(i,j,k)  - dlwdt(i,j,k) * Rad%t_skin(i,j,k)) + ts_new * dlwdt(i,j,k)
+      else
+        dts            = ts_new - Rad%t_skin(i,j,k)
+        flux_sh(i,j,k) = flux_sh(i,j,k) + dts * dshdt(i,j,k)
+        evap(i,j,k)  = evap(i,j,k) + dts * devapdt(i,j,k)
+        flux_lw(i,j,k) = flux_lw(i,j,k) + dts * dlwdt(i,j,k)
+      endif
       flux_lh(i,j,k) = latent * evap(i,j,k)
+      Rad%t_skin(i,j,k) = ts_new
 
       if (CS%column_check) then
         SW_absorbed = SW_abs_col(0)
@@ -1009,8 +1035,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
 !             dhf_dt * Rad%t_skin(i,j,k)
 
       dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k)
-      hf_0 = ((FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
-              (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot))
+      hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
+             (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)
 
       SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
       do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
@@ -1086,6 +1112,12 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
      "This module applies rapidly varying heat fluxes to the ice and does an "//&
      "implicit surface temperature calculation.")
 
+  call get_param(param_file, mod, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
+                 "If true, rearrange the calculation of the heat fluxes \n"//&
+                 "projected back to 0C to work on each contribution \n"//&
+                 "separately, so that they can be indentically replicated \n"//&
+                 "if there is a single fast timestep per coupled timestep \n"//&
+                 "and REDO_FAST_ICE_UPDATE=True.", default=.false.)
   call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
