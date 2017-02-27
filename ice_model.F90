@@ -190,12 +190,18 @@ end subroutine update_ice_model_slow_dn
 subroutine update_ice_model_slow(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
+  ! These ponters are used to simplify the code below.
+  type(ice_grid_type),     pointer :: sIG => NULL()
+  type(SIS_hor_grid_type), pointer :: sG => NULL()
+  type(ice_state_type),    pointer :: sIST => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
   real :: dt_slow  ! The time step over which to advance the model.
   integer :: i, j, i2, j2, i_off, j_off
 
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
 
+  sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
@@ -208,39 +214,39 @@ subroutine update_ice_model_slow(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_model_slow", Ice, check_slow=.true.)
-    call FIA_chksum("Start update_ice_model_slow", Ice%sCS%FIA, Ice%sCS%G)
-    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, Ice%sCS%G)
+    call FIA_chksum("Start update_ice_model_slow", FIA, sG)
+    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, sG)
   endif
 
   ! Store some diagnostic fluxes...
-  !$OMP parallel do default(none) shared(Ice)
-  do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
-    Ice%sCS%FIA%calving_preberg(i,j) = Ice%sCS%FIA%calving(i,j)
-    Ice%sCS%FIA%calving_hflx_preberg(i,j) = Ice%sCS%FIA%calving_hflx(i,j)
+  !$OMP parallel do default(none) shared(sG, FIA)
+  do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
+    FIA%calving_preberg(i,j) = FIA%calving(i,j)
+    FIA%calving_hflx_preberg(i,j) = FIA%calving_hflx(i,j)
   enddo ; enddo
 
   if (Ice%sCS%redo_fast_update) then
 !###Slow_rad, coszen
-!    call set_radiative_properties(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA%Tskin_cat, coszen, &
-!              Slow_rad, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%optics_CSp)
+!    call set_radiative_properties(sIST, Ice%sCS%OSS, FIA%Tskin_cat, coszen, &
+!              Slow_rad, sG, sIG, Ice%sCS%optics_CSp)
 
-    call rescale_shortwave(Ice%sCS%FIA, Ice%sCS%TSF, Ice%sCS%IST%part_size, Ice%sCS%G, Ice%sCS%IG)
+    call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
 
-    call redo_update_ice_model_fast(Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%Rad, &
-              Ice%sCS%FIA, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, &
-              Ice%sCS%G, Ice%sCS%IG)
+    call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, &
+              FIA, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, &
+              sG, sIG)
 
-    call find_excess_fluxes(Ice%sCS%FIA, Ice%sCS%TSF, Ice%sCS%XSF, Ice%sCS%IST%part_size, &
-                            Ice%sCS%G, Ice%sCS%IG)
+    call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, &
+                            sG, sIG)
   endif
 
   if (Ice%sCS%do_icebergs) then
     if (Ice%sCS%berg_windstress_bug) then
       ! This code is only required to reproduce an old bug.
-      i_off = LBOUND(Ice%flux_t,1) - Ice%sCS%G%isc
-      j_off = LBOUND(Ice%flux_t,2) - Ice%sCS%G%jsc
-      !$OMP parallel do default(none) shared(Ice,i_off,j_off) private(i2,j2)
-      do j=Ice%sCS%G%jsc,Ice%sCS%G%jec ; do i=Ice%sCS%G%isc,Ice%sCS%G%iec
+      i_off = LBOUND(Ice%flux_t,1) - sG%isc
+      j_off = LBOUND(Ice%flux_t,2) - sG%jsc
+      !$OMP parallel do default(none) shared(Ice,sG,i_off,j_off) private(i2,j2)
+      do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
         Ice%sCS%IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
         Ice%sCS%IOF%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
@@ -248,55 +254,55 @@ subroutine update_ice_model_slow(Ice)
     endif
 
     call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
-    call update_icebergs(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%IOF, Ice%sCS%FIA, Ice%icebergs, &
-                         dt_slow, Ice%sCS%G, Ice%sCS%IG, Ice%sCS%dyn_trans_CSp)
+    call update_icebergs(sIST, Ice%sCS%OSS, Ice%sCS%IOF, FIA, Ice%icebergs, &
+                         dt_slow, sG, sIG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
     if (Ice%sCS%debug) then
-      call FIA_chksum("After update_icebergs", Ice%sCS%FIA, Ice%sCS%G)
+      call FIA_chksum("After update_icebergs", FIA, sG)
     endif
   endif
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before slow_thermodynamics", Ice, check_slow=.true.)
-    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, Ice%sCS%G)
+    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG)
   endif
 
-  call slow_thermodynamics(Ice%sCS%IST, dt_slow, Ice%sCS%slow_thermo_CSp, &
-                           Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%XSF, Ice%sCS%IOF, &
-                           Ice%sCS%G, Ice%sCS%IG)
+  call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, &
+                           Ice%sCS%OSS, FIA, Ice%sCS%XSF, Ice%sCS%IOF, &
+                           sG, sIG)
 
   ! Do halo updates on the forcing fields, as necessary.  This must occur before
   ! the call to SIS_dynamics_trans, because update_icebergs does its own halo
   ! updates, and slow_thermodynamics only works on the computational domain.
-  call pass_vector(Ice%sCS%FIA%WindStr_x, Ice%sCS%FIA%WindStr_y, &
-                   Ice%sCS%G%Domain, stagger=AGRID, complete=.false.)
-  call pass_vector(Ice%sCS%FIA%WindStr_ocn_x, Ice%sCS%FIA%WindStr_ocn_y, &
-                   Ice%sCS%G%Domain, stagger=AGRID)
-  call pass_var(Ice%sCS%FIA%ice_cover, Ice%sCS%G%Domain, complete=.false.)
-  call pass_var(Ice%sCS%FIA%ice_free,  Ice%sCS%G%Domain, complete=.true.)
-  call pass_var(Ice%sCS%IST%part_size, Ice%sCS%G%Domain)
-  call pass_var(Ice%sCS%IST%mH_ice, Ice%sCS%G%Domain, complete=.false.)
-  call pass_var(Ice%sCS%IST%mH_pond, Ice%sCS%G%Domain, complete=.false.)
-  call pass_var(Ice%sCS%IST%mH_snow, Ice%sCS%G%Domain, complete=.true.)
+  call pass_vector(FIA%WindStr_x, FIA%WindStr_y, &
+                   sG%Domain, stagger=AGRID, complete=.false.)
+  call pass_vector(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y, &
+                   sG%Domain, stagger=AGRID)
+  call pass_var(FIA%ice_cover, sG%Domain, complete=.false.)
+  call pass_var(FIA%ice_free,  sG%Domain, complete=.true.)
+  call pass_var(sIST%part_size, sG%Domain)
+  call pass_var(sIST%mH_ice, sG%Domain, complete=.false.)
+  call pass_var(sIST%mH_pond, sG%Domain, complete=.false.)
+  call pass_var(sIST%mH_snow, sG%Domain, complete=.true.)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
-    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, Ice%sCS%G)
+    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG)
   endif
 
-  call SIS_dynamics_trans(Ice%sCS%IST, Ice%sCS%OSS, Ice%sCS%FIA, Ice%sCS%IOF, &
-                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, Ice%sCS%G, &
-                          Ice%sCS%IG, Ice%sCS%SIS_tracer_flow_CSp)
+  call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
+                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, sG, &
+                          sIG, Ice%sCS%SIS_tracer_flow_CSp)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, Ice%sCS%G)
-    call IST_chksum("Before set_ocean_top_fluxes", Ice%sCS%IST, Ice%sCS%G, Ice%sCS%IG)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
+    call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, Ice%sCS%IST, Ice%sCS%IOF, Ice%sCS%FIA, Ice%sCS%OSS, &
-                            Ice%sCS%G, Ice%sCS%IG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, &
+                            sG, sIG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_model_slow", Ice, check_slow=.true.)
@@ -304,7 +310,7 @@ subroutine update_ice_model_slow(Ice)
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
 !  if (Ice%sCS%bounds_check) then
-!    call Ice_public_type_bounds_check(Ice, Ice%sCS%G, "End update_ice_slow")
+!    call Ice_public_type_bounds_check(Ice, sG, "End update_ice_slow")
 !  endif
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
