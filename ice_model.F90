@@ -117,7 +117,7 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init,
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
-use SIS_fast_thermo, only : do_update_ice_atm_deposition_flux
+use SIS_fast_thermo, only : accumulate_deposition_fluxes
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo, only : redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
@@ -2600,12 +2600,14 @@ subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   enddo
 end subroutine initialize_ice_categories
 
+!> update_ice_atm_deposition_flux updates the values of any fluxes that are
+!! labeled as having the type 'air_sea_deposition'.  With the FMS coupler,
+!! these fluxes were not available when update_ice_model_fast was called.
 subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
-
   type(ice_data_type),           intent(inout) :: Ice
   type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
 
-  call do_update_ice_atm_deposition_flux( Atmos_boundary, Ice%sCS%FIA, Ice%sCS%G, Ice%fCS%IG )
+  call accumulate_deposition_fluxes(Atmos_boundary, Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG)
 
 end subroutine update_ice_atm_deposition_flux
 
