@@ -63,12 +63,6 @@ type, public :: SIS_transport_CS ; private
                               ! amounts of thick sea-ice to become thinner by
                               ! rolling is increased, or 0 to disable rolling.
                               ! Sensible values are 0 or larger than 1.
-  real :: ocean_part_min      ! The minimum value for the fractional open-ocean
-                              ! area.  This can be 0, but for some purposes it
-                              ! may be useful to set this to a miniscule value
-                              ! (like 1e-40) that will be lost to roundoff
-                              ! during any sums so that the open ocean fluxes
-                              ! can be used in interpolation across categories.
 
   logical :: readjust_categories  ! If true, readjust the distribution into
                               ! ice thickness categories after advection.
@@ -408,7 +402,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
   enddo ; enddo ; enddo
   do j=jsc,jec ; do i=isc,iec
-    part_sz(i,j,0) = max(1.0 - ice_cover(i,j), CS%ocean_part_min)
+    part_sz(i,j,0) = max(1.0 - ice_cover(i,j), IG%ocean_part_min)
   enddo ; enddo
 
   call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
@@ -1060,13 +1054,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness \n"//&
                  "categories after advection.", default=.true.)
-  call get_param(param_file, mod, "MIN_OCEAN_PARTSIZE", CS%ocean_part_min, &
-                 "The minimum value for the fractional open-ocean area. \n"//&
-                 "This can be 0, but for some purposes it may be useful \n"//&
-                 "to set this to a miniscule value (like 1e-40) that will \n"//&
-                 "be lost to roundoff during any sums so that the open \n"//&
-                 "ocean fluxes can be used in with new categories.", &
-                 units="nondim", default=0.0)
 
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)

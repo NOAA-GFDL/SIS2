@@ -29,7 +29,12 @@ type, public :: ice_grid_type
   real :: H_subroundoff !   A thickness that is so small that it can be added to
                         ! any physically meaningful positive thickness without
                         ! changing it at the bit level, in thickness units.
-
+  real :: ocean_part_min ! The minimum value for the fractional open-ocean
+                         ! area.  This can be 0, but for some purposes it
+                         ! may be useful to set this to a miniscule value
+                         ! (like 1e-40) that will be lost to roundoff
+                         ! during any sums so that the open ocean fluxes
+                         ! can be used in interpolation across categories.
   real, allocatable, dimension(:) :: &
     cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
     mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
@@ -41,10 +46,11 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_grid initializes sea ice specific grid parameters
-subroutine set_ice_grid(IG, param_file, NCat_dflt)
+subroutine set_ice_grid(IG, param_file, NCat_dflt, ocean_part_min_dflt)
   type(ice_grid_type),   intent(inout) :: IG
   type(param_file_type), intent(in)    :: param_file
   integer,               intent(in)    :: NCat_dflt
+  real, optional,        intent(in)    :: ocean_part_min_dflt
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
 ! Arguments: IG - The sea-ice specific grid structure.
@@ -52,12 +58,16 @@ subroutine set_ice_grid(IG, param_file, NCat_dflt)
 !                         model parameter values.
 !  (inout)   ice_domain - A domain with no halos that can be shared publicly.
 !  (in)      NCat_dflt - The default number of ice categories.
+!  (in,opt)  ocean_part_min_dflt - The default value for the minimum open water area.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
 
 ! character(len=200) :: mesg
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
+  real :: opm_dflt
+
+  opm_dflt = 0.0 ; if (present(ocean_part_min_dflt)) opm_dflt = ocean_part_min_dflt
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mod_nm, version)
@@ -99,6 +109,17 @@ subroutine set_ice_grid(IG, param_file, NCat_dflt)
                default=1.0)
   IG%kg_m2_to_H = 1.0 / IG%H_to_kg_m2
   IG%H_subroundoff = 1e-30*IG%kg_m2_to_H
+
+  call get_param(param_file, mod_nm, "MIN_OCEAN_PARTSIZE", IG%ocean_part_min, &
+                 "The minimum value for the fractional open-ocean area. \n"//&
+                 "This can be 0, but for some purposes it may be useful \n"//&
+                 "to set this to a miniscule value (like 1e-40) that will \n"//&
+                 "be lost to roundoff during any sums so that the open \n"//&
+                 "ocean fluxes can be used in with new categories.", &
+                 units="nondim", default=opm_dflt)
+  if ((IG%ocean_part_min < 0.0) .or. (IG%ocean_part_min > 1.0e-20)) &
+    call SIS_error(FATAL, "MIN_OCEAN_PARTSIZE has been set outside of the valid"//&
+                   "range of 0 to 1e-20.")
 
   call allocate_ice_metrics(IG)
 

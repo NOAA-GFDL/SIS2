@@ -104,12 +104,6 @@ type slow_thermo_CS ; private
                             ! the thinest cells to attain similar thicknesses,
                             ! or a negative number to apply the frazil flux
                             ! uniformly, in s.
-  real :: ocean_part_min    ! The minimum value for the fractional open-ocean
-                            ! area.  This can be 0, but for some purposes it
-                            ! may be useful to set this to a miniscule value
-                            ! (like 1e-40) that will be lost to roundoff
-                            ! during any sums so that the open ocean fluxes
-                            ! can be used in interpolation across categories.
 
   logical :: do_ridging     !   If true, apply a ridging scheme to the convergent
                             ! ice.  The original SIS2 implementation is based on
@@ -781,7 +775,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   !$OMP do
   do j=jsc,jec ; do i=isc,iec
     part_ocn = 0.0
-    if (IST%part_size(i,j,0) > CS%ocean_part_min) part_ocn = IST%part_size(i,j,0)
+    if (IST%part_size(i,j,0) > IG%ocean_part_min) part_ocn = IST%part_size(i,j,0)
 
     IOF%flux_sh_ocn_top(i,j) = part_ocn * FIA%flux_sh_top(i,j,0)
     IOF%evap_ocn_top(i,j) = part_ocn * FIA%evap_top(i,j,0)
@@ -970,7 +964,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       endif ; enddo
     endif
 
-    if (IST%part_size(i,j,0) > CS%ocean_part_min) then
+    if (IST%part_size(i,j,0) > IG%ocean_part_min) then
       ! Combine the ice-free part size with one of the categories.
       !   Whether or not this is also applied when part_size(i,j,0)==0 changes
       ! answers at roundoff because (t*h)*(1/h) /= t.
@@ -985,7 +979,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
           IST%t_surf(i,j,k) = OSS%T_fr_ocn(i,j) + T_0degC
       endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
-      IST%part_size(i,j,0) = CS%ocean_part_min
+      IST%part_size(i,j,0) = IG%ocean_part_min
     endif
 
     if (CS%filling_frazil) then
@@ -1341,13 +1335,6 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                "thinest cells to attain similar thicknesses, or a negative \n"//&
                "number to apply the frazil flux uniformly.", default=0.0, &
                units="s", do_not_log=.not.CS%filling_frazil)
-  call get_param(param_file, mod, "MIN_OCEAN_PARTSIZE", CS%ocean_part_min, &
-                 "The minimum value for the fractional open-ocean area. \n"//&
-                 "This can be 0, but for some purposes it may be useful \n"//&
-                 "to set this to a miniscule value (like 1e-40) that will \n"//&
-                 "be lost to roundoff during any sums so that the open \n"//&
-                 "ocean fluxes can be used in with new categories.", &
-                 units="nondim", default=0.0)
 
   call get_param(param_file, mod, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
                  "If true, restore the sea ice state toward climatology.", &
