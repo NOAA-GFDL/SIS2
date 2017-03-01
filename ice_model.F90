@@ -121,7 +121,7 @@ use SIS_fast_thermo, only : accumulate_deposition_fluxes, convert_frost_to_snow
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo, only : redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
-use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end
+use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
 use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
@@ -190,11 +190,12 @@ end subroutine update_ice_model_slow_dn
 subroutine update_ice_model_slow(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
-  ! These ponters are used to simplify the code below.
+  ! These pointers are used to simplify the code below.
   type(ice_grid_type),     pointer :: sIG => NULL()
   type(SIS_hor_grid_type), pointer :: sG => NULL()
   type(ice_state_type),    pointer :: sIST => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(ice_rad_type),      pointer :: Rad => NULL()
   real :: dt_slow  ! The time step over which to advance the model.
   integer :: i, j, i2, j2, i_off, j_off
 
@@ -202,6 +203,7 @@ subroutine update_ice_model_slow(Ice)
       "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
+  Rad => Ice%sCS%Rad
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
@@ -226,9 +228,8 @@ subroutine update_ice_model_slow(Ice)
   enddo ; enddo
 
   if (Ice%sCS%redo_fast_update) then
-!###Slow_rad, coszen
-!    call set_radiative_properties(sIST, Ice%sCS%OSS, FIA%Tskin_cat, coszen, &
-!              Slow_rad, sG, sIG, Ice%sCS%optics_CSp)
+    call set_ice_optics(sIST, Ice%sCS%sOSS, Rad%Tskin_Rad, Rad%coszen_lastrad, &
+                        Rad, sG, sIG, Ice%sCS%optics_CSp)
 
     call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
 
@@ -893,7 +894,7 @@ end subroutine set_ice_surface_fields
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   type(ice_data_type),        intent(inout) :: Ice
-  type(ice_state_type),       intent(inout) :: IST
+  type(ice_state_type),       intent(in)    :: IST
   type(simple_OSS_type),      intent(in)    :: OSS
   type(ice_rad_type),         intent(inout) :: Rad
   type(fast_ice_avg_type),    intent(inout) :: FIA
@@ -1020,6 +1021,16 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
     endif ; enddo ; enddo ; enddo
   endif
+  
+  !$OMP parallel do default(shared)
+  do j=jsc,jec
+    do k=1,ncat ; do i=isc,iec
+      Rad%Tskin_rad(i,j,k) = Rad%t_skin(i,j,k)
+    enddo ; enddo
+    do i=isc,iec
+      Rad%coszen_lastrad(i,j) = Rad%coszen_nextrad(i,j)
+    enddo
+  enddo
 
   if (fCS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
@@ -1108,6 +1119,59 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     call Ice_public_type_bounds_check(Ice, G, "End set_ice_surface_state")
 
 end subroutine set_ice_surface_state
+
+
+subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
+  type(ice_state_type),    intent(in)    :: IST
+  type(simple_OSS_type),   intent(in)    :: OSS
+  type(SIS_hor_grid_type), intent(in)    :: G
+  type(ice_grid_type),     intent(in)    :: IG
+  real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
+                           intent(in)    :: Tskin_ice 
+  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
+                           intent(in)    :: coszen  
+  type(ice_rad_type),      intent(inout) :: Rad
+  type(SIS_optics_CS),     intent(in)    :: optics_CSp
+
+  real, dimension(IG%NkIce) :: sw_abs_lay
+  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: albedos(4)
+  real :: avg_alb
+!  type(time_type) :: dt_r   ! A temporary radiation timestep.
+
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
+  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
+  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
+  H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
+
+  if (slab_ice) then
+    !$OMP parallel do default(shared) private(avg_alb)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
+               Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), avg_alb)
+    endif ; enddo ; enddo ; enddo
+  else
+    !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+               IST%mH_ice(i,j,k)*H_to_m_ice, Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
+               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
+               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+               optics_CSp, IST%ITV, coszen_in=coszen(i,j))
+
+      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+
+    endif ; enddo ; enddo ; enddo
+  endif
+end subroutine set_ice_optics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! update_ice_model_fast - records fluxes (in Ice) and calculates ice temp. on  !

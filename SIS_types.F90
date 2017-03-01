@@ -339,10 +339,12 @@ type ice_rad_type
 
   ! The ice skin temperature that can next be used for radiation
   real, allocatable, dimension(:,:,:) :: &
-    t_skin      ! The surface skin temperature as calculated by the most
-                ! recent fast atmospheric timestep, or a value filled in
-                ! from other ice categories or the local freezing point of
-                ! seawater when there is no ice at all, in degrees Celsius.
+    t_skin, &   !< The surface skin temperature as calculated by the most
+                !! recent fast atmospheric timestep, or a value filled in
+                !! from other ice categories or the local freezing point of
+                !! seawater when there is no ice at all, in degrees Celsius.
+    Tskin_Rad   !< The surface skin temperature that was most recently used in
+                !! ice optics calculations, in degrees Celsius.
   ! Shortwave absorption parameters that are set in ice_optics.
   real, allocatable, dimension(:,:,:) :: &
     sw_abs_sfc , &  !< The fraction of the absorbed shortwave radiation that is
@@ -360,6 +362,8 @@ type ice_rad_type
                     !! absorbed in each of the ice layers, nondim, <=1.
 
   real, allocatable, dimension(:,:)   :: &
+    coszen_lastrad, & !< Cosine of the solar zenith angle averaged
+                    !! over the last radiation timestep, nondim.
     coszen_nextrad  !< Cosine of the solar zenith angle averaged
                     !! over the next radiation timestep, nondim.
 
@@ -667,6 +671,7 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
+  allocate(Rad%Tskin_rad(isd:ied, jsd:jed, CatIce)) ; Rad%Tskin_rad(:,:,:) = 0.0
 
   allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
   allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
@@ -675,6 +680,7 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
 
   allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
+  allocate(Rad%coszen_lastrad(isd:ied, jsd:jed)) ; Rad%coszen_lastrad(:,:) = 0.0
 
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
                                domain=mpp_domain, mandatory=.false.)
@@ -695,6 +701,7 @@ subroutine alloc_ice_rad(Rad, HI, IG)
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
+  allocate(Rad%Tskin_rad(isd:ied, jsd:jed, CatIce)) ; Rad%Tskin_rad(:,:,:) = 0.0
 
   allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
   allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
@@ -703,6 +710,7 @@ subroutine alloc_ice_rad(Rad, HI, IG)
   allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
 
   allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
+  allocate(Rad%coszen_lastrad(isd:ied, jsd:jed)) ; Rad%coszen_lastrad(:,:) = 0.0
 
 end subroutine alloc_ice_rad
 
@@ -1776,7 +1784,13 @@ subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
     Rad_out%sw_abs_snow(i2,j2,k) = Rad_in%sw_abs_snow(i,j,k)
     do m=1,NkIce ; Rad_out%sw_abs_ice(i2,j2,k,m) = Rad_in%sw_abs_ice(i,j,k,m) ; enddo
     Rad_out%sw_abs_ocn(i2,j2,k) = Rad_in%sw_abs_ocn(i,j,k)
+
+    Rad_out%tskin_rad(i2,j2,k) = Rad_in%tskin_rad(i,j,k)
   enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off
+    Rad_out%coszen_lastrad(i2,j2) = Rad_in%coszen_lastrad(i,j)
+  enddo ; enddo
 
 end subroutine copy_Rad_to_Rad
 
@@ -1787,10 +1801,12 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   type(domain2d),     intent(in) :: domain_out !< The target data domain.
 
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
-  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
   integer :: m
 
   if (associated(Rad_out) .and. associated(Rad_in)) then
+    call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
+                          Rad_out%tskin_rad, complete=.false.)
     call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
                           Rad_out%sw_abs_ocn, complete=.false.)
     do m=1,size(Rad_in%sw_abs_ice,4)
@@ -1801,8 +1817,12 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
                           Rad_out%sw_abs_snow, complete=.false.)
     call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
                           Rad_out%sw_abs_sfc, complete=.true.)
+    call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
+                          Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
+    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
+                          Rad_out%tskin_rad, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           Rad_out%sw_abs_ocn, complete=.false.)
     do m=1,size(Rad_out%sw_abs_ice,4)
@@ -1813,8 +1833,12 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
                           Rad_out%sw_abs_snow, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                           Rad_out%sw_abs_sfc, complete=.true.)
+    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
+                          Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
+    call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
+                          null_ptr3D, complete=.false.)
     call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
                           null_ptr3D, complete=.false.)
     do m=1,size(Rad_in%sw_abs_ice,4)
@@ -1825,6 +1849,8 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
                           null_ptr3D, complete=.false.)
     call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
                           null_ptr3D, complete=.true.)
+    call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
+                          null_ptr2D, complete=.true.)
   else
     call SIS_error(FATAL, "redistribute_Rad_to_Rad called with "//&
                           "neither Rad_in nor Rad_out associated.")
@@ -1946,8 +1972,8 @@ subroutine dealloc_ice_rad(Rad)
 
   deallocate(Rad%sw_abs_sfc, Rad%sw_abs_snow, Rad%sw_abs_ice)
   deallocate(Rad%sw_abs_ocn, Rad%sw_abs_int)
-  deallocate(Rad%coszen_nextrad)
-  deallocate(Rad%T_skin)
+  deallocate(Rad%coszen_nextrad, Rad%coszen_lastrad)
+  deallocate(Rad%T_skin, Rad%Tskin_rad)
 
   deallocate(Rad)
 end subroutine dealloc_ice_rad
