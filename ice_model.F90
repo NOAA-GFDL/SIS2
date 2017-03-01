@@ -117,7 +117,7 @@ use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init,
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
-use SIS_fast_thermo, only : accumulate_deposition_fluxes
+use SIS_fast_thermo, only : accumulate_deposition_fluxes, convert_frost_to_snow
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo, only : redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
@@ -239,6 +239,8 @@ subroutine update_ice_model_slow(Ice)
     call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, &
                             sG, sIG)
   endif
+
+  call convert_frost_to_snow(FIA, sG, sIG)
 
   if (Ice%sCS%do_icebergs) then
     if (Ice%sCS%berg_windstress_bug) then

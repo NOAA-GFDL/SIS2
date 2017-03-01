@@ -65,7 +65,7 @@ use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 implicit none ; private
 
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
-public :: accumulate_deposition_fluxes
+public :: accumulate_deposition_fluxes, convert_frost_to_snow
 public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
 public :: redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
 
@@ -282,10 +282,10 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
       ! Copy radiation fields from the fast to the slow states.
       if (k>0) FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
       ! Convert frost forming atop sea ice into frozen precip.
-      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
-        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
-        FIA%evap_top(i,j,k) = 0.0
-      endif
+!      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
+!        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
+!        FIA%evap_top(i,j,k) = 0.0
+!      endif
       do n=1,FIA%num_tr_fluxes
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * I_avc
       enddo
@@ -1064,10 +1064,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
       FIA%flux_lh_top(i,j,k) = latent * FIA%evap_top(i,j,k)
 
       ! Convert frost forming atop sea ice into frozen precip.
-      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
-        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
-        FIA%evap_top(i,j,k) = 0.0
-      endif
+!      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
+!        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
+!        FIA%evap_top(i,j,k) = 0.0
+!      endif
 !    else ! IST%mH_ice <= 0
 !      flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
 
@@ -1084,6 +1084,22 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
     call IST_bounds_check(IST, G, IG, "End of redo_update_ice_fast", Rad=Rad) !, OSS=sOSS)
 
 end subroutine redo_update_ice_model_fast
+
+!> Convert negative evaporation over ice (i.e. frost formation) into snow.
+subroutine convert_frost_to_snow(FIA, G, IG)
+  type(fast_ice_avg_type),       intent(inout) :: FIA
+  type(SIS_hor_grid_type),       intent(in)    :: G
+  type(ice_grid_type),           intent(in)    :: IG
+
+  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (FIA%evap_top(i,j,k) < 0.0) then
+    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
+    FIA%evap_top(i,j,k) = 0.0
+  endif ; enddo ; enddo ; enddo
+
+end subroutine convert_frost_to_snow
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_fast_thermo_init - initializes the parameters and diagnostics associated
