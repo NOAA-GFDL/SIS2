@@ -1780,11 +1780,6 @@ subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
 
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    Rad_out%sw_abs_sfc(i2,j2,k) = Rad_in%sw_abs_sfc(i,j,k)
-    Rad_out%sw_abs_snow(i2,j2,k) = Rad_in%sw_abs_snow(i,j,k)
-    do m=1,NkIce ; Rad_out%sw_abs_ice(i2,j2,k,m) = Rad_in%sw_abs_ice(i,j,k,m) ; enddo
-    Rad_out%sw_abs_ocn(i2,j2,k) = Rad_in%sw_abs_ocn(i,j,k)
-
     Rad_out%tskin_rad(i2,j2,k) = Rad_in%tskin_rad(i,j,k)
   enddo ; enddo ; enddo
   do j=jsc,jec ; do i=isc,iec
@@ -1794,6 +1789,9 @@ subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
 
 end subroutine copy_Rad_to_Rad
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> redistribute_Rad_to_Rad redistributes the computational domain of several fields
+!! from one ice_rad_type into the computational domain of another ice_rad_type.
 subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   type(ice_rad_type), pointer    :: Rad_in     !< The ice_rad_type that is being copied from (intent in).
   type(ice_rad_type), pointer    :: Rad_out    !< The ice_rad_type that is being copied into (intent inout).
@@ -1806,48 +1804,18 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
 
   if (associated(Rad_out) .and. associated(Rad_in)) then
     call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
-                          Rad_out%tskin_rad, complete=.false.)
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
-                          Rad_out%sw_abs_ocn, complete=.false.)
-    do m=1,size(Rad_in%sw_abs_ice,4)
-      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
-                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
-    enddo
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
-                          Rad_out%sw_abs_snow, complete=.false.)
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
-                          Rad_out%sw_abs_sfc, complete=.true.)
+                          Rad_out%tskin_rad, complete=.true.)
     call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
                           Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
     call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          Rad_out%tskin_rad, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          Rad_out%sw_abs_ocn, complete=.false.)
-    do m=1,size(Rad_out%sw_abs_ice,4)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            Rad_out%sw_abs_ice(:,:,:,m), complete=.false.)
-    enddo
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          Rad_out%sw_abs_snow, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          Rad_out%sw_abs_sfc, complete=.true.)
+                          Rad_out%tskin_rad, complete=.true.)
     call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
     call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_ocn, domain_out, &
-                          null_ptr3D, complete=.false.)
-    do m=1,size(Rad_in%sw_abs_ice,4)
-      call mpp_redistribute(domain_in, Rad_in%sw_abs_ice(:,:,:,m), domain_out, &
-                            null_ptr3D, complete=.false.)
-    enddo
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_snow, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, Rad_in%sw_abs_sfc, domain_out, &
                           null_ptr3D, complete=.true.)
     call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
                           null_ptr2D, complete=.true.)
@@ -1855,7 +1823,6 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
     call SIS_error(FATAL, "redistribute_Rad_to_Rad called with "//&
                           "neither Rad_in nor Rad_out associated.")
   endif
-
 
 end subroutine redistribute_Rad_to_Rad
 
