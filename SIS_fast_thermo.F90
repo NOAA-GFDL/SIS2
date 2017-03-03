@@ -48,7 +48,7 @@ use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type
-
+use SIS_optics, only : ice_optics_SIS2, SIS_optics_CS, slab_ice_optics
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
 use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
@@ -940,13 +940,14 @@ end subroutine accumulate_deposition_fluxes
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing, using fluxes that have been determined during previous calls
 !!   to do_update_ice_model_fast and stored in the fast_ice_avg_type.
-subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, &
+subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                                       Time_step, CS, G, IG )
   type(ice_state_type),      intent(inout) :: IST
   type(simple_OSS_type),     intent(in)    :: sOSS
   type(ice_rad_type),        intent(inout) :: Rad
   type(fast_ice_avg_type),   intent(inout) :: FIA
   type(total_sfc_flux_type), intent(in)    :: TSF
+  type(SIS_optics_CS),       intent(in)    :: optics_CSp
   type(time_type),           intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
   type(fast_thermo_CS),      pointer       :: CS
   type(SIS_hor_grid_type),   intent(inout) :: G
@@ -959,9 +960,15 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, &
   real :: dt_here, ts_new, dts, hf, hfd, latent
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
-  real :: sw_tot ! sum over dir/dif vis/nir components
+  real :: sw_tot  ! sum over dir/dif vis/nir components
   real :: LatHtFus      ! The latent heat of fusion of ice in J/kg.
   real :: LatHtVap      ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: rho_ice       ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow      ! The nominal density of snow in kg m-3.
+  real, dimension(size(FIA%flux_sw_top,4)) :: &
+    albedos             ! The ice albedos by directional and wavelength band.
+  real, dimension(IG%NkIce) :: &
+    sw_abs_lay          ! The fractional shortwave absorption by each ice layer.
   real :: H_to_m_ice    ! The specific volumes of ice and snow times the
   real :: H_to_m_snow   ! conversion factor from thickness units, in m H-1.
   logical :: slab_ice   ! If true, use the very old slab ice thermodynamics,
@@ -994,7 +1001,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, IG)
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
+                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, &
+                             rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
+  H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
   !
   ! implicit update of ice surface temperature
@@ -1011,6 +1020,26 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, &
 !  do j=jsc,jec ; do i=isc,iec
 !    FIA%bheat(i,j) = sOSS%bheat(i,j)
 !  enddo ; enddo
+
+  !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
+  do j=jsc,jec ; if (slab_ice) then
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
+               Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), albedos(1))
+    endif ; enddo ; enddo
+  else
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+               IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
+               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
+               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+               optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
+
+      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+
+    endif ; enddo ; enddo
+  endif ; enddo
 
 !    Determine whether any shortwave frequency bands exceed their intensity
 ! during the atmospheric steps and if so scales them back for energy

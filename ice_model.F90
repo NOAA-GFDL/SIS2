@@ -228,15 +228,14 @@ subroutine update_ice_model_slow(Ice)
   enddo ; enddo
 
   if (Ice%sCS%redo_fast_update) then
-    call set_ice_optics(sIST, Ice%sCS%sOSS, Rad%Tskin_Rad, Rad%coszen_lastrad, &
-                        Rad, sG, sIG, Ice%sCS%optics_CSp)
-
-! This is now inside redo_update_ice_model_fast.
+! These are now inside redo_update_ice_model_fast.
+!    call set_ice_optics(sIST, Ice%sCS%sOSS, Rad%Tskin_Rad, Rad%coszen_lastrad, &
+!                        Rad, sG, sIG, Ice%sCS%optics_CSp)
 !    call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
 
     call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, &
-              FIA, Ice%sCS%TSF, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, &
-              sG, sIG)
+              FIA, Ice%sCS%TSF, Ice%sCS%optics_CSp, Ice%sCS%Time_step_slow, &
+              Ice%sCS%fast_thermo_CSp, sG, sIG)
 
     call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, &
                             sG, sIG)
