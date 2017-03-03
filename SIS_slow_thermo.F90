@@ -173,7 +173,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(ice_grid_type),       intent(in) :: IG
   real,                      intent(in) :: Idt_slow
 
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn
   real :: sw_cat
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
 
@@ -213,13 +213,18 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
     if (FIA%id_sw>0) call post_data(FIA%id_sw, net_sw, CS%diag)
     if (FIA%id_albedo>0) then
       do j=jsc,jec ; do i=isc,iec
+        sw_dn(i,j) = 0.0
+        do b=1,size(FIA%flux_sw_dn,3)
+          sw_dn(i,j) = sw_dn(i,j) + FIA%flux_sw_dn(i,j,b)
+        enddo
+
         if (G%mask2dT(i,j)<=0.5) then
           tmp2d(i,j) = -1.0 ! This is land.
-        elseif ((FIA%flux_sw_dn(i,j) > 0.0)) then
+        elseif ((sw_dn(i,j) > 0.0)) then
           ! The 10.0 below is deliberate.  An albedo of down to -9 can be reported
           ! for detecting inconsistent net_sw and sw_dn.
-          tmp2d(i,j) = (FIA%flux_sw_dn(i,j) - min(net_sw(i,j), 10.0*FIA%flux_sw_dn(i,j))) / &
-                       FIA%flux_sw_dn(i,j)
+          tmp2d(i,j) = (sw_dn(i,j) - min(net_sw(i,j), 10.0*sw_dn(i,j))) / &
+                       sw_dn(i,j)
         else
           tmp2d(i,j) = 0.0 ! What does the albedo mean at night?
         endif

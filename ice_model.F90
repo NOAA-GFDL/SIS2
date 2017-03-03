@@ -1323,12 +1323,16 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   type(time_type),               intent(in)    :: Time_start, Time_end
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
+  real, dimension(G%isd:G%ied, G%jsd:G%jed,size(FIA%flux_sw_dn,3)) :: &
+    sw_dn_bnd  ! The downward shortwave radiation by frequency and angular band
+               ! averaged over all of the ice thickness categories, in W m-2.
   real, dimension(G%isd:G%ied) :: Tskin_avg, ice_conc
   real :: dt_diag
   real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
                     ! strictly diagnostic purposes.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
+  integer :: b
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1388,7 +1392,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     call post_data(Rad%id_lwdn, tmp_diag, CS%diag)
   endif
 
-  sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0
+  sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0 ; sw_dn_bnd(:,:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,ABT, &
 !$OMP                                  io_I,jo_I,io_A,jo_A,sw_dn,net_sw,avg_alb) &
 !$OMP                          private(i2,j2,k2,i3,j3)
@@ -1398,12 +1402,28 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_down_vis_dir(i3,j3,k2) + ABT%sw_down_vis_dif(i3,j3,k2)) + &
             (ABT%sw_down_nir_dir(i3,j3,k2) + ABT%sw_down_nir_dif(i3,j3,k2)) )
+      sw_dn_bnd(i,j,vis_dir) = sw_dn_bnd(i,j,vis_dir) + &
+                     IST%part_size(i,j,k) * ABT%sw_down_vis_dir(i3,j3,k2)
+      sw_dn_bnd(i,j,vis_dif) = sw_dn_bnd(i,j,vis_dif) + &
+                     IST%part_size(i,j,k) * ABT%sw_down_vis_dif(i3,j3,k2)
+      sw_dn_bnd(i,j,nir_dir) = sw_dn_bnd(i,j,nir_dir) + &
+                     IST%part_size(i,j,k) * ABT%sw_down_nir_dir(i3,j3,k2)
+      sw_dn_bnd(i,j,nir_dif) = sw_dn_bnd(i,j,nir_dif) + &
+                     IST%part_size(i,j,k) * ABT%sw_down_nir_dif(i3,j3,k2)
     else
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_flux_vis_dir(i3,j3,k2)/(1-Ice%albedo_vis_dir(i2,j2,k2)) + &
              ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
+      sw_dn_bnd(i,j,vis_dir) = sw_dn_bnd(i,j,vis_dir) + IST%part_size(i,j,k) * &
+            (ABT%sw_flux_vis_dir(i3,j3,k2)/(1.0-Ice%albedo_vis_dir(i2,j2,k2)))
+      sw_dn_bnd(i,j,vis_dif) = sw_dn_bnd(i,j,vis_dif) + IST%part_size(i,j,k) * &
+            (ABT%sw_flux_vis_dif(i3,j3,k2)/(1.0-Ice%albedo_vis_dif(i2,j2,k2)))
+      sw_dn_bnd(i,j,nir_dir) = sw_dn_bnd(i,j,nir_dir) + IST%part_size(i,j,k) * &
+            (ABT%sw_flux_nir_dir(i3,j3,k2)/(1.0-Ice%albedo_nir_dir(i2,j2,k2)))
+      sw_dn_bnd(i,j,nir_dif) = sw_dn_bnd(i,j,nir_dif) + IST%part_size(i,j,k) * &
+            (ABT%sw_flux_nir_dif(i3,j3,k2)/(1.0-Ice%albedo_nir_dif(i2,j2,k2)))
     endif
 
     net_sw(i,j) = net_sw(i,j) + IST%part_size(i,j,k) * ( &
@@ -1443,7 +1463,9 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   endif
 
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-    FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j) + sw_dn(i,j)
+    do b=1,size(FIA%flux_sw_dn,3)
+      FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b) + sw_dn_bnd(i,j,b)
+    enddo
   endif ; enddo ; enddo
 
   if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, CS%diag)

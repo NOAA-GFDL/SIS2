@@ -176,7 +176,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     FIA%flux_lw_top(:,:,:) = 0.0 ; FIA%flux_lh_top(:,:,:) = 0.0
     FIA%flux_sw_top(:,:,:,:) = 0.0
     FIA%lprec_top(:,:,:) = 0.0 ; FIA%fprec_top(:,:,:) = 0.0
-    FIA%flux_sw_dn(:,:) = 0.0 ; FIA%Tskin_avg(:,:) = 0.0
+    FIA%flux_sw_dn(:,:,:) = 0.0 ; FIA%Tskin_avg(:,:) = 0.0
 
     if (allocated(FIA%flux_sh0)) then
       FIA%dshdt(:,:,:) = 0.0 ; FIA%devapdt(:,:,:) = 0.0 ; FIA%dlwdt(:,:,:) = 0.0
@@ -290,8 +290,10 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
         FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * I_avc
       enddo
     enddo ; enddo
+    do b=1,nb ; do i=isc,iec
+      FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b)*I_avc
+    enddo ; enddo
     do i=isc,iec
-      FIA%flux_sw_dn(i,j) = FIA%flux_sw_dn(i,j)*I_avc
       FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * I_avc
     enddo
   enddo
