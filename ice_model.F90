@@ -231,10 +231,11 @@ subroutine update_ice_model_slow(Ice)
     call set_ice_optics(sIST, Ice%sCS%sOSS, Rad%Tskin_Rad, Rad%coszen_lastrad, &
                         Rad, sG, sIG, Ice%sCS%optics_CSp)
 
-    call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
+! This is now inside redo_update_ice_model_fast.
+!    call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
 
     call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, &
-              FIA, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, &
+              FIA, Ice%sCS%TSF, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, &
               sG, sIG)
 
     call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, &
@@ -1393,9 +1394,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   endif
 
   sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0 ; sw_dn_bnd(:,:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,Ice,ABT, &
-!$OMP                                  io_I,jo_I,io_A,jo_A,sw_dn,net_sw,avg_alb) &
-!$OMP                          private(i2,j2,k2,i3,j3)
+  !$OMP parallel do default(shared) private(i2,j2,k2,i3,j3)
   do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
     if (associated(ABT%sw_down_vis_dir)) then

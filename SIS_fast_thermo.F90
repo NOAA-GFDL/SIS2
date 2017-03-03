@@ -940,16 +940,17 @@ end subroutine accumulate_deposition_fluxes
 !!   profile, subject to the constraint that ice and snow temperatures are never
 !!   above freezing, using fluxes that have been determined during previous calls
 !!   to do_update_ice_model_fast and stored in the fast_ice_avg_type.
-subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
+subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, &
                                       Time_step, CS, G, IG )
-  type(ice_state_type),          intent(inout) :: IST
-  type(simple_OSS_type),         intent(in)    :: sOSS
-  type(ice_rad_type),            intent(inout) :: Rad
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(time_type),               intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
-  type(fast_thermo_CS),          pointer       :: CS
-  type(SIS_hor_grid_type),       intent(inout) :: G
-  type(ice_grid_type),           intent(in)    :: IG
+  type(ice_state_type),      intent(inout) :: IST
+  type(simple_OSS_type),     intent(in)    :: sOSS
+  type(ice_rad_type),        intent(inout) :: Rad
+  type(fast_ice_avg_type),   intent(inout) :: FIA
+  type(total_sfc_flux_type), intent(in)    :: TSF
+  type(time_type),           intent(in)    :: Time_step  ! The amount of time over which to advance the ice.
+  type(fast_thermo_CS),      pointer       :: CS
+  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_grid_type),       intent(in)    :: IG
 
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow in degC.
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
@@ -959,15 +960,20 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
   real :: sw_tot ! sum over dir/dif vis/nir components
-  real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
-  real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
-  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
-                         ! with effectively zero heat capacity of ice and snow.
+  real :: LatHtFus      ! The latent heat of fusion of ice in J/kg.
+  real :: LatHtVap      ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: H_to_m_ice    ! The specific volumes of ice and snow times the
+  real :: H_to_m_snow   ! conversion factor from thickness units, in m H-1.
+  logical :: slab_ice   ! If true, use the very old slab ice thermodynamics,
+                        ! with effectively zero heat capacity of ice and snow.
+  real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
+    sw_tot_band         !   The total shortwave radiation by band, integrated
+                        ! across the ice thickness partitions.
+  real    :: rescale    ! A rescaling factor between 0 and 1.
   type(time_type) :: Dt_ice
   logical :: sent
-  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
+  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, NkIce
+  integer :: b, nb
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
   real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
@@ -981,6 +987,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top,4)
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
 
   if (CS%debug) &
@@ -1004,6 +1011,34 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, &
 !  do j=jsc,jec ; do i=isc,iec
 !    FIA%bheat(i,j) = sOSS%bheat(i,j)
 !  enddo ; enddo
+
+!    Determine whether any shortwave frequency bands exceed their intensity
+! during the atmospheric steps and if so scales them back for energy
+! conservation.  If the shortwave heating in any bands have decreased, the
+! difference will later be applied to the ocean.
+  do j=jsc,jec
+    sw_tot_band(:,:) = 0.0
+    do k=0,ncat ; do b=1,nb ; do i=isc,iec
+      sw_tot_band(i,b) = sw_tot_band(i,b) + &
+                         IST%part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+    enddo ; enddo ; enddo
+
+    do i=isc,iec ; do b=1,nb-1,2
+      ! Ice can scatter direct shortwave into diffuse without loss of energy
+      ! conservation, so it only the total of the shortwave in each frequency
+      ! band that needs to be considered.  If there are more than 2 angular
+      ! bands (direct and diffuse), this code will need to be modified.
+      if (abs(sw_tot_band(i,b) + sw_tot_band(i,b+1)) > &
+          abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1))) then
+        rescale = abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1)) / &
+                  abs(sw_tot_band(i,b) + sw_tot_band(i,b+1))
+        do k=0,ncat
+          FIA%flux_sw_top(i,j,k,b) = rescale * FIA%flux_sw_top(i,j,k,b) 
+          FIA%flux_sw_top(i,j,k,b+1) = rescale * FIA%flux_sw_top(i,j,k,b+1) 
+        enddo
+      endif
+    enddo ; enddo
+  enddo
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,enth_liq_0,&
 !$OMP                                  dt_here,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
