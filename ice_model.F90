@@ -111,7 +111,6 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-use ice_thm_mod,     only : slab_ice_optics
 use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
@@ -978,49 +977,30 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, fCS%Time, &
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
-  if (slab_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,Ice,i_off,j_off, &
-!$OMP                                  H_to_m_snow,H_to_m_ice,OSS) &
-!$OMP                          private(i2,j2,k2)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), &
-               Ice%albedo(i2,j2,k2))
+  !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+    i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
+    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+             IST%mH_ice(i,j,k)*H_to_m_ice, &
+             Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
+             Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
+             Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
+             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+             fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
 
-      Ice%albedo_vis_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
-      Ice%albedo_vis_dif(i2,j2,k2) = Ice%albedo(i2,j2,k2)
-      Ice%albedo_nir_dir(i2,j2,k2) = Ice%albedo(i2,j2,k2)
-      Ice%albedo_nir_dif(i2,j2,k2) = Ice%albedo(i2,j2,k2)
-    endif ; enddo ; enddo ; enddo
-  else
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Ice,G,IG,i_off,j_off, &
-!$OMP                                  H_to_m_snow,H_to_m_ice,OSS,Rad,fCS) &
-!$OMP                          private(i2,j2,k2,sw_abs_lay)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-               IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
-               Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
-               Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
-               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
+    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
-      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+    !Niki: Is the following correct for diagnostics?
+    !   Probably this calculation of the "average" albedo should be replaced
+    ! with a calculation that weights the averaging by the fraction of the
+    ! shortwave radiation in each wavelength and orientation band.  However,
+    ! since this is only used for diagnostic purposes, making this change
+    ! might not be too urgent. -RWH
+    Ice%albedo(i2,j2,k2) = (Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
+                      +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
 
-      !Niki: Is the following correct for diagnostics?
-      !   Probably this calculation of the "average" albedo should be replaced
-      ! with a calculation that weights the averaging by the fraction of the
-      ! shortwave radiation in each wavelength and orientation band.  However,
-      ! since this is only used for diagnostic purposes, making this change
-      ! might not be too urgent. -RWH
-      Ice%albedo(i2,j2,k2) = (Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
-                        +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
-
-    endif ; enddo ; enddo ; enddo
-  endif
+  endif ; enddo ; enddo ; enddo
   
   !$OMP parallel do default(shared)
   do j=jsc,jec
@@ -1151,26 +1131,19 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
-  if (slab_ice) then
-    !$OMP parallel do default(shared) private(avg_alb)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), avg_alb)
-    endif ; enddo ; enddo ; enddo
-  else
-    !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-               IST%mH_ice(i,j,k)*H_to_m_ice, Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
-               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
-               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               optics_CSp, IST%ITV, coszen_in=coszen(i,j))
+  !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+             IST%mH_ice(i,j,k)*H_to_m_ice, Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
+             albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
+             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+             optics_CSp, IST%ITV, coszen_in=coszen(i,j))
 
-      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
-    endif ; enddo ; enddo ; enddo
-  endif
+  endif ; enddo ; enddo ; enddo
+
 end subroutine set_ice_optics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -2431,7 +2404,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init)
 
     if (Ice%sCS%redo_fast_update) then
-      call SIS_optics_init(param_file, Ice%sCS%optics_CSp)
+      call SIS_optics_init(param_file, Ice%sCS%optics_CSp, slab_optics=slab_ice)
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                                 Ice%sCS%fast_thermo_CSp)
     endif
@@ -2563,7 +2536,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call SIS_fast_thermo_init(Ice%fCS%Time, fG, Ice%fCS%IG, param_file, Ice%fCS%diag, &
                               Ice%fCS%fast_thermo_CSp)
-    call SIS_optics_init(param_file, Ice%fCS%optics_CSp)
+    call SIS_optics_init(param_file, Ice%fCS%optics_CSp, slab_optics=slab_ice)
 
     Ice%fCS%Time_step_fast = Time_step_fast
     Ice%fCS%Time_step_slow = Time_step_slow

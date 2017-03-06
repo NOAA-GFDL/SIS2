@@ -48,7 +48,7 @@ use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type
-use SIS_optics, only : ice_optics_SIS2, SIS_optics_CS, slab_ice_optics
+use SIS_optics, only : ice_optics_SIS2, SIS_optics_CS
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
 use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
@@ -1022,24 +1022,16 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 !  enddo ; enddo
 
   !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
-  do j=jsc,jec ; if (slab_ice) then
-    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      call slab_ice_optics(IST%mH_snow(i,j,k)*H_to_m_snow, IST%mH_ice(i,j,k)*H_to_m_ice, &
-               Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), albedos(1))
-    endif ; enddo ; enddo
-  else
-    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-               IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
-               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
-               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+             IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
+             albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
+             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+             optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
 
-      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
-
-    endif ; enddo ; enddo
-  endif ; enddo
+    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+  endif ; enddo ; enddo ; enddo
 
 !    Determine whether any shortwave frequency bands exceed their intensity
 ! during the atmospheric steps and if so scales them back for energy
