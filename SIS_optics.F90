@@ -4,7 +4,6 @@ module SIS_optics
 use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond
 use ice_shortwave_dEdd, only : shortwave_dEdd0, shortwave_dEdd0_set_params
 use ice_shortwave_dEdd, only : dbl_kind, int_kind, nilyr, nslyr
-use ice_thm_mod, only  : slab_ice_optics
 use SIS2_ice_thm, only : ice_thermo_type, get_SIS2_thermo_coefs, T_freeze
 ! use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
@@ -12,7 +11,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 
 implicit none ; private
 
-public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end, slab_ice_optics
+public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end
 
 type, public :: SIS_optics_CS ; private
 
