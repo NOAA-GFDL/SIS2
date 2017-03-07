@@ -67,7 +67,7 @@ implicit none ; private
 public :: do_update_ice_model_fast, SIS_fast_thermo_init, SIS_fast_thermo_end
 public :: accumulate_deposition_fluxes, convert_frost_to_snow
 public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
-public :: redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
+public :: redo_update_ice_model_fast, find_excess_fluxes
 
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
@@ -492,54 +492,6 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
 
 end subroutine find_excess_fluxes
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> rescale_shortwave determines whether any shortwave frequency bands exceed their
-!! intensity during the atmospheric steps and if so scales them back for energy
-!! conservation.  If the shortwave heating in any bands have decreased, the
-!! difference will later be applied to the ocean. 
-subroutine rescale_shortwave(FIA, TSF, part_size, G, IG)
-  type(fast_ice_avg_type),   intent(inout) :: FIA
-  type(total_sfc_flux_type), intent(in)    :: TSF
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(in)    :: IG
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-                             intent(in)    :: part_size
-
-  real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
-    sw_tot_band
-  real    :: rescale    !  A rescaling factor between 0 and 1.
-  integer :: i, j, k, m, n, b, nb, nfb, isc, iec, jsc, jec, ncat
-  integer :: isd, ied, jsd, jed
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-  nb = size(FIA%flux_sw_top,4) ; nfb = nb/2
-
-  do j=jsc,jec
-    sw_tot_band(:,:) = 0.0
-    do k=0,ncat ; do b=1,nb ; do i=isc,iec
-      sw_tot_band(i,b) = sw_tot_band(i,b) + &
-                         part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
-    enddo ; enddo ; enddo
-
-    do i=isc,iec ; do b=1,nb-1,2
-      ! Ice can scatter direct shortwave into diffuse without loss of energy
-      ! conservation, so it only the total of the shortwave in each frequency
-      ! band that needs to be considered.  If there are more than 2 angular
-      ! bands (direct and diffuse), this code will need to be modified.
-      if (abs(sw_tot_band(i,b) + sw_tot_band(i,b+1)) > &
-          abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1))) then
-        rescale = abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1)) / &
-                  abs(sw_tot_band(i,b) + sw_tot_band(i,b+1))
-        do k=0,ncat
-          FIA%flux_sw_top(i,j,k,b) = rescale * FIA%flux_sw_top(i,j,k,b) 
-          FIA%flux_sw_top(i,j,k,b+1) = rescale * FIA%flux_sw_top(i,j,k,b+1) 
-        enddo
-      endif
-    enddo ; enddo
-  enddo
-
-end subroutine rescale_shortwave
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> infill_array fills in an array with actual, interpolated or plausible values
@@ -974,15 +926,21 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   logical :: slab_ice   ! If true, use the very old slab ice thermodynamics,
                         ! with effectively zero heat capacity of ice and snow.
   real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
-    sw_tot_band         !   The total shortwave radiation by band, integrated
-                        ! across the ice thickness partitions.
+    sw_tot_ice_band     !   The total shortwave radiation by band, integrated
+                        ! across the ice thickness partitions, but not the open
+                        ! ocean partition, in W m-2.
   real    :: rescale    ! A rescaling factor between 0 and 1.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, NkIce
-  integer :: b, nb
+  integer :: b, b2, nb, nbmerge
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
+  real :: ice_sw_tot ! The sum of shortwave fluxes into the ice and snow, but
+                     ! excluding the fluxes transmitted to the ocean, in W m-2.
+  real :: TSF_sw_tot ! The total of all shortwave fluxes into the snow, ice,
+                     ! and ocean that were previouslly stored in TSF, in W m-2.
+
   real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
                      ! enthalpy units (sometimes J kg-1).
   real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
@@ -1014,7 +972,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
 !###  RESCALE THE RADIATION
 !###  IS Rad A VALID TYPE TO USE?
-!###  DO WE NEED TO UPDATE RAD%T_SKIN?  (PROBABLY ONLY FOR DIAGNOSTICS?)
+!###  DO WE NEED TO UPDATE RAD%T_SKIN?
 
 ! I do not know if this is necessary or whether it would work. - RWH
 !  do j=jsc,jec ; do i=isc,iec
@@ -1033,30 +991,49 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
   endif ; enddo ; enddo ; enddo
 
-!    Determine whether any shortwave frequency bands exceed their intensity
-! during the atmospheric steps and if so scales them back for energy
-! conservation.  If the shortwave heating in any bands have decreased, the
-! difference will later be applied to the ocean.
+  !    Determine whether the shortwave fluxes absorbed by the ice and snow in
+  ! any shortwave frequency bands (or groups of bands) exceed the total
+  ! shortwave absorption during the atmospheric steps, and if so scale them 
+  ! back for energy conservation.  If the shortwave absorption by the ice in
+  ! any bands have decreased or increased only slightly, the difference will
+  ! later be applied to the ocean.
+
+  ! Ice can scatter direct shortwave into diffuse without loss of energy
+  ! conservation, so it only the total of the shortwave in each frequency
+  ! band that needs to be considered.  The effect of setting, nbmerge=2 is to
+  ! combine direct and diffuse radiation bands of the same wavelength.
+  nbmerge = 2
+  ! Setting nbmerge=nb only considers the total of all shortwave bands, which
+  ! is appropriate considering that all heat fluxes to the ocean are currently
+  ! treated as diffuse visible light by SIS2.
+  nbmerge = nb  
+
+  !$OMP parallel do default(shared) private(sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale)
   do j=jsc,jec
-    sw_tot_band(:,:) = 0.0
-    do k=0,ncat ; do b=1,nb ; do i=isc,iec
-      sw_tot_band(i,b) = sw_tot_band(i,b) + &
-                         IST%part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
+    sw_tot_ice_band(:,:) = 0.0
+    ! Note that the flux to the ocean is deliberately omitted here.
+    ! Properly the raditive properties should be treated separately for each band.
+    do k=1,ncat ; do b=1,nb ; do i=isc,iec
+      sw_tot_ice_band(i,b) = sw_tot_ice_band(i,b) + IST%part_size(i,j,k) * &
+               ((1.0 - Rad%sw_abs_ocn(i,j,k)) * FIA%flux_sw_top(i,j,k,b))
     enddo ; enddo ; enddo
 
-    do i=isc,iec ; do b=1,nb-1,2
-      ! Ice can scatter direct shortwave into diffuse without loss of energy
-      ! conservation, so it only the total of the shortwave in each frequency
-      ! band that needs to be considered.  If there are more than 2 angular
-      ! bands (direct and diffuse), this code will need to be modified.
-      if (abs(sw_tot_band(i,b) + sw_tot_band(i,b+1)) > &
-          abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1))) then
-        rescale = abs(TSF%flux_sw(i,j,b) + TSF%flux_sw(i,j,b+1)) / &
-                  abs(sw_tot_band(i,b) + sw_tot_band(i,b+1))
-        do k=0,ncat
-          FIA%flux_sw_top(i,j,k,b) = rescale * FIA%flux_sw_top(i,j,k,b) 
-          FIA%flux_sw_top(i,j,k,b+1) = rescale * FIA%flux_sw_top(i,j,k,b+1) 
-        enddo
+    do i=isc,iec ; do b=1,nb,nbmerge
+      ice_sw_tot = 0.0 ; TSF_sw_tot = 0.0
+      do b2=0,nbmerge-1
+        ice_sw_tot = ice_sw_tot + sw_tot_ice_band(i,b+b2)
+        TSF_sw_tot = TSF_sw_tot + TSF%flux_sw(i,j,b+b2)
+      enddo
+      if (abs(ice_sw_tot) > abs(TSF_sw_tot)) then
+        rescale = abs(TSF_sw_tot) /  abs(ice_sw_tot)
+        ! Note that the shortwave flux to the ocean will be adjusted later
+        ! so that the total shortwave heat fluxes agree with the initial
+        ! calculation as passed from the atmosphere; that is where conservation
+        ! is acheived.  This is the least agressive rescaling that will avoid
+        ! having negative shortwave fluxes into the ocean.
+        do b2=0,nbmerge-1 ; do k=0,ncat
+          FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2) 
+        enddo ; enddo
       endif
     enddo ; enddo
   enddo

@@ -118,7 +118,7 @@ use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : accumulate_deposition_fluxes, convert_frost_to_snow
 use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
-use SIS_fast_thermo, only : redo_update_ice_model_fast, rescale_shortwave, find_excess_fluxes
+use SIS_fast_thermo, only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
@@ -227,11 +227,6 @@ subroutine update_ice_model_slow(Ice)
   enddo ; enddo
 
   if (Ice%sCS%redo_fast_update) then
-! These are now inside redo_update_ice_model_fast.
-!    call set_ice_optics(sIST, Ice%sCS%sOSS, Rad%Tskin_Rad, Rad%coszen_lastrad, &
-!                        Rad, sG, sIG, Ice%sCS%optics_CSp)
-!    call rescale_shortwave(FIA, Ice%sCS%TSF, sIST%part_size, sG, sIG)
-
     call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, &
               FIA, Ice%sCS%TSF, Ice%sCS%optics_CSp, Ice%sCS%Time_step_slow, &
               Ice%sCS%fast_thermo_CSp, sG, sIG)

@@ -499,6 +499,7 @@ subroutine add_excess_fluxes(IOF, XSF, G)
   type(total_sfc_flux_type), intent(in)    :: XSF
   type(SIS_hor_grid_type),   intent(inout) :: G
 
+  real :: sw_comb  ! A combination of two downward shortwave fluxes, in W m-2.
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
@@ -510,18 +511,59 @@ subroutine add_excess_fluxes(IOF, XSF, G)
     IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) - XSF%evap(i,j)
     IOF%flux_lw_ocn_top(i,j) = IOF%flux_lw_ocn_top(i,j) - XSF%flux_lw(i,j)
     IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) - XSF%flux_lh(i,j)
-    do b=2,nb,2
-      ! Combine the direct and diffuse excess fluxes and convert them into
-      ! diffuse fluxes, since the ice scatters any light passing through it.
-      IOF%flux_sw_ocn(i,j,b) = IOF%flux_sw_ocn(i,j,b) - &
-            (XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
-    enddo
+
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - XSF%lprec(i,j)
     IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - XSF%fprec(i,j)
 
     do n=1,XSF%num_tr_fluxes
       IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) - XSF%tr_flux(i,j,n)
     enddo
+
+    ! The shortwave fluxes are more complicated because there are multiple bands
+    ! and none of these should have negative fluxes if it can be avoided.
+    do b=2,nb,2
+      ! Combine the direct and diffuse excess fluxes and convert them into
+      ! diffuse fluxes, since the ice scatters any light passing through it.
+      IOF%flux_sw_ocn(i,j,b) = IOF%flux_sw_ocn(i,j,b) - &
+            (XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
+
+      ! Rearrange shortwave fluxes to prevent any band from having a negative
+      ! flux.  (The ocean does not glow.)
+      if (IOF%flux_sw_ocn(i,j,b) < 0.0) then
+        sw_comb = IOF%flux_sw_ocn(i,j,b) + IOF%flux_sw_ocn(i,j,b-1)
+        if (sw_comb >= 0.0) then
+          ! Borrow from the direct flux to bring the diffuse flux up to 0.
+          IOF%flux_sw_ocn(i,j,b-1) = sw_comb
+          IOF%flux_sw_ocn(i,j,b) = 0.0
+        elseif ((b==VIS_DIF) .or. (b-1==VIS_DIF)) then
+          ! The visible diffuse flux is the total in this band
+          IOF%flux_sw_ocn(i,j,b) = sw_comb
+          IOF%flux_sw_ocn(i,j,b-1) = 0.0
+        else
+          ! Borrow from the direct visible flux to bring both the fluxes at this
+          ! wavelength up to zero.  (This might be a bad idea that should be revisited.)
+          IOF%flux_sw_ocn(i,j,VIS_DIF) = IOF%flux_sw_ocn(i,j,VIS_DIF) + sw_comb
+          IOF%flux_sw_ocn(i,j,b) = 0.0
+          IOF%flux_sw_ocn(i,j,b-1) = 0.0
+        endif
+      endif
+    enddo
+    if (IOF%flux_sw_ocn(i,j,VIS_DIF) < 0.0) then
+      ! Borrow from other positive bands if the visible diffuse flux is negative.
+      do b=1,nb
+        if ((b /= VIS_DIF) .and. (IOF%flux_sw_ocn(i,j,b) > 0.0)) then
+          sw_comb = IOF%flux_sw_ocn(i,j,VIS_DIF) + IOF%flux_sw_ocn(i,j,b)
+          if (sw_comb < 0.0) then
+            IOF%flux_sw_ocn(i,j,VIS_DIF) = sw_comb
+            IOF%flux_sw_ocn(i,j,b) = 0.0
+          else
+            IOF%flux_sw_ocn(i,j,b) = sw_comb
+            IOF%flux_sw_ocn(i,j,VIS_DIF) = 0.0
+            exit ! Break out of the do b loop.
+          endif
+        endif
+      enddo
+    endif
   enddo ; enddo
 
 end subroutine add_excess_fluxes
