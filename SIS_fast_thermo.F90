@@ -929,9 +929,14 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     sw_tot_ice_band     !   The total shortwave radiation by band, integrated
                         ! across the ice thickness partitions, but not the open
                         ! ocean partition, in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce,size(FIA%flux_sw_top,4)) :: &
+    sw_top_chg          !   The change in the shortwave down due to the new albedos.
+  real    :: flux_sw_prev  ! The previous value of flux_sw_top, in W m-2.
   real    :: rescale    ! A rescaling factor between 0 and 1.
   type(time_type) :: Dt_ice
   logical :: sent
+  logical :: do_any_j
+  logical :: use_new_albedos
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, NkIce
   integer :: b, b2, nb, nbmerge
 
@@ -970,34 +975,6 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
-!###  RESCALE THE RADIATION
-!###  IS Rad A VALID TYPE TO USE?
-!###  DO WE NEED TO UPDATE RAD%T_SKIN?
-
-! I do not know if this is necessary or whether it would work. - RWH
-!  do j=jsc,jec ; do i=isc,iec
-!    FIA%bheat(i,j) = sOSS%bheat(i,j)
-!  enddo ; enddo
-
-  !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-             IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
-             albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
-             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-             optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
-
-    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
-  endif ; enddo ; enddo ; enddo
-
-  !    Determine whether the shortwave fluxes absorbed by the ice and snow in
-  ! any shortwave frequency bands (or groups of bands) exceed the total
-  ! shortwave absorption during the atmospheric steps, and if so scale them 
-  ! back for energy conservation.  If the shortwave absorption by the ice in
-  ! any bands have decreased or increased only slightly, the difference will
-  ! later be applied to the ocean.
-
   ! Ice can scatter direct shortwave into diffuse without loss of energy
   ! conservation, so it only the total of the shortwave in each frequency
   ! band that needs to be considered.  The effect of setting, nbmerge=2 is to
@@ -1008,8 +985,49 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   ! treated as diffuse visible light by SIS2.
   nbmerge = nb  
 
-  !$OMP parallel do default(shared) private(sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale)
+! I do not know if this is necessary or whether it would work. - RWH
+!  do j=jsc,jec ; do i=isc,iec
+!    FIA%bheat(i,j) = sOSS%bheat(i,j)
+!  enddo ; enddo
+
+  ! If there are multiple calls to redo_update_ice_model_fast between calls to
+  ! slow_thermodynamics, this call would only occur during the first such call.
+  FIA%tmelt(:,:,:) = 0.0 ; FIA%bmelt(:,:,:) = 0.0
+  sw_top_chg(:,:,:,:) = 0.0
+  use_new_albedos = .true.  ! Changing this value changes answers at the level of roundoff.
+
+  !$OMP parallel do default(shared) private(do_any_j, albedos, sw_abs_lay, &
+  !$OMP                 sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale, &
+  !$OMP                 latent,enth_col,sw_tot,dhf_dt,hf_0,ts_new,SW_abs_col,&
+  !$OMP                 SW_absorbed,enth_here,tot_heat_in,enth_imb,norm_enth_imb )
   do j=jsc,jec
+    do_any_j = .false.
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+      do_any_j = .true.
+      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
+               IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
+               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
+               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+               optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
+
+      if (use_new_albedos) then ; do b=1,nb ; if (FIA%flux_sw_dn(i,j,b) > 0.0) then
+        flux_sw_prev = FIA%flux_sw_top(i,j,k,b)
+        FIA%flux_sw_top(i,j,k,b) = (1.0 - albedos(b))*FIA%flux_sw_dn(i,j,b)
+        sw_top_chg(i,j,k,b) = FIA%flux_sw_top(i,j,k,b) - flux_sw_prev
+      endif ; enddo ; endif
+
+      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+    endif ; enddo ; enddo
+    if (.not. do_any_j) cycle  ! Skip to the next j-loop if there is no ice.
+
+    !    Determine whether the shortwave fluxes absorbed by the ice and snow in
+    ! any shortwave frequency bands (or groups of bands) exceed the total
+    ! shortwave absorption during the atmospheric steps, and if so scale them 
+    ! back for energy conservation.  If the shortwave absorption by the ice in
+    ! any bands have decreased or increased only slightly, the difference will
+    ! later be applied to the ocean.
+
     sw_tot_ice_band(:,:) = 0.0
     ! Note that the flux to the ocean is deliberately omitted here.
     ! Properly the raditive properties should be treated separately for each band.
@@ -1036,20 +1054,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         enddo ; enddo
       endif
     enddo ; enddo
-  enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,enth_liq_0,&
-!$OMP                                  dt_here,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
-!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,                  &
-!$OMP                                  hf_0,ts_new,SW_abs_col,SW_absorbed,enth_here,&
-!$OMP                                  tot_heat_in,enth_imb,norm_enth_imb )
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    ! If there are multiple calls to redo_update_ice_model_fast between calls to
-    ! slow_thermodynamics, this call would only occur during the first such call.
-    FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
-
-    if (IST%part_size(i,j,k) > 0.0) then
+    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
@@ -1065,11 +1071,6 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       endif
       sw_tot = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
                (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
-
-!  This was:
-!      hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
-!              (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)) - &
-!             dhf_dt * Rad%t_skin(i,j,k)
 
       dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k)
       hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
@@ -1098,19 +1099,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       FIA%flux_lw_top(i,j,k) = FIA%flux_lw0(i,j,k) + ts_new * FIA%dlwdt(i,j,k)
       FIA%flux_lh_top(i,j,k) = latent * FIA%evap_top(i,j,k)
 
-      ! Convert frost forming atop sea ice into frozen precip.
-!      if ((k>0) .and. (FIA%evap_top(i,j,k) < 0.0)) then
-!        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
-!        FIA%evap_top(i,j,k) = 0.0
-!      endif
-!    else ! IST%mH_ice <= 0
-!      flux_lh(i,j,k) = LatHtVap * evap(i,j,k)
-
       ! Copy radiation fields from the fast to the slow states.
       FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
-
-    endif
-  enddo ; enddo ; enddo
+    endif ; enddo ; enddo
+  enddo
 
   if (CS%debug) &
     call IST_chksum("End redo_update_ice_model_fast", IST, G, IG)
