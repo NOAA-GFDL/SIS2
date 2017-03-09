@@ -239,10 +239,8 @@ end subroutine SIS2_ice_thm_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_temp_SIS2 - A subroutine that calculates the snow and ice enthalpy       !
-!    changes due to surface forcing.                                           !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! m_pond - mw/new
+!> ice_temp_SIS2 calculates the updated snow and ice enthalpy and new skin
+!!    temperature after due to surface forcing and vertical diffusion of heat.
 subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
@@ -272,7 +270,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
 !
-  real :: A ! Net downward surface heat flux from the atmosphere at 0C (W/m^2)
+!  real :: A ! Net downward surface heat flux from the atmosphere at 0C (W/m^2)
 !  real, dimension(0:NkIce) :: &
 !    temp_est, &    ! An estimated snow and ice temperature, in degC.
 !    temp_IC, &     ! The temperatures of the snow and ice based on the initial
@@ -339,8 +337,6 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, rho_ice=rho_ice, rho_snow=rho_snow, &
                              Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine)
 
-  A = -SF_0
-
   I_enth_unit = 1.0 / enth_unit
   mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
   mL_snow = m_snow         ! snow mass per unit area (in kg m-2).
@@ -359,7 +355,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   k10 = 2.0*(CS%KS*CS%KI) / (hL_ice_eff*CS%KS + hsnow_eff*CS%KI) ! coupling ice layer 1 to snow
   k0a = (CS%KS*dSF_dT) / (0.5*dSF_dT*hsnow_eff + CS%KS)      ! coupling snow to "air"
   k0skin = 2.0*CS%KS / hsnow_eff
-  k0a_x_ta = (CS%KS*A) / (0.5*dSF_dT*hsnow_eff + CS%KS) ! coupling times "air" temperature
+  k0a_x_ta = (CS%KS*SF_0) / (0.5*dSF_dT*hsnow_eff + CS%KS) ! coupling times "air" temperature
 
   enth_liq_lim = Enth_from_TS(0.0, 0.0, ITV)
 
@@ -426,14 +422,14 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 
   b_denom_1 = bb(0) + comp_rat*cc(1)
   I_bb =  1.0 / (b_denom_1 + cc(0))
-  !   This is a complete calculation of temp_est(0), assuming that the surface
-  ! flux is given by A - dSF_dT*tsurf, with tsurf estimated as part of this calculation.
-  temp_est(0) = (((sol(0)*dtt + bb(0)*temp_IC(0)) + k0a_x_ta*dtt) + cc(1)*temp_est(1)) * I_bb
+  !   This is a complete calculation of temp_est(0), assuming that the upward surface
+  ! flux is given by SF_0 + dSF_dT*tsurf, with tsurf estimated as part of this calculation.
+  temp_est(0) = (((sol(0)*dtt + bb(0)*temp_IC(0)) - k0a_x_ta*dtt) + cc(1)*temp_est(1)) * I_bb
 
   ! Diagnose the surface skin temperature by matching the diffusive fluxes in
   ! the snow with the atmospheric fluxes.  I.e. solve the following for tsurf_est:
-  !  (A - dSF_dT*tsurf_est) = k0skin * (tsurf_est - temp_est(0))
-  tsurf_est = (A + k0skin*temp_est(0)) / (dSF_dT + k0skin)
+  !  (SF_0 + dSF_dT*tsurf_est) = k0skin * (temp_est(0) - tsurf_est)
+  tsurf_est = (k0skin*temp_est(0) - SF_0) / (dSF_dT + k0skin)
 
   if (tsurf_est > tsf .or. m_pond > 0.0 ) then ! mw/new - liq. h2o @ sfc
                                                ! also pins temp at freezing
@@ -464,9 +460,9 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                              kk + k10, temp_IC(1), enthalpy(1), sice(1), dtt, ITV)
 
   ! Calculate the bulk snow temperature and surface skin temperature together.
-  temp_est(0) = laytemp_SIS2(mL_snow, 0.0, sol(0) + (k10*temp_est(1)+k0a_x_ta), &
+  temp_est(0) = laytemp_SIS2(mL_snow, 0.0, sol(0) + (k10*temp_est(1)-k0a_x_ta), &
                           k10+k0a, temp_IC(0), enthalpy(0), 0.0, dtt, ITV)
-  tsurf = (A + k0skin*temp_est(0)) / (dSF_dT + k0skin)  ! diagnose surface skin temp.
+  tsurf = (k0skin*temp_est(0) - SF_0) / (dSF_dT + k0skin)  ! diagnose surface skin temp.
 
   !
   !   The following conservative update pass going DOWN the ice column is where
@@ -500,7 +496,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                            sol(0), heat_flux_int(0), -k0skin, k10, dtt, &
                            heat_flux_err_rat, ITV, e_extra)
 
-      tmelt = tmelt + e_extra + dtt*((A-dSF_dT*tsf) - heat_flux_int(-1))
+      tmelt = tmelt + e_extra - dtt*((SF_0 + dSF_dT*tsf) + heat_flux_int(-1))
       tflux_sfc = dtt*heat_flux_int(-1)
       e_extra_sum = e_extra_sum + e_extra
     else
@@ -511,20 +507,20 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
       heat_flux_int(-1) = heat_flux_int(0)
 
       ! Replace use tsurf in the calculation of tmelt
-      tmelt = tmelt + dtt*((sol(0)+(A-dSF_dT*tsf)) - heat_flux_int(0))
+      tmelt = tmelt + dtt*((sol(0) - (SF_0 + dSF_dT*tsf)) - heat_flux_int(0))
       tflux_sfc = dtt*heat_flux_int(0)
 
     endif
   else
-    heat_flux_int(-1) = k0a_x_ta
+    heat_flux_int(-1) = -k0a_x_ta
     heat_flux_int(0) = -k10*temp_est(1)
-    snow_temp_max = (tsf*(dSF_dT + k0skin) - A) / k0skin
+    snow_temp_max = (tsf*(dSF_dT + k0skin) + SF_0) / k0skin
     call update_lay_enth(mL_snow, 0.0, enthalpy(0), heat_flux_int(-1), &
                          sol(0), heat_flux_int(0), -k0a, k10, dtt, &
                          heat_flux_err_rat, ITV, e_extra, &
                          temp_new=snow_temp_new, temp_max=snow_temp_max)
-    tsurf = (A + k0skin*snow_temp_new) / (dSF_dT + k0skin)  ! diagnose surface skin temp.
-    ! This is equivalent to, but safer than, tsurf = (A - heat_flux_int(-1)) / dSF_dT
+    tsurf = (k0skin*snow_temp_new - SF_0) / (dSF_dT + k0skin)  ! diagnose surface skin temp.
+    ! This is equivalent to, but safer than, tsurf = -(SF_0 + heat_flux_int(-1)) / dSF_dT
 
     tflux_sfc = dtt*heat_flux_int(-1)
     e_extra_sum = e_extra_sum + e_extra
@@ -626,7 +622,7 @@ end subroutine ice_temp_SIS2
 !> estimate_tsurf estimates the surface skin temperature using the first (nonconservative)
 !!    part of the calculations in ice_temp_SIS2.
 subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
-                          sol, tfw, fb, tsurf, dtt, NkIce, CS, ITV)
+                          sol, tfw, tsurf, dtt, NkIce, CS, ITV)
 
   real, intent(in   ) :: m_pond  ! pond mass per unit area (kg m-2)
   real, intent(in   ) :: m_snow  ! snow mass per unit area (H, usually kg m-2)
@@ -641,7 +637,6 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real, dimension(0:NkIce), &
         intent(in)    :: sol   ! Solar heating of the snow and ice layers (W m-2)
   real, intent(in   ) :: tfw   ! seawater freezing temperature (deg-C)
-  real, intent(in   ) :: fb    ! heat flux upward from ocean to ice bottom (W/m^2)
   real, intent(  out) :: tsurf ! surface temperature (deg-C)
   real, intent(in   ) :: dtt   ! timestep (sec)
   integer, intent(in   ) :: NkIce ! The number of ice layers.
