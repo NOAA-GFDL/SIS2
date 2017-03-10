@@ -315,6 +315,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
+  WindStr_x_Cu(:, :) = 0.0
+  WindStr_y_Cv(:, :) = 0.0
+
   if (CS%specified_ice) then
     ndyn_steps = 0 ; dt_slow_dyn = 0.0
 !$OMP parallel do default(none) shared(isd,ied,jsd,jed,WindStr_x_A,WindStr_y_A,  &
@@ -464,8 +467,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
-        call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
+        call hchksum_pair("FIA%WindStr_[xy] before SIS_C_dynamics", FIA%WindStr_x, FIA%WindStr_y, G, halos=1)
         call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
+        call uvchksum("WindStr_[xy]_C[uv] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
      endif
 
       call mpp_clock_begin(iceClocka)

@@ -54,15 +54,17 @@ public :: hchksum_pair, Bchksum_pair, uvchksum
 
 interface hchksum_pair
     module procedure hchksum_pair_3d, hchksum_pair_2d
+    module procedure hchksum_pair_3d_HI, hchksum_pair_2d_HI
 end interface hchksum_pair
 
 interface Bchksum_pair
     module procedure Bchksum_pair_3d, Bchksum_pair_2d
+    module procedure Bchksum_pair_3d_HI, Bchksum_pair_2d_HI
 end interface Bchksum_pair
 
 interface uvchksum
     module procedure uvchksum_3d, uvchksum_2d
-    module procedure uvchksum_3d_dG, uvchksum_2d_dG
+    module procedure uvchksum_3d_HI, uvchksum_2d_HI
 end interface uvchksum
 
 interface check_redundant_C
@@ -112,7 +114,7 @@ end subroutine SIS_debugging_init
 subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                    intent(in)    :: mesg
-  type(SIS_hor_grid_type),             intent(inout) :: G
+  type(SIS_hor_grid_type),             intent(in)    :: G
   real, dimension(G%IsdB:,G%jsd:,:),   intent(in)    :: u_comp
   real, dimension(G%isd:,G%JsdB:,:),   intent(in)    :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
@@ -141,7 +143,7 @@ end subroutine  check_redundant_vC3d
 subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                intent(in)    :: mesg
-  type(SIS_hor_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(in)    :: G
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp
   real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
@@ -215,8 +217,8 @@ end subroutine  check_redundant_vC2d
 
 subroutine check_redundant_sB3d(mesg, array, G, is, ie, js, je)
   character(len=*),                     intent(in)    :: mesg
-  type(SIS_hor_grid_type),              intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:,:),   intent(in) :: array
+  type(SIS_hor_grid_type),              intent(in)    :: G
+  real, dimension(G%IsdB:,G%JsdB:,:),   intent(in)    :: array
   integer,                    optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
@@ -240,8 +242,8 @@ end subroutine  check_redundant_sB3d
 
 subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je)
   character(len=*),                 intent(in)    :: mesg
-  type(SIS_hor_grid_type),          intent(inout) :: G
-  real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: array
+  type(SIS_hor_grid_type),          intent(in)    :: G
+  real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: array
   integer,                optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
 !  (in)      mesg - A message indicating what is being checked.
@@ -300,7 +302,7 @@ end subroutine  check_redundant_sB2d
 subroutine check_redundant_vB3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                    intent(in)    :: mesg
-  type(SIS_hor_grid_type),             intent(inout) :: G
+  type(SIS_hor_grid_type),             intent(in)    :: G
   real, dimension(G%IsdB:,G%JsdB:,:),  intent(in)    :: u_comp
   real, dimension(G%IsdB:,G%JsdB:,:),  intent(in)    :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
@@ -329,7 +331,7 @@ end subroutine  check_redundant_vB3d
 subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                 direction)
   character(len=*),                intent(in)    :: mesg
-  type(SIS_hor_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(in) :: G
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: u_comp
   real, dimension(G%IsdB:,G%JsdB:), intent(in)   :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
@@ -404,7 +406,7 @@ end subroutine  check_redundant_vB2d
 
 subroutine check_redundant_sT3d(mesg, array, G, is, ie, js, je)
   character(len=*),                     intent(in)    :: mesg
-  type(SIS_hor_grid_type),              intent(inout) :: G
+  type(SIS_hor_grid_type),              intent(in)    :: G
   real, dimension(G%isd:,G%jsd:,:),     intent(in)    :: array
   integer,                    optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
@@ -429,7 +431,7 @@ end subroutine  check_redundant_sT3d
 
 subroutine check_redundant_sT2d(mesg, array, G, is, ie, js, je)
   character(len=*),                 intent(in)    :: mesg
-  type(SIS_hor_grid_type),          intent(inout) :: G
+  type(SIS_hor_grid_type),          intent(in)    :: G
   real, dimension(G%isd:,G%jsd:),   intent(in)    :: array
   integer,                optional, intent(in)    :: is, ie, js, je
 ! Arguments: array - The array being checked.
@@ -475,7 +477,7 @@ end subroutine  check_redundant_sT2d
 subroutine check_redundant_vT3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                direction)
   character(len=*),                    intent(in)    :: mesg
-  type(SIS_hor_grid_type),             intent(inout) :: G
+  type(SIS_hor_grid_type),             intent(in) :: G
   real, dimension(G%isd:,G%jsd:,:),    intent(in) :: u_comp
   real, dimension(G%isd:,G%jsd:,:),    intent(in) :: v_comp
   integer,                   optional, intent(in)    :: is, ie, js, je
@@ -504,7 +506,7 @@ end subroutine  check_redundant_vT3d
 subroutine check_redundant_vT2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
                                direction)
   character(len=*),                intent(in)    :: mesg
-  type(SIS_hor_grid_type),         intent(inout) :: G
+  type(SIS_hor_grid_type),         intent(in) :: G
   real, dimension(G%isd:,G%jsd:),  intent(in)   :: u_comp
   real, dimension(G%isd:,G%jsd:),  intent(in)   :: v_comp
   integer,               optional, intent(in)    :: is, ie, js, je
@@ -569,7 +571,7 @@ end subroutine  check_redundant_vT2d
 ! This function does a checksum and redundant point check on a 3d C-grid vector.
 subroutine uvchksum_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                  intent(in)    :: mesg   !< An identifying message
-  type(SIS_hor_grid_type),           intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),           intent(in)     :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -595,7 +597,7 @@ end subroutine uvchksum_3d
 ! This function does a checksum and redundant point check on a 2d C-grid vector.
 subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                intent(in)    :: mesg !< An identifying message
-  type(SIS_hor_grid_type),         intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),         intent(in)    :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
   integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -619,37 +621,37 @@ subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars)
 end subroutine uvchksum_2d
 
 ! This function does a checksum and redundant point check on a 3d C-grid vector.
-subroutine uvchksum_3d_dG(mesg, u_comp, v_comp, G, halos)
+subroutine uvchksum_3d_HI(mesg, u_comp, v_comp, HI, halos)
   character(len=*),                  intent(in)    :: mesg   !< An identifying message
-  type(dyn_horgrid_type),           intent(inout) :: G      !< The ocean's grid structure
-  real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
-  real, dimension(G%isd:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
+  type(hor_index_type),              intent(in)    :: HI     !< A horizontal index type
+  real, dimension(HI%IsdB:,HI%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%isd:,HI%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, HI, halos)
   endif
 
-end subroutine uvchksum_3d_dG
+end subroutine uvchksum_3d_HI
 
 ! This function does a checksum and redundant point check on a 2d C-grid vector.
-subroutine uvchksum_2d_dG(mesg, u_comp, v_comp, G, halos)
+subroutine uvchksum_2d_HI(mesg, u_comp, v_comp, HI, halos)
   character(len=*),                intent(in)    :: mesg !< An identifying message
-  type(dyn_horgrid_type),          intent(inout) :: G      !< The ocean's grid structure
-  real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
-  real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
+  type(hor_index_type),            intent(in)    :: HI   !< A horizontal index type
+  real, dimension(HI%IsdB:,HI%jsd:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%isd:,HI%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
   integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, HI, halos)
   endif
 
-end subroutine uvchksum_2d_dG
+end subroutine uvchksum_2d_HI
 
 ! This function does a checksum and redundant point check on a 3d B-grid vector.
 subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                   intent(in)    :: mesg   !< An identifying message
-  type(SIS_hor_grid_type),            intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),            intent(in)    :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                  optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -675,7 +677,7 @@ end subroutine Bchksum_pair_3d
 ! This function does a checksum and redundant point check on a 2d B-grid vector.
 subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
-  type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),          intent(in)    :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -688,7 +690,8 @@ subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, symmetric=symmetric, haloshift=halos)
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, &
+                      G%HI, haloshift=halos, symmetric=symmetric)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -700,10 +703,39 @@ subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
 
 end subroutine Bchksum_pair_2d
 
+subroutine Bchksum_pair_3d_HI(mesg, u_comp, v_comp, HI, halos)
+  character(len=*),                   intent(in)    :: mesg   !< An identifying message
+  type(hor_index_type),               intent(in)    :: HI     !< A horizontal index type
+  real, dimension(HI%IsdB:,HI%JsdB:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%IsdB:,HI%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                  optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+
+  if (debug_chksums) then
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, HI, halos)
+  endif
+
+end subroutine Bchksum_pair_3d_HI
+
+subroutine Bchksum_pair_2d_HI(mesg, u_comp, v_comp, HI, halos, symmetric)
+  character(len=*),                 intent(in)    :: mesg   !< An identifying message
+  type(hor_index_type),             intent(in)    :: HI     !< A horizontal index type
+  real, dimension(HI%IsdB:,HI%JsdB:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%IsdB:,HI%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  logical,                optional, intent(in)    :: symmetric !< If true, do the checksums on the
+                                                               !! full symmetric computational domain.
+
+  if (debug_chksums) then
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, &
+                      HI, haloshift=halos, symmetric=symmetric)
+  endif
+
+end subroutine Bchksum_pair_2d_HI
+
 ! This function does a checksum and redundant point check on a 3d C-grid vector.
 subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
-  type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),          intent(in)    :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%jsd:,:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -729,7 +761,7 @@ end subroutine hchksum_pair_3d
 ! This function does a checksum and redundant point check on a 2d C-grid vector.
 subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),               intent(in)    :: mesg   !< An identifying message
-  type(SIS_hor_grid_type),        intent(inout) :: G      !< The ocean's grid structure
+  type(SIS_hor_grid_type),        intent(in)    :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%jsd:), intent(in)    :: v_comp !< The v-component of the vector
   integer,              optional, intent(in)    :: halos  !< The width of halos to check (default 0)
@@ -740,7 +772,7 @@ subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, haloshift=halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -751,5 +783,31 @@ subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
   endif
 
 end subroutine hchksum_pair_2d
+
+subroutine hchksum_pair_3d_HI(mesg, u_comp, v_comp, HI, halos)
+  character(len=*),                 intent(in)    :: mesg   !< An identifying message
+  type(hor_index_type),             intent(in)    :: HI     !< A horizontal index type
+  real, dimension(HI%isd:,HI%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%isd:,HI%jsd:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+
+  if (debug_chksums) then
+    call mom_hchksum_pair(mesg, u_comp, v_comp, HI, halos)
+  endif
+
+end subroutine hchksum_pair_3d_HI
+
+subroutine hchksum_pair_2d_HI(mesg, u_comp, v_comp, HI, halos)
+  character(len=*),               intent(in)    :: mesg   !< An identifying message
+  type(hor_index_type),           intent(in)    :: HI     !< A horizontal index type
+  real, dimension(HI%isd:,HI%jsd:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(HI%isd:,HI%jsd:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,              optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+
+  if (debug_chksums) then
+    call mom_hchksum_pair(mesg, u_comp, v_comp, HI, haloshift=halos)
+  endif
+
+end subroutine hchksum_pair_2d_HI
 
 end module SIS_debugging

@@ -305,6 +305,7 @@ subroutine ice_grid_chksum(G, haloshift)
 
   call hchksum_pair("G%d[xy]T", G%dxT, G%dyT, G, halos=hs)
   call hchksum_pair("G%Id[xy]T", G%IdxT, G%IdyT, G, halos=hs)
+
   call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs)
   call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs)
   call hchksum(G%mask2dT, "G%mask2dT", G%HI, haloshift=hs)

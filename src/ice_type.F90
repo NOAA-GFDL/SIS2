@@ -23,6 +23,8 @@ use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
+use MOM_transform_test, only : transform_pointer, undo_transform_pointer, swap_pointer
+
 use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field
@@ -36,6 +38,9 @@ public :: ice_data_type, dealloc_ice_arrays
 public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
+public :: transform_ice, undo_transform_ice, &
+          transform_slow_ice, undo_transform_slow_ice, &
+          transform_fast_ice, undo_transform_fast_ice
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! This structure contains the ice model data (some used by calling routines);   !
@@ -43,7 +48,9 @@ public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 type ice_data_type !  ice_public_type
   type(domain2D)          :: Domain         ! A copy of the fast ice domain without halos.
+  type(domain2D)          :: Domain_untrans
   type(domain2D)          :: slow_Domain_NH ! A copy of the slow ice domain without halos.
+  type(domain2D)          :: slow_Domain_NH_untrans
   type(domain2D), pointer :: &
     fast_domain => NULL(), & ! A pointer to the fast ice mpp domain or a copy
                              ! on slow ice PEs.
@@ -58,11 +65,11 @@ type ice_data_type !  ice_public_type
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() ! Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() ! Used for flux-exchange with fast processes.
   integer, pointer, dimension(:)   :: pelist   =>NULL() ! Used for flux-exchange.
-  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
+  logical, pointer, contiguous, dimension(:,:) :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
-  real, pointer, dimension(:,:,:) :: &
+  real, pointer, contiguous, dimension(:,:,:) :: &
     part_size => NULL(), &    ! The fractional coverage of a grid cell by each ice
                               ! thickness category, nondim, 0 to 1.  Category 1 is
                               ! open ocean.  The sum of part_size is 1.
@@ -80,11 +87,11 @@ type ice_data_type !  ice_public_type
                               ! each ice-thickness category, in Kelvin.
     u_surf      => NULL(), &  ! The eastward (u_) and northward (v_) surface
     v_surf      => NULL()     ! velocities of the ocean (:,:,1) or sea-ice, in m s-1.
-  real, pointer, dimension(:,:)   :: &
+  real, pointer, contiguous, dimension(:,:)   :: &
     s_surf         =>NULL()   ! The ocean's surface salinity, in g/kg.
 
   ! These arrays will be used to set the forcing for the ocean.
-  real, pointer, dimension(:,:) :: &
+  real, pointer, contiguous, dimension(:,:) :: &
     SST_C => NULL(), &    ! The ocean surface temperature, in deg C.
     flux_u => NULL(), &   ! The flux of x-momentum into the ocean, in Pa.
     flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
@@ -114,7 +121,7 @@ type ice_data_type !  ice_public_type
                               ! reference temperature, in ???.
     flux_salt  => NULL()  ! The flux of salt out of the ocean in kg m-2.
 
-  real, pointer, dimension(:,:) :: &
+  real, pointer, contiguous, dimension(:,:) :: &
     area => NULL() , &    ! The area of ocean cells, in m2.  Land cells have
                           ! a value of 0, so this could also be used as a mask.
     mi   => NULL()        ! The total ice+snow mass, in kg m-2.
@@ -227,6 +234,188 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                         domain=domain)
   endif
 end subroutine ice_type_slow_reg_restarts
+
+subroutine transform_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  call transform_slow_ice(Ice)
+  call transform_fast_ice(Ice)
+
+end subroutine transform_ice
+
+subroutine undo_transform_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  call undo_transform_slow_ice(Ice)
+  call undo_transform_fast_ice(Ice)
+
+end subroutine undo_transform_ice
+
+subroutine transform_slow_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  integer :: m, n, index
+
+  call transform_pointer(Ice%flux_u)
+  call transform_pointer(Ice%flux_v)
+  call swap_pointer(Ice%flux_u, Ice%flux_v)
+
+  call transform_pointer(Ice%flux_t)
+  call transform_pointer(Ice%flux_q)
+  call transform_pointer(Ice%flux_sw_vis_dir)
+  call transform_pointer(Ice%flux_sw_vis_dif)
+  call transform_pointer(Ice%flux_sw_nir_dir)
+  call transform_pointer(Ice%flux_sw_nir_dif)
+
+  call transform_pointer(Ice%flux_lw)
+  call transform_pointer(Ice%flux_lh)
+  call transform_pointer(Ice%lprec)
+  call transform_pointer(Ice%fprec)
+  call transform_pointer(Ice%p_surf)
+  call transform_pointer(Ice%runoff)
+
+  call transform_pointer(Ice%calving)
+  call transform_pointer(Ice%runoff_hflx)
+  call transform_pointer(Ice%calving_hflx)
+  call transform_pointer(Ice%flux_salt)
+
+  call transform_pointer(Ice%SST_C)
+  call transform_pointer(Ice%area)
+  call transform_pointer(Ice%mi)
+
+  if (associated(Ice%ustar_berg)) &
+    call transform_pointer(Ice%ustar_berg)
+  if (associated(Ice%area_berg)) &
+    call transform_pointer(Ice%area_berg)
+  if (associated(Ice%mass_berg)) &
+    call transform_pointer(Ice%mass_berg)
+
+  index = 0
+  do n=1,Ice%ocean_fluxes%num_bcs
+    do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+      call transform_pointer(Ice%ocean_fluxes%bc(n)%field(m)%values)
+    enddo
+  enddo
+
+end subroutine transform_slow_ice
+
+subroutine transform_fast_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  integer :: m, n, index
+
+  call transform_pointer(Ice%u_surf)
+  call transform_pointer(Ice%v_surf)
+  call swap_pointer(Ice%u_surf, Ice%v_surf)
+
+  call transform_pointer(Ice%t_surf)
+  call transform_pointer(Ice%s_surf)
+  call transform_pointer(Ice%part_size)
+
+  if (associated(Ice%ocean_pt)) &
+    call transform_pointer(Ice%ocean_pt)
+
+  call transform_pointer(Ice%rough_mom)
+  call transform_pointer(Ice%rough_heat)
+  call transform_pointer(Ice%rough_moist)
+
+  call transform_pointer(Ice%albedo)
+  call transform_pointer(Ice%albedo_vis_dir)
+  call transform_pointer(Ice%albedo_vis_dif)
+  call transform_pointer(Ice%albedo_nir_dir)
+  call transform_pointer(Ice%albedo_nir_dif)
+
+  index = 0
+  do n=1,Ice%ocean_fields%num_bcs
+    do m=1,Ice%ocean_fields%bc(n)%num_fields
+      call transform_pointer(Ice%ocean_fields%bc(n)%field(m)%values)
+    enddo
+  enddo
+
+end subroutine transform_fast_ice
+
+subroutine undo_transform_slow_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  integer :: m, n, index
+
+  call undo_transform_pointer(Ice%flux_u)
+  call undo_transform_pointer(Ice%flux_v)
+  call swap_pointer(Ice%flux_u, Ice%flux_v)
+
+  call undo_transform_pointer(Ice%flux_t)
+  call undo_transform_pointer(Ice%flux_q)
+  call undo_transform_pointer(Ice%flux_sw_vis_dir)
+  call undo_transform_pointer(Ice%flux_sw_vis_dif)
+  call undo_transform_pointer(Ice%flux_sw_nir_dir)
+  call undo_transform_pointer(Ice%flux_sw_nir_dif)
+
+  call undo_transform_pointer(Ice%flux_lw)
+  call undo_transform_pointer(Ice%flux_lh)
+  call undo_transform_pointer(Ice%lprec)
+  call undo_transform_pointer(Ice%fprec)
+  call undo_transform_pointer(Ice%p_surf)
+  call undo_transform_pointer(Ice%runoff)
+
+  call undo_transform_pointer(Ice%calving)
+  call undo_transform_pointer(Ice%runoff_hflx)
+  call undo_transform_pointer(Ice%calving_hflx)
+  call undo_transform_pointer(Ice%flux_salt)
+
+  call undo_transform_pointer(Ice%SST_C)
+  call undo_transform_pointer(Ice%area)
+  call undo_transform_pointer(Ice%mi)
+
+  if (associated(Ice%ustar_berg)) &
+    call undo_transform_pointer(Ice%ustar_berg)
+  if (associated(Ice%area_berg)) &
+    call undo_transform_pointer(Ice%area_berg)
+  if (associated(Ice%mass_berg)) &
+    call undo_transform_pointer(Ice%mass_berg)
+
+  index = 0
+  do n=1,Ice%ocean_fluxes%num_bcs
+    do m=1,Ice%ocean_fluxes%bc(n)%num_fields
+      call transform_pointer(Ice%ocean_fluxes%bc(n)%field(m)%values)
+    enddo
+  enddo
+
+end subroutine undo_transform_slow_ice
+
+subroutine undo_transform_fast_ice(Ice)
+  type(ice_data_type),     intent(inout) :: Ice
+
+  integer :: m, n, index
+
+  call undo_transform_pointer(Ice%u_surf)
+  call undo_transform_pointer(Ice%v_surf)
+  call swap_pointer(Ice%u_surf, Ice%v_surf)
+
+  call undo_transform_pointer(Ice%t_surf)
+  call undo_transform_pointer(Ice%s_surf)
+  call undo_transform_pointer(Ice%part_size)
+
+  if (associated(Ice%ocean_pt)) &
+    call undo_transform_pointer(Ice%ocean_pt)
+
+  call undo_transform_pointer(Ice%rough_mom)
+  call undo_transform_pointer(Ice%rough_heat)
+  call undo_transform_pointer(Ice%rough_moist)
+
+  call undo_transform_pointer(Ice%albedo)
+  call undo_transform_pointer(Ice%albedo_vis_dir)
+  call undo_transform_pointer(Ice%albedo_vis_dif)
+  call undo_transform_pointer(Ice%albedo_nir_dir)
+  call undo_transform_pointer(Ice%albedo_nir_dif)
+
+  index = 0
+  do n=1,Ice%ocean_fields%num_bcs
+    do m=1,Ice%ocean_fields%bc(n)%num_fields
+      call undo_transform_pointer(Ice%ocean_fields%bc(n)%field(m)%values)
+    enddo
+  enddo
+
+end subroutine undo_transform_fast_ice
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_type_slow_reg_restarts - allocate the arrays in the ice_data_type        !
@@ -443,7 +632,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
       write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", S_sfc = ",1pe12.4)') &
        Ice%t_surf(i2,j2,k2), Ice%part_size(i2,j2,k2), Ice%s_surf(i2,j2)
     endif
-    call SIS_error(WARNING, "Bad ice data "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
+    call SIS_error(FATAL, "Bad ice data "//trim(msg)//" ; "//trim(mesg1)//" ; "//trim(mesg2), all_print=.true.)
   endif
 
 end subroutine Ice_public_type_bounds_check
