@@ -29,7 +29,7 @@ use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum
+use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum, hchksum_pair
 use SIS_debugging,   only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
@@ -2285,8 +2285,8 @@ subroutine IOF_chksum(mesg, IOF, G)
   call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
   call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
-  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
-  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI)
+  call hchksum_pair(trim(mesg)//"  IOF%flux_[uv]_ocn", IOF%flux_u_ocn, &
+                    IOF%flux_v_ocn, G)
 
   call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
   call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
@@ -2299,7 +2299,7 @@ end subroutine IOF_chksum
 subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
-  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type), intent(in) :: G  !< The ice-model's horizonal grid type.
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
   character(len=8) :: nstr
@@ -2318,6 +2318,8 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI)
 
   if (present(check_ocean)) then ; if (check_ocean) then
+    call hchksum_pair(trim(mesg)//" FIA%flux_[uv]_top0", &
+                    FIA%flux_u_top(:,:,0), FIA%flux_v_top(:,:,0), G)
     call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI)
     call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI)
     do b=1,size(FIA%flux_sw_top,4)
@@ -2335,10 +2337,10 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI)
-  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI)
-  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI)
-  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI)
+  call hchksum_pair(trim(mesg)//" FIA%WindStr_[xy]", FIA%WindStr_x, &
+                    FIA%WindStr_y, G)
+  call hchksum_pair(trim(mesg)//" FIA%WindStr_ocn_[xy]", FIA%WindStr_ocn_x, &
+                    FIA%WindStr_ocn_y, G)
   call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI)
   call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI)
   call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI)

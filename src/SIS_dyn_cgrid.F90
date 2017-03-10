@@ -42,6 +42,7 @@ use MOM_domains,      only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,    only : hor_index_type
 use MOM_io,           only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use SIS_hor_grid,     only : SIS_hor_grid_type
+use MOM_transform_test, only : do_transform_on_this_pe
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
 use mpp_domains_mod,  only : domain2D
@@ -627,8 +628,16 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   logical :: do_hifreq_output  ! If true, output occurs every iterative step.
   logical :: do_trunc_its  ! If true, overly large velocities in the iterations are truncated.
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
+  real :: pos_sign, neg_sign
   integer :: i, j, isc, iec, jsc, jec, n
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  pos_sign = 1.0
+  neg_sign = -1.0
+  if (do_transform_on_this_pe()) then
+    pos_sign = -1.0
+    neg_sign = 1.0
+  endif
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_C_dynamics: Module must be initialized before it is used.")
@@ -644,6 +653,8 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   Cor_u(:,:) = 0.0 ; Cor_v(:,:) = 0.0
   fxic_d(:,:) = 0.0 ; fyic_d(:,:) = 0.0 ; fxic_t(:,:) = 0.0 ; fyic_t(:,:) = 0.0
   fxic_s(:,:) = 0.0 ; fyic_s(:,:) = 0.0
+  PFu(:,:) = 0.0 ; PFv(:,:) = 0.0
+  CS%str_t(:, :) = 0.0
 
   if (CS%SLAB_ICE) then
     ui(:,:) = uo(:,:) ; vi(:,:) = vo(:,:)
@@ -917,10 +928,12 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=CORNER)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,sh_Dt,sh_Dd,dy_dxT,dx_dyT,G,ui,vi)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-      sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
+      sh_Dt(i,j) = pos_sign * &
+                   (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
                                  G%IdyCu(I-1,j)*ui(I-1,j)) - &
                     dx_dyT(i,j)*(G%IdxCv(i,J) * vi(i,J) - &
                                  G%IdxCv(i,J-1)*vi(i,J-1)))
+
       sh_Dd(i,j) = (G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
                                    G%dyCu(I-1,j)*ui(I-1,j)) + &
                     G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
@@ -1011,12 +1024,14 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       ! Save the current values of u for later use in updating v.
       u_tmp(I,j) = ui(I,j)
 
-      Cor = ((azon(I,j) * vi(i+1,J) + czon(I,j) * vi(i,J-1)) + &
-             (bzon(I,j) * vi(i,J) + dzon(I,j) * vi(i+1,J-1))) ! - Cor_ref_u(I,j)
+      Cor = pos_sign * &
+            ((azon(I,j) * vi(i+1,J) + czon(I,j) * vi(i,J-1)) + &
+            (bzon(I,j) * vi(i,J) + dzon(I,j) * vi(i+1,J-1))) ! - Cor_ref_u(I,j)
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fxic_now = G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
+      fxic_now = pos_sign * &
+            G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
             (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
                            dy2T(i,j)  *CS%str_t(i,j)) + &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
@@ -1093,13 +1108,16 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP                          private(Cor,fyic_now,u2_at_v,vio_init,drag_v,    &
 !$OMP                                  m_vio_explicit,b_vel0,vio_pred,vio_C)
     do J=jsc-1,jec ; do i=isc,iec
-      Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
-                  (bmer(I,j) * u_tmp(I,j) + dmer(I-1,j+1) * u_tmp(I-1,j+1)))
+
+      Cor = neg_sign * &
+            ((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
+             (bmer(I,j) * u_tmp(I,j) + dmer(I-1,j+1) * u_tmp(I-1,j+1)))
       !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fyic_now = G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
-            (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
+      fyic_now =  neg_sign * &
+            G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
+            (G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
                             dx2T(i,j)  *CS%str_t(i,j)) + &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                             dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J)
@@ -1207,6 +1225,8 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
       call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
       call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)
+      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
+      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
       call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G)
     endif
 
