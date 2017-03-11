@@ -437,7 +437,7 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
 
   if (n_bad > 0) then
     i2 = i_bad+i_off ; j2 = j_bad+j_off ; k2 = k_bad+1
-    write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
+    write(mesg1,'(" at ", 2(F16.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i_bad,j_bad), G%geolatT(i_bad,j_bad), i_bad, j_bad, k_bad, n_bad, pe_here()
     if (fluxes_avail) then
       write(mesg2,'("T_sfc = ",1pe12.4,", ps = ",1pe12.4,", flux_t,lw,q = ",3(1pe12.4))') &

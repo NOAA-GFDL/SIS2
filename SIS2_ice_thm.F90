@@ -613,8 +613,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
     endif
   endif
 
-  call ice_check(mL_snow, NkIce*mL_ice, enthalpy, sice, NkIce, &
-           "at end of ice_temp_SIS2", ITV, bmelt=bmelt, tmelt=tmelt, t_sfc=tsurf)
+! GM, I am commenting the following line to avoid excessive warning messages,
+! which slow's down the model.
+!  call ice_check(mL_snow, NkIce*mL_ice, enthalpy, sice, NkIce, &
+!           "at end of ice_temp_SIS2", ITV, bmelt=bmelt, tmelt=tmelt, t_sfc=tsurf)
 
 end subroutine ice_temp_SIS2
 
