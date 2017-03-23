@@ -934,7 +934,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real    :: flux_sw_prev  ! The previous value of flux_sw_top, in W m-2.
   real    :: rescale    ! A rescaling factor between 0 and 1.
   type(time_type) :: Dt_ice
+  logical :: do_optics(G%isd:G%ied)
   logical :: sent
+  logical :: any_sw, any_ice
   logical :: do_any_j
   logical :: use_new_albedos
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, NkIce
@@ -996,14 +998,30 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   sw_top_chg(:,:,:,:) = 0.0
   use_new_albedos = .true.  ! Changing this value changes answers at the level of roundoff.
 
-  !$OMP parallel do default(shared) private(do_any_j, albedos, sw_abs_lay, &
-  !$OMP                 sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale, &
+  !$OMP parallel do default(shared) private(do_any_j,do_optics,any_sw,any_ice,albedos,&
+  !$OMP                 sw_abs_lay,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale, &
   !$OMP                 latent,enth_col,sw_tot,dhf_dt,hf_0,ts_new,SW_abs_col,&
   !$OMP                 SW_absorbed,enth_here,tot_heat_in,enth_imb,norm_enth_imb )
   do j=jsc,jec
     do_any_j = .false.
-    do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-      do_any_j = .true.
+    do i=isc,iec
+      any_sw = .false.
+      do b=1,nb ; if (FIA%flux_sw_dn(i,j,b) > 0.0) then
+        any_sw = .true. ; exit
+      endif ; enddo
+      any_ice = .false.
+      do k=1,ncat ; if (IST%part_size(i,j,k) > 0.0) then
+        any_ice = .true. ; exit
+      endif ; enddo
+      do_optics(i) = (any_sw .and. any_ice)
+      if (any_ice) do_any_j = .true.      
+    enddo
+    if (.not. do_any_j) cycle  ! Skip to the next j-loop if there is no ice.
+
+    ! Determine the optical properties of the ice.  Because the optical properties
+    ! can depend on the surface skin temperature, which is not yet well known,
+    ! there may be some iteration for self-consistency.
+    do k=1,ncat ; do i=isc,iec ; if (do_optics(i) .and. IST%part_size(i,j,k) > 0.0) then
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
                albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
@@ -1019,7 +1037,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
       do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
     endif ; enddo ; enddo
-    if (.not. do_any_j) cycle  ! Skip to the next j-loop if there is no ice.
+
 
     !    Determine whether the shortwave fluxes absorbed by the ice and snow in
     ! any shortwave frequency bands (or groups of bands) exceed the total
@@ -1036,7 +1054,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                ((1.0 - Rad%sw_abs_ocn(i,j,k)) * FIA%flux_sw_top(i,j,k,b))
     enddo ; enddo ; enddo
 
-    do i=isc,iec ; do b=1,nb,nbmerge
+    do i=isc,iec ; if (do_optics(i)) then ;  do b=1,nb,nbmerge
       ice_sw_tot = 0.0 ; TSF_sw_tot = 0.0
       do b2=0,nbmerge-1
         ice_sw_tot = ice_sw_tot + sw_tot_ice_band(i,b+b2)
@@ -1053,7 +1071,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
           FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2) 
         enddo ; enddo
       endif
-    enddo ; enddo
+    enddo ; endif ; enddo
 
     do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
