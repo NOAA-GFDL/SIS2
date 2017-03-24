@@ -1030,8 +1030,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     do k=1,ncat ; do i=isc,iec ; if (do_optics(i) .and. IST%part_size(i,j,k) > 0.0) then
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
-               albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
-               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               albedos, Rad%sw_abs_sfc(i,j,k), Rad%sw_abs_snow(i,j,k), &
                sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
                optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
 

@@ -151,40 +151,42 @@ end subroutine SIS_optics_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif, &
-                    alb_nir_dir, alb_nir_dif, abs_sfc, abs_snow, abs_ice_lay, &
-                    abs_ocn, abs_int, CS, ITV, coszen_in)
+subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
+                    abs_snow, abs_ice_lay, abs_ocn, abs_int, CS, ITV, coszen_in)
   real, intent(in   ) :: mp  ! pond mass (kg/m2) mw/new
   real, intent(in   ) :: hs  ! snow thickness (m-snow)
   real, intent(in   ) :: hi  ! ice thickness (m-ice)
-  real, intent(in   ) :: ts  ! surface temperature
+  real, intent(in   ) :: ts  ! surface temperature in deg C.
   real, intent(in   ) :: tfw ! seawater freezing temperature
-  integer, intent(in) :: NkIce
-  real, intent(  out) :: alb_vis_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_vis_dif ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dir ! ice surface albedo (0-1)
-  real, intent(  out) :: alb_nir_dif ! ice surface albedo (0-1)
+  integer, intent(in) :: NkIce ! The number of sublayers in the ice
+  real, dimension(:), intent(  out) :: albedos  ! ice surface albedos (0-1)
   real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
   real, intent(  out) :: abs_snow ! frac abs sw abs in snow
   real, intent(  out) :: abs_ice_lay(NkIce) ! frac abs sw abs by each ice layer
   real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
   real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  type(SIS_optics_CS), intent(in) :: CS
+  type(SIS_optics_CS), intent(in) :: CS  ! The ice optics control structure.
   type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real, intent(in),optional :: coszen_in
+  real, intent(in),optional :: coszen_in ! The cosine of the solar zenith angle.
 
-  real :: alb, as, ai, snow_cover, fh
-  real :: coalb, I_coalb  ! The coalbedo and its reciprocal.
+  real :: alb             ! The albedo for all bands, 0-1, nondimensional.
+  real :: as              ! A snow albedo, 0-1, nondimensional.
+  real :: ai              ! The ice albedo, 0-1, nondimensional.
+  real :: snow_cover      ! The fraction of the area covered by snow, 0-1, ND.
+  real :: fh              ! A weighting fraction of the ice albedo (as compared
+                          ! with the albedo of water) when ice is thin, 0-1, ND.
+  real :: coalb, I_coalb  ! The coalbedo (0-1) and its reciprocal.
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
                           ! is still present at the top of each ice layer (ND).
   real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
-  real :: rho_water ! The nominal density of sea water in kg m-3.
-  real :: pen      ! frac sw passed below the surface (frac 1-pen absorbed at the surface)
+  real :: rho_ice         ! The nominal density of sea ice in kg m-3.
+  real :: rho_snow        ! The nominal density of snow in kg m-3.
+  real :: rho_water       ! The nominal density of sea water in kg m-3.
+  real :: pen             ! The fraction of the shortwave flux that will pass
+                          ! below the surface (frac 1-pen absorbed at the surface)
   real :: sal_ice_top(1)  ! A specified surface salinity of ice.
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
-  integer :: m
+  integer :: m, b, nb
   character(len=200) :: mesg
 
   real :: tcrit, thick_ice_alb  ! Slab optics variables
@@ -245,6 +247,8 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
 
   real (kind=dbl_kind) :: max_mp, hs_mask_pond, pond_decr
 
+  nb = size(albedos)
+
   if (CS%slab_optics) then
     ! This option uses a very old slab ice albedo parameterization, which was
     ! used in Supersource and other GFDL models from the 1990s and before.
@@ -259,12 +263,13 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
     endif
 
     if (hi >= CS%slab_CRIT_THICK) then
-      alb_vis_dir = thick_ice_alb
+      alb = thick_ice_alb
     else
-      alb_vis_dir = CS%slab_alb_ocean + (thick_ice_alb - CS%slab_alb_ocean) * &
+      alb = CS%slab_alb_ocean + (thick_ice_alb - CS%slab_alb_ocean) * &
                     sqrt(hi/CS%slab_CRIT_THICK)
     endif
-    alb_vis_dif = alb_vis_dir ; alb_nir_dir = alb_vis_dir ; alb_nir_dif = alb_vis_dir
+    
+    do b=1,nb ; albedos(b) = alb ; enddo
     abs_sfc = 1.0
     abs_snow = 0.0 ; abs_ice_lay(:) = 0.0 ; abs_ocn = 0.0 ; abs_int = 0.0
   elseif (CS%do_deltaEdd) then
@@ -332,10 +337,11 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
     do m=1,NkIce ; abs_ice_lay(m) = Iswabs(1,1,m) * I_coalb ; enddo
     abs_ocn  = fswthru(1,1)  * I_coalb
 
-    alb_vis_dir = alvdr(1,1)
-    alb_vis_dif = alvdf(1,1)
-    alb_nir_dir = alidr(1,1)
-    alb_nir_dif = alidf(1,1)
+    albedos(:) = 0.0
+    if (nb < max(VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF)) call SIS_error(FATAL, &
+      "The argument array albedos is not large enough in the call to ice_optics_SIS2.")
+    albedos(VIS_DIR) = alvdr(1,1) ; albedos(VIS_DIF) = alvdf(1,1)
+    albedos(NIR_DIR) = alidr(1,1) ; albedos(NIR_DIF) = alidf(1,1)
 
     pen = (fswint(1,1) + fswthru(1,1)) * I_coalb
     abs_int = fswint(1,1) * I_coalb
@@ -356,8 +362,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, alb_vis_dir, alb_vis_dif,
     ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
 
     alb = snow_cover*as + (1-snow_cover)*ai
-    alb_vis_dir = alb ; alb_vis_dif = alb
-    alb_nir_dir = alb ; alb_nir_dif = alb
+    do b=1,nb ; albedos(b) = alb ; enddo
 
     pen = (1-snow_cover)*CS%pen_ice
     opt_decay_lay = exp(-hi/(NkIce*CS%opt_dep_ice))

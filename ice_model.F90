@@ -898,6 +898,9 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(IG%NkIce) :: sw_abs_lay
+  real, dimension(size(FIA%flux_sw_top,4)) :: &
+    albedos        ! The albedos for the various wavelenth and direction bands
+                   ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v
   real :: area_pt
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
@@ -909,13 +912,11 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
-                         ! with effectively zero heat capacity of ice and snow.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
 
@@ -955,9 +956,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   !   These initialization calls for ice-free categories are not really
   ! needed because these arrays are only used where there is ice.
-  ! In the case of slab_ice, the various Rad%sw_abs arrays are initialized
-  ! to 0 when they are allocated, and this never changes.
-  ! The following lines can be uncommented without changing answers.
+  !   The following lines can be uncommented without changing answers.
   ! Rad%sw_abs_sfc(:,:,:) = 0.0 ; Rad%sw_abs_snow(:,:,:) = 0.0
   ! Rad%sw_abs_ice(:,:,:,:) = 0.0 ; Rad%sw_abs_ocn(:,:,:) = 0.0
   ! Rad%sw_abs_int(:,:,:) = 0.0
@@ -972,17 +971,19 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, fCS%Time, &
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
-  !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay)
+  !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay,albedos)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
              IST%mH_ice(i,j,k)*H_to_m_ice, &
-             Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
-             Ice%albedo_vis_dir(i2,j2,k2), Ice%albedo_vis_dif(i2,j2,k2), &
-             Ice%albedo_nir_dir(i2,j2,k2), Ice%albedo_nir_dif(i2,j2,k2), &
+             Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, albedos, &
              Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
              sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
              fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
+    Ice%albedo_vis_dir(i2,j2,k2) = albedos(VIS_DIR)
+    Ice%albedo_vis_dif(i2,j2,k2) = albedos(VIS_DIF)
+    Ice%albedo_nir_dir(i2,j2,k2) = albedos(NIR_DIR)
+    Ice%albedo_nir_dif(i2,j2,k2) = albedos(NIR_DIF)
 
     do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -1111,27 +1112,22 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   real, dimension(IG%NkIce) :: sw_abs_lay
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: rho_snow ! The nominal density of snow in kg m-3.
-  real :: albedos(4)
-  real :: avg_alb
-!  type(time_type) :: dt_r   ! A temporary radiation timestep.
-
+  real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
+                      ! for the current partition, non-dimensional and 0 to 1.
+  real :: H_to_m_ice  ! The specific volumes of ice and snow times the
+  real :: H_to_m_snow ! conversion factor from thickness units, in m H-1.
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
-  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
-                         ! with effectively zero heat capacity of ice and snow.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
   !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
     call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
              IST%mH_ice(i,j,k)*H_to_m_ice, Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
-             albedos(vis_dir), albedos(vis_dif), albedos(nir_dir), albedos(nir_dif), &
-             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+             albedos, Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
              sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
              optics_CSp, IST%ITV, coszen_in=coszen(i,j))
 
@@ -1613,7 +1609,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: do_icebergs, pass_iceberg_area_to_ocean
   logical :: do_ridging
   logical :: specified_ice
-  logical :: Cgrid_dyn, slab_ice
+  logical :: Cgrid_dyn
+  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
+                         ! with effectively zero heat capacity of ice and snow.
   logical :: debug, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen, init_Tskin, init_rough
