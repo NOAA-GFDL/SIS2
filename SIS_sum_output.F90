@@ -41,9 +41,8 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
-use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type ! , NBANDS
+use SIS_types, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
@@ -733,9 +732,10 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
   real :: Flux_SW, enth_units, LI
 
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(IOF%flux_sw_ocn, 3)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
@@ -745,8 +745,10 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
               (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
-    Flux_SW = (IOF%flux_sw_ocn(i,j,vis_dir) + IOF%flux_sw_ocn(i,j,vis_dif)) + &
-              (IOF%flux_sw_ocn(i,j,nir_dir) + IOF%flux_sw_ocn(i,j,nir_dif))
+    Flux_SW = 0.0
+    do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
+      Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
+    enddo
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
           ( Flux_SW + &
            ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
@@ -796,20 +798,22 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
     FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and
     salt_in_EFP, & ! heat_input, in kg, PSU kg, and Joules.
     heat_in_EFP    !
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top, 4)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,CS,enth_units,dt,FIA) &
-!$OMP                          private(area_pt,Flux_SW)
+  !$OMP parallel do default(shared) private(area_pt,Flux_SW)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     area_pt = IST%part_size(i,j,k)
-    Flux_SW = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
-              (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
+    Flux_SW = 0.0
+    do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
+      Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
+    enddo
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
@@ -843,9 +847,10 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
+  integer :: i, j, k, m, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  nb = size(FIA%flux_sw_top, 4)
 
   ! This subroutine includes the accumulation of mass fluxes and heat fluxes
   ! into the ice that are known before SIS#_thermodynamics, as well the
@@ -874,13 +879,14 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 
   ! The terms that are added here include surface fluxes that will be passed
   ! directly on into the ocean.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,part_size,IST,CS,dt,enth_units,FIA)&
-!$OMP                          private(area_pt,pen_frac,Flux_SW)
+    !$OMP parallel do default(shared) private(area_pt,pen_frac,Flux_SW)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       area_pt = part_size(i,j,k)
       pen_frac = 1.0 ; if (k>0) pen_frac = FIA%sw_abs_ocn(i,j,k)
-      Flux_SW = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
-                (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
+      Flux_SW = 0.0
+      do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
+        Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
+      enddo
 
       CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )

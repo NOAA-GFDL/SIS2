@@ -1368,13 +1368,13 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
             (ABT%sw_down_vis_dir(i3,j3,k2) + ABT%sw_down_vis_dif(i3,j3,k2)) + &
             (ABT%sw_down_nir_dir(i3,j3,k2) + ABT%sw_down_nir_dif(i3,j3,k2)) )
-      sw_dn_bnd(i,j,vis_dir) = sw_dn_bnd(i,j,vis_dir) + &
+      sw_dn_bnd(i,j,VIS_DIR) = sw_dn_bnd(i,j,VIS_DIR) + &
                      IST%part_size(i,j,k) * ABT%sw_down_vis_dir(i3,j3,k2)
-      sw_dn_bnd(i,j,vis_dif) = sw_dn_bnd(i,j,vis_dif) + &
+      sw_dn_bnd(i,j,VIS_DIF) = sw_dn_bnd(i,j,VIS_DIF) + &
                      IST%part_size(i,j,k) * ABT%sw_down_vis_dif(i3,j3,k2)
-      sw_dn_bnd(i,j,nir_dir) = sw_dn_bnd(i,j,nir_dir) + &
+      sw_dn_bnd(i,j,NIR_DIR) = sw_dn_bnd(i,j,NIR_DIR) + &
                      IST%part_size(i,j,k) * ABT%sw_down_nir_dir(i3,j3,k2)
-      sw_dn_bnd(i,j,nir_dif) = sw_dn_bnd(i,j,nir_dif) + &
+      sw_dn_bnd(i,j,NIR_DIF) = sw_dn_bnd(i,j,NIR_DIF) + &
                      IST%part_size(i,j,k) * ABT%sw_down_nir_dif(i3,j3,k2)
     else
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
@@ -1382,13 +1382,13 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
              ABT%sw_flux_vis_dif(i3,j3,k2)/(1-Ice%albedo_vis_dif(i2,j2,k2))) + &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1-Ice%albedo_nir_dir(i2,j2,k2)) + &
              ABT%sw_flux_nir_dif(i3,j3,k2)/(1-Ice%albedo_nir_dif(i2,j2,k2))) )
-      sw_dn_bnd(i,j,vis_dir) = sw_dn_bnd(i,j,vis_dir) + IST%part_size(i,j,k) * &
+      sw_dn_bnd(i,j,VIS_DIR) = sw_dn_bnd(i,j,VIS_DIR) + IST%part_size(i,j,k) * &
             (ABT%sw_flux_vis_dir(i3,j3,k2)/(1.0-Ice%albedo_vis_dir(i2,j2,k2)))
-      sw_dn_bnd(i,j,vis_dif) = sw_dn_bnd(i,j,vis_dif) + IST%part_size(i,j,k) * &
+      sw_dn_bnd(i,j,VIS_DIF) = sw_dn_bnd(i,j,VIS_DIF) + IST%part_size(i,j,k) * &
             (ABT%sw_flux_vis_dif(i3,j3,k2)/(1.0-Ice%albedo_vis_dif(i2,j2,k2)))
-      sw_dn_bnd(i,j,nir_dir) = sw_dn_bnd(i,j,nir_dir) + IST%part_size(i,j,k) * &
+      sw_dn_bnd(i,j,NIR_DIR) = sw_dn_bnd(i,j,NIR_DIR) + IST%part_size(i,j,k) * &
             (ABT%sw_flux_nir_dir(i3,j3,k2)/(1.0-Ice%albedo_nir_dir(i2,j2,k2)))
-      sw_dn_bnd(i,j,nir_dif) = sw_dn_bnd(i,j,nir_dif) + IST%part_size(i,j,k) * &
+      sw_dn_bnd(i,j,NIR_DIF) = sw_dn_bnd(i,j,NIR_DIF) + IST%part_size(i,j,k) * &
             (ABT%sw_flux_nir_dif(i3,j3,k2)/(1.0-Ice%albedo_nir_dif(i2,j2,k2)))
     endif
 

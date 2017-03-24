@@ -644,7 +644,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                          ! with effectively zero heat capacity of ice and snow.
   type(time_type) :: Dt_ice
   logical :: sent
-  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce
+  integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
+  character(len=8) :: nstr
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
   real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
@@ -661,6 +662,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
+  nb = size(FIA%flux_sw_top,4)
 
   CS%n_fast = CS%n_fast + 1
 
@@ -690,10 +692,10 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       flux_sh(i,j,k)  = Atmos_boundary%t_flux(i2,j2,k2)
       evap(i,j,k)  = Atmos_boundary%q_flux(i2,j2,k2)
       flux_lw(i,j,k) = Atmos_boundary%lw_flux(i2,j2,k2)
-      flux_sw(i,j,k,nir_dir) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
-      flux_sw(i,j,k,nir_dif) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
-      flux_sw(i,j,k,vis_dir) = Atmos_boundary%sw_flux_vis_dir(i2,j2,k2)
-      flux_sw(i,j,k,vis_dif) = Atmos_boundary%sw_flux_vis_dif(i2,j2,k2)
+      flux_sw(i,j,k,NIR_DIR) = Atmos_boundary%sw_flux_nir_dir(i2,j2,k2)
+      flux_sw(i,j,k,NIR_DIF) = Atmos_boundary%sw_flux_nir_dif(i2,j2,k2)
+      flux_sw(i,j,k,VIS_DIR) = Atmos_boundary%sw_flux_vis_dir(i2,j2,k2)
+      flux_sw(i,j,k,VIS_DIF) = Atmos_boundary%sw_flux_vis_dif(i2,j2,k2)
       lprec(i,j,k)   = Atmos_boundary%lprec(i2,j2,k2)
       fprec(i,j,k)   = Atmos_boundary%fprec(i2,j2,k2)
       dshdt(i,j,k) = Atmos_boundary%dhdt(i2,j2,k2)
@@ -718,10 +720,10 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI)
     call hchksum(evap(:,:,1:), "Mid do_fast evap", G%HI)
     call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI)
-    call hchksum(flux_sw(:,:,1:,nir_dir), "Mid do_fast flux_sw_nir_dir", G%HI)
-    call hchksum(flux_sw(:,:,1:,nir_dif), "Mid do_fast flux_sw_nir_dif", G%HI)
-    call hchksum(flux_sw(:,:,1:,vis_dir), "Mid do_fast flux_sw_vis_dir", G%HI)
-    call hchksum(flux_sw(:,:,1:,vis_dif), "Mid do_fast flux_sw_vis_dif", G%HI)
+    do b=1,size(flux_sw,4)
+      write(nstr, '(I4)') b ; nstr = adjustl(nstr)
+      call hchksum(flux_sw(:,:,1:,b), "Mid do_fast flux_sw("//trim(nstr)//")", G%HI)
+    enddo
     call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI)
     call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI)
     call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI)
@@ -743,8 +745,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,dshdt,devapdt,dlwdt, &
-!$OMP                                  flux_sw,flux_sh,evap,flux_lw,enth_liq_0,&
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt, &
+!$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,enth_liq_0,&
 !$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
 !$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(latent,enth_col,sw_tot,dhf_dt,                   &
@@ -765,8 +767,12 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       else
         latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
       endif
-      sw_tot = (flux_sw(i,j,k,vis_dir) + flux_sw(i,j,k,vis_dif)) + &
-               (flux_sw(i,j,k,nir_dir) + flux_sw(i,j,k,nir_dif))
+      sw_tot = 0.0
+      do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
+        sw_tot = sw_tot + (flux_sw(i,j,k,b-1) + flux_sw(i,j,k,b))
+      enddo
+      sw_tot = (flux_sw(i,j,k,VIS_DIR) + flux_sw(i,j,k,VIS_DIF)) + &
+               (flux_sw(i,j,k,NIR_DIR) + flux_sw(i,j,k,NIR_DIF))
 
       dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
       if (CS%Reorder_0C_heatflux) then
@@ -1087,8 +1093,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       else
         latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
       endif
-      sw_tot = (FIA%flux_sw_top(i,j,k,vis_dir) + FIA%flux_sw_top(i,j,k,vis_dif)) + &
-               (FIA%flux_sw_top(i,j,k,nir_dir) + FIA%flux_sw_top(i,j,k,nir_dif))
+      sw_tot = (FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,VIS_DIF)) + &
+               (FIA%flux_sw_top(i,j,k,NIR_DIR) + FIA%flux_sw_top(i,j,k,NIR_DIF))
 
       dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k)
       hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
