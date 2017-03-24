@@ -49,9 +49,9 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type
 use SIS_optics, only : ice_optics_SIS2, SIS_optics_CS
+use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
-use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_hor_grid, only : SIS_hor_grid_type

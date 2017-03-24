@@ -41,8 +41,9 @@ use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operato
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 ! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
 
+use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type, VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF ! , NBANDS
+use SIS_types, only : ocean_sfc_state_type ! , NBANDS
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type

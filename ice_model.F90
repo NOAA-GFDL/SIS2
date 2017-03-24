@@ -99,7 +99,6 @@ use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
 use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
-use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_utils, only : post_avg, ice_grid_chksum
 use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
 use SIS_fixed_initialization, only : SIS_initialize_fixed
@@ -121,6 +120,7 @@ use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_
 use SIS_fast_thermo, only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
+use SIS_optics,      only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS2_ice_thm,  only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,  only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
 use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type

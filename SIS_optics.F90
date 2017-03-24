@@ -12,6 +12,11 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 implicit none ; private
 
 public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end
+public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+
+! These parameters facilitate the use of 4-D arrays for shortwave radiation and
+! albedos within SIS2.
+integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
 
 type, public :: SIS_optics_CS ; private
 

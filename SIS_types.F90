@@ -49,11 +49,9 @@ public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
 public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF
 public :: copy_Rad_to_Rad, redistribute_Rad_to_Rad, alloc_ice_Rad
 public :: translate_OSS_to_sOSS
-public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
-! These parameters facilitate the use of 4-D arrays for shortwave radiation and
+! This parameter sets the number of 4-D arrays for shortwave radiation and
 ! albedos within SIS2.
-integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
 integer, parameter :: NBANDS=4
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -2012,12 +2010,16 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
+  character(len=8) :: nstr
+  integer :: b
+
   call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI)
   call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI)
-  call hchksum(FIA%flux_sw_top(:,:,1:,VIS_DIR), trim(mesg)//" FIA%flux_sw_top(vis_dir)", G%HI)
-  call hchksum(FIA%flux_sw_top(:,:,1:,VIS_DIF), trim(mesg)//" FIA%flux_sw_top(vis_dif)", G%HI)
-  call hchksum(FIA%flux_sw_top(:,:,1:,NIR_DIR), trim(mesg)//" FIA%flux_sw_top(nir_dir)", G%HI)
-  call hchksum(FIA%flux_sw_top(:,:,1:,NIR_DIF), trim(mesg)//" FIA%flux_sw_top(nir_dif)", G%HI)
+  do b=1,size(FIA%flux_sw_top,4)
+    write(nstr, '(I4)') b ; nstr = adjustl(nstr)
+    call hchksum(FIA%flux_sw_top(:,:,1:,b), &
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI)
+  enddo
   call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI)
   call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI)
   call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI)
@@ -2026,10 +2028,11 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   if (present(check_ocean)) then ; if (check_ocean) then
     call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI)
     call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI)
-    call hchksum(FIA%flux_sw_top(:,:,0,VIS_DIR), trim(mesg)//" FIA%flux_sw_top0(vis_dir)", G%HI)
-    call hchksum(FIA%flux_sw_top(:,:,0,VIS_DIF), trim(mesg)//" FIA%flux_sw_top0(vis_dif)", G%HI)
-    call hchksum(FIA%flux_sw_top(:,:,0,NIR_DIR), trim(mesg)//" FIA%flux_sw_top0(nir_dir)", G%HI)
-    call hchksum(FIA%flux_sw_top(:,:,0,NIR_DIF), trim(mesg)//" FIA%flux_sw_top0(nir_dif)", G%HI)
+    do b=1,size(FIA%flux_sw_top,4)
+      write(nstr, '(I4)') b ; nstr = adjustl(nstr)
+      call hchksum(FIA%flux_sw_top(:,:,0,b), &
+                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI)
+    enddo
     call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI)
     call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI)
     call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI)

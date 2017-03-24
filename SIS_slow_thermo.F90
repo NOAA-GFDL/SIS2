@@ -60,7 +60,6 @@ use data_override_mod, only : data_override
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : total_sfc_flux_type
-use SIS_types, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 use SIS_utils, only : post_avg
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -75,6 +74,7 @@ use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
 use SIS2_ice_thm, only : enthalpy_liquid, calculate_T_freeze
+use SIS_optics,   only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_transport, only : adjust_ice_categories, SIS_transport_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_tracer_registry, only : SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr
