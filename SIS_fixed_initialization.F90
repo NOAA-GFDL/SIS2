@@ -4,7 +4,7 @@ module SIS_fixed_initialization
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
-use SIS_debugging, only : hchksum, Bchksum, uvchksum_pair, chksum
+use SIS_debugging, only : hchksum, Bchksum, uvchksum, chksum
 use MOM_domains, only : pass_var
 use MOM_dyn_horgrid, only : dyn_horgrid_type
 use MOM_error_handler, only : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
@@ -72,8 +72,8 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
     call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, &
                  haloshift=min(1, G%ied-G%iec, G%jed-G%jec))
     call hchksum(G%mask2dT, 'SIS_initialize_fixed: mask2dT ', G%HI)
-    call uvchksum_pair('SIS_initialize_fixed: mask2dC[uv] ', &
-                       G%mask2dCu, G%mask2dCv, G)
+    call uvchksum('SIS_initialize_fixed: mask2dC[uv] ', &
+                  G%mask2dCu, G%mask2dCv, G)
     call Bchksum(G%mask2dBu, 'SIS_initialize_fixed: mask2dBu ', G%HI)
   endif
 

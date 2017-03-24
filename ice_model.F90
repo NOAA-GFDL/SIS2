@@ -38,7 +38,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_model_mod
 
-use SIS_debugging,     only : chksum, uvchksum_pair, Bchksum, SIS_debugging_init
+use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -1043,8 +1043,8 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     call chksum(Ice%v_surf(:,:,2), "Intermed Ice%v_surf(2)")
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
 !   if (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C)) &
-!     call uvchksum_pair(OSS%u_ocn_C, "OSS%u_ocn_C", &
-!                        OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1)
+!     call uvchksum(OSS%u_ocn_C, "OSS%u_ocn_C", &
+!                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1)
 !   if (allocated(OSS%u_ocn_B)) &
 !     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1)
 !   if (allocated(OSS%v_ocn_B)) &
