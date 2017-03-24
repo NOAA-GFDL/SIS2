@@ -27,7 +27,7 @@ use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_debugging,   only : chksum, Bchksum, hchksum, uchksum, vchksum
+use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum_pair
 use SIS_debugging,   only : check_redundant_B, check_redundant_C
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
@@ -2094,8 +2094,7 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
     call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   endif
   if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
-    call uchksum(IST%u_ice_C, mesg//" IST%u_ice_C", G%HI, haloshift=hs)
-    call vchksum(IST%v_ice_C, mesg//" IST%v_ice_C", G%HI, haloshift=hs)
+    call uvchksum_pair(mesg//" IST%[uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, halos=hs)
     call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)
   endif
 

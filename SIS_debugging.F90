@@ -22,12 +22,16 @@ module SIS_debugging
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   This module contains subroutines that perform various error checking and   !
-! debugging functions for SIS2.  This routine is similar to it counterpart in  !  
+! debugging functions for SIS2.  This routine is similar to it counterpart in  !
 ! the MOM6 code, except for the use of the SIS_hor_grid_type and by keeping it !
 ! separate we retain the ability to set up MOM6 and SIS2 debugging separately. !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use MOM_checksums, only : hchksum, Bchksum, uchksum, vchksum, qchksum
+use MOM_checksums, only : hchksum, Bchksum
+use MOM_checksums, only : mom_hchksum_pair => hchksum_pair
+use MOM_checksums, only : mom_Bchksum_pair => Bchksum_pair
+use MOM_checksums, only : mom_uvchksum_pair => uvchksum_pair
+
 use MOM_checksums, only : is_NaN, chksum, MOM_checksums_init
 use MOM_coms, only : PE_here, root_PE, num_PEs, sum_across_PEs
 use MOM_coms, only : min_across_PEs, max_across_PEs, reproducing_sum
@@ -36,16 +40,30 @@ use MOM_domains, only : BGRID_NE, AGRID, To_All, Scalar_Pair
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : log_version, param_file_type, get_param
 use SIS_hor_grid, only : SIS_hor_grid_type
+use MOM_dyn_horgrid, only : dyn_horgrid_type
 use MOM_hor_index, only : hor_index_type
 
 implicit none ; private
 
 public :: check_redundant_C, check_redundant_B, check_redundant_T
 public :: SIS_debugging_init
-public :: vec_chksum, vec_chksum_C, vec_chksum_B, vec_chksum_A
 
 ! These interfaces come from MOM_checksums.
-public :: hchksum, Bchksum, uchksum, vchksum, qchksum, is_NaN, chksum
+public :: hchksum, Bchksum, is_NaN, chksum
+public :: hchksum_pair, Bchksum_pair, uvchksum_pair
+
+interface hchksum_pair
+    module procedure hchksum_pair_3d, hchksum_pair_2d
+end interface hchksum_pair
+
+interface Bchksum_pair
+    module procedure Bchksum_pair_3d, Bchksum_pair_2d
+end interface Bchksum_pair
+
+interface uvchksum_pair
+    module procedure uvchksum_pair_3d, uvchksum_pair_2d
+    module procedure uvchksum_pair_3d_dG, uvchksum_pair_2d_dG
+end interface uvchksum_pair
 
 interface check_redundant_C
   module procedure check_redundant_vC3d, check_redundant_vC2d
@@ -58,19 +76,6 @@ interface check_redundant_T
   module procedure check_redundant_sT3d, check_redundant_sT2d
   module procedure check_redundant_vT3d, check_redundant_vT2d
 end interface check_redundant_T
-
-interface vec_chksum
-  module procedure chksum_vec_C3d, chksum_vec_C2d
-end interface vec_chksum
-interface vec_chksum_C
-  module procedure chksum_vec_C3d, chksum_vec_C2d
-end interface vec_chksum_C
-interface vec_chksum_B
-  module procedure chksum_vec_B3d, chksum_vec_B2d
-end interface vec_chksum_B
-interface vec_chksum_A
-  module procedure chksum_vec_A3d, chksum_vec_A2d
-end interface vec_chksum_A
 
 integer :: max_redundant_prints = 100
 integer :: redundant_prints(3) = 0
@@ -562,7 +567,7 @@ end subroutine  check_redundant_vT2d
 ! =====================================================================
 
 ! This function does a checksum and redundant point check on a 3d C-grid vector.
-subroutine chksum_vec_C3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine uvchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                  intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),           intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -575,8 +580,7 @@ subroutine chksum_vec_C3d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call uchksum(u_comp, mesg//"(u)", G%HI, halos)
-    call vchksum(v_comp, mesg//"(v)", G%HI, halos)
+    call mom_uvchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -586,11 +590,11 @@ subroutine chksum_vec_C3d(mesg, u_comp, v_comp, G, halos, scalars)
     endif
   endif
 
-end subroutine chksum_vec_C3d
+end subroutine uvchksum_pair_3d
 
 ! This function does a checksum and redundant point check on a 2d C-grid vector.
-subroutine chksum_vec_C2d(mesg, u_comp, v_comp, G, halos, scalars)
-  character(len=*),                intent(in)    :: mesg   !< An identifying message
+subroutine uvchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
+  character(len=*),                intent(in)    :: mesg !< An identifying message
   type(SIS_hor_grid_type),         intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
@@ -602,8 +606,7 @@ subroutine chksum_vec_C2d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call uchksum(u_comp, mesg//"(u)", G%HI, halos)
-    call vchksum(v_comp, mesg//"(v)", G%HI, halos)
+    call mom_uvchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -613,10 +616,38 @@ subroutine chksum_vec_C2d(mesg, u_comp, v_comp, G, halos, scalars)
     endif
   endif
 
-end subroutine chksum_vec_C2d
+end subroutine uvchksum_pair_2d
+
+! This function does a checksum and redundant point check on a 3d C-grid vector.
+subroutine uvchksum_pair_3d_dG(mesg, u_comp, v_comp, G, halos)
+  character(len=*),                  intent(in)    :: mesg   !< An identifying message
+  type(dyn_horgrid_type),           intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+
+  if (debug_chksums) then
+    call mom_uvchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+  endif
+
+end subroutine uvchksum_pair_3d_dG
+
+! This function does a checksum and redundant point check on a 2d C-grid vector.
+subroutine uvchksum_pair_2d_dG(mesg, u_comp, v_comp, G, halos)
+  character(len=*),                intent(in)    :: mesg !< An identifying message
+  type(dyn_horgrid_type),          intent(inout) :: G      !< The ocean's grid structure
+  real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
+  real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
+  integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+
+  if (debug_chksums) then
+    call mom_uvchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+  endif
+
+end subroutine uvchksum_pair_2d_dG
 
 ! This function does a checksum and redundant point check on a 3d B-grid vector.
-subroutine chksum_vec_B3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                   intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),            intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -629,8 +660,7 @@ subroutine chksum_vec_B3d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call Bchksum(u_comp, mesg//"(u)", G%HI, halos)
-    call Bchksum(v_comp, mesg//"(v)", G%HI, halos)
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -640,10 +670,10 @@ subroutine chksum_vec_B3d(mesg, u_comp, v_comp, G, halos, scalars)
     endif
   endif
 
-end subroutine chksum_vec_B3d
+end subroutine Bchksum_pair_3d
 
 ! This function does a checksum and redundant point check on a 2d B-grid vector.
-subroutine chksum_vec_B2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
+subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: u_comp !< The u-component of the vector
@@ -658,8 +688,7 @@ subroutine chksum_vec_B2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call Bchksum(u_comp, mesg//"(u)", G%HI, halos, symmetric=symmetric)
-    call Bchksum(v_comp, mesg//"(v)", G%HI, halos, symmetric=symmetric)
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, symmetric=symmetric, haloshift=halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -669,10 +698,10 @@ subroutine chksum_vec_B2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
     endif
   endif
 
-end subroutine chksum_vec_B2d
+end subroutine Bchksum_pair_2d
 
 ! This function does a checksum and redundant point check on a 3d C-grid vector.
-subroutine chksum_vec_A3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -685,8 +714,7 @@ subroutine chksum_vec_A3d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call hchksum(u_comp, mesg//"(u)", G%HI, halos)
-    call hchksum(v_comp, mesg//"(v)", G%HI, halos)
+    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -696,11 +724,10 @@ subroutine chksum_vec_A3d(mesg, u_comp, v_comp, G, halos, scalars)
     endif
   endif
 
-end subroutine chksum_vec_A3d
-
+end subroutine hchksum_pair_3d
 
 ! This function does a checksum and redundant point check on a 2d C-grid vector.
-subroutine chksum_vec_A2d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
   character(len=*),               intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),        intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
@@ -713,8 +740,7 @@ subroutine chksum_vec_A2d(mesg, u_comp, v_comp, G, halos, scalars)
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call hchksum(u_comp, mesg//"(u)", G%HI, halos)
-    call hchksum(v_comp, mesg//"(v)", G%HI, halos)
+    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -724,6 +750,6 @@ subroutine chksum_vec_A2d(mesg, u_comp, v_comp, G, halos, scalars)
     endif
   endif
 
-end subroutine chksum_vec_A2d
+end subroutine hchksum_pair_2d
 
 end module SIS_debugging

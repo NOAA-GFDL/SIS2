@@ -29,7 +29,7 @@ module SIS_dyn_bgrid
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
-use SIS_debugging,     only : vec_chksum_A, vec_chksum_B, vec_chksum_C
+use SIS_debugging,     only : Bchksum_pair
 use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
@@ -454,11 +454,11 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   enddo ; enddo
 
   if (CS%debug .or. CS%debug_redundant) then
-    call vec_chksum_B("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true.)
-    call vec_chksum_B("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true.)
-    call vec_chksum_B("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true.)
-    call vec_chksum_B("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true.)
-    call vec_chksum_B("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true.)
+    call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true.)
+    call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true.)
+    call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true.)
+    call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true.)
+    call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true.)
   endif
   if (CS%debug_redundant) then
     call check_redundant_B("civ in SIS_B_dynamics", civ, G)

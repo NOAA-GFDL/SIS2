@@ -33,8 +33,8 @@ module SIS_dyn_cgrid
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_debugging,     only : chksum, Bchksum, hchksum, vec_chksum_C
-use SIS_debugging,     only : check_redundant_B, check_redundant_C, vec_chksum_C
+use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum_pair
+use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
@@ -868,10 +868,10 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 !$OMP end parallel
 
   if (CS%debug .or. CS%debug_redundant) then
-    call vec_chksum_C("PF[uv] in SIS_C_dynamics", PFu, PFv, G)
-    call vec_chksum_C("f[xy]at in SIS_C_dynamics", fxat, fyat, G)
-    call vec_chksum_C("[uv]i pre-steps SIS_C_dynamics", ui, vi, G)
-    call vec_chksum_C("[uv]o in SIS_C_dynamics", uo, vo, G)
+    call uvchksum_pair("PF[uv] in SIS_C_dynamics", PFu, PFv, G)
+    call uvchksum_pair("f[xy]at in SIS_C_dynamics", fxat, fyat, G)
+    call uvchksum_pair("[uv]i pre-steps SIS_C_dynamics", ui, vi, G)
+    call uvchksum_pair("[uv]o in SIS_C_dynamics", uo, vo, G)
   endif
 
   dt_cumulative = 0.0
@@ -1192,16 +1192,16 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                    haloshift=0, symmetric=.true.)
     endif
     if (CS%debug .or. CS%debug_redundant) then
-      call vec_chksum_C("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
-      call vec_chksum_C("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
-      call vec_chksum_C("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)
-      call vec_chksum_C("[uv]i in SIS_C_dynamics", ui, vi, G)
+      call uvchksum_pair("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
+      call uvchksum_pair("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
+      call uvchksum_pair("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)
+      call uvchksum_pair("[uv]i in SIS_C_dynamics", ui, vi, G)
     endif
 
   enddo ! l=1,EVP_steps
 
   if (CS%debug .or. CS%debug_redundant) &
-    call vec_chksum_C("[uv]i end SIS_C_dynamics", ui, vi, G)
+    call uvchksum_pair("[uv]i end SIS_C_dynamics", ui, vi, G)
 
   ! Reset the time information in the diag type.
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
