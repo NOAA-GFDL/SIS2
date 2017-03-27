@@ -45,7 +45,7 @@ use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
-use SIS2_ice_thm, only : enth_from_TS, get_SIS2_thermo_coefs, ice_thermo_type
+use SIS2_ice_thm, only : enthalpy_liquid_freeze, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
 
@@ -429,7 +429,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   col_heat(:,:,:) = 0.0
   col_salt(:,:,:) = 0.0
 
-  enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV)
+  enth_liq_0 = enthalpy_liquid_freeze(0.0, IST%ITV)
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then

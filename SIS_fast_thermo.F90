@@ -59,7 +59,7 @@ use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
 use SIS2_ice_thm,  only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,  only : ice_temp_SIS2
+use SIS2_ice_thm,  only : ice_temp_SIS2, latent_sublimation
 use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 
 implicit none ; private
@@ -636,22 +636,17 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
   real :: sw_tot ! sum over all shortwave (dir/dif and vis/nir) components
-  real :: LatHtFus       ! The latent heat of fusion of ice in J/kg.
+  real :: snow_wt ! A fractional weighting of snow in the category surface area.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
-  logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
-                         ! with effectively zero heat capacity of ice and snow.
   type(time_type) :: Dt_ice
   logical :: sent
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
   character(len=8) :: nstr
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
-  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
-                     ! enthalpy units (sometimes J kg-1).
   real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
-  real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
 
@@ -732,7 +727,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, slab_ice=slab_ice)
+                             Latent_vapor=LatHtVap)
 
   do j=jsc,jec ; do i=isc,iec
     flux_lh(i,j,0) = LatHtVap * evap(i,j,0)
@@ -743,13 +738,11 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   !
   dt_fast = time_type_to_real(Time_step)
 
-  enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
-
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt, &
-!$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,enth_liq_0,&
-!$OMP                                  dt_fast,flux_lh,I_enth_unit,G,S_col,kg_H_Nk,slab_ice,&
-!$OMP                                  enth_units,LatHtFus,LatHtVap,IG,sOSS,FIA,Rad,CS) &
-!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,                   &
+!$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,&
+!$OMP                                  dt_fast,flux_lh,G,S_col,kg_H_Nk,&
+!$OMP                                  enth_units,LatHtVap,IG,sOSS,FIA,Rad,CS) &
+!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,snow_wt,  &
 !$OMP                                  hf_0,ts_new,dts,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -757,16 +750,11 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
-      ! In the case of sublimation of either snow or ice, the vapor is at 0 C.
-      ! If the vapor should be at a different temperature, a correction would be
-      ! made here.
-      if (slab_ice) then
-        latent = LatHtVap + LatHtFus
-      elseif (IST%mH_snow(i,j,k)>0.0) then
-        latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
-      else
-        latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
-      endif
+      ! This is for sublimation into water vapor at 0 C; if the vapor should be
+      ! at a different temperature, a correction would be made here.
+      snow_wt = 0.0 ; if (IST%mH_snow(i,j,k)>0.0) snow_wt = 1.0
+      latent = latent_sublimation(IST%enth_snow(i,j,k,1), IST%enth_ice(i,j,k,1), snow_wt, IST%ITV)
+
       sw_tot = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
         sw_tot = sw_tot + (flux_sw(i,j,k,b-1) + flux_sw(i,j,k,b))
@@ -915,12 +903,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
   real, dimension(0:IG%NkIce) :: SW_abs_col
-  real :: dt_here, ts_new, dts, hf, hfd, latent
+  real :: dt_here, ts_new, dts, hf, hfd
+  real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 C, in W m-2.
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
   real :: sw_tot  ! sum over dir/dif vis/nir components
-  real :: LatHtFus      ! The latent heat of fusion of ice in J/kg.
-  real :: LatHtVap      ! The latent heat of vaporization of water at 0C in J/kg.
   real :: rho_ice       ! The nominal density of sea ice in kg m-3.
   real :: rho_snow      ! The nominal density of snow in kg m-3.
   real, dimension(size(FIA%flux_sw_top,4)) :: &
@@ -929,8 +916,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     sw_abs_lay          ! The fractional shortwave absorption by each ice layer.
   real :: H_to_m_ice    ! The specific volumes of ice and snow times the
   real :: H_to_m_snow   ! conversion factor from thickness units, in m H-1.
-  logical :: slab_ice   ! If true, use the very old slab ice thermodynamics,
-                        ! with effectively zero heat capacity of ice and snow.
+  real :: snow_wt       ! A fractional weighting of snow in the category surface area.
   real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
     sw_tot_ice_band     !   The total shortwave radiation by band, integrated
                         ! across the ice thickness partitions, but not the open
@@ -954,10 +940,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: TSF_sw_tot ! The total of all shortwave fluxes into the snow, ice,
                      ! and ocean that were previouslly stored in TSF, in W m-2.
 
-  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
-                     ! enthalpy units (sometimes J kg-1).
   real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
-  real :: I_enth_unit  ! The inverse of enth_units, in J kg-1 enth_unit-1.
   real :: I_Nk
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
 
@@ -972,16 +955,13 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, IG)
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, &
-                             rho_ice=rho_ice, rho_snow=rho_snow, slab_ice=slab_ice)
+                             rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
 
   !
   ! implicit update of ice surface temperature
   !
   dt_here = time_type_to_real(Time_step)
-
-  enth_liq_0 = Enth_from_TS(0.0, 0.0, IST%ITV) ; I_enth_unit = 1.0 / enth_units
 
   ! Ice can scatter direct shortwave into diffuse without loss of energy
   ! conservation, so it only the total of the shortwave in each frequency
@@ -1004,10 +984,14 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   sw_top_chg(:,:,:,:) = 0.0
   use_new_albedos = .true.  ! Changing this value changes answers at the level of roundoff.
 
-  !$OMP parallel do default(shared) private(do_any_j,do_optics,any_sw,any_ice,albedos,&
-  !$OMP                 sw_abs_lay,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,rescale, &
-  !$OMP                 latent,enth_col,sw_tot,dhf_dt,hf_0,ts_new,SW_abs_col,&
-  !$OMP                 SW_absorbed,enth_here,tot_heat_in,enth_imb,norm_enth_imb )
+  !$OMP parallel do default(none) &
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,CS,optics_CSp, &
+  !$OMP            dt_here,use_new_albedos,H_to_m_snow,H_to_m_ice, &
+  !$OMP            nbmerge,sw_top_chg,S_col) &
+  !$OMP    private(do_any_j,do_optics,any_sw,any_ice,albedos,rescale, &
+  !$OMP            sw_abs_lay,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,flux_sw_prev, &
+  !$OMP            latent,enth_col,sw_tot,dhf_dt,hf_0,ts_new,SW_abs_col,snow_wt, &
+  !$OMP            SW_absorbed,enth_here,tot_heat_in,enth_imb,norm_enth_imb )
   do j=jsc,jec
     do_any_j = .false.
     do i=isc,iec
@@ -1082,16 +1066,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       enth_col(0) = IST%enth_snow(i,j,k,1)
       do m=1,NkIce ; enth_col(m) = IST%enth_ice(i,j,k,m) ; enddo
 
-      ! In the case of sublimation of either snow or ice, the vapor is at 0 C.
-      ! If the vapor should be at a different temperature, a correction would be
-      ! made here.
-      if (slab_ice) then
-        latent = LatHtVap + LatHtFus
-      elseif (IST%mH_snow(i,j,k)>0.0) then
-        latent = LatHtVap + (enth_liq_0 - IST%enth_snow(i,j,k,1)) * I_enth_unit
-      else
-        latent = LatHtVap + (enth_liq_0 - IST%enth_ice(i,j,k,1)) * I_enth_unit
-      endif
+      ! This is for sublimation into water vapor at 0 C; if the vapor should be
+      ! at a different temperature, a correction would be made here.
+      snow_wt = 0.0 ; if (IST%mH_snow(i,j,k)>0.0) snow_wt = 1.0
+      latent = latent_sublimation(IST%enth_snow(i,j,k,1), IST%enth_ice(i,j,k,1), snow_wt, IST%ITV)
+
       sw_tot = (FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,VIS_DIF)) + &
                (FIA%flux_sw_top(i,j,k,NIR_DIR) + FIA%flux_sw_top(i,j,k,NIR_DIF))
 

@@ -113,7 +113,7 @@ public :: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 public :: get_SIS2_thermo_coefs, ice_thermo_init, ice_thermo_end
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
-public :: e_to_melt_TS, energy_melt_enthS
+public :: e_to_melt_TS, energy_melt_enthS, latent_sublimation
 
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            ! The heat capacity of ice, in J kg-1 K-1.
@@ -132,6 +132,7 @@ type, public :: ice_thermo_type ; private
   real :: enth_liq_0 = 0.0     ! The value of enthalpy for liquid fresh
                                ! water at 0 C, in J kg-1.
   real :: enth_unit = 1.0      ! A conversion factor for enthalpy from Joules kg-1.
+  real :: I_enth_unit = 1.0    ! A conversion factor for enthalpy back to Joules kg-1.
   logical :: slab_ice = .false. ! If true use the very old slab ice thermodynamics,
                                 ! with effectively zero heat capacity of ice and snow.
   type(EOS_type), pointer :: EOS=>NULL() ! A pointer to the shared MOM6/SIS2
@@ -316,7 +317,9 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: hsnow_eff
   real :: snow_temp_new, snow_temp_max
   real :: hL_ice_eff
-  real :: enth_liq_lim
+  real :: enth_liq_lim ! The enthalpy at the point where the ice or snow stops
+                       ! acting as a solid, and all extra heat goes into
+                       ! melting, in enth_units.
   real :: enth_prev
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: rho_snow ! The nominal density of snow in kg m-3.
@@ -356,8 +359,6 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   k0a = (CS%KS*dSF_dT) / (0.5*dSF_dT*hsnow_eff + CS%KS)      ! coupling snow to "air"
   k0skin = 2.0*CS%KS / hsnow_eff
   k0a_x_ta = (CS%KS*SF_0) / (0.5*dSF_dT*hsnow_eff + CS%KS) ! coupling times "air" temperature
-
-  enth_liq_lim = Enth_from_TS(0.0, 0.0, ITV)
 
   ! Determine the enthalpy for conservation checks.
   m_lay(0) = mL_snow ; do k=1,NkIce ; m_lay(k) = mL_ice ; enddo
@@ -579,6 +580,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 
   e_extra_sum = 0.0
 
+  enth_liq_lim = Enth_from_TS(0.0, 0.0, ITV)
   if (enthalpy(0) > enth_liq_lim) then ! put excess snow energy into top melt.
     e_extra = (enthalpy(0) - enth_liq_lim) * mL_snow * I_enth_unit
     tmelt = tmelt + e_extra
@@ -1067,9 +1069,10 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     ! but it avoids serious roundoff issues later on when b is large.
     new_temp = dT_dEnth * ((dtEU * (htg - fb*0.0) + m_lay * (enth_in-enth_fp)) / &
                            (m_lay  + dtEU*(fb*dT_dEnth)))
-  else! if (Cp_ice == Cp_brine) then
+  else
     En_J = (enth_in - enthalpy_liquid(0.0, 0.0, ITV)) / enth_unit
-    ! Solve a quadratic equation for the new layer temperature, tn:
+    ! For a first guess solve the case if (Cp_ice == Cp_brine) by solving a
+    ! quadratic equation for the new layer temperature, tn:
     !
     !   m * (En_J - (Cp_Water-Cp_Ice)*T_fr + L + htg*dt/m) =
     !        (m*Cp_Ice + b*dt) *tn + m*LI*T_fr/tn
@@ -1083,7 +1086,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
     else
       new_temp = (2*CC) / (-BB + sqrt(BB*BB - 4*AA*CC))
     endif
-    if (Cp_ice == Cp_brine) then
+    if (Cp_ice == Cp_brine) then  ! Keep this solution.
       enth = enth_from_TS(new_temp, sice, ITV)
     else ! (Cp_ice /= Cp_brine)
       ! Correct the new temperature estimate.
@@ -1831,6 +1834,7 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  "should not change.  A negative values is taken as an inverse.", &
                  units="J kg-1", default=1.0)
   if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
+  ITV%I_enth_unit = 1.0 / ITV%enth_unit
 
   call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
@@ -1962,6 +1966,36 @@ function enth_melt(T, S, ITV) result (emelt)
 
   emelt = enthalpy_liquid_freeze(S, ITV) - enth_from_TS(T, S, ITV)
 end function enth_melt
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> latent_sublimation returns the latent heat of sublimation as vapor at 0 C
+!!   for a given ice and snow enthalpy (in enth_units), and a weighting factor
+!!   for the sublimation between the snow and ice.
+function latent_sublimation(enth_snow, enth_ice, wt_snow, ITV) result (latent)
+  real, intent(in) :: enth_snow  !< The enthalpy of the snow in enth_units.
+  real, intent(in) :: enth_ice   !< The enthalpy of the ice surface in enth_units.
+  real, intent(in) :: wt_snow    !< A weighting factor (0-1) for the snow areal
+                                 !< coverage; the complement is for the ice.
+  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+  real :: latent !< The latent heat of sublimation in J kg-1.
+
+  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 C, in
+                     ! enthalpy units (sometimes J kg-1).
+                     ! This should become ITV%Enth_liq_0, but it is not due to
+                     ! a bug in how this is calculated.
+
+  enth_liq_0 = Enth_from_TS(0.0, 0.0, ITV)
+  !### enth_liq_0 = ITV%Enth_liq_0
+
+  if (ITV%slab_ice) then
+    latent = ITV%Lat_Vapor + ITV%LI
+  else
+    latent = ITV%Lat_Vapor + (enth_liq_0 - ((1.0 - wt_snow) * enth_ice + &
+                                       wt_snow * enth_snow)) * ITV%I_enth_unit
+  endif
+
+end function latent_sublimation
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! Temp_from_Enth_S - Set a column of temperatures from enthalpy and salinity.  !
