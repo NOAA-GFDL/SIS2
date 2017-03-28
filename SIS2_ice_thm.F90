@@ -135,6 +135,9 @@ type, public :: ice_thermo_type ; private
   real :: I_enth_unit = 1.0    ! A conversion factor for enthalpy back to Joules kg-1.
   logical :: slab_ice = .false. ! If true use the very old slab ice thermodynamics,
                                 ! with effectively zero heat capacity of ice and snow.
+  logical :: sublimation_bug = .false.  ! If true use an older calculation that omits the
+                            ! latent heat of fusion from the latent heat of sublimation.
+                            ! This variable should be obsoleted.
   type(EOS_type), pointer :: EOS=>NULL() ! A pointer to the shared MOM6/SIS2
                             ! equation-of-state type. This is here to encourage
                             ! the use of common and consistent thermodynamics
@@ -1835,6 +1838,11 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  units="J kg-1", default=1.0)
   if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
   ITV%I_enth_unit = 1.0 / ITV%enth_unit
+  call get_param(param_file, mod, "SUBLIMATION_BUG", ITV%sublimation_bug, &
+                 "If true use an older calculation that omits the latent \n"//&
+                 "heat of fusion from the latent heat of sublimation. \n"//&
+                 "This variable should be obsoleted as soon as possible.", &
+                 default=.false.)
 
   call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
@@ -1984,8 +1992,11 @@ function latent_sublimation(enth_snow, enth_ice, wt_snow, ITV) result (latent)
                      ! This should become ITV%Enth_liq_0, but it is not due to
                      ! a bug in how this is calculated.
 
-  enth_liq_0 = Enth_from_TS(0.0, 0.0, ITV)
-  !### enth_liq_0 = ITV%Enth_liq_0
+  if (ITV%sublimation_bug) then  ! This is false by default and should be obsoleted.
+    enth_liq_0 = Enth_from_TS(0.0, 0.0, ITV)
+  else
+    enth_liq_0 = ITV%Enth_liq_0
+  endif
 
   if (ITV%slab_ice) then
     latent = ITV%Lat_Vapor + ITV%LI
