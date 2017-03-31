@@ -11,7 +11,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 
 implicit none ; private
 
-public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end
+public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end, bright_ice_temp
 public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 ! These parameters facilitate the use of 4-D arrays for shortwave radiation and
@@ -388,6 +388,28 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
 
 end subroutine ice_optics_SIS2
 
+!> bright_ice_temp returns the skin temperature (in deg C) below which the snow
+!! and ice attain their greatest brightness and albedo no longer varies, for
+!! the highest attainable salinity.
+function bright_ice_temp(CS, ITV) result(bright_temp)
+  type(SIS_optics_CS), intent(in)   :: CS  !< The ice optics control structure
+  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+  real :: bright_temp
+
+  real :: salin_max       ! The maximum attainable salinity, in PSU.
+  real :: temp_freeze_min ! The freezing temperature of water at salin_max, in C.
+
+  salin_max = 40.0
+
+  temp_freeze_min = T_freeze(salin_max, ITV)
+  
+  if (CS%do_deltaEdd) then ! This is hard-coded for the delta-Eddington scheme.
+    bright_temp = temp_freeze_min - 1.0
+  else
+    bright_temp = temp_freeze_min - CS%T_RANGE_MELT
+  endif
+
+end function bright_ice_temp
 
 subroutine SIS_optics_end(CS)
   type(SIS_optics_CS), pointer :: CS
