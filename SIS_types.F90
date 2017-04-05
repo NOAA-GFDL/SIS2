@@ -252,7 +252,8 @@ type fast_ice_avg_type
                     ! thickness categories, used in calculating
                     ! WindStr_[xy]_A; nondimensional, between 0 & 1.
 
-  logical :: first_copy = .true.
+  integer :: copy_calls = 0  ! The number of times this structure has been
+                    ! copied from the fast ice to the slow ice.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:,:) :: &
     tr_flux_top     ! An array of tracer fluxes at the top of the
@@ -317,14 +318,14 @@ type total_sfc_flux_type
                 ! at the top of the ice, in kg m-2 s-1.
     fprec       ! The downward flux of frozen precipitation
                 ! at the top of the ice, in kg m-2 s-1.
-!  logical :: first_copy = .true.
   real, allocatable, dimension(:,:,:) :: &
     flux_sw     ! The downward flux of shortwave radiation at the top of
                 ! the sea-ice in W m-2.  The third dimension combines
                 ! angular orientation (direct or diffuse) and frequency
                 ! (visible or near-IR) bands, with the integer parameters
                 ! from this module helping to distinguish them.
-  logical :: first_copy = .true.
+  integer :: copy_calls = 0  ! The number of times this structure has been
+                ! copied from the fast ice to the slow ice.
   integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
   real, allocatable, dimension(:,:,:) :: &
     tr_flux        ! An array of tracer fluxes at the top of the
@@ -1255,8 +1256,12 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     enddo ; enddo ; enddo
   endif
 
-  if (FIA_in%first_copy .or. FIA_out%first_copy) then ; if (FIA_in%num_tr_fluxes >= 0) then
-    if (FIA_out%num_tr_fluxes < 0) then
+  if (FIA_in%copy_calls /= FIA_out%copy_calls) call SIS_error(WARNING, &
+    "copy_FIA_to_FIA called an inconsistent number of time for the input and output types.")
+
+  FIA_in%copy_calls = FIA_in%copy_calls + 1 ; FIA_out%copy_calls = FIA_out%copy_calls + 1
+  if (FIA_in%copy_calls <= 2) then
+    if ((FIA_in%num_tr_fluxes >= 0) .and. (FIA_out%num_tr_fluxes < 0)) then
       ! Allocate the tr_flux_top arrays to accommodate the size of the input
       ! fluxes.  This only occurs the first time FIA_out is copied from a fully
       ! initialized FIA_in.
@@ -1267,8 +1272,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
         FIA_out%tr_flux_top(:,:,:,:) = 0.0
       endif
     endif
-    FIA_in%first_copy = .false. ; FIA_out%first_copy = .false.
-  endif ; endif
+  endif
 
   if (FIA_in%num_tr_fluxes >= 0) then
     if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
@@ -1297,16 +1301,21 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   real, pointer, dimension(:,:) :: null_ptr2D => NULL()
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
-  logical :: first_copy
+  integer :: copy_calls  ! The number of times these FIA_types have been copied.
   integer :: i, j, b, isd, ied, jsd, jed, ncat
   integer :: num_tr
 
+  copy_calls = 0
+  if (associated(FIA_out)) then
+    FIA_out%copy_calls = FIA_out%copy_calls + 1
+    copy_calls = FIA_out%copy_calls
+  endif
+  if (associated(FIA_in)) then
+    FIA_in%copy_calls = FIA_in%copy_calls + 1
+    copy_calls = max(copy_calls,FIA_in%copy_calls)
+  endif
 
-  first_copy = .false.
-  if (associated(FIA_out)) first_copy = FIA_out%first_copy
-  if (associated(FIA_in)) first_copy = first_copy .or. FIA_in%first_copy
-
-  if (first_copy) then
+  if (copy_calls <= 2) then
     ! Determine the number of fluxes.
     num_tr = 0 ; if (associated(FIA_in)) num_tr = FIA_in%num_tr_fluxes
     call max_across_PEs(num_tr)
@@ -1325,10 +1334,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
         allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, num_tr))
         FIA_out%tr_flux_top(:,:,:,:) = 0.0
       endif
-      FIA_out%first_copy = .false.
     endif
-
-    if (associated(FIA_in)) FIA_in%first_copy = .false.
   endif
 
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
@@ -1464,7 +1470,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                           FIA_out%calving_hflx, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           FIA_out%Tskin_avg, complete=.false.)
-    do b=1,size(FIA_in%flux_sw_dn,3)
+    do b=1,size(FIA_out%flux_sw_dn,3)
       call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                             FIA_out%flux_sw_dn(:,:,b), complete=.false.)
     enddo
@@ -1615,8 +1621,12 @@ subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
     do b=1,nb ; TSF_out%flux_sw(i2,j2,b) = TSF_in%flux_sw(i,j,b) ; enddo
   enddo ; enddo
 
-  if (TSF_in%first_copy .or. TSF_out%first_copy) then ; if (TSF_in%num_tr_fluxes >= 0) then
-    if (TSF_out%num_tr_fluxes < 0) then
+  if (TSF_in%copy_calls /= TSF_out%copy_calls) call SIS_error(WARNING, &
+    "copy_TSF_to_TSF called an inconsistent number of time for the input and output types.")
+
+  TSF_in%copy_calls = TSF_in%copy_calls + 1 ; TSF_out%copy_calls = TSF_out%copy_calls + 1
+  if (TSF_in%copy_calls <= 2) then
+    if ((TSF_in%num_tr_fluxes >= 0) .and. (TSF_out%num_tr_fluxes < 0)) then
       ! Allocate the tr_flux_top arrays to accommodate the size of the input
       ! fluxes.  This only occurs the first time TSF_out is copied from a fully
       ! initialized TSF_in.
@@ -1627,8 +1637,7 @@ subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
         TSF_out%tr_flux(:,:,:) = 0.0
       endif
     endif
-    TSF_in%first_copy = .false. ; TSF_out%first_copy = .false.
-  endif ; endif
+  endif
 
   if (TSF_in%num_tr_fluxes >= 0) then
     if (TSF_in%num_tr_fluxes /= TSF_out%num_tr_fluxes) &
@@ -1654,17 +1663,23 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
                                                        !! may be omitted if this is not a target PE.
 
   real, pointer, dimension(:,:) :: null_ptr2D => NULL()
-  logical :: first_copy
+  integer :: copy_calls  ! The number of times these TSF_types have been copied.
   integer :: b, m, num_tr
 
   if (.not. (associated(TSF_out) .or. associated(TSF_in))) &
     call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
                           "neither TSF_in nor TSF_out associated.")
-  first_copy = .false.
-  if (associated(TSF_out)) first_copy = TSF_out%first_copy
-  if (associated(TSF_in)) first_copy = first_copy .or. TSF_in%first_copy
+  copy_calls = 0
+  if (associated(TSF_out)) then
+    TSF_out%copy_calls = TSF_out%copy_calls + 1
+    copy_calls = TSF_out%copy_calls
+  endif
+  if (associated(TSF_in)) then
+    TSF_in%copy_calls = TSF_in%copy_calls + 1
+    copy_calls = max(copy_calls,TSF_in%copy_calls)
+  endif
 
-  if (first_copy) then
+  if (copy_calls <= 2) then
     ! Determine the number of fluxes.
     num_tr = 0 ; if (associated(TSF_in)) num_tr = TSF_in%num_tr_fluxes
     call max_across_PEs(num_tr)
@@ -1678,10 +1693,7 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
         allocate(TSF_out%tr_flux(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,num_tr))
         TSF_out%tr_flux(:,:,:) = 0.0
       endif
-      TSF_out%first_copy = .false.
     endif
-
-    if (associated(TSF_in)) TSF_in%first_copy = .false.
   endif
 
   if (associated(TSF_out) .and. associated(TSF_in)) then

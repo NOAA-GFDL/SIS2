@@ -388,21 +388,21 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   endif
 
-  ! IOF must be updated regardless of whether the ice is specified or the prognostic model
-  ! is being used
+  ! IOF must be updated regardless of whether the ice is specified or the
+  ! prognostic model is being used.
   if (FIA%num_tr_fluxes>0) then
-!It is necessary and sufficient that only one OMP thread goes through the following block
-!since IOF is shared between the threads (hence the block is not thread-safe).
-!$OMP SINGLE
+    ! Only one OMP thread executes the following block because IOF is shared.
+    !$OMP SINGLE
     if (IOF%num_tr_fluxes < 0) then
-      ! This is the first call, and the IOF arrays need to be allocated.
+      ! This is the first call when the number of tracer fluxes are known, and
+      ! the IOF tracer flux arrays need to be allocated now.
       IOF%num_tr_fluxes = FIA%num_tr_fluxes
 
       allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
       IOF%tr_flux_ocn_top(:,:,:) = 0.0
     endif
-!$OMP END SINGLE
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,FIA,IOF)
+    !$OMP END SINGLE
+    !$OMP parallel do default(shared)
     do m=1,FIA%num_tr_fluxes
       do j=jsc,jec ; do i=isc,iec
         IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)

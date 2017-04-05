@@ -443,9 +443,10 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nb = size(FIA%flux_sw_top,4)
 
-  if (XSF%num_tr_fluxes < 0) then
-    ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
-    ! the first time that total_top_quantities is called.
+  if ((FIA%num_tr_fluxes > 0) .and. (XSF%num_tr_fluxes < 0)) then
+    ! This is the first call when the number of tracer fluxes are known, and
+    ! the XSF tracer flux arrays need to be allocated now.  This code is only
+    ! exercised the first or second time that total_top_quantities is called.
     XSF%num_tr_fluxes = FIA%num_tr_fluxes
     if (XSF%num_tr_fluxes > 0) then
       allocate(XSF%tr_flux(G%isd:G%ied, G%jsd:G%jed, XSF%num_tr_fluxes))

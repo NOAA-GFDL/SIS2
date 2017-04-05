@@ -579,12 +579,19 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   ind = 0
   do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
     ind = ind + 1
-    do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
+    if (ind <= IOF%num_tr_fluxes) then
+      do j=jsc,jec ; do i=isc,iec
+        i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
         Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
-    enddo ; enddo
+      enddo ; enddo
+    else
+      ! This can occur the first step of a cold-start run with lagged ice
+      ! coupling, but otherwise it may indicate a problem that should be trapped.
+      do j2=jsc+j_off,jec+j_off ; do i2=isc+i_off,iec+i_off
+        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = 0.0
+      enddo ; enddo
+    endif
   enddo ; enddo
-
 
 ! This extra block is required with the Verona and earlier versions of the coupler.
   i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
