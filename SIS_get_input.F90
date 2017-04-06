@@ -51,10 +51,11 @@ end type directories
 
 contains
 
-subroutine Get_SIS_Input(param_file, dirs, check_params)
+subroutine Get_SIS_Input(param_file, dirs, check_params, component)
   type(param_file_type), optional, intent(out) :: param_file
   type(directories),     optional, intent(out) :: dirs
   logical,               optional, intent(in)  :: check_params
+  character(len=*),      optional, intent(in)  :: component
 
 !    See if the run is to be started from saved conditions, and get  !
 !  the names of the I/O directories and initialization file.  This   !
@@ -69,6 +70,7 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
     input_filename  = ' '       ! A string that indicates the input files or how
                                 ! the run segment should be started.
   character(len=240) :: output_dir
+  character(len=24)  :: comp
   integer :: unit, io, ierr, valid_param_files
 
   namelist /SIS_input_nml/ output_directory, input_filename, parameter_filename, &
@@ -92,13 +94,15 @@ subroutine Get_SIS_Input(param_file, dirs, check_params)
     dirs%input_filename = trim(ensembler(input_filename))
   endif
 
+  comp = "SIS" ; if (present(component)) comp = trim(adjustl(component))
+
   if (present(param_file)) then
     output_dir = trim(slasher(ensembler(output_directory)))
     valid_param_files = 0
     do io = 1, npf
       if (len_trim(trim(parameter_filename(io))) > 0) then
         call open_param_file(trim(parameter_filename(io)), param_file, &
-                             check_params, component="SIS", &
+                             check_params, component=comp, &
                              doc_file_dir=output_dir)
         valid_param_files = valid_param_files + 1
       endif
