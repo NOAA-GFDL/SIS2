@@ -1511,7 +1511,8 @@ end subroutine add_diurnal_sw
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_model_init - initializes ice model data, parameters and diagnostics. It
 !! might operate on the fast ice processors, the slow ice processors or both.
-subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, Verona_coupler )
+subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, &
+                          Verona_coupler, Concurrent_ice )
 
   type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
   type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
@@ -1525,6 +1526,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! work with the Verona and earlier releases of the FMS
                                               !! coupler code in configurations that use the exchange
                                               !! grid to communicate with the atmosphere or land.
+  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+                                              !! settings appropriate for running the atmosphere and
+                                              !! slow ice simultaneously, including embedding the
+                                              !! slow sea-ice time stepping in the ocean model.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1644,6 +1649,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! dynamics on the slowly evolving ice state, rather than
                               ! copying over the slow ice state to the fast ice state.
   logical :: Verona
+  logical :: Concurrent
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
@@ -1665,9 +1671,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
   endif ; endif
   Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
+  Concurrent = .false. ; if (present(Concurrent_ice)) Concurrent = Concurrent_ice
 
   ! Open the parameter file.
-  call Get_SIS_Input(param_file, dirs, check_params=slow_ice_PE)
+  if (slow_ice_PE) then
+    call Get_SIS_Input(param_file, dirs, check_params=.true., component='SIS')
+  else
+    call Get_SIS_Input(param_file, dirs, check_params=.false., component='SIS_fast')
+  endif
 
   call callTree_enter("ice_model_init(), ice_model.F90")
 
@@ -1861,7 +1872,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, "MOM", "REDO_FAST_ICE_UPDATE", redo_fast_update, &
                  "If true, recalculate the thermal updates from the fast \n"//&
                  "dynamics on the slowly evolving ice state, rather than \n"//&
-                 "copying over the slow ice state to the fast ice state.", default=.false.)
+                 "copying over the slow ice state to the fast ice state.", default=Concurrent)
   if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
          "WRITE_GEOM must be equal to 0, 1 or 2.")
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
