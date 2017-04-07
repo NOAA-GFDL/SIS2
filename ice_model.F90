@@ -2415,9 +2415,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init)
 
     if (Ice%sCS%redo_fast_update) then
-      call SIS_optics_init(param_file, Ice%sCS%optics_CSp, slab_optics=slab_ice)
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                                 Ice%sCS%fast_thermo_CSp)
+      call SIS_optics_init(param_file, Ice%sCS%optics_CSp, slab_optics=slab_ice)
     endif
 
     call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
