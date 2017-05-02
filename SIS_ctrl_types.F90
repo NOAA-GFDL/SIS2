@@ -9,9 +9,6 @@ module SIS_ctrl_types
 ! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH
 ! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-! use fms_mod,          only: open_namelist_file, check_nml_error, close_file
-! use fms_io_mod,       only: save_restart, restore_state, query_initialized
-! use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 
@@ -24,9 +21,6 @@ use ice_grid, only : ice_grid_type
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, ocean_sfc_state_type
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use SIS_types, only : total_sfc_flux_type
-
-! use SIS2_ice_thm, only : ice_thermo_type !, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
-! use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 use SIS_optics, only : SIS_optics_CS
 
 use MOM_coms, only : PE_here
@@ -44,60 +38,55 @@ implicit none ; private
 public :: SIS_fast_CS, SIS_slow_CS
 public :: ice_diagnostics_init, ice_diags_fast_init
 
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> The SIS_fast_CS type is the control structure for the fast portion of the
 !! SIS2 solver. Typically, this control structure and everything under it is
 !! found on the atmospheric processors.
 type SIS_fast_CS
-  type(time_type) :: Time
-  type(time_type) :: Time_step_fast
-  type(time_type) :: Time_step_slow
+  type(time_type) :: Time  !< The current sea ice model time.
+  type(time_type) :: Time_step_fast !< The sea ice fast thermodynamics time step.
+  type(time_type) :: Time_step_slow !< The sea ice dynamcis and slow thermodynamics time step.
 
-!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
-!  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-!                       ! sea-ice dynamics.
-
-  logical :: bounds_check   ! If true, check for sensible values of thicknesses
-                            ! temperatures, fluxes, etc.
-  logical :: debug          ! If true, write verbose checksums for debugging purposes.
-  logical :: Eulerian_tsurf ! If true, use previous calculations of the ice-top
-                            ! surface skin temperature for tsurf at the start of
-                            ! atmospheric time stepping, including interpolating between
-                            ! tsurf values from other categories in the same location.
-  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
-                              ! dynamics on the slowly evolving ice state, rather than
-                              ! copying over the slow ice state to the fast ice state.
+  logical :: bounds_check   !< If true, check for sensible values of thicknesses
+                            !! temperatures, fluxes, etc.
+  logical :: debug          !< If true, write verbose checksums for debugging purposes.
+  logical :: Eulerian_tsurf !< If true, use previous calculations of the ice-top
+                            !! surface skin temperature for tsurf at the start of
+                            !! atmospheric time stepping, including interpolating between
+                            !! tsurf values from other categories in the same location.
+  logical :: redo_fast_update !< If true, recalculate the thermal updates from the fast
+                            !! dynamics on the slowly evolving ice state, rather than
+                            !! copying over the slow ice state to the fast ice state.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
-  type(ice_state_type), pointer :: IST => NULL()
-  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
-  type(SIS_optics_CS), pointer  :: optics_CSp => NULL()
-  type(SIS_diag_ctrl), pointer  :: diag ! A structure that regulates diagnostics.
-                    ! diag here might point to its own structure, or it might point
-                    ! to the same structure as is used by SIS_slow_CS.
+  type(ice_state_type), pointer :: IST => NULL() !< A pointer to the structure containing
+                            !! the internal representation of the ice state.
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL() !< A pointer to the control
+                            !! structure for the fast ice thermodynamics.
+  type(SIS_optics_CS), pointer :: optics_CSp => NULL() !< A pointer to the control
+                            !! structure for sea ice optics.
+  type(SIS_diag_ctrl), pointer :: diag  => NULL() !< A structure that regulates diagnostics.
+                    !! diag here might point to its own structure, or it might point
+                    !! to the same structure as is used by SIS_slow_CS.
 
-  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
-                             ! the absorption, reflection and transmission of
-                             ! shortwave radiation.
+  type(ice_rad_type), pointer :: Rad => NULL()    !< A structure with fields related to
+                            !! the absorption, reflection and transmission of
+                            !! shortwave radiation.
 
-  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
-!  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
-!                               ! representation of the ice state.
-  type(simple_OSS_type), pointer :: sOSS => NULL() ! A structure containing the arrays
-                             ! that describe the ocean's surface state, as it is revealed
-                             ! to the atmosphere or the fast ice thermodynamics modules.
-  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-                             ! fields that are calculated during the fast ice step but
-                             ! stored for later use by the slow ice step or the ocean.
-  type(total_sfc_flux_type), pointer :: TSF => NULL()  ! A structure of the fluxes
-                             ! between the atmosphere and the ice or ocean that have
-                             ! been accumulated over fast thermodynamic steps and
-                             ! integrated across the part-size categories.
+  type(SIS_hor_grid_type), pointer :: G => NULL() !< A structure containing metrics and grid info.
+  type(ice_grid_type),  pointer :: IG => NULL() !< A structure containing sea-ice specific grid info.
+  type(simple_OSS_type), pointer :: sOSS => NULL() !< A structure containing the arrays
+                            !! that describe the ocean's surface state, as it is revealed
+                            !! to the atmosphere or the fast ice thermodynamics modules.
+  type(fast_ice_avg_type), pointer :: FIA => NULL()   !< A structure of the fluxes and other
+                            !! fields that are calculated during the fast ice step but
+                            !! stored for later use by the slow ice step or the ocean.
+  type(total_sfc_flux_type), pointer :: TSF => NULL() !< A structure of the fluxes
+                            !! between the atmosphere and the ice or ocean that have
+                            !! been accumulated over fast thermodynamic steps and
+                            !! integrated across the part-size categories.
 end type SIS_fast_CS
-
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> The SIS_slow_CS type is the control structure for the slow portion of the
@@ -106,68 +95,72 @@ end type SIS_fast_CS
 !! coupling, or they may be on the ocean processors with the new embedded-ice
 !! approach.
 type SIS_slow_CS
-  type(time_type) :: Time
-  type(time_type) :: Time_step_slow
+  type(time_type) :: Time  !< The current sea ice model time.
+  type(time_type) :: Time_step_slow !< The sea ice dynamcis and slow thermodynamics time step.
 
-!  logical :: slab_ice  ! If true, do the old style GFDL slab ice.
-  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.
+  logical :: Cgrid_dyn      !< If true use a C-grid discretization of the
+                            !! sea-ice dynamics.
 
-  logical :: specified_ice  ! If true, the sea ice is specified and there is
-                            ! no need for ice dynamics.
-  logical :: do_icebergs    ! If true, use the Lagrangian iceberg code, which
-                            ! modifies the calving field among other things.
-  logical :: pass_iceberg_area_to_ocean ! If true, iceberg area is passed through coupler
-                           ! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input)
-  logical :: berg_windstress_bug = .false. ! If true, use older code that applied
-                           ! an old ice-ocean stress to the icebergs in place of
-                           ! the current air-ice stress.  This option exists for
-                           ! backward compatibility, but should be avoided.
-  logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
-                              ! dynamics on the slowly evolving ice state, rather than
-                              ! copying over the slow ice state to the fast ice state.
+  logical :: specified_ice  !< If true, the sea ice is specified and there is
+                            !! no need for ice dynamics.
+  logical :: do_icebergs    !< If true, use the Lagrangian iceberg code, which
+                            !! modifies the calving field among other things.
+  logical :: pass_iceberg_area_to_ocean !< If true, iceberg area is passed through coupler
+                            !! (must have ICEBERGS_APPLY_RIGID_BOUNDARY=True in MOM_input)
+  logical :: berg_windstress_bug = .false. !< If true, use older code that applied
+                            !! an old ice-ocean stress to the icebergs in place of
+                            !! the current air-ice stress.  This option exists for
+                            !! backward compatibility, but should be avoided.
+  logical :: redo_fast_update !< If true, recalculate the thermal updates from the fast
+                            !! dynamics on the slowly evolving ice state, rather than
+                            !! copying over the slow ice state to the fast ice state.
 
-  logical :: bounds_check   ! If true, check for sensible values of thicknesses
-                            ! temperatures, fluxes, etc.
-  logical :: debug          ! If true, write verbose checksums for debugging purposes.
+  logical :: bounds_check   !< If true, check for sensible values of thicknesses
+                            !! temperatures, fluxes, etc.
+  logical :: debug          !< If true, write verbose checksums for debugging purposes.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
-  type(ice_state_type), pointer :: IST => NULL()
-  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL()
-  type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL()
-  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL()
-  type(SIS_optics_CS),  pointer :: optics_CSp => NULL()
-  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL()
+  type(ice_state_type), pointer :: IST => NULL() !< A pointer to the structure containing
+                            !! the internal representation of the ice state.
+  type(slow_thermo_CS), pointer :: slow_thermo_CSp => NULL() !< A pointer to the control
+                            !! structure for the slow ice thermodynamics.
+  type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL() !< A pointer to the control
+                            !! structure for the ice dynamics and transport.
+  type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL() !< A pointer to the control
+                            !! structure for the fast ice thermodynamics.
+  type(SIS_optics_CS), pointer  :: optics_CSp => NULL() !< A pointer to the control
+                            !! structure for sea ice optics.
+  type(SIS_tracer_flow_control_CS), pointer :: SIS_tracer_flow_CSp => NULL() !< A pointer
+                            !! to the control structure that regulates the calls to
+                            !! all of the sea ice tracer packages.
 
-  type(ice_ocean_flux_type), pointer :: IOF => NULL()  ! A structure containing fluxes from
-                               ! the ice to the ocean that are calculated by the ice model.
-  type(ice_rad_type), pointer :: Rad => NULL()    ! A structure with fields related to
-                             ! the absorption, reflection and transmission of
-                             ! shortwave radiation.
+  type(ice_ocean_flux_type), pointer :: IOF => NULL()  !< A structure containing fluxes from
+                            !! the ice to the ocean that are calculated by the ice model.
+  type(ice_rad_type), pointer :: Rad => NULL()    !< A structure with fields related to
+                            !! the absorption, reflection and transmission of
+                            !! shortwave radiation.
 
-  type(SIS_diag_ctrl)             :: diag ! A structure that regulates diagnostics.
+  type(SIS_diag_ctrl) :: diag !< A structure that regulates diagnostics.
 
-  type(SIS_hor_grid_type), pointer :: G => NULL() ! A structure containing metrics and grid info.
-  type(ice_grid_type),  pointer :: IG => NULL() ! A structure containing sea-ice specific grid info.
-!  type(ice_state_type), pointer :: Ice_state => NULL() ! A structure containing the internal
-!                               ! representation of the ice state.
-  type(ocean_sfc_state_type), pointer :: OSS => NULL() ! A structure containing the arrays
-                             ! that describe the ocean's surface state, as it is revealed
-                             ! to the ice model.
-  type(simple_OSS_type), pointer :: sOSS => NULL() ! A structure containing the arrays
-                             ! that describe the ocean's surface state, as it is revealed
-                             ! to the atmosphere or the fast ice thermodynamics modules.
-  type(fast_ice_avg_type), pointer :: FIA => NULL()    ! A structure of the fluxes and other
-                             ! fields that are calculated during the fast ice step but
-                             ! stored for later use by the slow ice step or the ocean.
-  type(total_sfc_flux_type), pointer :: TSF => NULL()  ! A structure of the fluxes
-                             ! between the atmosphere and the ice or ocean that have
-                             ! been accumulated over fast thermodynamic steps and
-                             ! integrated across the part-size categories.
-  type(total_sfc_flux_type), pointer :: XSF => NULL()  ! A structure of the excess
-                             ! fluxes between the atmosphere and the ice or ocean
-                             ! relative to those stored in TSF.
+  type(SIS_hor_grid_type), pointer :: G => NULL() !< A structure containing metrics and grid info.
+  type(ice_grid_type),  pointer :: IG => NULL() !< A structure containing sea-ice specific grid info.
+  type(ocean_sfc_state_type), pointer :: OSS => NULL() !< A structure containing the arrays
+                            !! that describe the ocean's surface state, as it is revealed
+                            !! to the ice model.
+  type(simple_OSS_type), pointer :: sOSS => NULL() !< A structure containing the arrays
+                            !! that describe the ocean's surface state, as it is revealed
+                            !! to the atmosphere or the fast ice thermodynamics modules.
+  type(fast_ice_avg_type), pointer :: FIA => NULL()    !< A structure of the fluxes and other
+                            !! fields that are calculated during the fast ice step but
+                            !! stored for later use by the slow ice step or the ocean.
+  type(total_sfc_flux_type), pointer :: TSF => NULL()  !< A structure of the fluxes
+                            !! between the atmosphere and the ice or ocean that have
+                            !! been accumulated over fast thermodynamic steps and
+                            !! integrated across the part-size categories.
+  type(total_sfc_flux_type), pointer :: XSF => NULL()  !< A structure of the excess
+                            !! fluxes between the atmosphere and the ice or ocean
+                            !! relative to those stored in TSF.
 
 end type SIS_slow_CS
 
