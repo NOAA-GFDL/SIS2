@@ -94,6 +94,7 @@ use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, 
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
+use SIS_types, only : ice_state_read_alt_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
 use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
@@ -112,6 +113,7 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
+use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
@@ -1975,7 +1977,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                       param_file, Ice, Ice%Ice_restart, restart_file)
 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf)
-    call ice_state_register_restarts(sGD%mpp_domain, sIST, sIG, Ice%Ice_restart, restart_file)
+    call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
     Ice%sCS%OSS%kmelt = kmelt
@@ -2186,6 +2188,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       is_restart = .true.
 
       call restore_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
+
+      ! If the velocity and other fields have not been initialized, check for
+      ! the fields that would have been read if symmetric were toggled.
+      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
+                                       restart_file, dirs%restart_input_dir)
+      call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
+                                       restart_file, dirs%restart_input_dir)
 
       ! Approximately initialize state fields that are not present
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.

@@ -7,13 +7,14 @@ module SIS_types
 
 ! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
 ! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
-use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH, mpp_redistribute
+use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
 ! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
 ! use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 ! use fms_io_mod,       only: save_restart, restore_state, query_initialized
-use fms_io_mod,       only: register_restart_field, restart_file_type
-use time_manager_mod, only: time_type, time_type_to_real
-use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
+use fms_io_mod,       only : register_restart_field, restart_file_type
+use fms_io_mod,       only : restore_state, query_initialized
+use time_manager_mod, only : time_type, time_type_to_real
+use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -22,6 +23,7 @@ use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 
 use MOM_coms, only : PE_here, max_across_PEs
+use MOM_domains, only : MOM_domain_type, pass_vector, BGRID_NE, CGRID_NE, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
@@ -37,7 +39,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts, dealloc_IST_arrays
-public :: IST_chksum, IST_bounds_check, copy_IST_to_IST
+public :: IST_chksum, IST_bounds_check, copy_IST_to_IST, ice_state_read_alt_restarts
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
@@ -518,14 +520,16 @@ end subroutine alloc_IST_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be includedin the restart files.
-subroutine ice_state_register_restarts(mpp_domain, IST, IG, Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
+subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
   type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(in)    :: G
   type(ice_grid_type),     intent(in)    :: IG
   type(restart_file_type), pointer       :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
 
   integer :: idr
+  type(domain2d), pointer :: mpp_domain => NULL()
+  mpp_domain => G%Domain%mpp_domain
 
   ! Now register some of these arrays to be read from the restart files.
   if (associated(Ice_restart)) then
@@ -552,20 +556,182 @@ subroutine ice_state_register_restarts(mpp_domain, IST, IG, Ice_restart, restart
                                  domain=mpp_domain, mandatory=.false., units="kg/kg")
 
     if (IST%Cgrid_dyn) then
-      idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
-                                   domain=mpp_domain, position=EAST, mandatory=.false.)
-      idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
-                                   domain=mpp_domain, position=NORTH, mandatory=.false.)
+      if (G%symmetric) then
+        idr = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_C', IST%u_ice_C, &
+                                     domain=mpp_domain, position=EAST, mandatory=.false.)
+        idr = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_C', IST%v_ice_C, &
+                                     domain=mpp_domain, position=NORTH, mandatory=.false.)
+      else
+        idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
+                                     domain=mpp_domain, position=EAST, mandatory=.false.)
+        idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
+                                     domain=mpp_domain, position=NORTH, mandatory=.false.)
+      endif
     else
-      idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
-                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
-      idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
-                                   domain=mpp_domain, position=CORNER, mandatory=.false.)
+      if (G%symmetric) then
+        idr = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_B',   IST%u_ice_B, &
+                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+        idr = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_B',   IST%v_ice_B, &
+                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+      else
+        idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
+                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+        idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
+                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+      endif
     endif
   endif
 
 end subroutine ice_state_register_restarts
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_state_read_alt_restarts reads in alternative variables that might have
+!! been in the restart file, specifically dealing with changing between
+!! symmetric and non-symmetric memory restart files.
+subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
+                                       restart_file, restart_dir)
+  type(ice_state_type),    intent(inout) :: IST
+  type(SIS_hor_grid_type), intent(in)    :: G
+  type(ice_grid_type),     intent(in)    :: IG
+  type(restart_file_type), pointer       :: Ice_restart
+  character(len=*),        intent(in)    :: restart_file
+  character(len=*),        intent(in)    :: restart_dir
+
+  ! These are temporary variables that will be used only here for reading and
+  ! then discarded.
+  real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp
+  type(MOM_domain_type),   pointer :: domain_tmp => NULL()
+  logical :: u_set, v_set
+  integer :: i, j, id_u, id_v
+
+  if (.not.associated(Ice_restart)) return
+
+  if (G%symmetric) then
+
+    if (IST%Cgrid_dyn) then
+      u_set = query_initialized(Ice_restart, 'sym_u_ice_C')
+      v_set = query_initialized(Ice_restart, 'sym_v_ice_C')
+    else
+      u_set = query_initialized(Ice_restart, 'sym_u_ice_B')
+      v_set = query_initialized(Ice_restart, 'sym_v_ice_B')
+    endif
+    if (u_set .and. v_set) return
+
+    if (u_set .neqv. v_set) call SIS_error(FATAL, "ice_state_read_alt_restarts: "//&
+      "Only one of the u and v input variables were successfully read from the restart file.")
+
+    call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
+                          domain_name="ice temporary domain")
+
+    if (IST%Cgrid_dyn .and. (.not.u_set)) then
+      allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
+      allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
+      id_u = register_restart_field(Ice_restart, restart_file, 'u_ice_C', u_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=EAST, &
+                                 mandatory=.false., read_only=.true.)
+      id_v = register_restart_field(Ice_restart, restart_file, 'v_ice_C', v_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=NORTH, &
+                                 mandatory=.false., read_only=.true.)
+      call restore_state(Ice_restart, id_u, directory=restart_dir)
+      call restore_state(Ice_restart, id_v, directory=restart_dir)
+      if (query_initialized(Ice_restart, 'u_ice_C') .and. &
+          query_initialized(Ice_restart, 'v_ice_C')) then
+        ! The non-symmetric variant of this vector has been successfully read.
+        call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=CGRID_NE)
+        do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+          IST%u_ice_C(I,j) = u_tmp(I,j)
+        enddo ; enddo
+        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+          IST%v_ice_C(i,J) = v_tmp(i,J)
+        enddo ; enddo
+      endif
+    endif
+    if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
+      allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
+      allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
+      id_u = register_restart_field(Ice_restart, restart_file, 'u_ice', u_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                                 mandatory=.false., read_only=.true.)
+      id_v = register_restart_field(Ice_restart, restart_file, 'v_ice', v_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                                 mandatory=.false., read_only=.true.)
+      call restore_state(Ice_restart, id_u, directory=restart_dir)
+      call restore_state(Ice_restart, id_v, directory=restart_dir)
+      if (query_initialized(Ice_restart, 'u_ice') .and. &
+          query_initialized(Ice_restart, 'v_ice')) then
+        ! The non-symmetric variant of this variable has been successfully read.
+        call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=BGRID_NE)
+        do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+          IST%u_ice_B(I,J) = u_tmp(I,J)
+          IST%v_ice_B(I,J) = v_tmp(I,J)
+        enddo ; enddo
+      endif
+    endif
+
+  else  ! .not. symmetric
+    if (IST%Cgrid_dyn) then
+      u_set = query_initialized(Ice_restart, 'u_ice_C')
+      v_set = query_initialized(Ice_restart, 'v_ice_C')
+    else
+      u_set = query_initialized(Ice_restart, 'u_ice')
+      v_set = query_initialized(Ice_restart, 'v_ice')
+    endif
+    if (u_set .and. v_set) return
+
+    if (u_set .neqv. v_set) call SIS_error(FATAL, "ice_state_read_alt_restarts: "//&
+      "Only one of the u and v input variables were successfully read from the restart file.")
+
+    call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
+                          domain_name="ice temporary sym")
+
+    if (IST%Cgrid_dyn .and. (.not.u_set)) then
+      allocate(u_tmp(G%isd-1:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
+      allocate(v_tmp(G%isd:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
+      id_u = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_C', u_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=EAST, &
+                                 mandatory=.false., read_only=.true.)
+      id_v = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_C', v_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=NORTH, &
+                                 mandatory=.false., read_only=.true.)
+      call restore_state(Ice_restart, id_u, directory=restart_dir)
+      call restore_state(Ice_restart, id_v, directory=restart_dir)
+      if (query_initialized(Ice_restart, 'sym_u_ice_C') .and. &
+          query_initialized(Ice_restart, 'sym_v_ice_C')) then
+        ! The symmetric variant of this vector has been successfully read.
+        do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+          IST%u_ice_C(I,j) = u_tmp(I,j)
+        enddo ; enddo
+        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+          IST%v_ice_C(i,J) = v_tmp(i,J)
+        enddo ; enddo
+      endif
+    endif
+    if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
+      allocate(u_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; u_tmp(:,:) = 0.0
+      allocate(v_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
+      id_u = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_B', u_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                                 mandatory=.false., read_only=.true.)
+      id_v = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_B', v_tmp(:,:), &
+                                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                                 mandatory=.false., read_only=.true.)
+      call restore_state(Ice_restart, id_u, directory=restart_dir)
+      call restore_state(Ice_restart, id_v, directory=restart_dir)
+      if (query_initialized(Ice_restart, 'sym_u_ice_B') .and. &
+          query_initialized(Ice_restart, 'sym_v_ice_B')) then
+        ! The symmetric variant of this variable has been successfully read.
+        do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+          IST%u_ice_B(I,J) = u_tmp(I,J)
+          IST%v_ice_B(I,J) = v_tmp(I,J)
+        enddo ; enddo
+      endif
+    endif
+  endif
+
+  deallocate(u_tmp, v_tmp)
+  deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp)
+
+end subroutine ice_state_read_alt_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.

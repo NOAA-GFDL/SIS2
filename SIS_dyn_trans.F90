@@ -74,6 +74,7 @@ use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
+use SIS_dyn_cgrid, only: SIS_C_dyn_read_alt_restarts
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS
@@ -86,6 +87,7 @@ implicit none ; private
 
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
+public :: SIS_dyn_trans_read_alt_restarts
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 public :: post_ocean_sfc_diagnostics, post_ice_state_diagnostics
 
@@ -1171,8 +1173,8 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 end subroutine set_ocean_top_stress_Cgrid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_register_restarts allocates and registers any variables for this
-!!      module that need to be included in the restart files.
+!> SIS_dyn_trans_register_restarts allocates and registers any variables associated
+!!      slow ice dynamics and transport that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
   type(domain2d),          intent(in) :: mpp_domain
@@ -1193,10 +1195,6 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
 !   This subroutine registers the restart variables associated with the
 ! the slow ice dynamics and thermodynamics.
 
-  logical :: Cgrid_dyn
-!  integer :: isd, ied, jsd, jed, id
-!  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
-
   if (associated(CS)) then
     call SIS_error(WARNING, "SIS_dyn_trans_register_restarts called with an "//&
                             "associated control structure.")
@@ -1204,9 +1202,9 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
   endif
   allocate(CS)
 
-  Cgrid_dyn = .false. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", Cgrid_dyn)
+  CS%Cgrid_dyn = .false. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn)
 
-  if (Cgrid_dyn) then
+  if (CS%Cgrid_dyn) then
     call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
                  CS%SIS_C_dyn_CSp, Ice_restart, restart_file)
   else
@@ -1219,8 +1217,26 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
 end subroutine SIS_dyn_trans_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_dyn_trans_init - initializes ice model data, parameters and diagnostics       !
+!> SIS_dyn_trans_register_restarts allocates and registers any variables associated
+!!      slow ice dynamics and transport that need to be included in the restart files.
+subroutine SIS_dyn_trans_read_alt_restarts(CS, G, Ice_restart, &
+                                           restart_file, restart_dir)
+  type(dyn_trans_CS),      pointer    :: CS
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
+  character(len=*),        intent(in) :: restart_dir
+
+  if (CS%Cgrid_dyn) then
+    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, Ice_restart, &
+                                     restart_file, restart_dir)
+  endif
+
+end subroutine SIS_dyn_trans_read_alt_restarts
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_dyn_trans_init initializes ice model data, parameters and diagnostics
+!!   associated with the SIS2 dynamics and transport modules.
 subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
   type(time_type),     target, intent(in)    :: Time   ! current time
   type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure

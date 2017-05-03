@@ -38,11 +38,12 @@ use SIS_debugging,     only : check_redundant_B, check_redundant_C, vec_chksum_C
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
+use MOM_domains,      only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,    only : hor_index_type
-use MOM_io, only : open_file
-use MOM_io, only : APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
-use SIS_hor_grid, only : SIS_hor_grid_type
+use MOM_io,           only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
+use fms_io_mod,       only : restore_state, query_initialized
 use mpp_domains_mod,  only : domain2D
 use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
 use time_manager_mod, only : set_date, get_time, get_date
@@ -51,7 +52,8 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_C_dyn_init, SIS_C_dynamics, SIS_C_dyn_end, SIS_C_dyn_register_restarts
+public :: SIS_C_dyn_init, SIS_C_dynamics, SIS_C_dyn_end
+public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
 
 type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
@@ -1499,8 +1501,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
 end subroutine limit_stresses
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! sigI - first stress invariant                                                !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> find_sigI finds the first stress invariant
 subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
   type(SIS_hor_grid_type),          intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci, str_d
@@ -1522,8 +1523,7 @@ subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
 end subroutine find_sigI
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! sigII - second stress invariant                                              !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> find_sigII finds the second stress invariant
 subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
   type(SIS_hor_grid_type),            intent(in)  :: G
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi, ci, str_t
@@ -1568,9 +1568,8 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
 end subroutine find_sigII
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_C_dyn_register_restarts - allocate and register any variables for this   !
-!      module that need to be included in the restart files.                   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_C_dyn_register_restarts allocates and registers any variables for the
+!!   SIS C-grid dynamics module that need to be included in the restart files.
 subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                                        Ice_restart, restart_file)
   type(domain2d),          intent(in) :: mpp_domain
@@ -1608,15 +1607,81 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                                 domain=mpp_domain, mandatory=.false.)
     id = register_restart_field(Ice_restart, restart_file, 'str_t', CS%str_t, &
                                 domain=mpp_domain, mandatory=.false.)
-    id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
-                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+    if (HI%symmetric) then
+      id = register_restart_field(Ice_restart, restart_file, 'sym_str_s', CS%str_s, &
+                       domain=mpp_domain, position=CORNER, mandatory=.false.)
+    else
+      id = register_restart_field(Ice_restart, restart_file, 'str_s', CS%str_s, &
+                       domain=mpp_domain, position=CORNER, mandatory=.false.)
+    endif
    endif
 end subroutine SIS_C_dyn_register_restarts
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_C_dyn_read_alt_restarts reads in alternative variables for the
+!!   SIS C-grid dynamics module that might have been in the restart file,
+!!   specifically dealing with changing between symmetric and non-symmetric
+!!   memory restart files.
+subroutine SIS_C_dyn_read_alt_restarts(CS, G, Ice_restart, restart_file, restart_dir)
+  type(SIS_C_dyn_CS),      pointer    :: CS
+  type(SIS_hor_grid_type), intent(in) :: G
+  type(restart_file_type), pointer    :: Ice_restart
+  character(len=*),        intent(in) :: restart_file
+  character(len=*),        intent(in) :: restart_dir
 
-! The following two subroutines are used to record the location of velocity
-! truncations and related fields.
+  ! These are temporary variables that will be used only here for reading and
+  ! then discarded.
+  real, allocatable, target, dimension(:,:) :: str_tmp
+  type(MOM_domain_type),   pointer :: domain_tmp => NULL()
+  integer :: i, j, id
 
+  if (.not.associated(Ice_restart)) return
+  if (G%symmetric) then
+    if (query_initialized(Ice_restart, 'sym_str_s')) return
+
+    call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
+                          domain_name="ice temporary domain")
+    allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed)) ; str_tmp(:,:) = 0.0
+
+    id = register_restart_field(Ice_restart, restart_file, 'str_s', str_tmp, &
+                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                 mandatory=.false., read_only=.true.)
+    call restore_state(Ice_restart, id, directory=restart_dir)
+    if (query_initialized(Ice_restart, 'str_s')) then
+      ! The non-symmetric variant of this variable has been successfully read.
+      call pass_var(str_tmp, domain_tmp, position=CORNER)
+      do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+        CS%str_s(I,J) = str_tmp(I,J)
+      enddo ; enddo
+    endif
+
+  else ! .not. symmetric
+    if (query_initialized(Ice_restart, 'str_s')) return
+
+    call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
+                          domain_name="ice temporary domain")
+    allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; str_tmp(:,:) = 0.0
+
+    id = register_restart_field(Ice_restart, restart_file, 'sym_str_s', str_tmp, &
+                 domain=domain_tmp%mpp_domain, position=CORNER, &
+                 mandatory=.false., read_only=.true.)
+    call restore_state(Ice_restart, id, directory=restart_dir)
+    if (query_initialized(Ice_restart, 'sym_str_s')) then
+      ! The symmetric variant of this variable has been successfully read.
+      do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+        CS%str_s(I,J) = str_tmp(I,J)
+      enddo ; enddo
+    endif
+  endif
+
+  deallocate(str_tmp)
+  deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp)
+
+end subroutine SIS_C_dyn_read_alt_restarts
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> write_u_trunc is used to record the location of any pseudo-zonal velocity
+!! truncations and related fields.
 subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, &
                          dt_slow, G, CS)
   integer, intent(in) :: I, j
@@ -1677,6 +1742,9 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
 
 end subroutine write_u_trunc
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> write_v_trunc is used to record the location of any pseudo-meridional velocity
+!! truncations and related fields.
 subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, &
                          dt_slow, G, CS)
   integer, intent(in) :: i, j
@@ -1738,8 +1806,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
 end subroutine write_v_trunc
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_C_dyn_end - deallocate the memory associated with this module.           !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_C_dyn_end deallocates the memory associated with this module.
 subroutine SIS_C_dyn_end(CS)
   type(SIS_C_dyn_CS), pointer :: CS
 
