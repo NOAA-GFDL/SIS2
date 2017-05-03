@@ -128,6 +128,8 @@ use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
 
+#include <SIS2_memory.h>
+
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, share_ice_domains, ice_model_end, ice_stock_pe
 public :: update_ice_model_fast

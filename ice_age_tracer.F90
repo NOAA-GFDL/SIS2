@@ -74,7 +74,8 @@ use fms_io_mod, only            : restart_file_type
 use ice_grid, only              : ice_grid_type
 
 implicit none ; private
-#include "SIS2_memory.h"
+
+#include <SIS2_memory.h>
 
 public register_ice_age_tracer, initialize_ice_age_tracer
 public ice_age_tracer_column_physics
