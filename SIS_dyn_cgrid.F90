@@ -526,6 +526,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     ui_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
     Cor_u, & ! Zonal Coriolis acceleration, in m s-2.
     PFu, &   ! Zonal hydrostatic pressure driven acceleration, in m s-2.
+    diag_val_u, & ! A temporary diagnostic array.
     u_tmp, & ! A temporary copy of the old values of ui, in m s-1.
     u_IC, &  ! The initial zonal ice velocities, in m s-1.
     mi_u, &  ! The total ice and snow mass interpolated to u points, in kg m-2.
@@ -539,6 +540,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     vi_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration, in m s-2.
     PFv, &   ! Meridional hydrostatic pressure driven acceleration, in m s-2.
+    diag_val_v, & ! A temporary diagnostic array.
     v_IC, &  ! The initial meridional ice velocities, in m s-1.
     mi_v, &  ! The total ice and snow mass interpolated to v points, in kg m-2.
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
@@ -1297,14 +1299,26 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   if (query_SIS_averaging_enabled(CS%diag)) then
     if (CS%id_fix>0) call post_SIS_data(CS%id_fix, fxic, CS%diag)
     if (CS%id_fiy>0) call post_SIS_data(CS%id_fiy, fyic, CS%diag)
-    if (CS%id_fcx>0) call post_SIS_data(CS%id_fcx, Cor_u(:,:)*mi_u(:,:), CS%diag)
-    if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, Cor_v(:,:)*mi_v(:,:), CS%diag)
+    if (CS%id_fcx>0) then
+      do j=jsc,jec ; do I=isc-1,iec ; diag_val_u(I,j) = Cor_u(I,j)*mi_u(I,j) ; enddo ; enddo
+      call post_SIS_data(CS%id_fcx, diag_val_u, CS%diag)
+    endif
+    if (CS%id_fcy>0) then
+      do J=jsc-1,jec ; do i=isc,iec ; diag_val_v(i,J) = Cor_v(i,J)*mi_v(i,J) ; enddo ; enddo
+      call post_SIS_data(CS%id_fcy, diag_val_v, CS%diag)
+    endif
     if (CS%id_Coru>0) call post_SIS_data(CS%id_fcx, Cor_u, CS%diag)
     if (CS%id_Corv>0) call post_SIS_data(CS%id_fcy, Cor_v, CS%diag)
     if (CS%id_PFu>0) call post_SIS_data(CS%id_PFu, PFu, CS%diag)
     if (CS%id_PFv>0) call post_SIS_data(CS%id_PFv, PFv, CS%diag)
-    if (CS%id_fpx>0) call post_SIS_data(CS%id_fpx, PFu(:,:)*mi_u(:,:), CS%diag)
-    if (CS%id_fpy>0) call post_SIS_data(CS%id_fpy, PFv(:,:)*mi_v(:,:), CS%diag)
+    if (CS%id_fpx>0) then
+      do j=jsc,jec ; do I=isc-1,iec ; diag_val_u(I,j) = PFu(I,j)*mi_u(I,j) ; enddo ; enddo
+      call post_SIS_data(CS%id_fpx, diag_val_u, CS%diag)
+    endif
+    if (CS%id_fpy>0) then
+      do J=jsc-1,jec ; do i=isc,iec ; diag_val_v(i,J) = PFv(i,J)*mi_v(i,J) ; enddo ; enddo
+      call post_SIS_data(CS%id_fpy, diag_val_v, CS%diag)
+    endif
     if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
 !  The diagnostics of fxat and fyat are supposed to be taken over all partitions
@@ -1355,8 +1369,12 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     if (CS%id_sh_s>0) call post_SIS_data(CS%id_sh_s, sh_Ds, CS%diag)
 
     if (CS%id_del_sh>0) call post_SIS_data(CS%id_del_sh, del_sh, CS%diag)
-    if (CS%id_del_sh_min>0) call post_SIS_data(CS%id_del_sh_min, &
-                                    (del_sh_min_pr(:,:)*pres_mice(:,:)), CS%diag)
+    if (CS%id_del_sh_min>0) then
+      do j=jsc,jec ; do i=isc,iec
+        diag_val(i,j) = del_sh_min_pr(i,j)*pres_mice(i,j)
+      enddo ; enddo
+      call post_SIS_data(CS%id_del_sh_min, diag_val, CS%diag)
+    endif
     if (Cs%id_siu>0 .or. Cs%id_siv>0 .or. Cs%id_sispeed>0) then
 
       do j=jsc-1,jec+1 ; do i=isc-1,iec+1

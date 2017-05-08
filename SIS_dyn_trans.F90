@@ -180,7 +180,9 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   H_to_m_ice = IG%H_to_kg_m2 / rho_ice
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
-  hi_avg(:,:) = hi_avg(:,:) * H_to_m_Ice
+  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+    hi_avg(i,j) = hi_avg(i,j) * H_to_m_Ice
+  enddo ; enddo
 
   if (CS%berg_windstress_bug) then
     !  This code reproduces a long-standing bug, in that the old ice-ocean
