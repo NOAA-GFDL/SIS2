@@ -763,7 +763,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
 end subroutine accumulate_bottom_input
 
-subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
+subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
@@ -775,6 +775,7 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
 !                 SIS_sum_output_init.
   type(ice_state_type),    intent(in) :: IST
   type(fast_ice_avg_type), intent(in) :: FIA
+  type(ocean_sfc_state_type), intent(in) :: OSS
   real,                    intent(in) :: dt
   type(SIS_hor_grid_type), intent(in) :: G
   type(ice_grid_type),     intent(in) :: IG
@@ -817,14 +818,14 @@ subroutine accumulate_input_1(IST, FIA, dt, G, IG, CS)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
-           (-FIA%flux_lh_top(i,j,k)) + FIA%bheat(i,j))
+           (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
                    (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine accumulate_input_1
 
-subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
+subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
 !   This subroutine accumulates the net input of fresh water and heat through
 ! the top of the sea-ice for conservation checks.
 
@@ -841,9 +842,11 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
   type(ice_state_type),    intent(inout) :: IST
   type(fast_ice_avg_type),    intent(in) :: FIA
   type(ice_ocean_flux_type),  intent(in) :: IOF
-  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), intent(in) :: part_size
-  real,                    intent(in) :: dt
-  type(SIS_sum_out_CS),    pointer    :: CS
+  type(ocean_sfc_state_type), intent(in) :: OSS
+  real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), &
+                              intent(in) :: part_size
+  real,                       intent(in) :: dt
+  type(SIS_sum_out_CS),       pointer    :: CS
 
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
@@ -895,7 +898,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, part_size, dt, G, IG, CS)
 
       if (k>0) &
         CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
-           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*FIA%bheat(i,j))
+           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 
  ! Runoff and calving do not bring in salt, so salt_in(i,j) = 0.0

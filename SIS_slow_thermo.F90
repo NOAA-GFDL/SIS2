@@ -356,7 +356,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-  call accumulate_input_1(IST, FIA, dt_slow, G, IG, CS%sum_output_CSp)
+  call accumulate_input_1(IST, FIA, OSS, dt_slow, G, IG, CS%sum_output_CSp)
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                               message="    SIS_slow_thermo", check_column=.true.)
@@ -443,7 +443,8 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   call disable_SIS_averaging(CS%diag)
 
-  call accumulate_input_2(IST, FIA, IOF, IST%part_size, dt_slow, G, IG, CS%sum_output_CSp)
+  call accumulate_input_2(IST, FIA, IOF, OSS, IST%part_size, dt_slow, G, IG, &
+                          CS%sum_output_CSp)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
   do j=jsc,jec ; do i=isc,iec
     IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
@@ -575,7 +576,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(ice_state_type),       intent(inout) :: IST
   real,                       intent(in)    :: dt_slow ! The thermodynamic step, in s.
   type(slow_thermo_CS),       pointer       :: CS
-  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ocean_sfc_state_type), intent(inout) :: OSS
   type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(inout) :: IOF
   type(SIS_hor_grid_type),    intent(inout) :: G
@@ -721,7 +722,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       if (cool_nudge(i,J) > 0.0) then
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) + cool_nudge(i,j)*dt_slow
       elseif (cool_nudge(i,J) < 0.0) then
-        FIA%bheat(i,j) = FIA%bheat(i,j) - cool_nudge(i,j)
+        OSS%bheat(i,j) = OSS%bheat(i,j) - cool_nudge(i,j)
       endif
     enddo ; enddo
   endif
@@ -754,7 +755,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       if (qflx_res_ice(i,j) < 0.0) then
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
       elseif (qflx_res_ice(i,j) >  0.0) then
-        FIA%bheat(i,j) = FIA%bheat(i,j) + qflx_res_ice(i,j)
+        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
       endif
     enddo ; enddo
   endif
@@ -764,8 +765,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   if (CS%column_check) then
     enth_prev(:,:,:) = 0.0 ; heat_in(:,:,:) = 0.0
     enth_prev_col(:,:) = 0.0 ; heat_in_col(:,:) = 0.0 ; enth_mass_in_col(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,enth_prev,G,I_Nk, &
-!$OMP                                  heat_in_col,dt_slow,enth_prev_col,NkIce,FIA)
+    !$OMP parallel do default(shared)
     do j=jsc,jec
       do k=1,ncat ; do i=isc,iec ; if (IST%mH_ice(i,j,k) > 0.0) then
         enth_prev(i,j,k) = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
@@ -782,7 +782,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       do k=1,ncat ; do i=isc,iec
         if (IST%part_size(i,j,k) > 0.0) then
           heat_in_col(i,j) = heat_in_col(i,j) + IST%part_size(i,j,k) * &
-              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - dt_slow*FIA%bheat(i,j))
+              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - dt_slow*OSS%bheat(i,j))
         endif
         if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
           enth_prev_col(i,j) = enth_prev_col(i,j) + &
@@ -795,7 +795,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       enddo ; enddo
     enddo
   endif
-
 
   call mpp_clock_begin(iceClock5)
 
@@ -975,7 +974,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                  ((LatHtVap*evap_from_ocn)*Idt_slow)
       IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-             (FIA%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
+             (OSS%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       sw_tot = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
         sw_tot = sw_tot + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
@@ -1304,7 +1303,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                     scale=Idt_slow, wtd=.true.)
   if (FIA%id_bmelt>0) call post_avg(FIA%id_bmelt, FIA%bmelt, IST%part_size(:,:,1:), CS%diag, G=G, &
                                     scale=Idt_slow, wtd=.true.)
-  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, FIA%bheat, CS%diag)
+  if (FIA%id_bheat>0) call post_data(FIA%id_bheat, OSS%bheat, CS%diag)
   if (CS%id_sn2ic>0) call post_avg(CS%id_sn2ic, snow_to_ice, IST%part_size(:,:,1:), CS%diag, G=G, &
                                     scale=Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)

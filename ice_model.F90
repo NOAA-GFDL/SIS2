@@ -750,15 +750,6 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,ITV,i_off,j_off) &
-!$OMP                           private(i2,j2)
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    OSS%s_surf(i,j) = OIB%s(i2,j2)
-    OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)
-    OSS%frazil(i,j) = OIB%frazil(i2,j2)
-    OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
-  enddo ; enddo
-
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
   if (.not. specified_ice) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
@@ -767,6 +758,16 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
       OSS%SST_C(i,j) = OIB%t(i2,j2) - T_0degC
     enddo ; enddo
   endif
+
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,ITV,i_off,j_off) &
+!$OMP                           private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    OSS%s_surf(i,j) = OIB%s(i2,j2)
+    OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)
+    OSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - OSS%T_fr_ocn(i,j))
+    OSS%frazil(i,j) = OIB%frazil(i2,j2)
+    OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
+  enddo ; enddo
 
   Cgrid_ocn = (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C))
 
@@ -941,21 +942,10 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
   m_ice_tot(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot)
-  do j=jsc,jec
-
-    do k=1,ncat ; do i=isc,iec
-      FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
-      m_ice_tot(i,j) = m_ice_tot(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
-    enddo ; enddo
-
-    do i=isc,iec
-      if (m_ice_tot(i,j) > 0.0) then
-        FIA%bheat(i,j) = OSS%bheat(i,J)
-      else
-        FIA%bheat(i,j) = 0.0
-      endif
-    enddo
-  enddo
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
+    m_ice_tot(i,j) = m_ice_tot(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
 
   if (.not.fCS%Eulerian_tsurf) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -1066,7 +1056,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     call chksum(G%cos_rot(isc:iec,jsc:jec), "G%cos_rot")
   endif
 
-  ! Rotate the velocities from the ocean coordinates to lat/lon coordiantes.
+  ! Rotate the velocities from the ocean coordinates to lat/lon coordinates.
   do k2=1,2 ; do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
     u = Ice%u_surf(i2,j2,k2) ; v = Ice%v_surf(i2,j2,k2)
@@ -2612,6 +2602,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call callTree_leave("ice_model_init()")
 
 end subroutine ice_model_init
+
 
 subroutine share_ice_domains(Ice)
   type(ice_data_type), intent(inout) :: Ice

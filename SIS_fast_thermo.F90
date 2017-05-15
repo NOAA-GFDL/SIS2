@@ -798,7 +798,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                          IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
                          IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), FIA%bheat(i,j), Tskin, &
+                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
                          CS%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
@@ -825,7 +825,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
           ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) + SW_absorbed + &
-           FIA%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
+           sOSS%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IG%H_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
@@ -998,11 +998,6 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   ! treated as diffuse visible light by SIS2.
   nbmerge = nb  
 
-! I do not know if this is necessary or whether it would work. - RWH
-!  do j=jsc,jec ; do i=isc,iec
-!    FIA%bheat(i,j) = sOSS%bheat(i,j)
-!  enddo ; enddo
-
   ! If there are multiple calls to redo_update_ice_model_fast between calls to
   ! slow_thermodynamics, this call would only occur during the first such call.
   FIA%tmelt(:,:,:) = 0.0 ; FIA%bmelt(:,:,:) = 0.0
@@ -1083,7 +1078,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
           call ice_temp_SIS2(IST%mH_pond(i,j,k)*IG%H_to_kg_m2, &
                    IST%mH_snow(i,j,k)*IG%H_to_kg_m2, IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                    enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                   sOSS%T_fr_ocn(i,j), FIA%bheat(i,j), Tskin, &
+                   sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                    0.5*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, IST%ITV)
 
 !         ! These are here to debug the iterations.
@@ -1184,7 +1179,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                          IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
                          IST%mH_ice(i,j,k)*IG%H_to_kg_m2, &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), FIA%bheat(i,j), Tskin, &
+                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          dt_here, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
                          CS%ice_thm_CSp, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)

@@ -38,8 +38,9 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts, dealloc_IST_arrays
-public :: IST_chksum, IST_bounds_check, copy_IST_to_IST, ice_state_read_alt_restarts
+public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts
+public :: IST_chksum, IST_bounds_check, copy_IST_to_IST, dealloc_IST_arrays
+public :: ice_state_read_alt_restarts
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
@@ -108,7 +109,7 @@ end type ice_state_type
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
 !! state as seen by the slowly evolving sea-ice, on the ice grid.
 type ocean_sfc_state_type
-  ! 6 of the following 8 variables describe the ocean state as seen by the sea ice.
+  ! 7 of the following 9 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  ! The ocean's surface salinity in g/kg.
     SST_C  , &  ! The ocean's bulk surface temperature in degC.
@@ -117,6 +118,8 @@ type ocean_sfc_state_type
     v_ocn_B, &  ! The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C, &  ! The ocean's zonal and meridional velocity on C-grid
     v_ocn_C, &  ! points, both in m s-1.
+    bheat, &    ! The upward diffusive heat flux from the ocean
+                ! to the ice at the base of the ice, in W m-2.
     frazil , &  ! A downward heat flux from the ice into the ocean
                 ! associated with the formation of frazil ice in
                 ! the ocean integrated over a timestep, in J m-2.
@@ -220,8 +223,6 @@ type fast_ice_avg_type
     flux_sw_dn      ! The total downward shortwave flux by wavelength band,
                     ! averaged across all thickness categories, in W m-2.
   real, allocatable, dimension(:,:) :: &
-    bheat      , &  ! The upward diffusive heat flux from the ocean
-                    ! to the ice at the base of the ice, in W m-2.
     WindStr_x  , &  ! The zonal wind stress averaged over the ice
                     ! categories on an A-grid, in Pa.
     WindStr_y  , &  ! The meridional wind stress averaged over the
@@ -765,7 +766,6 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
   allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed)) ; FIA%calving_hflx_preberg(:,:) = 0.0 ! diag
 
   allocate(FIA%frazil_left(isd:ied, jsd:jed)) ; FIA%frazil_left(:,:) = 0.0
-  allocate(FIA%bheat(isd:ied, jsd:jed)) ; FIA%bheat(:,:) = 0.0
   allocate(FIA%tmelt(isd:ied, jsd:jed, CatIce)) ; FIA%tmelt(:,:,:) = 0.0
   allocate(FIA%bmelt(isd:ied, jsd:jed, CatIce)) ; FIA%bmelt(:,:,:) = 0.0
   allocate(FIA%WindStr_x(isd:ied, jsd:jed)) ; FIA%WindStr_x(:,:) = 0.0
@@ -936,6 +936,7 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
   allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0
   allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0
   allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
+  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0
   allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
 
   if (Cgrid_dyn) then
@@ -1136,7 +1137,7 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
     sOSS%T_fr_ocn(i,j) = OSS%T_fr_ocn(i,j)
 
     if (G%mask2dT(i,j) > 0.5) then
-      sOSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - sOSS%T_fr_ocn(i,j))
+      sOSS%bheat(i,j) = OSS%bheat(i,j)
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
         sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
@@ -1388,7 +1389,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
-    FIA_out%bheat(i2,j2) = FIA_in%bheat(i,j)
     FIA_out%WindStr_x(i2,j2) = FIA_in%WindStr_x(i,j)
     FIA_out%WindStr_y(i2,j2) = FIA_in%WindStr_y(i,j)
     FIA_out%WindStr_ocn_x(i2,j2) = FIA_in%WindStr_ocn_x(i,j)
@@ -1536,8 +1536,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call mpp_redistribute(domain_in, FIA_in%sw_abs_ocn, domain_out, &
                           FIA_out%sw_abs_ocn, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%bheat, domain_out, &
-                          FIA_out%bheat, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%WindStr_x, domain_out, &
                           FIA_out%WindStr_x, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%WindStr_y, domain_out, &
@@ -1615,8 +1613,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                           FIA_out%sw_abs_ocn, complete=.true.)
 
     call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%bheat, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           FIA_out%WindStr_x, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           FIA_out%WindStr_y, complete=.false.)
@@ -1693,8 +1689,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call mpp_redistribute(domain_in, FIA_in%sw_abs_ocn, domain_out, &
                           null_ptr3D, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%bheat, domain_out, &
-                          null_ptr2D, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%WindStr_x, domain_out, &
                           null_ptr2D, complete=.false.)
     call mpp_redistribute(domain_in, FIA_in%WindStr_y, domain_out, &
@@ -2036,7 +2030,7 @@ subroutine dealloc_ocean_sfc_state(OSS)
     return
   endif
 
-  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%T_fr_ocn, OSS%frazil)
+  deallocate(OSS%s_surf, OSS%SST_C, OSS%sea_lev, OSS%T_fr_ocn, OSS%frazil, OSS%bheat)
   if (allocated(OSS%u_ocn_B)) deallocate(OSS%u_ocn_B)
   if (allocated(OSS%v_ocn_B)) deallocate(OSS%v_ocn_B)
   if (allocated(OSS%u_ocn_C)) deallocate(OSS%u_ocn_C)
@@ -2078,7 +2072,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
   deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
-  deallocate(FIA%bheat, FIA%tmelt, FIA%bmelt, FIA%frazil_left)
+  deallocate(FIA%tmelt, FIA%bmelt, FIA%frazil_left)
   deallocate(FIA%WindStr_x, FIA%WindStr_y, FIA%p_atm_surf)
   deallocate(FIA%WindStr_ocn_x, FIA%WindStr_ocn_y)
   deallocate(FIA%ice_free, FIA%ice_cover, FIA%sw_abs_ocn, FIA%Tskin_avg)
@@ -2221,7 +2215,6 @@ subroutine FIA_chksum(mesg, FIA, G, check_ocean)
   call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%bheat, trim(mesg)//" FIA%bheat", G%HI)
   call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI)
   call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI)
   call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI)
