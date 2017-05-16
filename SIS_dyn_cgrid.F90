@@ -90,6 +90,8 @@ type, public :: SIS_C_dyn_CS ; private
   logical :: specified_ice    ! If true, the sea ice is specified and there is
                               ! no need for ice dynamics.
   logical :: debug            ! If true, write verbose checksums for debugging purposes.
+  logical :: debug_EVP        ! If true, write out verbose debugging data for each of
+                              ! the steps within the EVP solver.
   logical :: debug_redundant  ! If true, debug redundant points.
   logical :: project_drag_vel ! If true, project forward the ice velocity used
                               ! in the drag calculation to avoid an instability
@@ -165,9 +167,9 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_C_dyn" ! This module's name.
-
-  real, parameter       :: missing = -1e34
+  character(len=40) :: mod = "SIS_C_dyn" ! This module's name.
+  logical           :: debug
+  real, parameter   :: missing = -1e34
 
   if (.not.associated(CS)) then
     call SIS_error(FATAL, "SIS_C_dyn_init called with an unassociated control structure. \n"//&
@@ -263,8 +265,14 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "rheology solver; otherwise only the final velocities that \n"//&
                  "are used for transport are checked.", &
                  default=.false.)
-  call get_param(param_file, mod, "DEBUG", CS%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
+  call get_param(param_file, mod, "DEBUG_EVP_SUBSTEPS", CS%debug_EVP, &
+                 "If true, write out verbose debugging data for each of the \n"//&
+                 "steps within the EVP solver.", default=debug)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
   if ( CS%specified_ice ) then
@@ -1189,13 +1197,13 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       endif
     endif
 
-    if (CS%debug) then
+    if (CS%debug_EVP .and. CS%debug) then
       call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1)
       call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1)
       call Bchksum(CS%str_s, "str_s in SIS_C_dynamics", G%HI, &
                    haloshift=0, symmetric=.true.)
     endif
-    if (CS%debug .or. CS%debug_redundant) then
+    if (CS%debug_EVP .or. CS%debug_redundant) then
       call vec_chksum_C("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
       call vec_chksum_C("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
       call vec_chksum_C("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)

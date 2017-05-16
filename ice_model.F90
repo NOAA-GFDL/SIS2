@@ -94,7 +94,7 @@ use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, 
 use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
 use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
-use SIS_types, only : ice_state_read_alt_restarts
+use SIS_types, only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
 use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
@@ -1618,7 +1618,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: Cgrid_dyn
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
                          ! with effectively zero heat capacity of ice and snow.
-  logical :: debug, bounds_check
+  logical :: debug, debug_slow, debug_fast, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen, init_Tskin, init_rough
   logical :: write_error_mesg
@@ -1776,6 +1776,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  default=.true.)
   call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", debug_slow, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
+  call get_param(param_file, mod, "DEBUG_FAST_ICE", debug_fast, &
+                 "If true, write out verbose debugging data on the fast ice PEs.", &
+                 default=debug)
   call get_param(param_file, mod, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
                  "that corresponding points on different processors have \n"//&
@@ -1919,7 +1925,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%Cgrid_dyn = Cgrid_dyn
     Ice%sCS%redo_fast_update = redo_fast_update
     Ice%sCS%bounds_check = bounds_check
-    Ice%sCS%debug = debug
+    Ice%sCS%debug = debug_slow
 
     ! Set up the ice-specific grid describing categories and ice layers.
     call set_ice_grid(sIG, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
@@ -2085,7 +2091,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     Ice%fCS%bounds_check = bounds_check
-    Ice%fCS%debug = debug
+    Ice%fCS%debug = debug_fast
     Ice%fCS%Eulerian_tsurf = Eulerian_tsurf
     Ice%fCS%redo_fast_update = redo_fast_update
 
@@ -2131,6 +2137,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     !### Instead perhaps this could be
     !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
     !### However this changes answers in coupled models.  I don't understand why. -RWH
+
+    if (Concurrent) then
+      call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
+                       fGD%mpp_domain, Ice%Ice_fast_restart, fast_rest_file)
+    endif
 
     allocate(Ice%fCS%diag)
     call SIS_diag_mediator_init(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, component="SIS_fast", &
@@ -2489,7 +2500,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     ! Do any error checking here.
-    if (debug) call ice_grid_chksum(sG, haloshift=1)
+    if (Ice%sCS%debug) call ice_grid_chksum(sG, haloshift=1)
 
     call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
                    SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))

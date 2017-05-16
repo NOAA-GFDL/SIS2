@@ -102,9 +102,9 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_dyn_bgrid" ! This module's name.
-
-    real, parameter       :: missing = -1e34
+  character(len=40) :: mod = "SIS_dyn_bgrid" ! This module's name.
+  logical           :: debug
+  real, parameter   :: missing = -1e34
 
   if (.not.associated(CS)) then
     call SIS_error(FATAL, "SIS_B_dyn_init called with an unassociated control structure. \n"//&
@@ -157,8 +157,11 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
                  units="kg m-3", default=905.0)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
-  call get_param(param_file, mod, "DEBUG", CS%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
   call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
   if ( CS%specified_ice ) then

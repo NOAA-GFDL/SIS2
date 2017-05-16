@@ -1251,11 +1251,12 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_dyn_trans" ! This module's name.
+  character(len=40) :: mod = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   character(len=8) :: nstr
   integer :: n, nLay
-  real, parameter    :: missing = -1e34
+  logical :: debug
+  real, parameter :: missing = -1e34
 
   nLay = IG%NkIce
 
@@ -1308,8 +1309,11 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "globally summed ice statistics and conservation checks.", &
                  default=set_time(0,1), timeunit=Time_unit)
 
-  call get_param(param_file, mod, "DEBUG", CS%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
   call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&

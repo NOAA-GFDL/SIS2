@@ -52,6 +52,7 @@ use SIS_optics, only : ice_optics_SIS2, bright_ice_temp, SIS_optics_CS
 use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
+use SIS_types, only : FIA_chksum
 
 use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -75,7 +76,10 @@ type fast_thermo_CS ; private
   real, pointer, dimension(:,:,:) :: &
     enth_prev, heat_in
 
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
+  logical :: debug_fast   ! If true, write verbose checksums of code that is
+                          ! executed on fast ice PEs for debugging purposes.
+  logical :: debug_slow   ! If true, write verbose checksums of code that is
+                          ! executed on slow ice PEs for debugging purposes.
   logical :: column_check ! If true, enable the heat check column by column.
   real    :: imb_tol      ! The tolerance for imbalances to be flagged by
                           ! column_check, nondim.
@@ -682,7 +686,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     endif ; enddo ; enddo ; enddo
   endif
 
-  if (CS%debug) &
+  if (CS%debug_fast) &
     call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
 
   !$OMP parallel do default(shared) private(i2,j2,k2)
@@ -718,7 +722,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     enddo ; enddo
   enddo
 
-  if (CS%debug) then
+  if (CS%debug_fast) then
     call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI)
     call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI)
     call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI)
@@ -850,7 +854,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                           flux_sw, flux_lw, lprec, fprec, flux_lh, Rad%t_skin, sOSS%SST_C, &
                           sh_T0, evap_T0, lw_T0, dshdt, devapdt, dlwdt, G, IG )
 
-  if (CS%debug) &
+  if (CS%debug_fast) &
     call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
@@ -951,9 +955,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                         ! their greatest brightness and albedo no longer varies, in deg C.
 !  real    :: Tskin_itt(0:max(1,CS%max_tskin_itt))
 !  real    :: SW_tot_itt(max(1,CS%max_tskin_itt))
-  logical :: do_optics(G%isd:G%ied)
+  logical :: do_optics(G%isd:G%ied,G%jsd:G%jed)
   logical :: any_sw, any_ice
-  logical :: do_any_j
+  logical :: do_any_j(G%jsd:G%jed)
   logical :: use_new_albedos
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, NkIce
   integer :: b, b2, nb, nbmerge, itt, max_itt
@@ -976,8 +980,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   T_bright = bright_ice_temp(optics_CSp, IST%ITV)
 
-  if (CS%debug) &
+  if (CS%debug_slow) then
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, IG)
+  endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              rho_ice=rho_ice, rho_snow=rho_snow)
@@ -1005,16 +1010,16 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   use_new_albedos = .true.  ! Changing this value changes answers at the level of roundoff.
 !  max_itt = 1
 
+  ! This is here to reset the whole array after a restart.  It might be unnecessary.
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    Rad%sw_abs_ocn(i,j,k) = FIA%sw_abs_ocn(i,j,k)
+  enddo ; enddo ; enddo
+
   !$OMP parallel do default(none) &
-  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,CS,optics_CSp, &
-  !$OMP            dt_here,use_new_albedos,H_to_m_snow,H_to_m_ice, &
-  !$OMP            nbmerge,sw_top_chg,S_col,T_bright,max_itt) &
-  !$OMP    private(do_any_j,do_optics,any_sw,any_ice,albedos,rescale, &
-  !$OMP            sw_abs_lay,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,flux_sw_prev, &
-  !$OMP            latent,enth_col,sw_tot,dSWt_dt,dhf_dt,hf_0,Tskin,SW_abs_col, &
-  !$OMP            snow_wt,enth_col_in,tmelt_tmp,bmelt_tmp,Tskin_prev) !,Tskin_itt,SW_tot_itt)
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,FIA,IST,do_any_j,do_optics) &
+  !$OMP    private(any_sw,any_ice)
   do j=jsc,jec
-    do_any_j = .false.
+    do_any_j(j) = .false.
     do i=isc,iec
       any_sw = .false.
       do b=1,nb ; if (FIA%flux_sw_dn(i,j,b) > 0.0) then
@@ -1024,15 +1029,31 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       do k=1,ncat ; if (IST%part_size(i,j,k) > 0.0) then
         any_ice = .true. ; exit
       endif ; enddo
-      do_optics(i) = (any_sw .and. any_ice)
-      if (any_ice) do_any_j = .true.      
+      do_optics(i,j) = (any_sw .and. any_ice)
+      if (any_ice) do_any_j(j) = .true.      
     enddo
-    if (.not. do_any_j) cycle  ! Skip to the next j-loop if there is no ice.
+  enddo
+
+  if (CS%debug_slow) then
+    call hchksum(Rad%coszen_lastrad, "Redo optics coszen_lastrad", G%HI)
+    call hchksum(Rad%Tskin_rad, "Redo optics Tskin_rad", G%HI)
+    call hchksum(FIA%flux_sw_dn, "Redo optics FIA%flux_sw_dn", G%HI)
+  endif
+
+  !$OMP parallel do default(none) &
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,sOSS,Rad,IG,CS,optics_CSp, &
+  !$OMP            dt_here,use_new_albedos,H_to_m_snow,H_to_m_ice, &
+  !$OMP            sw_top_chg,S_col,T_bright,max_itt,do_any_j,do_optics) &
+  !$OMP    private(albedos,sw_abs_lay,flux_sw_prev, &
+  !$OMP            latent,enth_col,sw_tot,dSWt_dt,dhf_dt,hf_0,Tskin,SW_abs_col, &
+  !$OMP            snow_wt,enth_col_in,tmelt_tmp,bmelt_tmp,Tskin_prev) !,Tskin_itt,SW_tot_itt)
+  do j=jsc,jec ; if (do_any_j(j)) then
+    ! Only work on j-rows with some ice in them.
 
     ! Determine the optical properties of the ice.  Because the optical properties
     ! can depend on the surface skin temperature, which is not yet well known,
     ! there may be some iteration for self-consistency.
-    do k=1,ncat ; do i=isc,iec ; if (do_optics(i) .and. IST%part_size(i,j,k) > 0.0) then
+    do k=1,ncat ; do i=isc,iec ; if (do_optics(i,j) .and. IST%part_size(i,j,k) > 0.0) then
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
                IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
                albedos, Rad%sw_abs_sfc(i,j,k), Rad%sw_abs_snow(i,j,k), &
@@ -1069,7 +1090,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                  (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)
 
           SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
-          do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
+          do m=1,NkIce ; SW_abs_col(m) = sw_abs_lay(m)*sw_tot ; enddo
 
           do m=0,NkIce ; enth_col(m) = enth_col_in(m) ; enddo
           tmelt_tmp = 0.0 ; bmelt_tmp = 0.0 ; Tskin_prev = Tskin
@@ -1115,7 +1136,22 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
       do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
     endif ; enddo ; enddo
+  endif ; enddo
 
+  ! The j-loops above and below could be combined, but they have been split to
+  ! allow the following intermediate diagnostics to be added.
+  if (CS%debug_slow) then
+    call flux_redo_chksum("Middle redo_update_fast", IST, Rad, FIA, TSF, G, IG)
+  endif
+
+  !$OMP parallel do default(none) &
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,CS, &
+  !$OMP            dt_here,H_to_m_snow,H_to_m_ice,nbmerge,S_col,do_any_j,do_optics) &
+  !$OMP    private(rescale,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot, &
+  !$OMP            latent,enth_col,sw_tot,dhf_dt,hf_0,Tskin,SW_abs_col, &
+  !$OMP            snow_wt,enth_col_in)
+  do j=jsc,jec ; if (do_any_j(j)) then
+    ! Only work on j-rows with some ice in them.
 
     !    Determine whether the shortwave fluxes absorbed by the ice and snow in
     ! any shortwave frequency bands (or groups of bands) exceed the total
@@ -1132,7 +1168,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                ((1.0 - Rad%sw_abs_ocn(i,j,k)) * FIA%flux_sw_top(i,j,k,b))
     enddo ; enddo ; enddo
 
-    do i=isc,iec ; if (do_optics(i)) then ;  do b=1,nb,nbmerge
+    do i=isc,iec ; if (do_optics(i,j)) then ;  do b=1,nb,nbmerge
       ice_sw_tot = 0.0 ; TSF_sw_tot = 0.0
       do b2=0,nbmerge-1
         ice_sw_tot = ice_sw_tot + sw_tot_ice_band(i,b+b2)
@@ -1143,7 +1179,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         ! Note that the shortwave flux to the ocean will be adjusted later
         ! so that the total shortwave heat fluxes agree with the initial
         ! calculation as passed from the atmosphere; that is where conservation
-        ! is acheived.  This is the least agressive rescaling that will avoid
+        ! is achieved.  This is the least agressive rescaling that will avoid
         ! having negative shortwave fluxes into the ocean.
         do b2=0,nbmerge-1 ; do k=0,ncat
           FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2) 
@@ -1194,15 +1230,69 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       ! Copy radiation fields from the fast to the slow states.
       FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
     endif ; enddo ; enddo
-  enddo
+  endif ; enddo
 
-  if (CS%debug) &
+  if (CS%debug_slow) &
     call IST_chksum("End redo_update_ice_model_fast", IST, G, IG)
 
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "End of redo_update_ice_fast", Rad=Rad) !, OSS=sOSS)
 
 end subroutine redo_update_ice_model_fast
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays used in redoing the fast ice update.
+subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, IG)
+  character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(ice_state_type),      intent(in) :: IST   !< A type describing the state of the sea ice
+  type(ice_rad_type),        intent(in) :: Rad   !< A type containing fields related to
+                                                 !< shortwave radiation in the ice
+  type(fast_ice_avg_type),   intent(in) :: FIA   !< A type containing averages of fields
+                                                 !< (mostly fluxes) over the fast updates
+  type(total_sfc_flux_type), intent(in) :: TSF   !< A type with fluxes that are averaged across
+                                                 !< the fast updates and integrated across thickness
+                                                 !< categories from the fast ice update
+  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(ice_grid_type),       intent(in)    :: IG !< The ice vertical grid type
+
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce) :: tmp_diag  ! A temporary diagnostic array
+  character(len=8) :: nstr
+  integer :: b, i, j, k, m
+
+  call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI)
+  call hchksum(Rad%sw_abs_ocn(:,:,1:), trim(mesg)//" Rad%sw_abs_ocn", G%HI)
+  do b=1,size(FIA%flux_sw_top,4)
+    write(nstr, '(I4)') b ; nstr = adjustl(nstr)
+    tmp_diag(:,:,:) = 0.0
+    do k=1,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      if (IST%part_size(i,j,k) > 0.0) tmp_diag(i,j,k) = FIA%flux_sw_top(i,j,k,b)
+    enddo ; enddo ; enddo
+    call hchksum(tmp_diag, & ! similar to FIA%flux_sw_top(:,:,1:,b), &
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI)
+    call hchksum(TSF%flux_sw(:,:,b), &
+                 trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI)
+  enddo
+  call hchksum(FIA%flux_sh0(:,:,1:), trim(mesg)//" FIA%flux_sh0", G%HI)
+  call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI)
+  call hchksum(FIA%flux_lw0(:,:,1:), trim(mesg)//" FIA%flux_lw0", G%HI)
+  call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI)
+  call hchksum(FIA%evap0(:,:,1:), trim(mesg)//" FIA%evap0", G%HI)
+  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI)
+  do m=1,size(Rad%sw_abs_ice,4)
+    write(nstr, '(I4)') m ; nstr = adjustl(nstr)
+    tmp_diag(:,:,:) = 0.0
+    do k=1,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      if (IST%part_size(i,j,k) > 0.0) tmp_diag(i,j,k) = Rad%sw_abs_ice(i,j,k,m)
+    enddo ; enddo ; enddo
+    call hchksum(tmp_diag, & ! similar to Rad%sw_abs_ice(:,:,:,m), &
+                 trim(mesg)//" Rad%sw_abs_ice("//trim(nstr)//")", G%HI)
+  enddo
+  call hchksum(Rad%sw_abs_snow(:,:,:), trim(mesg)//" Rad%sw_abs_snow", G%HI)
+  call hchksum(Rad%sw_abs_ocn(:,:,:), trim(mesg)//" Rad%sw_abs_ocn", G%HI)
+
+end subroutine flux_redo_chksum
+
 
 !> Convert negative evaporation over ice (i.e. frost formation) into snow.
 subroutine convert_frost_to_snow(FIA, G, IG)
@@ -1233,7 +1323,8 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_fast_thermo" ! This module's name.
+  character(len=40) :: mod = "SIS_fast_thermo" ! This module's name.
+  logical           :: debug
 
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
 
@@ -1272,8 +1363,14 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "DEBUG", CS%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug_slow, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
+  call get_param(param_file, mod, "DEBUG_FAST_ICE", CS%debug_fast, &
+                 "If true, write out verbose debugging data on the fast ice PEs.", &
+                 default=debug)
 
   call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
 

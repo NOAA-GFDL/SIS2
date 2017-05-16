@@ -1805,7 +1805,9 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
 !                         model parameter values.
 !  (in)      diag - A structure that is used to regulate diagnostic output.
 !  (in/out)  CS - A pointer to the control structure for this module
-  integer, save :: init_calls = 0
+
+!   integer, save :: init_calls = 0
+  logical :: debug
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mod = "SIS_tracer_advect" ! This module's name.
@@ -1827,7 +1829,10 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
                  "stepping the continuity equation and interactions between "//&
                  "the ice mass field and velocities.", units="s", &
                  default=-1.0, do_not_log=.true.)
-  call get_param(param_file, mod, "DEBUG", CS%debug, default=.false.)
+  call get_param(param_file, mod, "DEBUG", debug, default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
   if (present(scheme)) then ; mesg = scheme ; else
     call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&

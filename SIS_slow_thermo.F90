@@ -1336,8 +1336,9 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_slow_thermo" ! This module's name.
-  real, parameter    :: missing = -1e34
+  character(len=40) :: mod = "SIS_slow_thermo" ! This module's name.
+  logical           :: debug
+  real, parameter   :: missing = -1e34
 
   call callTree_enter("SIS_slow_thermo_init(), SIS_slow_thermo.F90")
 
@@ -1420,8 +1421,11 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                  "stabilizing (>1), or neutral (=1).", units="nondim", &
                  default=1.0, do_not_log=.not.CS%nudge_sea_ice)
 
-  call get_param(param_file, mod, "DEBUG", CS%debug, &
+  call get_param(param_file, mod, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
+  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
   call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&

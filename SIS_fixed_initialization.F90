@@ -51,6 +51,9 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   call callTree_enter("SIS_initialize_fixed(), SIS_fixed_initialization.F90")
   call log_version(PF, mod, version, "")
   call get_param(PF, mod, "DEBUG", debug, default=.false.)
+  call get_param(PF, mod, "DEBUG_SLOW_ICE", debug, &
+                 "If true, write out verbose debugging data on the slow ice PEs.", &
+                 default=debug)
 
   call get_param(PF, mod, "INPUTDIR", inputdir, &
          "The directory in which input files are found.", default=".")

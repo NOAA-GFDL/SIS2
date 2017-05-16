@@ -40,7 +40,7 @@ implicit none ; private
 
 public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts
 public :: IST_chksum, IST_bounds_check, copy_IST_to_IST, dealloc_IST_arrays
-public :: ice_state_read_alt_restarts
+public :: ice_state_read_alt_restarts, register_fast_to_slow_restarts
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
@@ -2002,6 +2002,126 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   endif
 
 end subroutine redistribute_Rad_to_Rad
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> register_fast_to_slow_restarts registers all of the restart fields that are
+!!   required in order to be sent from the fast state to the slow state when
+!!   the model is restart.  These are the fields that would be copied via the
+!!   subroutines copy_FIA_to_FIA, copy_TSF_to_TSF and copy_Rad_to_Rad, and it
+!!   should be called from the fast ice processors when redo_fast_update is true.
+subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart, restart_file)
+  type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
+  type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
+  type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
+  type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain descriptor
+  type(restart_file_type), intent(inout) :: Ice_restart !< The restart_file_type for these restarts
+  character(len=*),        intent(in)    :: restart_file !< The name and path to the restart file
+
+  integer :: idr
+
+! These fields are needed because the open-water fluxes are not recalculated.  It might be
+! possible to make the fast-to-slow restart file smaller by breaking out the open-ocean
+! category.
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sh_top', FIA%flux_sh_top, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'evap_top', FIA%evap_top, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_lw_top', FIA%flux_lw_top, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_lh_top', FIA%flux_lh_top, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+
+  idr = register_restart_field(Ice_restart, restart_file, 'lprec_top', FIA%lprec_top, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'fprec_top', FIA%fprec_top, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_top', FIA%flux_sw_top, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2") 
+
+  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_x', FIA%WindStr_x, &
+                               domain=mpp_domain, mandatory=.false., units="Pa")
+  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_y', FIA%WindStr_y, &
+                               domain=mpp_domain, mandatory=.false., units="Pa")
+  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_ocn_x', FIA%WindStr_ocn_x, &
+                               domain=mpp_domain, mandatory=.false., units="Pa")
+  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_ocn_y', FIA%WindStr_ocn_y, &
+                               domain=mpp_domain, mandatory=.false., units="Pa")
+  idr = register_restart_field(Ice_restart, restart_file, 'p_atm_surf', FIA%p_atm_surf, &
+                               domain=mpp_domain, mandatory=.false., units="Pa")
+  idr = register_restart_field(Ice_restart, restart_file, 'runoff', FIA%runoff, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'calving', FIA%calving, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', FIA%runoff_hflx, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx', FIA%calving_hflx, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'Tskin_avg', FIA%Tskin_avg, &
+                               domain=mpp_domain, mandatory=.false., units="degC")
+  idr = register_restart_field(Ice_restart, restart_file, 'ice_free', FIA%ice_free, &
+                               domain=mpp_domain, mandatory=.false., units="nondim")
+  idr = register_restart_field(Ice_restart, restart_file, 'ice_cover', FIA%ice_cover, &
+                               domain=mpp_domain, mandatory=.false., units="nondim")
+  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_dn', FIA%flux_sw_dn, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+
+  
+  if (allocated(FIA%flux_sh0)) then
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_sh_T0', FIA%flux_sh0, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_lw_T0', FIA%flux_lw0, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+    idr = register_restart_field(Ice_restart, restart_file, 'evap_T0', FIA%evap0, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'dsh_dT', FIA%dshdt, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'dsh_dT', FIA%dshdt, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'dlw_dT', FIA%dlwdt, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'devap_dT', FIA%devapdt, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1 degC-1")
+    idr = register_restart_field(Ice_restart, restart_file, 'Tskin_can', FIA%Tskin_cat, &
+                               domain=mpp_domain, mandatory=.false., units="degC")
+  endif
+
+  idr = register_restart_field(Ice_restart, restart_file, 'tskin_rad', Rad%tskin_rad, &
+                               domain=mpp_domain, mandatory=.false., units="degC")
+  idr = register_restart_field(Ice_restart, restart_file, 'coszen_rad', Rad%coszen_lastrad, &
+                               domain=mpp_domain, mandatory=.false., units="nondim")
+
+  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_sh', TSF%flux_sh, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_lw', TSF%flux_lw, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_lh', TSF%flux_lh, &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_evap', TSF%evap, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_lprec', TSF%lprec, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_fprec', TSF%fprec, &
+                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
+  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_sw', TSF%flux_sw, &
+                               longname="Total shortwave flux by frequency and angular band", &
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
+
+  !### These tracer fluxes will need to be dealt with, but because tracer packages can
+  !### be turned on or off at a model restart, these will have to be kept as 
+  !### coupler_2d_bc_type and coupler_3d_bc_type structures, and be dealt with outside
+  !### at the coupler level, using the whole <adjective deleted> coupler types package.
+
+! if (FIA_in%num_tr_fluxes >= 0) then
+!   do n=1,TSF_in%num_tr_fluxes ; do j=jsc,jec ; do i=isc,iec
+!     i2 = i+i_off ; j2 = j+j_off
+!     TSF_out%tr_flux(i2,j2,n) = TSF_in%tr_flux(i,j,n)
+
+!   do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+!     i2 = i+i_off ; j2 = j+j_off
+!     FIA_out%tr_flux_top(i2,j2,k,n) = FIA_in%tr_flux_top(i,j,k,n)
+!   enddo ; enddo ; enddo ; enddo
+! endif
+end subroutine register_fast_to_slow_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_IST_arrays deallocates the arrays in an ice_state_type.
