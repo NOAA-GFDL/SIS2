@@ -2192,12 +2192,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
-      !### THESE CALLS NEED TO BE DISABLED UNTIL A CORRECTED VERSION OF FMS
-      !### IS BEING USED. -RWH
-!###      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
-!###                                       restart_file, dirs%restart_input_dir)
-!###      call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
-!###                                       restart_file, dirs%restart_input_dir)
+      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
+                                       restart_file, dirs%restart_input_dir)
+      call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
+                                       restart_file, dirs%restart_input_dir)
 
       ! Approximately initialize state fields that are not present
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
