@@ -238,7 +238,13 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                     IST%part_size, CS%diag, G=G)
   if (FIA%id_rain>0) call post_avg(FIA%id_rain, FIA%lprec_top, &
                                    IST%part_size, CS%diag, G=G)
-  if (FIA%id_sw_dn>0) call post_data(FIA%id_sw_dn, FIA%flux_sw_dn, CS%diag)
+  if (FIA%id_sw_dn>0) then
+    sw_dn(:,:) = 0.0
+    do b=1,size(FIA%flux_sw_dn,3) ; do j=jsc,jec ; do i=isc,iec
+      sw_dn(i,j) = sw_dn(i,j) + FIA%flux_sw_dn(i,j,b)
+    enddo ; enddo ; enddo
+    call post_data(FIA%id_sw_dn, sw_dn, CS%diag)
+  endif
   if (FIA%id_tsfc>0) call post_data(FIA%id_tsfc, FIA%Tskin_avg, CS%diag)
   if (FIA%id_sitemptop>0) call post_data(FIA%id_sitemptop, FIA%Tskin_avg, CS%diag)
 
