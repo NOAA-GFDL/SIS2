@@ -143,6 +143,7 @@ public :: update_ice_atm_deposition_flux
 public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
+public :: update_ice_slow_thermo, update_ice_dynamics_trans
 
 integer :: iceClock
 integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
@@ -186,11 +187,24 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
 end subroutine update_ice_model_slow_dn
 
-
 !-----------------------------------------------------------------------
 !> Update the sea-ice state due to slow processes, including dynamics,
 !! freezing and melting, precipitation, and transport.
 subroutine update_ice_model_slow(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+
+  call update_ice_slow_thermo(Ice)
+
+  call update_ice_dynamics_trans(Ice)
+
+end subroutine update_ice_model_slow
+
+
+!-----------------------------------------------------------------------
+!> Update the sea-ice state due to slow thermodynamic processes, including
+!! freezing and melting, precipitation, and brine drainage, and possibly also
+!! also the accumulated effects of faster thermodynamic processes
+subroutine update_ice_slow_thermo(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   ! These pointers are used to simplify the code below.
@@ -203,7 +217,7 @@ subroutine update_ice_model_slow(Ice)
   integer :: i, j, i2, j2, i_off, j_off
 
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
+      "The pointer to Ice%sCS must be associated in update_ice_slow_thermo.")
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
   Rad => Ice%sCS%Rad
@@ -218,9 +232,9 @@ subroutine update_ice_model_slow(Ice)
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Start update_ice_model_slow", Ice, check_slow=.true.)
-    call FIA_chksum("Start update_ice_model_slow", FIA, sG)
-    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, sG)
+    call Ice_public_type_chksum("Start update_ice_slow_thermo", Ice, check_slow=.true.)
+    call FIA_chksum("Start update_ice_slow_thermo", FIA, sG)
+    call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG)
   endif
 
   ! Store some diagnostic fluxes...
@@ -281,6 +295,29 @@ subroutine update_ice_model_slow(Ice)
   call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, &
                             sG, sIG, Ice%sCS)
 
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
+
+end subroutine update_ice_slow_thermo
+
+!-----------------------------------------------------------------------
+!> Update the sea-ice state due to dynamics and ice transport.
+subroutine update_ice_dynamics_trans(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+
+  ! These pointers are used to simplify the code below.
+  type(ice_grid_type),     pointer :: sIG => NULL()
+  type(SIS_hor_grid_type), pointer :: sG => NULL()
+  type(ice_state_type),    pointer :: sIST => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  real :: dt_slow  ! The time step over which to advance the model.
+
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in update_ice_dynamics_trans.")
+
+  sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
+  dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Do halo updates on the forcing fields, as necessary.  This must occur before
   ! the call to SIS_dynamics_trans, because update_icebergs does its own halo
@@ -309,7 +346,7 @@ subroutine update_ice_model_slow(Ice)
   call set_ocean_top_dyn_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, sG, sIG, Ice%sCS)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("End update_ice_model_slow", Ice, check_slow=.true.)
+    call Ice_public_type_chksum("End update_ice_dynamics_trans", Ice, check_slow=.true.)
   endif
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
@@ -319,7 +356,7 @@ subroutine update_ice_model_slow(Ice)
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
-end subroutine update_ice_model_slow
+end subroutine update_ice_dynamics_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_model_fast_cleanup performs the final steps in the fast ice update cycle
