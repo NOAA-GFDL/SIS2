@@ -649,7 +649,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
     Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
- 
+
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
     else
@@ -1057,7 +1057,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                       +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
 
   endif ; enddo ; enddo ; enddo
-  
+
   !$OMP parallel do default(shared)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
@@ -1162,9 +1162,9 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_hor_grid_type), intent(in)    :: G
   type(ice_grid_type),     intent(in)    :: IG
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice 
+                           intent(in)    :: Tskin_ice
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen  
+                           intent(in)    :: coszen
   type(ice_rad_type),      intent(inout) :: Rad
   type(SIS_optics_CS),     intent(in)    :: optics_CSp
 
