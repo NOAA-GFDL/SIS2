@@ -35,7 +35,7 @@ use MOM_error_handler, only : callTree_enter, callTree_leave
 use MOM_time_manager, only : time_type, get_time !, set_time, operator(>)
 
 use ice_model_mod,   only: ice_data_type, ice_model_end
-use ice_model_mod,   only: update_ice_model_slow
+use ice_model_mod,   only: update_ice_slow_thermo, update_ice_dynamics_trans
 
 use ocean_model_mod, only: update_ocean_model,  ocean_model_end! , ocean_model_init
 use ocean_model_mod, only: ocean_public_type, ocean_state_type, ice_ocean_boundary_type
@@ -128,7 +128,7 @@ end subroutine ice_ocean_driver_init
 subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary, &
                                      time_start_update, coupling_time_step)
   type(ice_ocean_driver_type), &
-                           pointer       :: CS   !< The control structure for this driver 
+                           pointer       :: CS   !< The control structure for this driver
   type(ice_data_type),     intent(inout) :: Ice  !< The publicly visible ice data type
   type(ocean_state_type),  pointer       :: Ocn  !< The internal ocean state and control structures
   type(ocean_public_type), intent(inout) :: Ocean_sfc !< The publicly visible ocean surface state type
@@ -167,9 +167,11 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
   ! Throw an error if the ice and ocean do not use the same grid and
   ! domain decomposition.
 
-  ! Add clocks after there is an init call.
+  ! Add clocks of the various calls.
 
-  call update_ice_model_slow(Ice)
+  call update_ice_slow_thermo(Ice)
+
+  call update_ice_dynamics_trans(Ice)
 
   call flux_ice_to_ocean( time_start_update, Ice, Ocean_sfc, Ice_ocean_boundary )
 
