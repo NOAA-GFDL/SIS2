@@ -129,11 +129,11 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
                 ! evaporation, in W m-2.
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+                ! the atmosphere when the skin temperature is 0 C, in W m-2.
     evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
                 ! in kg m-2 s-1.
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
+                ! ice or ocean when the skin temperature is 0 C, in W m-2.
     dshdt, &    ! The derivative of the upward sensible heat flux from the
                 ! the top of the ice into the atmosphere with ice skin
                 ! temperature in W m-2 K-1.
@@ -624,13 +624,13 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! evaporation, in W m-2.
     flux_lw, &  ! The net downward longwave heat flux into the ice, in W m-2.
     flux_u, flux_v, lprec, fprec, &
-    
+
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+                ! the atmosphere when the skin temperature is 0 C, in W m-2.
     evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
                 ! in kg m-2 s-1.
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
+                ! ice or ocean when the skin temperature is 0 C, in W m-2.
     dshdt, &    ! The derivative of the upward sensible heat flux with the surface
                 ! temperature in W m-2 K-1.
     devapdt, &  ! The derivative of the sublimation rate with the surface
@@ -879,7 +879,7 @@ subroutine accumulate_deposition_fluxes(ABT, FIA, G, IG)
   i_off = LBOUND(ABT%t_flux,1) - G%isc
   j_off = LBOUND(ABT%t_flux,2) - G%jsc
 
-  ind = 0 
+  ind = 0
   do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = ind + 1
     if (ABT%fluxes%bc(n)%flux_type == 'air_sea_deposition') then
@@ -1001,7 +1001,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   ! Setting nbmerge=nb only considers the total of all shortwave bands, which
   ! is appropriate considering that all heat fluxes to the ocean are currently
   ! treated as diffuse visible light by SIS2.
-  nbmerge = nb  
+  nbmerge = nb
 
   ! If there are multiple calls to redo_update_ice_model_fast between calls to
   ! slow_thermodynamics, this call would only occur during the first such call.
@@ -1030,7 +1030,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         any_ice = .true. ; exit
       endif ; enddo
       do_optics(i,j) = (any_sw .and. any_ice)
-      if (any_ice) do_any_j(j) = .true.      
+      if (any_ice) do_any_j(j) = .true.
     enddo
   enddo
 
@@ -1155,7 +1155,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
     !    Determine whether the shortwave fluxes absorbed by the ice and snow in
     ! any shortwave frequency bands (or groups of bands) exceed the total
-    ! shortwave absorption during the atmospheric steps, and if so scale them 
+    ! shortwave absorption during the atmospheric steps, and if so scale them
     ! back for energy conservation.  If the shortwave absorption by the ice in
     ! any bands have decreased or increased only slightly, the difference will
     ! later be applied to the ocean.
@@ -1182,7 +1182,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         ! is achieved.  This is the least agressive rescaling that will avoid
         ! having negative shortwave fluxes into the ocean.
         do b2=0,nbmerge-1 ; do k=0,ncat
-          FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2) 
+          FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2)
         enddo ; enddo
       endif
     enddo ; endif ; enddo

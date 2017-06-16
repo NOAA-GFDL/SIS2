@@ -143,6 +143,7 @@ public :: update_ice_atm_deposition_flux
 public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
+public :: update_ice_slow_thermo, update_ice_dynamics_trans
 
 integer :: iceClock
 integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
@@ -186,11 +187,24 @@ subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
 
 end subroutine update_ice_model_slow_dn
 
-
 !-----------------------------------------------------------------------
 !> Update the sea-ice state due to slow processes, including dynamics,
 !! freezing and melting, precipitation, and transport.
 subroutine update_ice_model_slow(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+
+  call update_ice_slow_thermo(Ice)
+
+  call update_ice_dynamics_trans(Ice)
+
+end subroutine update_ice_model_slow
+
+
+!-----------------------------------------------------------------------
+!> Update the sea-ice state due to slow thermodynamic processes, including
+!! freezing and melting, precipitation, and brine drainage, and possibly also
+!! also the accumulated effects of faster thermodynamic processes
+subroutine update_ice_slow_thermo(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   ! These pointers are used to simplify the code below.
@@ -203,7 +217,7 @@ subroutine update_ice_model_slow(Ice)
   integer :: i, j, i2, j2, i_off, j_off
 
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%sCS must be associated in update_ice_model_slow.")
+      "The pointer to Ice%sCS must be associated in update_ice_slow_thermo.")
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
   Rad => Ice%sCS%Rad
@@ -218,9 +232,9 @@ subroutine update_ice_model_slow(Ice)
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Start update_ice_model_slow", Ice, check_slow=.true.)
-    call FIA_chksum("Start update_ice_model_slow", FIA, sG)
-    call IOF_chksum("Start update_ice_model_slow", Ice%sCS%IOF, sG)
+    call Ice_public_type_chksum("Start update_ice_slow_thermo", Ice, check_slow=.true.)
+    call FIA_chksum("Start update_ice_slow_thermo", FIA, sG)
+    call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG)
   endif
 
   ! Store some diagnostic fluxes...
@@ -272,6 +286,38 @@ subroutine update_ice_model_slow(Ice)
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, &
                            Ice%sCS%OSS, FIA, Ice%sCS%XSF, Ice%sCS%IOF, &
                            sG, sIG)
+  if (Ice%sCS%debug) then
+    call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
+    call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, sIG)
+  endif
+  ! Set up the thermodynamic fluxes in the externally visible structure Ice.
+  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, &
+                            sG, sIG, Ice%sCS)
+
+  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
+
+end subroutine update_ice_slow_thermo
+
+!-----------------------------------------------------------------------
+!> Update the sea-ice state due to dynamics and ice transport.
+subroutine update_ice_dynamics_trans(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+
+  ! These pointers are used to simplify the code below.
+  type(ice_grid_type),     pointer :: sIG => NULL()
+  type(SIS_hor_grid_type), pointer :: sG => NULL()
+  type(ice_state_type),    pointer :: sIST => NULL()
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  real :: dt_slow  ! The time step over which to advance the model.
+
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in update_ice_dynamics_trans.")
+
+  sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
+  dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
+
+  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Do halo updates on the forcing fields, as necessary.  This must occur before
   ! the call to SIS_dynamics_trans, because update_icebergs does its own halo
@@ -296,17 +342,11 @@ subroutine update_ice_model_slow(Ice)
                           dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, sG, &
                           sIG, Ice%sCS%SIS_tracer_flow_CSp)
 
-  if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
-    call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, sIG)
-  endif
-  ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, &
-                            sG, sIG, Ice%sCS)
+ ! Set up the stresses and surface pressure in the externally visible structure Ice.
+  call set_ocean_top_dyn_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, sG, sIG, Ice%sCS)
 
   if (Ice%sCS%debug) then
-    call Ice_public_type_chksum("End update_ice_model_slow", Ice, check_slow=.true.)
+    call Ice_public_type_chksum("End update_ice_dynamics_trans", Ice, check_slow=.true.)
   endif
 
   !### THIS NO LONGER WORKS ON SLOW ICE PES.
@@ -316,7 +356,7 @@ subroutine update_ice_model_slow(Ice)
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
-end subroutine update_ice_model_slow
+end subroutine update_ice_dynamics_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_model_fast_cleanup performs the final steps in the fast ice update cycle
@@ -510,6 +550,18 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
   endif
 
+!   It is possible that the ice mass and surface pressure will be needed after
+! the themodynamic step, in which case this should be uncommented.
+!  ! Sum the concentration weighted mass.
+!  Ice%mi(:,:) = 0.0
+!  i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
+!  !$OMP parallel do default(shared) private(i2,j2)
+!  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+!    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+!    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
+!        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
+!  enddo ; enddo ; enddo
+
   ! This block of code is probably unneccessary.
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
   Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
@@ -520,35 +572,11 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
   enddo ; enddo
 
-  ! Sum the concentration weighted mass.
-  Ice%mi(:,:) = 0.0
-  i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,IG,i_off,j_off) &
-!$OMP                           private(i2,j2)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
-        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
-  enddo ; enddo ; enddo
-
-  if (sCS%do_icebergs .and. associated(IOF%mass_berg)) then
-    ! Note that the IOF berg fields and Ice fields are only allocated on the
-    ! computational domains, although they may use different indexing conventions.
-    Ice%mi(:,:) = Ice%mi(:,:) + IOF%mass_berg(:,:)
-    if  (sCS%pass_iceberg_area_to_ocean) then
-      Ice%mass_berg(:,:) = IOF%mass_berg(:,:)
-      if (associated(IOF%ustar_berg)) Ice%ustar_berg(:,:) = IOF%ustar_berg(:,:)
-      if (associated(IOF%area_berg))  Ice%area_berg(:,:) = IOF%area_berg(:,:)
-    endif
-  endif
-
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G,OSS) &
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
     Ice%flux_t(i2,j2) = IOF%flux_sh_ocn_top(i,j)
     Ice%flux_q(i2,j2) = IOF%evap_ocn_top(i,j)
     Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_ocn(i,j,VIS_DIR)
@@ -566,12 +594,14 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
     Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
-    if (IOF%slp2ocean) then
-      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
-    else
-      Ice%p_surf(i2,j2) = 0.0
-    endif
-    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
+!   It is possible that the ice mass and surface pressure will be needed after
+! the themodynamic step, in which case this should be uncommented.
+!  if (IOF%slp2ocean) then
+!     Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+!   else
+!     Ice%p_surf(i2,j2) = 0.0
+!   endif
+!   Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
   enddo ; enddo
   if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
@@ -597,6 +627,74 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     endif
   enddo ; enddo
 
+  if (sCS%debug) then
+    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice, check_slow=.true.)
+  endif
+
+end subroutine set_ocean_top_fluxes
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ocean_top_dyn_fluxes translates ice-bottom stresses and mass
+!!  from the ice model's internal state to the public ice data type
+!!  for use by the ocean model.
+subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
+  type(ice_data_type),        intent(inout) :: Ice
+  type(ice_state_type),       intent(inout) :: IST
+  type(ice_ocean_flux_type),  intent(in)    :: IOF
+  type(fast_ice_avg_type),    intent(in)    :: FIA
+  type(SIS_hor_grid_type),    intent(inout) :: G
+  type(ice_grid_type),        intent(in)    :: IG
+  type(SIS_slow_CS),          intent(in)    :: sCS
+
+  real :: I_count
+  integer :: i, j, k, isc, iec, jsc, jec
+  integer :: i2, j2, i_off, j_off, ind, ncat, NkIce
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce ; NkIce = IG%NkIce
+
+  if (sCS%debug) then
+    call Ice_public_type_chksum("Start set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
+    call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G)
+    call IST_chksum("Start set_ocean_top_dyn_fluxes", IST, G, IG)
+  endif
+
+  ! Sum the concentration weighted mass.
+  Ice%mi(:,:) = 0.0
+  i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
+  !$OMP parallel do default(shared) private(i2,j2)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
+        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
+  enddo ; enddo ; enddo
+
+  if (sCS%do_icebergs .and. associated(IOF%mass_berg)) then
+    ! Note that the IOF berg fields and Ice fields are only allocated on the
+    ! computational domains, although they may use different indexing conventions.
+    Ice%mi(:,:) = Ice%mi(:,:) + IOF%mass_berg(:,:)
+    if (sCS%pass_iceberg_area_to_ocean) then
+      Ice%mass_berg(:,:) = IOF%mass_berg(:,:)
+      if (associated(IOF%ustar_berg)) Ice%ustar_berg(:,:) = IOF%ustar_berg(:,:)
+      if (associated(IOF%area_berg))  Ice%area_berg(:,:) = IOF%area_berg(:,:)
+    endif
+  endif
+
+  i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
+  !$OMP parallel do default(shared) private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec
+    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+    Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
+
+    if (IOF%slp2ocean) then
+      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+    else
+      Ice%p_surf(i2,j2) = 0.0
+    endif
+    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
+  enddo ; enddo
+
 ! This extra block is required with the Verona and earlier versions of the coupler.
   i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
   if (Ice%shared_slow_fast_PEs) then
@@ -604,8 +702,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
         (Ice%fCS%G%jec-Ice%fCS%G%jsc==jec-jsc)) then
       ! The fast and slow ice PEs are using the same PEs and layout, so the
       ! part_size arrays can be copied directly from the fast ice PEs.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Ice,IST,i_off,j_off) &
-!$OMP                           private(i2,j2)
+      !$OMP parallel do default(shared) private(i2,j2)
       do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
         i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
         Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
@@ -614,11 +711,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   endif
 
   if (sCS%debug) then
-    call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IST_chksum("Start set_ocean_top_fluxes", IST, G, IG)
+    call Ice_public_type_chksum("End set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
   endif
 
-end subroutine set_ocean_top_fluxes
+end subroutine set_ocean_top_dyn_fluxes
 
 ! Coupler interface to provide ocean surface data to atmosphere.
 !
@@ -998,7 +1094,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                       +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
 
   endif ; enddo ; enddo ; enddo
-  
+
   !$OMP parallel do default(shared)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
@@ -1103,9 +1199,9 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_hor_grid_type), intent(in)    :: G
   type(ice_grid_type),     intent(in)    :: IG
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice 
+                           intent(in)    :: Tskin_ice
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen  
+                           intent(in)    :: coszen
   type(ice_rad_type),      intent(inout) :: Rad
   type(SIS_optics_CS),     intent(in)    :: optics_CSp
 

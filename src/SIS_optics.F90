@@ -65,7 +65,7 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
   real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning, non-dim.
   real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning, non-dim.
   real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning, non-dim.
-  
+
   real :: T_range_dflt, alb_ice_dflt
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -268,7 +268,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
       alb = CS%slab_alb_ocean + (thick_ice_alb - CS%slab_alb_ocean) * &
                     sqrt(hi/CS%slab_CRIT_THICK)
     endif
-    
+
     do b=1,nb ; albedos(b) = alb ; enddo
     abs_sfc = 1.0
     abs_snow = 0.0 ; abs_ice_lay(:) = 0.0 ; abs_ocn = 0.0 ; abs_int = 0.0
@@ -402,7 +402,7 @@ function bright_ice_temp(CS, ITV) result(bright_temp)
   salin_max = 40.0
 
   temp_freeze_min = T_freeze(salin_max, ITV)
-  
+
   if (CS%do_deltaEdd) then ! This is hard-coded for the delta-Eddington scheme.
     bright_temp = temp_freeze_min - 1.0
   else
