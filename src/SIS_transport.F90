@@ -711,7 +711,8 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
   real :: mca_trans, mca_old
   real :: snow_trans, snow_old
   real :: pond_trans, pond_old
-  real :: Imca_new
+!  real :: Imca_new
+  real :: mass_neglect
   real :: part_trans ! The fractional area transfered into a thicker category, nondim.
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     mca0_ice, mca0_snow, mca0_pond, trans_ice, trans_snow, trans_pond
@@ -721,13 +722,16 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nCat = IG%CatIce
 
+  ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
+  mass_neglect = IG%kg_m2_to_H*1.0e-60
+
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
 !$OMP                                  mca_ice,mca_snow,mca_pond,mH_ice,mH_snow,mH_pond,&
-!$OMP                                  CS,TrReg,nCat) &
+!$OMP                                  mass_neglect,CS,TrReg,nCat) &
 !$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
 !$OMP                                  mca0_pond,trans_pond,compression_ratio,Icompress_here, &
-!$OMP                                  mca_old,mca_trans,Imca_new,snow_trans,snow_old, &
+!$OMP                                  mca_old,mca_trans,snow_trans,snow_old, &
 !$OMP                                  pond_trans,pond_old,part_trans)
   do j=jsc,jec
     do i=isc,iec
@@ -764,30 +768,39 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
             ! Mass from this category needs to be transfered to the next thicker
             ! category after being compacted to thickness IG%mH_cat_bound(k+1).
             excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
-            part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
 
-            mca_trans = mca_ice(i,j,k) ; mca_old = mca_ice(i,j,k+1)
-            trans_ice(i,K) = mca_trans ; do_any = .true.
-            mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
-            Imca_new = 1.0 / mca_ice(i,j,k+1)
-    !        This is not quite right, or at least not consistent.
-    !        mH_ice(i,j,k+1) = (mca_trans*IG%mH_cat_bound(k+1) + &
-    !                          mca_old*mH_ice(i,j,k+1)) * Imca_new
-            mH_ice(i,j,k+1) = mca_ice(i,j,k+1) / part_sz(i,j,k+1)
+            if (mca_ice(i,j,k) > mass_neglect) then
+              part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
 
-            if (mca_snow(i,j,k) > 0.0) then
-              snow_trans = mca_snow(i,j,k) ; snow_old = mca_snow(i,j,k+1)
-              trans_snow(i,K) = snow_trans
-              mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + mca_snow(i,j,k)
+              mca_trans = mca_ice(i,j,k) ; mca_old = mca_ice(i,j,k+1)
+              trans_ice(i,K) = mca_trans ; do_any = .true.
+              mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
+
+              if (part_sz(i,j,k+1) > 1.0e-60) then ! For 32-bit reals this should be 1.0e-30.
+                ! This is the usual case, and underflow is no problem.
+                mH_ice(i,j,k+1) = mca_ice(i,j,k+1) / part_sz(i,j,k+1)
+              elseif (mca_trans > mca_old) then
+                ! Set the ice category's thickness to its lower bound.
+                part_sz(i,j,k+1) = mca_ice(i,j,k+1) / IG%mH_cat_bound(k+1)
+                mH_ice(i,j,k+1) = IG%mH_cat_bound(k+1)
+              else  ! Keep the ice category's thickness at its previous value.
+                part_sz(i,j,k+1) = mca_ice(i,j,k+1) / mH_ice(i,j,k+1)
+              endif
+
+              if (mca_snow(i,j,k) > 0.0) then
+                snow_trans = mca_snow(i,j,k) ; snow_old = mca_snow(i,j,k+1)
+                trans_snow(i,K) = snow_trans
+                mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + mca_snow(i,j,k)
+              endif
+              mH_snow(i,j,k+1) = mca_snow(i,j,k+1) / part_sz(i,j,k+1)
+
+              if (mca_pond(i,j,k) > 0.0) then
+                pond_trans = mca_pond(i,j,k) ; pond_old = mca_pond(i,j,k+1)
+                trans_pond(i,K) = pond_trans
+                mca_pond(i,j,k+1) = mca_pond(i,j,k+1) + mca_pond(i,j,k)
+              endif
+              mH_pond(i,j,k+1) = mca_pond(i,j,k+1) / part_sz(i,j,k+1)
             endif
-            mH_snow(i,j,k+1) = mca_snow(i,j,k+1) / part_sz(i,j,k+1)
-
-            if (mca_pond(i,j,k) > 0.0) then
-              pond_trans = mca_pond(i,j,k) ; pond_old = mca_pond(i,j,k+1)
-              trans_pond(i,K) = pond_trans
-              mca_pond(i,j,k+1) = mca_pond(i,j,k+1) + mca_pond(i,j,k)
-            endif
-            mH_pond(i,j,k+1) = mca_pond(i,j,k+1) / part_sz(i,j,k+1)
 
             mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; mca_pond(i,j,k) = 0.0
             mH_ice(i,j,k) = 0.0 ; mH_snow(i,j,k) = 0.0 ; mH_pond(i,j,k) = 0.0
