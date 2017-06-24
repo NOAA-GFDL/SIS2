@@ -33,13 +33,14 @@ use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_error_handler, only : callTree_enter, callTree_leave
 ! use MOM_file_parser, only : get_param, log_version, close_param_file, param_file_type
 use MOM_time_manager, only : time_type, get_time !, set_time, operator(>)
+use ice_model_mod,   only : ice_data_type, ice_model_end
+use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
+use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_init
+use ocean_model_mod, only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 
-use ice_model_mod,   only: ice_data_type, ice_model_end
-use ice_model_mod,   only: update_ice_slow_thermo, update_ice_dynamics_trans
-
-use ocean_model_mod, only: update_ocean_model,  ocean_model_end! , ocean_model_init
-use ocean_model_mod, only: ocean_public_type, ocean_state_type, ice_ocean_boundary_type
-use flux_exchange_mod,  only: flux_ice_to_ocean
+use data_override_mod, only : data_override
+use diag_manager_mod, only : send_data
+use mpp_domains_mod,  only : domain2D, mpp_get_layout, mpp_get_compute_domain
 
 implicit none ; private
 
@@ -155,25 +156,30 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
     call MOM_error(FATAL, "update_ocean_model called with an unassociated "// &
                     "ice_ocean_driver_type. ice_ocean_driver_init must be "//  &
                     "called first to allocate this structure.")
-    return
   endif
   if (.not.associated(Ocn)) then
     call MOM_error(FATAL, "update_ocean_model called with an unassociated "// &
                     "ocean_state_type structure. ocean_model_init must be "//  &
                     "called first to allocate this structure.")
-    return
   endif
 
-  ! Throw an error if the ice and ocean do not use the same grid and
-  ! domain decomposition.
+  if (.not.(Ocean_sfc%is_ocean_pe .and. Ice%slow_ice_pe)) call MOM_error(FATAL, &
+        "update_slow_ice_and_ocean can only be called from PEs that handle both "//&
+        "the ocean and the slow ice processes.")
 
-  ! Add clocks of the various calls.
+  if (.not.same_domain(Ocean_sfc%domain, Ice%slow_Domain_NH)) &
+    call MOM_error(FATAL, "update_slow_ice_and_ocean can only be used if the "//&
+        "ocean and slow ice layouts and domain sizes are identical.")
+
+  !### Add clocks of the various calls.
 
   call update_ice_slow_thermo(Ice)
 
   call update_ice_dynamics_trans(Ice)
 
-  call flux_ice_to_ocean( time_start_update, Ice, Ocean_sfc, Ice_ocean_boundary )
+!    call mpp_clock_begin(fluxIceOceanClock)
+  call direct_flux_ice_to_IOB( time_start_update, Ice, Ice_ocean_boundary )
+!    call mpp_clock_end(fluxIceOceanClock)
 
   call update_ocean_model( Ice_ocean_boundary, Ocn, Ocean_sfc, &
                            time_start_update, coupling_time_step )
@@ -182,6 +188,110 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
 end subroutine update_slow_ice_and_ocean
 ! </SUBROUTINE> NAME="update_slow_ice_and_ocean"
 
+!> same_domain returns true if two domains use the same list of PEs and have
+!! the same size computational domains.
+function same_domain(a, b)
+  type(domain2D), intent(in) :: a, b
+  integer :: isize_a, jsize_a, isize_b, jsize_b
+  integer :: layout_a(2), layout_b(2)
+  logical :: same_domain
+
+  ! This does a limited number of checks for consistent domain sizes.
+
+  call mpp_get_layout(a, layout_a)
+  call mpp_get_layout(b, layout_b)
+  same_domain = ((layout_a(1) == layout_b(1)) .and. (layout_a(2) == layout_b(2)))
+
+  call mpp_get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
+  call mpp_get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
+
+  same_domain = same_domain .and. ((layout_a(1) == layout_b(1)) .and. &
+                                   (layout_a(2) == layout_b(2)))
+
+end function same_domain
+
+!> This subroutine does a direct copy of the fluxes from the ice data type into
+!! a ice-ocean boundary type on the same grid.
+subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
+  type(time_type),    intent(in)    :: Time !< Current time
+  type(ice_data_type),intent(in)    :: Ice  !< A derived data type to specify ice boundary data
+  type(ice_ocean_boundary_type), &
+                      intent(inout) :: IOB !< A derived data type to specify
+                                    !!  properties and fluxes passed from ice to ocean
+
+  integer :: i, j, is, ie, js, je, i_off, j_off, n, m
+  logical :: used
+
+  ! Do a direct copy of the ice surface fluxes into the Ice-ocean-boundary type.
+
+  if (ASSOCIATED(IOB%u_flux)) IOB%u_flux(:,:) = Ice%flux_u(:,:)
+  if (ASSOCIATED(IOB%v_flux)) IOB%v_flux(:,:) = Ice%flux_v(:,:)
+  if (ASSOCIATED(IOB%p     )) IOB%p(:,:) = Ice%p_surf(:,:)
+  if (ASSOCIATED(IOB%mi    )) IOB%mi(:,:) = Ice%mi(:,:)
+  if (ASSOCIATED(IOB%t_flux)) IOB%t_flux(:,:) = Ice%flux_t(:,:)
+  if (ASSOCIATED(IOB%salt_flux)) IOB%salt_flux(:,:) = Ice%flux_salt(:,:)
+  if (ASSOCIATED(IOB%sw_flux_nir_dir)) IOB%sw_flux_nir_dir(:,:) = Ice%flux_sw_nir_dir(:,:)
+  if (ASSOCIATED(IOB%sw_flux_nir_dif)) IOB%sw_flux_nir_dif (:,:) = Ice%flux_sw_nir_dif (:,:)
+  if (ASSOCIATED(IOB%sw_flux_vis_dir)) IOB%sw_flux_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
+  if (ASSOCIATED(IOB%sw_flux_vis_dif)) IOB%sw_flux_vis_dif (:,:) = Ice%flux_sw_vis_dif (:,:)
+  if (ASSOCIATED(IOB%lw_flux)) IOB%lw_flux(:,:) = Ice%flux_lw(:,:)
+  if (ASSOCIATED(IOB%lprec)) IOB%lprec(:,:) = Ice%lprec(:,:)
+  if (ASSOCIATED(IOB%fprec)) IOB%fprec(:,:) = Ice%fprec(:,:)
+  if (ASSOCIATED(IOB%runoff)) IOB%runoff(:,:) = Ice%runoff(:,:)
+  if (ASSOCIATED(IOB%calving)) IOB%calving(:,:) = Ice%calving
+  if (ASSOCIATED(IOB%ustar_berg)) IOB%ustar_berg(:,:) = Ice%ustar_berg(:,:)
+  if (ASSOCIATED(IOB%area_berg)) IOB%area_berg(:,:) = Ice%area_berg(:,:)
+  if (ASSOCIATED(IOB%mass_berg)) IOB%mass_berg(:,:) = Ice%mass_berg(:,:)
+  if (ASSOCIATED(IOB%runoff_hflx)) IOB%runoff_hflx(:,:) = Ice%runoff_hflx(:,:)
+  if (ASSOCIATED(IOB%calving_hflx)) IOB%calving_hflx(:,:) = Ice%calving_hflx(:,:)
+  if (ASSOCIATED(IOB%q_flux)) IOB%q_flux(:,:) = Ice%flux_q(:,:)
+
+  ! Extra fluxes
+  do n=1,IOB%fluxes%num_bcs ; do m=1,IOB%fluxes%bc(n)%num_fields
+    if ( associated(IOB%fluxes%bc(n)%field(m)%values) ) then
+      IOB%fluxes%bc(n)%field(m)%values(:,:) = Ice%ocean_fluxes%bc(n)%field(m)%values(:,:)
+    endif
+  enddo ; enddo
+
+
+  ! These lines allow the data override code to reset the fluxes to the ocean.
+  call data_override('OCN', 'u_flux',    IOB%u_flux   , Time )
+  call data_override('OCN', 'v_flux',    IOB%v_flux   , Time)
+  call data_override('OCN', 't_flux',    IOB%t_flux   , Time)
+  call data_override('OCN', 'q_flux',    IOB%q_flux   , Time)
+  call data_override('OCN', 'salt_flux', IOB%salt_flux, Time)
+  call data_override('OCN', 'lw_flux',   IOB%lw_flux  , Time)
+  call data_override('OCN', 'sw_flux_nir_dir', IOB%sw_flux_nir_dir, Time)
+  call data_override('OCN', 'sw_flux_nir_dif', IOB%sw_flux_nir_dif, Time)
+  call data_override('OCN', 'sw_flux_vis_dir', IOB%sw_flux_vis_dir, Time)
+  call data_override('OCN', 'sw_flux_vis_dif', IOB%sw_flux_vis_dif, Time)
+  call data_override('OCN', 'lprec',     IOB%lprec    , Time)
+  call data_override('OCN', 'fprec',     IOB%fprec    , Time)
+  call data_override('OCN', 'runoff',    IOB%runoff   , Time)
+  call data_override('OCN', 'calving',   IOB%calving  , Time)
+  call data_override('OCN', 'runoff_hflx',  IOB%runoff_hflx   , Time)
+  call data_override('OCN', 'calving_hflx', IOB%calving_hflx  , Time)
+  call data_override('OCN', 'p',         IOB%p        , Time)
+  call data_override('OCN', 'mi',        IOB%mi       , Time)
+  !Are these if statements needed, or does data_override routine check if variable is assosiated?
+  if (ASSOCIATED(IOB%ustar_berg)) &
+    call data_override('OCN', 'ustar_berg', IOB%ustar_berg, Time)
+  if (ASSOCIATED(IOB%area_berg) ) &
+    call data_override('OCN', 'area_berg',  IOB%area_berg , Time)
+  if (ASSOCIATED(IOB%mass_berg) ) &
+    call data_override('OCN', 'mass_berg',  IOB%mass_berg , Time)
+
+  ! Override and output extra fluxes of tracers or gasses
+  do n=1,IOB%fluxes%num_bcs ; do m=1,IOB%fluxes%bc(n)%num_fields
+    call data_override('OCN', IOB%fluxes%bc(n)%field(m)%name, &
+                       IOB%fluxes%bc(n)%field(m)%values, Time)
+
+    ! Perform diagnostic output for the extra fluxes
+    used = send_data(IOB%fluxes%bc(n)%field(m)%id_diag, &
+                     IOB%fluxes%bc(n)%field(m)%values, Time)
+  enddo ; enddo
+
+end subroutine direct_flux_ice_to_IOB
 
 !=======================================================================
 ! <SUBROUTINE NAME="ice_ocean_driver_end">
