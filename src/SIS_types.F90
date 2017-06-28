@@ -642,7 +642,7 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
         enddo ; enddo
-        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+        do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
           IST%v_ice_C(i,J) = v_tmp(i,J)
         enddo ; enddo
       endif
@@ -702,7 +702,7 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
         enddo ; enddo
-        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+        do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
           IST%v_ice_C(i,J) = v_tmp(i,J)
         enddo ; enddo
       endif
