@@ -68,7 +68,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
 !     real :: Time_unit   ! The time unit in seconds for ENERGYSAVEDAYS.
 !   ! This include declares and sets the variable "version".
 !   #include "version_variable.h"
-!     character(len=40)  :: mod = "ice_ocean_driver_init"  ! This module's name.
+!     character(len=40)  :: mdl = "ice_ocean_driver_init"  ! This module's name.
 !     character(len=48)  :: stagger
 !     integer :: secs, days
 !  type(param_file_type) :: param_file !< A structure to parse for run-time parameters
@@ -85,18 +85,18 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
 !     if (.not.OS%is_ocean_pe) return
 
 !     ! Read all relevant parameters and write them to the model log.
-!     call log_version(param_file, mod, version, "")
-!     call get_param(param_file, mod, "RESTART_CONTROL", OS%Restart_control, &
+!     call log_version(param_file, mdl, version, "")
+!     call get_param(param_file, mdl, "RESTART_CONTROL", OS%Restart_control, &
 !                    "An integer whose bits encode which restart files are \n"//&
 !                    "written. Add 2 (bit 1) for a time-stamped file, and odd \n"//&
 !                    "(bit 0) for a non-time-stamped file.  A restart file \n"//&
 !                    "will be saved at the end of the run segment for any \n"//&
 !                    "non-negative value.", default=1)
-!     call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
+!     call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
 !                    "The time unit for ENERGYSAVEDAYS.", &
 !                    units="s", default=86400.0)
 
-!     call get_param(param_file, mod, "OCEAN_SURFACE_STAGGER", stagger, &
+!     call get_param(param_file, mdl, "OCEAN_SURFACE_STAGGER", stagger, &
 !                    "A case-insensitive character string to indicate the \n"//&
 !                    "staggering of the surface velocity field that is \n"//&
 !                    "returned to the coupler.  Valid values include \n"//&

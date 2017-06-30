@@ -1323,7 +1323,7 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_fast_thermo" ! This module's name.
+  character(len=40) :: mdl = "SIS_fast_thermo" ! This module's name.
   logical           :: debug
 
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
@@ -1336,39 +1336,39 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   endif
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This module applies rapidly varying heat fluxes to the ice and does an "//&
      "implicit surface temperature calculation.")
 
-  call get_param(param_file, mod, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
+  call get_param(param_file, mdl, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
                  "If true, rearrange the calculation of the heat fluxes \n"//&
                  "projected back to 0C to work on each contribution \n"//&
                  "separately, so that they can be indentically replicated \n"//&
                  "if there is a single fast timestep per coupled timestep \n"//&
                  "and REDO_FAST_ICE_UPDATE=True.", default=.false.)
-  call get_param(param_file, mod, "MAX_TSKIN_ITT", CS%max_tskin_itt, &
+  call get_param(param_file, mdl, "MAX_TSKIN_ITT", CS%max_tskin_itt, &
                  "The maximum number of iterations of the skin temperature \n"//&
                  "and optical properties during redo_update_ice_model_fast.", &
                  default=10)
-  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug_slow, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug_slow, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "DEBUG_FAST_ICE", CS%debug_fast, &
+  call get_param(param_file, mdl, "DEBUG_FAST_ICE", CS%debug_fast, &
                  "If true, write out verbose debugging data on the fast ice PEs.", &
                  default=debug)
 

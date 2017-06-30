@@ -1630,7 +1630,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: spec_thermo_sal
   character(len=120) :: restart_file, fast_rest_file
   character(len=240) :: restart_path, fast_rest_path
-  character(len=40)  :: mod = "ice_model" ! This module's name.
+  character(len=40)  :: mdl = "ice_model" ! This module's name.
   character(len=8)   :: nstr
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
 
@@ -1772,29 +1772,29 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call callTree_enter("ice_model_init(), ice_model.F90")
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
+  call log_version(param_file, mdl, version, "")
+  call get_param(param_file, mdl, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
-  call get_param(param_file, mod, "CGRID_ICE_DYNAMICS", Cgrid_dyn, &
+  call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice \n"//&
                  "dynamics; if false use a B-grid discretization.", &
                  default=.false.)
   if (specified_ice) then
     slab_ice = .true.
-    call log_param(param_file, mod, "USE_SLAB_ICE", slab_ice, &
+    call log_param(param_file, mdl, "USE_SLAB_ICE", slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mod, "USE_SLAB_ICE", slab_ice, &
+    call get_param(param_file, mdl, "USE_SLAB_ICE", slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
-  call get_param(param_file, mod, "SINGLE_ICE_STATE_TYPE", single_IST, &
+  call get_param(param_file, mdl, "SINGLE_ICE_STATE_TYPE", single_IST, &
                  "If true, the fast and slow portions of the ice use a \n"//&
                  "single common ice_state_type.  Otherwise they point to \n"//&
                  "different ice_state_types that need to be explicitly \n"//&
                  "copied back and forth.", default=.true.)
-  call get_param(param_file, mod, "EULERIAN_TSURF", Eulerian_tsurf, &
+  call get_param(param_file, mdl, "EULERIAN_TSURF", Eulerian_tsurf, &
                  "If true, use previous calculations of the ice-top surface \n"//&
                  "skin temperature for tsurf at the start of atmospheric \n"//&
                  "time stepping, including interpolating between tsurf \n"//&
@@ -1805,7 +1805,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call obsolete_logical(param_file, "AREA_WEIGHTED_STRESSES", warning_val=.true.)
 
   dflt_stagger = "B" ; if (Cgrid_dyn) dflt_stagger = "C"
-  call get_param(param_file, mod, "ICE_OCEAN_STRESS_STAGGER", stagger, &
+  call get_param(param_file, mdl, "ICE_OCEAN_STRESS_STAGGER", stagger, &
                  "A case-insensitive character string to indicate the \n"//&
                  "staggering of the stress field on the ocean that is \n"//&
                  "returned to the coupler.  Valid values include \n"//&
@@ -1815,69 +1815,69 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Rho_ocean is not actually used here, but it used from later get_param
   ! calls in other modules.  This call is here to avoid changing the order of
   ! the entries in the SIS_parameter_doc files.
-  call get_param(param_file, mod, "RHO_OCEAN", Rho_ocean, &
+  call get_param(param_file, mdl, "RHO_OCEAN", Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", Rho_ice, &
+  call get_param(param_file, mdl, "RHO_ICE", Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", Rho_snow, &
+  call get_param(param_file, mdl, "RHO_SNOW", Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
 
-  call get_param(param_file, mod, "G_EARTH", g_Earth, &
+  call get_param(param_file, mdl, "G_EARTH", g_Earth, &
                  "The gravitational acceleration of the Earth.", &
                  units="m s-2", default = 9.80)
 
-  call get_param(param_file, mod, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
+  call get_param(param_file, mdl, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
                  units="m", default=1.0e-4)
-  call get_param(param_file, mod, "HEAT_ROUGH_ICE", heat_rough_ice, &
+  call get_param(param_file, mdl, "HEAT_ROUGH_ICE", heat_rough_ice, &
                  "The default roughness length scale for the turbulent \n"//&
                  "transfer of heat into the ocean.", units="m", default=1.0e-4)
 
-  call get_param(param_file, mod, "CONSTANT_COSZEN_IC", coszen_IC, &
+  call get_param(param_file, mdl, "CONSTANT_COSZEN_IC", coszen_IC, &
                  "A constant value to use to initialize the cosine of \n"//&
                  "the solar zenith angle for the first radiation step, \n"//&
                  "or a negative number to use the current time and astronomy.", &
                  units="nondim", default=-1.0)
-  call get_param(param_file, mod, "DT_RADIATION", dt_Rad_real, &
+  call get_param(param_file, mdl, "DT_RADIATION", dt_Rad_real, &
                  "The time step with which the shortwave radiation and \n"//&
                  "fields like albedos are updated.  Currently this is only \n"//&
                  "used to initialize albedos when there is no restart file.", &
                  units="s", default=time_type_to_real(Time_step_slow))
   dt_Rad = real_to_time_type(dt_Rad_real)
-  call get_param(param_file, mod, "ICE_KMELT", kmelt, &
+  call get_param(param_file, mdl, "ICE_KMELT", kmelt, &
                  "A constant giving the proportionality of the ocean/ice \n"//&
                  "base heat flux to the tempature difference, given by \n"//&
                  "the product of the heat capacity per unit volume of sea \n"//&
                  "water times a molecular diffusive piston velocity.", &
                  units="W m-2 K-1", default=6e-5*4e6)
-  call get_param(param_file, mod, "SNOW_CONDUCT", k_snow, &
+  call get_param(param_file, mdl, "SNOW_CONDUCT", k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-  call get_param(param_file, mod, "COLUMN_CHECK", column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", debug_slow, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", debug_slow, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "DEBUG_FAST_ICE", debug_fast, &
+  call get_param(param_file, mdl, "DEBUG_FAST_ICE", debug_fast, &
                  "If true, write out verbose debugging data on the fast ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "GLOBAL_INDEXING", global_indexing, &
+  call get_param(param_file, mdl, "GLOBAL_INDEXING", global_indexing, &
                  "If true, use a global lateral indexing convention, so \n"//&
                  "that corresponding points on different processors have \n"//&
                  "the same index. This does not work with static memory.", &
@@ -1886,74 +1886,74 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   if (global_indexing) call SIS_error(FATAL, "ice_model_init: "//&
        "GLOBAL_INDEXING can not be true with STATIC_MEMORY.")
 #endif
-  call get_param(param_file, mod, "FIRST_DIRECTION", first_direction, &
+  call get_param(param_file, mdl, "FIRST_DIRECTION", first_direction, &
                  "An integer that indicates which direction goes first \n"//&
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
-  call log_param(param_file, mod, "! VERONA_COUPLER", Verona, &
+  call log_param(param_file, mdl, "! VERONA_COUPLER", Verona, &
                  "If true, carry out all of the sea ice calls so that SIS2 \n"//&
                  "will work with the Verona and earlier releases of the \n"//&
                  "FMS coupler code in configurations that use the exchange \n"//&
                  "grid to communicate with the atmosphere or land.", &
                  layoutParam=.true.)
 
-  call get_param(param_file, mod, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
+  call get_param(param_file, mdl, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
                  "the atmospheric sign convention, and need to have their \n"//&
                  "sign changed.", default=.true.)
-  call get_param(param_file, mod, "ICE_BULK_SALINITY", ice_bulk_salin, &
+  call get_param(param_file, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", units = "g/kg", &
                  default=4.0, do_not_log=.true.)
-  call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
+  call get_param(param_file, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the \n"//&
                  "salinity of the seawater from which it formed.", &
                  units = "nondim", default=0.0, do_not_log=.true.)
   if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
 
-  call get_param(param_file, mod, "APPLY_SLP_TO_OCEAN", slp2ocean, &
+  call get_param(param_file, mdl, "APPLY_SLP_TO_OCEAN", slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
                  "the ocean.", default=.false.)
-  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
+  call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
-  call get_param(param_file, mod, "DO_ICEBERGS", do_icebergs, &
+  call get_param(param_file, mdl, "DO_ICEBERGS", do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   if (do_icebergs) then
-    call get_param(param_file, mod, "PASS_ICEBERG_AREA_TO_OCEAN", pass_iceberg_area_to_ocean, &
+    call get_param(param_file, mdl, "PASS_ICEBERG_AREA_TO_OCEAN", pass_iceberg_area_to_ocean, &
                  "If true, iceberg area is passed through coupler", default=.false.)
   else ; pass_iceberg_area_to_ocean = .false. ; endif
 
-  call get_param(param_file, mod, "ADD_DIURNAL_SW", add_diurnal_sw, &
+  call get_param(param_file, mdl, "ADD_DIURNAL_SW", add_diurnal_sw, &
                  "If true, add a synthetic diurnal cycle to the shortwave \n"//&
                  "radiation.", default=.false.)
-  call get_param(param_file, mod, "DO_SUN_ANGLE_FOR_ALB", do_sun_angle_for_alb, &
+  call get_param(param_file, mdl, "DO_SUN_ANGLE_FOR_ALB", do_sun_angle_for_alb, &
                  "If true, find the sun angle for calculating the ocean \n"//&
                  "albedo within the sea ice model.", default=.false.)
-  call get_param(param_file, mod, "DO_RIDGING", do_ridging, &
+  call get_param(param_file, mdl, "DO_RIDGING", do_ridging, &
                  "If true, call the ridging routines.", default=.false.)
 
-  call get_param(param_file, mod, "RESTARTFILE", restart_file, &
+  call get_param(param_file, mdl, "RESTARTFILE", restart_file, &
                  "The name of the restart file.", default="ice_model.res.nc")
   if (fast_ice_PE.eqv.slow_ice_PE) then
-    call get_param(param_file, mod, "FAST_ICE_RESTARTFILE", fast_rest_file, &
+    call get_param(param_file, mdl, "FAST_ICE_RESTARTFILE", fast_rest_file, &
                    "The name of the restart file for those elements of the \n"//&
                    "the sea ice that are handled by the fast ice PEs.", &
                    default=restart_file)
   else
-    call get_param(param_file, mod, "FAST_ICE_RESTARTFILE", fast_rest_file, &
+    call get_param(param_file, mdl, "FAST_ICE_RESTARTFILE", fast_rest_file, &
                    "The name of the restart file for those elements of the \n"//&
                    "the sea ice that are handled by the fast ice PEs.", &
                    default="ice_model_fast.res.nc")
   endif
 
-  call get_param(param_file, mod, "MASSLESS_ICE_ENTH", massless_ice_enth, &
+  call get_param(param_file, mdl, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
                  units="J kg-1", default=0.0, do_not_log=.true.)
-  call get_param(param_file, mod, "MASSLESS_SNOW_ENTH", massless_snow_enth, &
+  call get_param(param_file, mdl, "MASSLESS_SNOW_ENTH", massless_snow_enth, &
                  "The snow enthalpy fill value for massless categories.", &
                  units="J kg-1", default=0.0, do_not_log=.true.)
-  call get_param(param_file, mod, "MASSLESS_ICE_SALIN", massless_ice_salin, &
+  call get_param(param_file, mdl, "MASSLESS_ICE_SALIN", massless_ice_salin, &
                  "The ice salinity fill value for massless categories.", &
                  units="g kg-1", default=0.0, do_not_log=.true.)
   call get_param(param_file, "MOM", "WRITE_GEOM", write_geom, &
@@ -2537,7 +2537,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Initialize icebergs
     if (Ice%sCS%do_icebergs) then
-      call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", Ice%sCS%berg_windstress_bug, &
+      call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", Ice%sCS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
                  "stress to the icebergs in place of the current air-ocean \n"//&
                  "stress.  This option is here for backward compatibility, \n"//&

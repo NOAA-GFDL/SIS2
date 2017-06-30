@@ -640,14 +640,14 @@ subroutine SIS_tracer_registry_init(param_file, TrReg)
   integer, save :: init_calls = 0
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_tracer_registry" ! This module's name.
+  character(len=40)  :: mdl = "SIS_tracer_registry" ! This module's name.
   character(len=256) :: mesg    ! Message for error messages.
 
   if (.not.associated(TrReg)) then ; allocate(TrReg)
   else ; return ; endif
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
+  call log_version(param_file, mdl, version, "")
 
   init_calls = init_calls + 1
   if (init_calls > 1) then

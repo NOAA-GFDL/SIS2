@@ -192,42 +192,42 @@ subroutine SIS2_ice_thm_init(param_file, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS2_ice_thm (updates)" ! This module's name.
+  character(len=40)  :: mdl = "SIS2_ice_thm (updates)" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
 
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This sub-module does updates of the sea-ice due to thermodynamic changes.")
 
-  call get_param(param_file, mod, "SNOW_CONDUCTIVITY", CS%Ks, &
+  call get_param(param_file, mdl, "SNOW_CONDUCTIVITY", CS%Ks, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
-  call get_param(param_file, mod, "ICE_CONDUCTIVITY", CS%Ki, &
+  call get_param(param_file, mdl, "ICE_CONDUCTIVITY", CS%Ki, &
                  "The conductivity of heat in ice.", units="W m-1 K-1", &
                  default=2.03)
-  call get_param(param_file, mod, "MIN_H_FOR_TEMP_CALC", CS%h_lo_lim, &
+  call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", CS%h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
 
-  call get_param(param_file, mod, "DO_POND", CS%do_pond, &
+  call get_param(param_file, mdl, "DO_POND", CS%do_pond, &
                  "If true, calculate melt ponds and use them for\n"//&
                  "shortwave radiation calculation.", default=.false.)
-  call get_param(param_file, mod, "TDRAIN", CS%tdrain, &
+  call get_param(param_file, mdl, "TDRAIN", CS%tdrain, &
                  "Melt ponds drain to sea level when ice average temp.\n"//&
                  "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8)
-  call get_param(param_file, mod, "R_MIN_POND", CS%r_min_pond, &
+  call get_param(param_file, mdl, "R_MIN_POND", CS%r_min_pond, &
                  "Minimum retention rate of surface water sources in melt pond\n"//&
                  "(retention scales linearly with ice cover)", default=0.15)
-  call get_param(param_file, mod, "R_MAX_POND", CS%r_max_pond, &
+  call get_param(param_file, mdl, "R_MAX_POND", CS%r_max_pond, &
                  "Maximum retention rate of surface water sources in melt pond\n"//&
                  "(retention scales linearly with ice cover)", default=0.9)
-  call get_param(param_file, mod, "MIN_POND_FRAC", CS%min_pond_frac, &
+  call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
                  "Minimum melt pond cover (by ponds at sea level)\n"//&
                  "pond drains to this when ice is porous.", default=0.2)
-  call get_param(param_file, mod, "MAX_POND_FRAC", CS%max_pond_frac, &
+  call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
                  "Maximum melt pond cover - associated with pond volume\n"//&
                  "that suppresses ice top to waterline", default=0.5)
-  call get_param(param_file, mod, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
+  call get_param(param_file, mdl, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
                  "An estimate of the range of snow and ice temperatures \n"//&
                  "that is used to evaluate whether an explicit diffusive \n"//&
                  "form of the heat fluxes or an inversion based on the \n"//&
@@ -1786,51 +1786,51 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS2_ice_thm (thermo)" ! This module's name.
+  character(len=40)  :: mdl = "SIS2_ice_thm (thermo)" ! This module's name.
   logical :: specified_ice
 
   if (.not.associated(ITV)) allocate(ITV)
 
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This sub-module calculates ice thermodynamic quantities.")
-  call get_param(param_file, mod, "LATENT_HEAT_FUSION", ITV%LI, &
+  call get_param(param_file, mdl, "LATENT_HEAT_FUSION", ITV%LI, &
                  "The latent heat of fusion as used by SIS.", &
                  units="J kg-1", default=3.34e5)
-  call get_param(param_file, mod, "LATENT_HEAT_VAPOR", ITV%Lat_Vapor, &
+  call get_param(param_file, mdl, "LATENT_HEAT_VAPOR", ITV%Lat_Vapor, &
                  "The latent heat of vaporization of water at 0C as used by SIS.", &
                  units="J kg-1", default=2.500e6)
-  call get_param(param_file, mod, "RHO_OCEAN", ITV%Rho_water, &
+  call get_param(param_file, mdl, "RHO_OCEAN", ITV%Rho_water, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", ITV%Rho_ice, &
+  call get_param(param_file, mdl, "RHO_ICE", ITV%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", ITV%Rho_snow, &
+  call get_param(param_file, mdl, "RHO_SNOW", ITV%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
-  call get_param(param_file, mod, "CP_ICE", ITV%Cp_ice, &
+  call get_param(param_file, mdl, "CP_ICE", ITV%Cp_ice, &
                  "The heat capacity of fresh ice, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=2100.0)
-  call get_param(param_file, mod, "CP_SEAWATER", ITV%Cp_Water, &
+  call get_param(param_file, mdl, "CP_SEAWATER", ITV%Cp_Water, &
                  "The heat capacity of sea water, approximated as a \n"//&
                  "constant.", units="J kg-1 K-1", default=4200.0)
-  call get_param(param_file, mod, "CP_BRINE", ITV%Cp_brine, &
+  call get_param(param_file, mdl, "CP_BRINE", ITV%Cp_brine, &
                  "The heat capacity of water in brine pockets within the \n"//&
                  "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
                  "CP_SEAWATER should be equal, but for computational \n"//&
                  "convenience CP_BRINE can be set equal to CP_ICE.", &
                  units="J kg-1 K-1", default=ITV%Cp_Water)
-  call get_param(param_file, mod, "DTFREEZE_DS", ITV%dTf_dS, &
+  call get_param(param_file, mdl, "DTFREEZE_DS", ITV%dTf_dS, &
                  "The derivative of the freezing temperature with salinity.", &
                  units="deg C PSU-1", default=-0.054)
 
-  call get_param(param_file, mod, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
+  call get_param(param_file, mdl, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
                  "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
                  "should be physically consistent when this is adjusted, \n"//&
                  "because only the relative value is of physical meaning, \n"//&
                  "but roundoff errors can change the solution.", units="J kg-1", &
                  default=0.0)
-  call get_param(param_file, mod, "ENTHALPY_UNITS", ITV%enth_unit, &
+  call get_param(param_file, mdl, "ENTHALPY_UNITS", ITV%enth_unit, &
                  "A constant that rescales enthalpy from J/kg to a \n"//&
                  "different scale in its internal representation.  Changing \n"//&
                  "this by a power of 2 is useful for debugging, as answers \n"//&
@@ -1838,22 +1838,22 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  units="J kg-1", default=1.0)
   if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
   ITV%I_enth_unit = 1.0 / ITV%enth_unit
-  call get_param(param_file, mod, "SUBLIMATION_BUG", ITV%sublimation_bug, &
+  call get_param(param_file, mdl, "SUBLIMATION_BUG", ITV%sublimation_bug, &
                  "If true use an older calculation that omits the latent \n"//&
                  "heat of fusion from the latent heat of sublimation. \n"//&
                  "This variable should be obsoleted as soon as possible.", &
                  default=.false.)
 
-  call get_param(param_file, mod, "SPECIFIED_ICE", specified_ice, &
+  call get_param(param_file, mdl, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if (specified_ice) then
     ITV%slab_ice = .true.
-    call log_param(param_file, mod, "USE_SLAB_ICE", ITV%slab_ice, &
+    call log_param(param_file, mdl, "USE_SLAB_ICE", ITV%slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mod, "USE_SLAB_ICE", ITV%slab_ice, &
+    call get_param(param_file, mdl, "USE_SLAB_ICE", ITV%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
 

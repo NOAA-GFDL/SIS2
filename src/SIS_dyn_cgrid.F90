@@ -167,7 +167,7 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_C_dyn" ! This module's name.
+  character(len=40) :: mdl = "SIS_C_dyn" ! This module's name.
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -183,118 +183,118 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%ntrunc = 0
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+  call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
     CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
-    call log_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+    call log_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations in the EVP dynamics for each \n"//&
                  "slow time step.  With SPECIFIED_ICE this is always 0.")
   else
-    call get_param(param_file, mod, "DT_RHEOLOGY", CS%dt_Rheo, &
+    call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", &
                  default=-1.0)
     CS%evp_sub_steps = -1
     if (CS%dt_Rheo <= 0.0) &
-      call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+      call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations of the rheology and ice \n"//&
                  "momentum equations for each slow ice time step.", default=432)
   endif
-  call get_param(param_file, mod, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
+  call get_param(param_file, mdl, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
                  "The damping timescale associated with the elastic terms \n"//&
                  "in the sea-ice dynamics equations (if positive) or the \n"//&
                  "fraction of DT_ICE_DYNAMICS (if negative).", &
                  units = "s or nondim", default=-0.2)
-  call get_param(param_file, mod, "WEAK_LOW_SHEAR_ICE", CS%weak_low_shear, &
+  call get_param(param_file, mdl, "WEAK_LOW_SHEAR_ICE", CS%weak_low_shear, &
                  "If true, the divergent stresses go toward 0 in the C-grid \n"//&
                  "dynamics when the shear magnitudes are very weak. \n"//&
                  "Otherwise they go to -P_ice.  This setting is temporary.", &
                  default=.false.)
 
-  call get_param(param_file, mod, "PROJECT_ICE_DRAG_VEL", CS%project_drag_vel, &
+  call get_param(param_file, mdl, "PROJECT_ICE_DRAG_VEL", CS%project_drag_vel, &
                  "If true, project forward the ice velocity used in the \n"//&
                  "drag calculation to avoid an instability that can occur \n"//&
                  "when an finite stress is applied to thin ice moving with \n"//&
                  "the velocity of the ocean.", default=.true.)
-  call get_param(param_file, mod, "ICE_YIELD_ELLIPTICITY", CS%EC, &
+  call get_param(param_file, mdl, "ICE_YIELD_ELLIPTICITY", CS%EC, &
                  "The ellipticity coefficient for the plastic yield curve \n"//&
                  "in the sea-ice rheology.  For an infinite ellipticity \n"//&
                  "(i.e., a cavitating fluid rheology), use 0.", &
                  units = "Nondim", default=2.0)
 
-  call get_param(param_file, mod, "ICE_STRENGTH_PSTAR", CS%p0, &
+  call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
                  "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
-  call get_param(param_file, mod, "ICE_STRENGTH_CSTAR", CS%c0, &
+  call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
                  "A constant in the exponent of the expression for the \n"//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
                  units="nondim", default=20.)
-  call get_param(param_file, mod, "ICE_CDRAG_WATER", CS%cdw, &
+  call get_param(param_file, mdl, "ICE_CDRAG_WATER", CS%cdw, &
                  "The drag coefficient between the sea ice and water.", &
                  units="nondim", default=3.24e-3)
-  call get_param(param_file, mod, "MIN_OCN_INTERTIAL_H", CS%min_ocn_inertial_h, &
+  call get_param(param_file, mdl, "MIN_OCN_INTERTIAL_H", CS%min_ocn_inertial_h, &
                  "A minimum ocean thickness used to limit the viscous coupling rate\n"//&
                  "implied for the ocean by the ice-ocean stress. Only used if positive.", &
                  units="m", default=0.0)
-  call get_param(param_file, mod, "ICE_DEL_SH_MIN_SCALE", CS%del_sh_min_scale, &
+  call get_param(param_file, mdl, "ICE_DEL_SH_MIN_SCALE", CS%del_sh_min_scale, &
                  "A scaling factor for the lower bound on the shear rates \n"//&
                  "used in the denominator of the stress calculation. This \n"//&
                  "probably needs to be greater than 1.", units="nondim", default=2.0)
-  call get_param(param_file, mod, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
+  call get_param(param_file, mdl, "PROJECT_ICE_CONCENTRATION", CS%project_ci, &
                  "If true, project the evolution of the ice concentration \n"//&
                  "due to the convergence or divergence of the ice flow.", default=.true.)
 
-  call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
+  call get_param(param_file, mdl, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
+  call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
-  call get_param(param_file, mod, "CFL_TRUNCATE", CS%CFL_trunc, &
+  call get_param(param_file, mdl, "CFL_TRUNCATE", CS%CFL_trunc, &
                  "The value of the CFL number that will cause ice velocity \n"//&
                  "components to be truncated; instability can occur past 0.5.", &
                  units="nondim", default=0.5)
-  call get_param(param_file, mod, "CFL_TRUNC_DYN_ITS", CS%CFL_check_its, &
+  call get_param(param_file, mdl, "CFL_TRUNC_DYN_ITS", CS%CFL_check_its, &
                  "If true, check the CFL number for every iteration of the \n"//&
                  "rheology solver; otherwise only the final velocities that \n"//&
                  "are used for transport are checked.", &
                  default=.false.)
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "DEBUG_EVP_SUBSTEPS", CS%debug_EVP, &
+  call get_param(param_file, mdl, "DEBUG_EVP_SUBSTEPS", CS%debug_EVP, &
                  "If true, write out verbose debugging data for each of the \n"//&
                  "steps within the EVP solver.", default=debug)
-  call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
+  call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
   if ( CS%specified_ice ) then
     CS%slab_ice = .true.
-    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
-  call get_param(param_file, mod, "U_TRUNC_FILE", CS%u_trunc_file, &
+  call get_param(param_file, mdl, "U_TRUNC_FILE", CS%u_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to zonal velocity truncations are written. \n"//&
                  "Leave this empty for efficiency if this diagnostic is \n"//&
                  "not needed.", default="")
-  call get_param(param_file, mod, "V_TRUNC_FILE", CS%v_trunc_file, &
+  call get_param(param_file, mdl, "V_TRUNC_FILE", CS%v_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to meridional velocity truncations are written. \n"//&
                  "Leave this empty for efficiency if this diagnostic is \n"//&
                  "not needed.", default="")
-  call get_param(param_file, mod, "MAX_TRUNC_FILE_SIZE_PER_PE", CS%max_writes, &
+  call get_param(param_file, mdl, "MAX_TRUNC_FILE_SIZE_PER_PE", CS%max_writes, &
                  "The maximum number of colums of truncations that any PE \n"//&
                  "will write out during a run.", default=50)
 
@@ -303,8 +303,8 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 !      CS%u_trunc_file = trim(dirs%output_directory)//trim(CS%u_trunc_file)
 !    if (len_trim(CS%v_trunc_file) > 0) &
 !      CS%v_trunc_file = trim(dirs%output_directory)//trim(CS%v_trunc_file)
-!    call log_param(param_file, mod, "output_dir/U_TRUNC_FILE", CS%u_trunc_file)
-!    call log_param(param_file, mod, "output_dir/V_TRUNC_FILE", CS%v_trunc_file)
+!    call log_param(param_file, mdl, "output_dir/U_TRUNC_FILE", CS%u_trunc_file)
+!    call log_param(param_file, mdl, "output_dir/V_TRUNC_FILE", CS%v_trunc_file)
 !  endif
   CS%u_file = -1 ; CS%v_file = -1 ; CS%cols_written = 0
 
