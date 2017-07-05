@@ -1810,7 +1810,7 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
   logical :: debug
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_tracer_advect" ! This module's name.
+  character(len=40)  :: mdl = "SIS_tracer_advect" ! This module's name.
   character(len=256) :: mesg    ! Message for error messages.
 
   if (associated(CS)) then
@@ -1823,18 +1823,18 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
 
   ! Read all relevant parameters and write them to the model log.
   if ((first_call) .or. .not.present(scheme)) &
-    call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt, &
+    call log_version(param_file, mdl, version, "")
+  call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
                  "the ice mass field and velocities.", units="s", &
                  default=-1.0, do_not_log=.true.)
-  call get_param(param_file, mod, "DEBUG", debug, default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, default=.false.)
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
   if (present(scheme)) then ; mesg = scheme ; else
-    call get_param(param_file, mod, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
+    call get_param(param_file, mdl, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
           "  PCM    - Directionally split piecewise constant\n"//&

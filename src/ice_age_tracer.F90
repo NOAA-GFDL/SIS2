@@ -169,7 +169,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
 
   ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "ice_age_tracer" ! This module's name.
+  character(len=40)  :: mdl = "ice_age_tracer" ! This module's name.
   character(len=200) :: inputdir ! The directory where the input files are.
   character(len=48)  :: var_name ! The variable's name.
   real, dimension(:,:,:), pointer :: ocean_BC_ptr, snow_BC_ptr
@@ -185,17 +185,17 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   allocate(CS)
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "DO_ICE_AGE_AREAL", CS%do_ice_age_areal, &
+  call log_version(param_file, mdl, version, "")
+  call get_param(param_file, mdl, "DO_ICE_AGE_AREAL", CS%do_ice_age_areal, &
       "If true, use an ice age tracer that ages at \n"//&
       "a unit rate if the ice exists.", &
       default=.false.)
-  call get_param(param_file, mod, "DO_ICE_AGE_MASS", CS%do_ice_age_mass, &
+  call get_param(param_file, mdl, "DO_ICE_AGE_MASS", CS%do_ice_age_mass, &
       "If true, use an ice age tracer that is set to 0 age \n"//&
       "when ice is first formed, ages at unit rate in the ice pack \n"// &
       "and any new ice added to the ice pack represents a decrease in age", &
       default=.false.)
-  call get_param(param_file, mod, "TRACERS_MAY_REINIT", CS%tracers_may_reinit, &
+  call get_param(param_file, mdl, "TRACERS_MAY_REINIT", CS%tracers_may_reinit, &
       "If true, tracers may go through the initialization code \n"//&
       "if they are not found in the restart files.  Otherwise \n"//&
       "it is a fatal error if the tracers are not found in the \n"//&
@@ -204,7 +204,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   CS%ntr = 0
   if (CS%do_ice_age_areal) then
       CS%ntr = CS%ntr + 1 ; m = CS%ntr
-      CS%tr_desc(m) = var_desc("ice_age_areal", "years", "Area based ice age tracer", caller=mod)
+      CS%tr_desc(m) = var_desc("ice_age_areal", "years", "Area based ice age tracer", caller=mdl)
       CS%tracer_ages(m) = .true.
       CS%new_ice_is_sink(m) = .false.
       CS%uniform_vertical(m) = .true.
@@ -214,7 +214,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   endif
   if (CS%do_ice_age_mass) then
       CS%ntr = CS%ntr + 1 ; m = CS%ntr
-      CS%tr_desc(m) = var_desc("ice_age_mass", "years", "Mass-based ice age tracer", caller=mod)
+      CS%tr_desc(m) = var_desc("ice_age_mass", "years", "Mass-based ice age tracer", caller=mdl)
       CS%tracer_ages(m) = .true.
       CS%new_ice_is_sink(m) = .true.
       CS%uniform_vertical(m) = .false.

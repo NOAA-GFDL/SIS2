@@ -1342,7 +1342,7 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_slow_thermo" ! This module's name.
+  character(len=40) :: mdl = "SIS_slow_thermo" ! This module's name.
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -1359,20 +1359,20 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
   if (associated(tracer_flow_CSp)) CS%tracer_flow_CSp => tracer_flow_CSp
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This module calculates the slow evolution of the ice mass, heat, and salt budgets.")
 
-  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
-  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+  call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
-  call get_param(param_file, mod, "ICE_BULK_SALINITY", CS%ice_bulk_salin, &
+  call get_param(param_file, mdl, "ICE_BULK_SALINITY", CS%ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", units = "g/kg", default=4.0)
-  call get_param(param_file, mod, "ICE_RELATIVE_SALINITY", CS%ice_rel_salin, &
+  call get_param(param_file, mdl, "ICE_RELATIVE_SALINITY", CS%ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the \n"//&
                  "salinity of the seawater from which it formed.", &
                  units = "nondim", default=0.0)
@@ -1381,65 +1381,65 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                    "and ICE_RELATIVE_SALINITY set to positive values.")
   if (CS%ice_bulk_salin < 0.0) CS%ice_bulk_salin = 0.0
 
-  call get_param(param_file, mod, "SIS2_FILLING_FRAZIL", CS%filling_frazil, &
+  call get_param(param_file, mdl, "SIS2_FILLING_FRAZIL", CS%filling_frazil, &
                "If true, apply frazil to fill as many categories as \n"//&
                "possible to fill in a uniform (minimum) amount of ice \n"//&
                "in all the thinnest categories. Otherwise the frazil is \n"//&
                "always assigned to a single category.", default=.true.)
-  call get_param(param_file, mod, "FILLING_FRAZIL_TIMESCALE", CS%fraz_fill_time, &
+  call get_param(param_file, mdl, "FILLING_FRAZIL_TIMESCALE", CS%fraz_fill_time, &
                "A timescale with which the filling frazil causes the \n"//&
                "thinest cells to attain similar thicknesses, or a negative \n"//&
                "number to apply the frazil flux uniformly.", default=0.0, &
                units="s", do_not_log=.not.CS%filling_frazil)
 
-  call get_param(param_file, mod, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
+  call get_param(param_file, mdl, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
-  call get_param(param_file, mod, "MAX_ICE_THICK_LIMIT", CS%max_ice_limit, &
+  call get_param(param_file, mdl, "MAX_ICE_THICK_LIMIT", CS%max_ice_limit, &
                  "The maximum permitted sea ice thickness when \n"//&
                  "APPLY_ICE_LIMIT is true.", units="m", default=4.0, &
                  do_not_log=.not.CS%do_ice_limit)
 
-  call get_param(param_file, mod, "DO_ICE_RESTORE", CS%do_ice_restore, &
+  call get_param(param_file, mdl, "DO_ICE_RESTORE", CS%do_ice_restore, &
                  "If true, restore the sea ice state toward climatology.", &
                  default=.false.)
-  call get_param(param_file, mod, "ICE_RESTORE_TIMESCALE", CS%ice_restore_timescale, &
+  call get_param(param_file, mdl, "ICE_RESTORE_TIMESCALE", CS%ice_restore_timescale, &
                  "The restoring timescale when DO_ICE_RESTORE is true.", &
                  units="days", default=5.0, do_not_log=.not.CS%do_ice_restore)
 
-  call get_param(param_file, mod, "NUDGE_SEA_ICE", CS%nudge_sea_ice, &
+  call get_param(param_file, mdl, "NUDGE_SEA_ICE", CS%nudge_sea_ice, &
                  "If true, constrain the sea ice concentrations using observations.", &
                  default=.false.)
-  call get_param(param_file, mod, "NUDGE_SEA_ICE_RATE", CS%nudge_sea_ice_rate, &
+  call get_param(param_file, mdl, "NUDGE_SEA_ICE_RATE", CS%nudge_sea_ice_rate, &
                  "The rate of cooling of ice-free water that should be ice \n"//&
                  "covered in order to constrained the ice concentration to \n"//&
                  "track observations.  A suggested value is ~10000 W m-2.", &
                  units = "W m-2", default=0.0, do_not_log=.not.CS%nudge_sea_ice)
-  call get_param(param_file, mod, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
+  call get_param(param_file, mdl, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
                  "The tolerance for mismatch in the sea ice concentations \n"//&
                  "before nudging begins to be applied.  Values of order 0.1\n"//&
                  "should work well.", units = "nondim", default=0.0, &
                  do_not_log=.not.CS%nudge_sea_ice)
-  call get_param(param_file, mod, "NUDGE_SEA_ICE_STABILITY", CS%nudge_stab_fac, &
+  call get_param(param_file, mdl, "NUDGE_SEA_ICE_STABILITY", CS%nudge_stab_fac, &
                  "A factor that determines whether the buoyancy flux \n"//&
                  "associated with the sea ice nudging of warm water includes \n"//&
                  "a freshwater flux so as to be destabilizing on net (<1), \n"//&
                  "stabilizing (>1), or neutral (=1).", units="nondim", &
                  default=1.0, do_not_log=.not.CS%nudge_sea_ice)
 
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&

@@ -814,7 +814,7 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
 !                 for this module
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_continuity" ! This module's name.
+  character(len=40) :: mdl = "SIS_continuity" ! This module's name.
   character(len=40) :: mesg    ! Message for error messages.
 
   if (associated(CS)) then
@@ -824,8 +824,8 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
   allocate(CS)
 
 ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "SIS_CONTINUITY_SCHEME", mesg, &
+  call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "SIS_CONTINUITY_SCHEME", mesg, &
           desc="The horizontal transport scheme used in continuity:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
           "  PCM       - Directionally split piecewise constant\n"//&
@@ -857,7 +857,7 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
   call obsolete_logical(param_file, "UPWIND_1ST_CONTINUITY", &
        hint="Use SIS_CONTINUITY_SCHEME instead.")
 
-  call get_param(param_file, mod, "CONT_PPM_VOLUME_BASED_CFL", CS%vol_CFL, &
+  call get_param(param_file, mdl, "CONT_PPM_VOLUME_BASED_CFL", CS%vol_CFL, &
                  "If true, use the ratio of the open face lengths to the \n"//&
                  "tracer cell areas when estimating CFL numbers.", &
                  default=.false.)
