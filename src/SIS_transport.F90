@@ -1035,7 +1035,7 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_transport" ! This module's name.
+  character(len=40)  :: mdl = "SIS_transport" ! This module's name.
   character(len=80)  :: scheme   ! A string for identifying an advection scheme.
   real, parameter :: missing = -1e34
 
@@ -1049,28 +1049,28 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   CS%Time => Time
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+  call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
     CS%adv_sub_steps = 0
-    call log_param(param_file, mod, "NSTEPS_ADV", CS%adv_sub_steps, &
+    call log_param(param_file, mdl, "NSTEPS_ADV", CS%adv_sub_steps, &
                  "The number of advective iterations for each slow time \n"//&
                  "step.  With SPECIFIED_ICE this is always 0.")
     CS%slab_ice = .true.
-    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mod, "NSTEPS_ADV", CS%adv_sub_steps, &
+    call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_sub_steps, &
                  "The number of advective iterations for each slow time \n"//&
                  "step.", default=1)
-    call get_param(param_file, mod, "USE_SLAB_ICE", CS%SLAB_ICE, &
+    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
-  call get_param(param_file, mod, "RECATEGORIZE_ICE", CS%readjust_categories, &
+  call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness \n"//&
                  "categories after advection.", default=.true.)
 
@@ -1078,14 +1078,14 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
 
-  call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
+  call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mod, "RHO_SNOW", CS%Rho_snow, &
+  call get_param(param_file, mdl, "RHO_SNOW", CS%Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0)
 
-  call get_param(param_file, mod, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
+  call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
                  "A factor by which the propensity of small amounts of \n"//&
                  "thick sea-ice to become thinner by rolling is increased \n"//&
                  "or 0 to disable rolling.  This can be thought of as the \n"//&
@@ -1093,25 +1093,25 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "the horizontal floe aspect ratio.  Sensible values are \n"//&
                  "0 (no rolling) or larger than 1.", units="Nondim",default=1.0)
 
-  call get_param(param_file, mod, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
+  call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow \n"//&
                  "mass conservation in the sea-ice transport code.  This \n"//&
                  "is expensive and should be used sparingly.", default=.false.)
-  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+  call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
-  call get_param(param_file, mod, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
+  call get_param(param_file, mdl, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
           desc="The horizontal transport scheme for thickness:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
           "  PCM    - Directionally split piecewise constant\n"//&
           "  PLM    - Piecewise Linear Method\n"//&
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&

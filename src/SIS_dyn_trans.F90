@@ -1251,7 +1251,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_dyn_trans" ! This module's name.
+  character(len=40) :: mdl = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
   character(len=8) :: nstr
   integer :: n, nLay
@@ -1274,60 +1274,60 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   CS%diag => diag ; CS%Time => Time
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This module updates the ice momentum and does ice transport.")
-  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
-  call get_param(param_file, mod, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
+  call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice \n"//&
                  "dynamics; if false use a B-grid discretization.", &
                  default=.false.)
-  call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
+  call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
                  "The time step used for the slow ice dynamics, including \n"//&
                  "stepping the continuity equation and interactions \n"//&
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
-  call get_param(param_file, mod, "DO_RIDGING", CS%do_ridging, &
+  call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
 
-  call get_param(param_file, mod, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
+  call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
                  "stress to the icebergs in place of the current air-ocean \n"//&
                  "stress.  This option is here for backward compatibility, \n"//&
                  "but should be avoided.", default=.false.)
 
-  call get_param(param_file, mod, "TIMEUNIT", Time_unit, &
+  call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
                  units="s", default=86400.0)
-  call get_param(param_file, mod, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
+  call get_param(param_file, mdl, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
                  "The interval in units of TIMEUNIT between writes of the \n"//&
                  "globally summed ice statistics and conservation checks.", &
                  default=set_time(0,1), timeunit=Time_unit)
 
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "VERBOSE", CS%verbose, &
+  call get_param(param_file, mdl, "VERBOSE", CS%verbose, &
                  "If true, write out verbose diagnostics.", default=.false.)
 
   if (CS%Cgrid_dyn) then

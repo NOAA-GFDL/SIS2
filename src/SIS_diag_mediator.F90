@@ -153,14 +153,14 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   character(len=80) :: grid_config, units_temp, set_name
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
+  character(len=40)  :: mdl = "SIS_diag_mediator" ! This module's name.
 
   set_vert = .true. ; if (present(set_vertical)) set_vert = set_vertical
   set_name = "ice" ; if (present(axes_set_name)) set_name = trim(axes_set_name)
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "GRID_CONFIG", grid_config, &
+  call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "GRID_CONFIG", grid_config, &
                  "The method for defining the horizontal grid.  Valid \n"//&
                  "entries include:\n"//&
                  "\t file - read the grid from GRID_FILE \n"//&
@@ -174,7 +174,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   if (index(lowercase(trim(grid_config)),"cartesian") > 0) then
     ! This is a cartesian grid, and may have different axis units.
     Cartesian_grid = .true.
-    call get_param(param_file, mod, "AXIS_UNITS", units_temp, &
+    call get_param(param_file, mdl, "AXIS_UNITS", units_temp, &
                  "The units for the x- and y- axis labels.  AXIS_UNITS \n"//&
                  "should be defined as 'k' for km, 'm' for m, or 'd' \n"//&
                  "for degrees of latitude and longitude (the default). \n"//&
@@ -185,7 +185,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
     elseif (units_temp(1:1) == 'm') then
       G%x_axis_units = "meters" ; G%y_axis_units = "meters"
     endif
-    call log_param(param_file, mod, "explicit AXIS_UNITS", G%x_axis_units)
+    call log_param(param_file, mdl, "explicit AXIS_UNITS", G%x_axis_units)
   else
     Cartesian_grid = .false.
   endif
@@ -785,7 +785,7 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
   character(len=8)   :: this_pe
   character(len=240) :: doc_file, doc_file_dflt, doc_path
   character(len=40)  :: doc_file_param
-  character(len=40)  :: mod  = "SIS_diag_mediator" ! This module's name.
+  character(len=40)  :: mdl = "SIS_diag_mediator" ! This module's name.
 
   call diag_manager_init(err_msg=err_msg)
 
@@ -807,7 +807,7 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
       doc_file_dflt = "available_diags."//this_pe
       doc_file_param = "AVAILABLE_DIAGS_FILE"
     endif
-    call get_param(param_file, mod, trim(doc_file_param), doc_file, &
+    call get_param(param_file, mdl, trim(doc_file_param), doc_file, &
                  "A file into which to write a list of all available \n"//&
                  "sea ice diagnostics that can be included in a diag_table.", &
                  default=doc_file_dflt)
