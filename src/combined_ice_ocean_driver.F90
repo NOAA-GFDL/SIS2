@@ -38,13 +38,15 @@ use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
 use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_init
 use ocean_model_mod, only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 
+use coupler_types_mod, only: coupler_type_send_data, coupler_type_data_override
+use coupler_types_mod, only: coupler_type_copy_data, coupler_type_redistribute_data
 use data_override_mod, only : data_override
 use diag_manager_mod, only : send_data
 use mpp_domains_mod,  only : domain2D, mpp_get_layout, mpp_get_compute_domain
 
 implicit none ; private
 
-public update_slow_ice_and_ocean, ice_ocean_driver_init, ice_ocean_driver_end
+public :: update_slow_ice_and_ocean, ice_ocean_driver_init, ice_ocean_driver_end
 
 type, public :: ice_ocean_driver_type ; private
   logical :: CS_is_initialized = .false.
@@ -247,12 +249,7 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
   if (ASSOCIATED(IOB%q_flux)) IOB%q_flux(:,:) = Ice%flux_q(:,:)
 
   ! Extra fluxes
-  do n=1,IOB%fluxes%num_bcs ; do m=1,IOB%fluxes%bc(n)%num_fields
-    if ( associated(IOB%fluxes%bc(n)%field(m)%values) ) then
-      IOB%fluxes%bc(n)%field(m)%values(:,:) = Ice%ocean_fluxes%bc(n)%field(m)%values(:,:)
-    endif
-  enddo ; enddo
-
+  call coupler_type_copy_data(Ice%ocean_fluxes, IOB%fluxes)
 
   ! These lines allow the data override code to reset the fluxes to the ocean.
   call data_override('OCN', 'u_flux',    IOB%u_flux   , Time )
@@ -282,14 +279,9 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
     call data_override('OCN', 'mass_berg',  IOB%mass_berg , Time)
 
   ! Override and output extra fluxes of tracers or gasses
-  do n=1,IOB%fluxes%num_bcs ; do m=1,IOB%fluxes%bc(n)%num_fields
-    call data_override('OCN', IOB%fluxes%bc(n)%field(m)%name, &
-                       IOB%fluxes%bc(n)%field(m)%values, Time)
+  call coupler_type_data_override('OCN', IOB%fluxes, Time )
 
-    ! Perform diagnostic output for the extra fluxes
-    used = send_data(IOB%fluxes%bc(n)%field(m)%id_diag, &
-                     IOB%fluxes%bc(n)%field(m)%values, Time)
-  enddo ; enddo
+  call coupler_type_send_data(IOB%fluxes, Time )
 
 end subroutine direct_flux_ice_to_IOB
 

@@ -11,7 +11,7 @@ use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
-use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -598,11 +598,7 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
     write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf          )
     write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf          )
 
-    do n=1,Ice%ocean_fields%num_bcs ; do m=1,Ice%ocean_fields%bc(n)%num_fields
-      write(outunit,101) 'ice%', trim(Ice%ocean_fields%bc(n)%name), &
-                         trim(Ice%ocean_fields%bc(n)%field(m)%name), &
-                         mpp_chksum(Ice%ocean_fields%bc(n)%field(m)%values)
-    enddo ; enddo
+    call coupler_type_write_chksums(Ice%ocean_fields, outunit, 'ice%')
   endif
 
   if (Ice%slow_ice_PE) then
@@ -633,7 +629,6 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
   endif
 
 100 FORMAT("   CHECKSUM::",A32," = ",Z20)
-101 FORMAT("   CHECKSUM::",A16,a,'%',a," = ",Z20)
 
 end subroutine ice_data_type_chksum
 
