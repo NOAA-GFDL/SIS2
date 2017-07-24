@@ -161,6 +161,12 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   character(len=200) :: mesg
   integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL, nCat
   integer :: iTransportSubcycles ! For transport sub-cycling
+
+  real :: mass_neglect
+
+  ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
+  mass_neglect = IG%kg_m2_to_H*1.0e-60
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nCat = IG%CatIce
@@ -321,10 +327,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
       ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
     else
       part_sz(i,j,k) = 0.0 ; mH_ice(i,j,k) = 0.0
-      if (mca_snow(i,j,k) > 0.0) &
+      if (mca_snow(i,j,k) > mass_neglect) &
         call SIS_error(FATAL, &
           "Positive mca_snow values should not exist without ice.")
-      if (mca_pond(i,j,k) > 0.0) &
+      if (mca_pond(i,j,k) > mass_neglect ) &
         call SIS_error(FATAL, &
           "Something needs to be done with positive mca_pond values without ice.")
       mH_snow(i,j,k) = 0.0 ; mH_pond(i,j,k) = 0.0
