@@ -39,7 +39,7 @@ use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_
 use ocean_model_mod, only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 
 use coupler_types_mod, only: coupler_type_send_data, coupler_type_data_override
-use coupler_types_mod, only: coupler_type_copy_data, coupler_type_redistribute_data
+use coupler_types_mod, only: coupler_type_copy_data
 use data_override_mod, only : data_override
 use diag_manager_mod, only : send_data
 use mpp_domains_mod,  only : domain2D, mpp_get_layout, mpp_get_compute_domain

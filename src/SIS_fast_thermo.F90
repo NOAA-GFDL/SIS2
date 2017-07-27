@@ -47,7 +47,8 @@ use MOM_time_manager, only : time_type, time_type_to_real
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
-use coupler_types_mod, only : coupler_3d_bc_type
+use coupler_types_mod, only : coupler_3d_bc_type, coupler_type_spawn
+use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
 use SIS_optics, only : ice_optics_SIS2, bright_ice_temp, SIS_optics_CS
 use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
@@ -151,30 +152,17 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
 
   real :: t_sfc
   integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
-  integer :: ind
+  integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nb = size(FIA%flux_sw_top,4)
 
   i_off = LBOUND(ABT%t_flux,1) - G%isc
   j_off = LBOUND(ABT%t_flux,2) - G%jsc
 
-  if (FIA%num_tr_fluxes < 0) then
-    ! Determine how many atmospheric boundary fluxes have been passed in, and
-    ! set up both an indexing array for these and a space to take their average.
-    ! This code is only exercised the first time that sum_top_quantities is called.
-    FIA%num_tr_fluxes = 0
-    if (ABT%fluxes%num_bcs > 0) then
-      do n=1,ABT%fluxes%num_bcs
-        FIA%num_tr_fluxes = FIA%num_tr_fluxes + ABT%fluxes%bc(n)%num_fields
-      enddo
-
-      if (FIA%num_tr_fluxes > 0) then
-        allocate(FIA%tr_flux_top(G%isd:G%ied, G%jsd:G%jed, 0:IG%CatIce, FIA%num_tr_fluxes))
-        FIA%tr_flux_top(:,:,:,:) = 0.0
-      endif
-    endif
-  endif
+  call coupler_type_spawn(ABT%fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), (/0, ncat/), as_needed=.true.)
 
   if (FIA%avg_count == 0) then
     ! zero_top_quantities - zero fluxes to begin summing in ice fast physics.
@@ -191,7 +179,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
       FIA%flux_lw0(:,:,:) = 0.0 ; FIA%Tskin_cat(:,:,:) = 0.0
     endif
 
-    if (FIA%num_tr_fluxes > 0) FIA%tr_flux_top(:,:,:,:) = 0.0
+    call coupler_type_rescale_data(FIA%tr_flux, 0.0)
   endif
 
   !$OMP parallel do default(shared)
@@ -209,18 +197,8 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   ! FIA%flux_sw_dn is accumulated where the fast radiation diagnostics are output
   ! because it depends on arrays that are stored in the public ice_data_type.
 
-  ind = 0
-  do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
-    ind = ind + 1
-    !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
-    if(ABT%fluxes%bc(n)%flux_type /= 'air_sea_deposition') then
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
-            ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
-    enddo ; enddo ; enddo
-    endif
-  enddo ; enddo
+  !Do not handle air_sea_deposition fluxes here, they need to be handled after atmos_down
+  call coupler_type_increment_data( ABT%fluxes, FIA%tr_flux, exclude_flux_type='air_sea_deposition')
 
   if (allocated(FIA%flux_sh0)) then
     !$OMP parallel do default(shared) private(t_sfc)
@@ -293,10 +271,8 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
 !        FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) - FIA%evap_top(i,j,k)
 !        FIA%evap_top(i,j,k) = 0.0
 !      endif
-      do n=1,FIA%num_tr_fluxes
-        FIA%tr_flux_top(i,j,k,n) = FIA%tr_flux_top(i,j,k,n) * I_avc
-      enddo
     enddo ; enddo
+    
     do b=1,nb ; do i=isc,iec
       FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b)*I_avc
     enddo ; enddo
@@ -304,6 +280,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
       FIA%Tskin_avg(i,j) = FIA%Tskin_avg(i,j) * I_avc
     enddo
   enddo
+  call coupler_type_rescale_data(FIA%tr_flux, I_avc)
 
   ! Determine the fractional ice coverage and the wind stresses averaged
   ! across all the ice thickness categories on an A-grid.
@@ -389,20 +366,14 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nb = size(FIA%flux_sw_top,4)
 
-  if (TSF%num_tr_fluxes < 0) then
-    ! Allocate the arrays to hold the tracer fluxes. This code is only exercised
-    ! the first time that total_top_quantities is called.
-    TSF%num_tr_fluxes = FIA%num_tr_fluxes
-    if (TSF%num_tr_fluxes > 0) then
-      allocate(TSF%tr_flux(G%isd:G%ied, G%jsd:G%jed, TSF%num_tr_fluxes))
-    endif
-  endif
+  call coupler_type_spawn(FIA%tr_flux, TSF%tr_flux, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), as_needed=.true. )
 
   TSF%flux_u(:,:) = 0.0 ; TSF%flux_v(:,:) = 0.0
   TSF%flux_sh(:,:) = 0.0 ; TSF%flux_lw(:,:) = 0.0 ; TSF%flux_lh(:,:) = 0.0
   TSF%flux_sw(:,:,:) = 0.0
   TSF%evap(:,:) = 0.0 ; TSF%fprec(:,:) = 0.0 ; TSF%lprec(:,:) = 0.0
-  if (TSF%num_tr_fluxes > 0) TSF%tr_flux(:,:,:) = 0.0
+  call coupler_type_rescale_data(TSF%tr_flux, 0.0)
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     TSF%flux_u(i,j) = TSF%flux_u(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
@@ -417,11 +388,8 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
     TSF%evap(i,j) = TSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
     TSF%fprec(i,j) = TSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
     TSF%lprec(i,j) = TSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
-
-    do n=1,TSF%num_tr_fluxes
-      TSF%tr_flux(i,j,n) = TSF%tr_flux(i,j,n) + part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
-    enddo
   enddo ; enddo ; enddo
+  call coupler_type_increment_data(FIA%tr_flux, part_size, TSF%tr_flux)
 
   !   If the sum of part_size across all the ice and ocean categories is not
   ! exactly 1, rescaling might be advisable, but for now it is assumed that
@@ -447,15 +415,11 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nb = size(FIA%flux_sw_top,4)
 
-  if ((FIA%num_tr_fluxes > 0) .and. (XSF%num_tr_fluxes < 0)) then
-    ! This is the first call when the number of tracer fluxes are known, and
-    ! the XSF tracer flux arrays need to be allocated now.  This code is only
-    ! exercised the first or second time that total_top_quantities is called.
-    XSF%num_tr_fluxes = FIA%num_tr_fluxes
-    if (XSF%num_tr_fluxes > 0) then
-      allocate(XSF%tr_flux(G%isd:G%ied, G%jsd:G%jed, XSF%num_tr_fluxes))
-    endif
-  endif
+  ! Check whether this is the first call when the number of tracer fluxes are
+  ! known, and the XSF tracer flux arrays need to be allocated now.  This call
+  ! only does anything the first or second time that total_top_quantities is called.
+  call coupler_type_spawn(FIA%tr_flux, XSF%tr_flux, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), as_needed=.true. )
 
   ! Note that XSF%flux_u and XSF%flux_v are not necessary as the changing ice cover is
   ! already being taken into account.
@@ -465,7 +429,7 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
   XSF%flux_sh(:,:) = 0.0 ; XSF%flux_lw(:,:) = 0.0 ; XSF%flux_lh(:,:) = 0.0
   XSF%flux_sw(:,:,:) = 0.0
   XSF%evap(:,:) = 0.0 ; XSF%fprec(:,:) = 0.0 ; XSF%lprec(:,:) = 0.0
-  if (XSF%num_tr_fluxes > 0) XSF%tr_flux(:,:,:) = 0.0
+  call coupler_type_rescale_data(XSF%tr_flux, 0.0)
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
     XSF%flux_sh(i,j) = XSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
@@ -478,11 +442,8 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
     XSF%evap(i,j) = XSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
     XSF%fprec(i,j) = XSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
     XSF%lprec(i,j) = XSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
-
-    do n=1,XSF%num_tr_fluxes
-      XSF%tr_flux(i,j,n) = XSF%tr_flux(i,j,n) + part_size(i,j,k) * FIA%tr_flux_top(i,j,k,n)
-    enddo
   enddo ; enddo ; enddo
+  call coupler_type_increment_data(FIA%tr_flux, part_size, XSF%tr_flux)
 
   do j=jsc,jec ; do i=isc,iec
     XSF%flux_sh(i,j) = XSF%flux_sh(i,j) - TSF%flux_sh(i,j)
@@ -492,11 +453,8 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
     XSF%evap(i,j) = XSF%evap(i,j)   - TSF%evap(i,j)
     XSF%fprec(i,j) = XSF%fprec(i,j) - TSF%fprec(i,j)
     XSF%lprec(i,j) = XSF%lprec(i,j) - TSF%lprec(i,j)
-
-    do n=1,XSF%num_tr_fluxes
-      XSF%tr_flux(i,j,n) = XSF%tr_flux(i,j,n) - TSF%tr_flux(i,j,n)
-    enddo
   enddo ; enddo
+  call coupler_type_increment_data(TSF%tr_flux, XSF%tr_flux, scale_factor=-1.0)
 
 end subroutine find_excess_fluxes
 
@@ -872,24 +830,7 @@ subroutine accumulate_deposition_fluxes(ABT, FIA, G, IG)
   type(SIS_hor_grid_type),       intent(in)    :: G
   type(ice_grid_type),           intent(in)    :: IG
 
-  integer :: i, j, k, m, n, i_off, j_off, i2, j2, k2, isc, iec, jsc, jec, ncat, ind
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-
-  i_off = LBOUND(ABT%t_flux,1) - G%isc
-  j_off = LBOUND(ABT%t_flux,2) - G%jsc
-
-  ind = 0
-  do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
-    ind = ind + 1
-    if (ABT%fluxes%bc(n)%flux_type == 'air_sea_deposition') then
-      do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-        FIA%tr_flux_top(i,j,k,ind) = FIA%tr_flux_top(i,j,k,ind) + &
-                                     ABT%fluxes%bc(n)%field(m)%values(i2,j2,k2)
-      enddo ; enddo ; enddo
-    endif
-  enddo; enddo
+  call coupler_type_increment_data( ABT%fluxes, FIA%tr_flux, only_flux_type='air_sea_deposition')
 
 end subroutine accumulate_deposition_fluxes
 
