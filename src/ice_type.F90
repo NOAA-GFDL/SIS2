@@ -11,7 +11,8 @@ use fms_mod,          only: open_namelist_file, check_nml_error, close_file
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
-use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
+use coupler_types_mod,only: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod,only: coupler_type_spawn, coupler_type_write_chksums
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -156,13 +157,17 @@ contains
 !     ice restart files.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
-                                           Ice_restart, restart_file)
+                                      Ice_restart, restart_file, gas_fluxes)
   type(domain2d),          intent(in)    :: domain
   integer,                 intent(in)    :: CatIce
   type(param_file_type),   intent(in)    :: param_file
   type(ice_data_type),     intent(inout) :: Ice
   type(restart_file_type), pointer       :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
+  type(coupler_1d_bc_type), &
+                 optional, intent(in)    :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
   ! registers the appopriate ones for inclusion in the restart file.
@@ -202,6 +207,10 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0
   endif ; endif
 
+  if (present(gas_fluxes)) &
+    call coupler_type_spawn(gas_fluxes, Ice%ocean_fluxes, (/isc,isc,iec,iec/), &
+                            (/jsc,jsc,jec,jec/),  suffix = '_ice')
+
   ! These are used by the ocean model, and need to be in the slow PE restarts.
   if (associated(Ice_restart)) then
     idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
@@ -229,19 +238,23 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
 end subroutine ice_type_slow_reg_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_type_slow_reg_restarts - allocate the arrays in the ice_data_type        !
-!     that are predominantly associated with the fast processors, and register !
-!     any variables in the ice data type that need to be included in the fast  !
-!     ice restart files.                                                       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_type_fast_reg_restarts allocates the arrays in the ice_data_type that are
+!!     predominantly associated with the fast processors, and registers any
+!!     variables in the ice data type that need to be included in the fast
+!!     ice restart files.
 subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
-                                           Ice_restart, restart_file)
+                                      Ice_restart, restart_file, gas_fields_ocn)
   type(domain2d),          intent(in)    :: domain
   integer,                 intent(in)    :: CatIce
   type(param_file_type),   intent(in)    :: param_file
   type(ice_data_type),     intent(inout) :: Ice
   type(restart_file_type), pointer       :: Ice_restart
   character(len=*),        intent(in)    :: restart_file
+  type(coupler_1d_bc_type), &
+                 optional, intent(in)    :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
   ! registers the appopriate ones for inclusion in the restart file.
@@ -267,6 +280,10 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
   allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
   allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
+
+  if (present(gas_fields_ocn)) &
+    call coupler_type_spawn(gas_fields_ocn, Ice%ocean_fields, (/isc,isc,iec,iec/), &
+                            (/jsc,jsc,jec,jec/), (/1, km/), suffix = '_ice')
 
   ! Now register some of these arrays to be read from the restart files.
   ! These are used by the atmospheric model, and need to be in the fast PE restarts.

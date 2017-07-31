@@ -63,7 +63,7 @@ use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
 use fms_mod, only : file_exist, clock_flag_default
@@ -1607,7 +1607,7 @@ end subroutine add_diurnal_sw
 !> ice_model_init - initializes ice model data, parameters and diagnostics. It
 !! might operate on the fast ice processors, the slow ice processors or both.
 subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, &
-                          Verona_coupler, Concurrent_ice )
+                          Verona_coupler, Concurrent_ice, gas_fluxes, gas_fields_ocn )
 
   type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
   type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
@@ -1625,6 +1625,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
                                               !! slow sea-ice time stepping in the ocean model.
+  type(coupler_1d_bc_type), &
+             optional, intent(in)     :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere, and can be used to
+                                              !! spawn related internal variables in the ice model.
+  type(coupler_1d_bc_type), &
+             optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes, and can be used to spawn related
+                                              !! internal variables in the ice model.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -2076,19 +2087,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf)
     call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart, restart_file)
 
-    call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
+    call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
     Ice%sCS%OSS%kmelt = kmelt
 
-    call alloc_simple_OSS(Ice%sCS%sOSS, sHI)
+    call alloc_simple_OSS(Ice%sCS%sOSS, sHI, gas_fields_ocn)
 
     call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes)
+    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes, gas_fluxes)
 
     if (Ice%sCS%redo_fast_update) then
-      call alloc_total_sfc_flux(Ice%sCS%TSF, sHI)
-      call alloc_total_sfc_flux(Ice%sCS%XSF, sHI)
+      call alloc_total_sfc_flux(Ice%sCS%TSF, sHI, gas_fluxes)
+      call alloc_total_sfc_flux(Ice%sCS%XSF, sHI, gas_fluxes)
       call alloc_ice_rad(Ice%sCS%Rad, sHI, sIG)
     endif
 
@@ -2223,11 +2234,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
     endif
     if (.not.single_IST) then
-      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes)
+      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes, gas_fluxes)
 
-      call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
+      call alloc_simple_OSS(Ice%fCS%sOSS, fHI, gas_fields_ocn)
     endif
-    call alloc_total_sfc_flux(Ice%fCS%TSF, fHI)
+    call alloc_total_sfc_flux(Ice%fCS%TSF, fHI, gas_fluxes)
     Ice%fCS%FIA%atmos_winds = atmos_winds
 
     call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &

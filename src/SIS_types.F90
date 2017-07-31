@@ -14,7 +14,7 @@ use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
 use time_manager_mod, only : time_type, time_type_to_real
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_copy_data
 use coupler_types_mod, only : coupler_type_redistribute_data
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -729,16 +729,20 @@ end subroutine ice_state_read_alt_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
-subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
+subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   type(fast_ice_avg_type), pointer    :: FIA
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
   logical,                 intent(in) :: interp_fluxes
-
-  integer :: isd, ied, jsd, jed, CatIce
+  type(coupler_1d_bc_type), &
+                 optional, intent(in) :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere.
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, CatIce
 
   if (.not.associated(FIA)) allocate(FIA)
   CatIce = IG%CatIce
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
@@ -783,17 +787,27 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
   allocate(FIA%flux_sw_dn(isd:ied, jsd:jed, NBANDS)) ; FIA%flux_sw_dn(:,:,:) = 0.0
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
+  if (present(gas_fluxes)) &
+    call coupler_type_spawn(gas_fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/), (/0, CatIce/))
+
 end subroutine alloc_fast_ice_avg
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_total_sfc_flux allocates and zeros out the arrays in a total_sfc_flux_type.
-subroutine alloc_total_sfc_flux(TSF, HI)
-  type(total_sfc_flux_type), pointer    :: TSF
-  type(hor_index_type),      intent(in) :: HI
+subroutine alloc_total_sfc_flux(TSF, HI, gas_fluxes)
+  type(total_sfc_flux_type), pointer    :: TSF  !< The total surface flux type being allocated
+  type(hor_index_type),      intent(in) :: HI   !< The hor_index_type with information about the
+                                                !! array extents to be allocated.
+  type(coupler_1d_bc_type), &
+                optional, intent(in)    :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere.
 
-  integer :: isd, ied, jsd, jed
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
 
   if (.not.associated(TSF)) allocate(TSF)
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
@@ -805,6 +819,9 @@ subroutine alloc_total_sfc_flux(TSF, HI)
   allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
   allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
   allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
+  if (present(gas_fluxes)) &
+    call coupler_type_spawn(gas_fluxes, TSF%tr_flux, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
 
 end subroutine alloc_total_sfc_flux
 
@@ -917,10 +934,21 @@ end subroutine alloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ocean_sfc_state allocates and zeros out the arrays in an ocean_sfc_state_type.
-subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
-  type(ocean_sfc_state_type), pointer    :: OSS
-  type(hor_index_type),       intent(in) :: HI
-  logical,                    intent(in) :: Cgrid_dyn
+subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn, gas_fields_ocn)
+  type(ocean_sfc_state_type), pointer    :: OSS  !< The ocean_sfc_state_type being allocated
+  type(hor_index_type),       intent(in) :: HI   !< The hor_index_type with information about the
+                                                 !! array extents to be allocated.
+  logical,                    intent(in) :: Cgrid_dyn  !< A variable indicating whether the ice
+                                                 !! ice dynamics are calculated on a C-grid (true)
+                                                 !! or on a B-grid (false).
+  type(coupler_1d_bc_type), &
+           optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes.
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (.not.associated(OSS)) allocate(OSS)
 
@@ -942,19 +970,30 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
 
   OSS%Cgrid_dyn = Cgrid_dyn
 
+  if (present(gas_fields_ocn)) &
+    call coupler_type_spawn(gas_fields_ocn, OSS%tr_fields, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
+
 end subroutine alloc_ocean_sfc_state
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_simple_ocean_sfc_state allocates and zeros out the arrays in a
 !! simple_OSS_type.
-subroutine alloc_simple_OSS(OSS, HI)
-  type(simple_OSS_type), pointer    :: OSS
-  type(hor_index_type),  intent(in) :: HI
+subroutine alloc_simple_OSS(OSS, HI, gas_fields_ocn)
+  type(simple_OSS_type), pointer    :: OSS    !< The simple_OSS_type being allocated
+  type(hor_index_type),  intent(in) :: HI     !< The hor_index_type with information about the
+                                              !! array extents to be allocated.
+  type(coupler_1d_bc_type), &
+           optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes.
 
-  integer :: isd, ied, jsd, jed
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
 
   if (.not.associated(OSS)) allocate(OSS)
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
@@ -965,9 +1004,11 @@ subroutine alloc_simple_OSS(OSS, HI)
   allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
   allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
   allocate(OSS%v_ice_A(isd:ied, jsd:jed)) ; OSS%v_ice_A(:,:) = 0.0
+  if (present(gas_fields_ocn)) &
+    call coupler_type_spawn(gas_fields_ocn, OSS%tr_fields, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
 
 end subroutine alloc_simple_OSS
-
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_IST_to_IST copies the computational domain of one ice state type into
