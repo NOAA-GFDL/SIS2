@@ -150,9 +150,9 @@ public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: update_ice_atm_deposition_flux
-public :: exchange_slow_to_fast_ice
+public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
-public :: exchange_fast_to_slow_ice
+public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
 
 integer :: iceClock
@@ -215,9 +215,17 @@ end subroutine update_ice_model_slow_dn
 subroutine update_ice_model_slow(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
+  if (do_transform_on_this_pe()) then
+    call transform_ice(Ice)
+  endif
+
   call update_ice_slow_thermo(Ice)
 
   call update_ice_dynamics_trans(Ice)
+
+  if (do_transform_on_this_pe()) then
+    call undo_transform_ice(Ice)
+  endif
 
 end subroutine update_ice_model_slow
 
@@ -417,12 +425,17 @@ end subroutine ice_model_fast_cleanup
 !! land_ice_boundary_type into an internally visible fast_ice_avg_type variable.
 subroutine unpack_land_ice_boundary(Ice, LIB)
   type(ice_data_type),          intent(inout) :: Ice !< The publicly visible ice data type.
-  type(land_ice_boundary_type), intent(in)    :: LIB !< The land ice boundary type that is being unpacked.
+  type(land_ice_boundary_type), intent(inout) :: LIB !< The land ice boundary type that is being unpacked.
 
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL()
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+
+  if (do_transform_on_this_pe()) then
+    call transform_ice(Ice)
+    call transform_land_ice_boundary(LIB)
+  endif
 
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in unpack_land_ice_boundary.")
@@ -456,6 +469,11 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   if (Ice%fCS%debug) then
     call FIA_chksum("End of unpack_land_ice_boundary", FIA, G)
+  endif
+
+  if (do_transform_on_this_pe()) then
+    call undo_transform_ice(Ice)
+    call undo_transform_land_ice_boundary(LIB)
   endif
 
 end subroutine unpack_land_ice_boundary
@@ -1034,8 +1052,16 @@ subroutine set_ice_surface_fields(Ice)
   if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
       "The pointer to Ice%fCS must be associated in set_ice_surface_fields.")
 
+  if (do_transform_on_this_pe()) then
+    call transform_ice(Ice)
+  endif
+
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
                              Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
+
+  if (do_transform_on_this_pe()) then
+    call undo_transform_ice(Ice)
+  endif
 
   call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 end subroutine set_ice_surface_fields
