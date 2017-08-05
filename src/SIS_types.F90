@@ -642,7 +642,7 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
         enddo ; enddo
-        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+        do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
           IST%v_ice_C(i,J) = v_tmp(i,J)
         enddo ; enddo
       endif
@@ -702,7 +702,7 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
         enddo ; enddo
-        do J=G%jsc,G%jec-1 ; do i=G%isc,G%iec
+        do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
           IST%v_ice_C(i,J) = v_tmp(i,J)
         enddo ; enddo
       endif
@@ -1361,7 +1361,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce ; nb = size(FIA_in%flux_sw_top,4)
-  
+
   if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
       (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_FIA_to_FIA called with inconsistent domain "//&
@@ -1762,7 +1762,7 @@ subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
   nb = size(TSF_in%flux_sw,3)
-  
+
   if ((HI_in%iec-HI_in%isc /= HI_out%iec-HI_out%isc) .or. &
       (HI_in%jec-HI_in%jsc /= HI_out%jec-HI_out%jsc)) then
     call SIS_error(FATAL, "copy_TSF_to_TSF called with inconsistent domain "//&
@@ -2036,7 +2036,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   idr = register_restart_field(Ice_restart, restart_file, 'fprec_top', FIA%fprec_top, &
                                domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
   idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_top', FIA%flux_sw_top, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2") 
+                               domain=mpp_domain, mandatory=.false., units="W m-2")
 
   idr = register_restart_field(Ice_restart, restart_file, 'WindStr_x', FIA%WindStr_x, &
                                domain=mpp_domain, mandatory=.false., units="Pa")
@@ -2065,7 +2065,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_dn', FIA%flux_sw_dn, &
                                domain=mpp_domain, mandatory=.false., units="W m-2")
 
-  
+
   if (allocated(FIA%flux_sh0)) then
     idr = register_restart_field(Ice_restart, restart_file, 'flux_sh_T0', FIA%flux_sh0, &
                                domain=mpp_domain, mandatory=.false., units="W m-2")
@@ -2107,7 +2107,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                                domain=mpp_domain, mandatory=.false., units="W m-2")
 
   !### These tracer fluxes will need to be dealt with, but because tracer packages can
-  !### be turned on or off at a model restart, these will have to be kept as 
+  !### be turned on or off at a model restart, these will have to be kept as
   !### coupler_2d_bc_type and coupler_3d_bc_type structures, and be dealt with outside
   !### at the coupler level, using the whole <adjective deleted> coupler types package.
 

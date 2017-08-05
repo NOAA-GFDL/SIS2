@@ -122,7 +122,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   !
   ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_tracer_flow_control" ! This module's name.
+  character(len=40)  :: mdl = "SIS_tracer_flow_control" ! This module's name.
 
   if (associated(CS)) then
       call SIS_error(WARNING, "SIS_call_tracer_register called with an associated "// &
@@ -131,8 +131,8 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   else ; allocate(CS) ; endif
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "USE_ICE_AGE_TRACER", CS%use_ice_age, &
+  call log_version(param_file, mdl, version, "")
+  call get_param(param_file, mdl, "USE_ICE_AGE_TRACER", CS%use_ice_age, &
       "If true, use the concentration based age tracer package.", &
       default=.false.)
 

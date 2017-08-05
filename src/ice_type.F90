@@ -537,11 +537,8 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
     slow_fields = Ice%slow_ice_PE .and. check_slow
   endif
 
-  ! These fields are on all PEs.
-  if (fast_fields .or. slow_fields) &
-  call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
-
   if (fast_fields) then ! This is a fast-ice PE.
+    call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
     call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
     call chksum(Ice%albedo_vis_dir, trim(mesg)//" Ice%albedo_vis_dir")
     call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
@@ -771,13 +768,13 @@ subroutine ice_data_type_chksum(id, timestep, Ice)
 
   outunit = stdout()
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", id, timestep
-  ! These fields are on all PEs.
-  write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size         )
-  write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf            )
-  write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf            )
+
 
   if (Ice%fast_ice_PE) then
     ! These fields are only valid on fast ice PEs.
+    write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size       )
+    write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf          )
+    write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf          )
     write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo          )
     write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir  )
     write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir  )

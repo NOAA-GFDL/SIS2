@@ -132,11 +132,11 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
                 ! evaporation, in W m-2.
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+                ! the atmosphere when the skin temperature is 0 C, in W m-2.
     evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
                 ! in kg m-2 s-1.
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
+                ! ice or ocean when the skin temperature is 0 C, in W m-2.
     dshdt, &    ! The derivative of the upward sensible heat flux from the
                 ! the top of the ice into the atmosphere with ice skin
                 ! temperature in W m-2 K-1.
@@ -628,13 +628,13 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! evaporation, in W m-2.
     flux_lw, &  ! The net downward longwave heat flux into the ice, in W m-2.
     flux_u, flux_v, lprec, fprec, &
-    
+
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 C, in W m-2. 
+                ! the atmosphere when the skin temperature is 0 C, in W m-2.
     evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
                 ! in kg m-2 s-1.
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 C, in W m-2. 
+                ! ice or ocean when the skin temperature is 0 C, in W m-2.
     dshdt, &    ! The derivative of the upward sensible heat flux with the surface
                 ! temperature in W m-2 K-1.
     devapdt, &  ! The derivative of the sublimation rate with the surface
@@ -893,7 +893,7 @@ subroutine accumulate_deposition_fluxes(ABT, FIA, G, IG)
   i_off = LBOUND(ABT%t_flux,1) - G%isc
   j_off = LBOUND(ABT%t_flux,2) - G%jsc
 
-  ind = 0 
+  ind = 0
   do n=1,ABT%fluxes%num_bcs ; do m=1,ABT%fluxes%bc(n)%num_fields
     ind = ind + 1
     if (ABT%fluxes%bc(n)%flux_type == 'air_sea_deposition') then
@@ -1015,7 +1015,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   ! Setting nbmerge=nb only considers the total of all shortwave bands, which
   ! is appropriate considering that all heat fluxes to the ocean are currently
   ! treated as diffuse visible light by SIS2.
-  nbmerge = nb  
+  nbmerge = nb
 
   ! If there are multiple calls to redo_update_ice_model_fast between calls to
   ! slow_thermodynamics, this call would only occur during the first such call.
@@ -1044,7 +1044,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         any_ice = .true. ; exit
       endif ; enddo
       do_optics(i,j) = (any_sw .and. any_ice)
-      if (any_ice) do_any_j(j) = .true.      
+      if (any_ice) do_any_j(j) = .true.
     enddo
   enddo
 
@@ -1169,7 +1169,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
     !    Determine whether the shortwave fluxes absorbed by the ice and snow in
     ! any shortwave frequency bands (or groups of bands) exceed the total
-    ! shortwave absorption during the atmospheric steps, and if so scale them 
+    ! shortwave absorption during the atmospheric steps, and if so scale them
     ! back for energy conservation.  If the shortwave absorption by the ice in
     ! any bands have decreased or increased only slightly, the difference will
     ! later be applied to the ocean.
@@ -1196,7 +1196,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         ! is achieved.  This is the least agressive rescaling that will avoid
         ! having negative shortwave fluxes into the ocean.
         do b2=0,nbmerge-1 ; do k=0,ncat
-          FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2) 
+          FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2)
         enddo ; enddo
       endif
     enddo ; endif ; enddo
@@ -1337,7 +1337,7 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_fast_thermo" ! This module's name.
+  character(len=40) :: mdl = "SIS_fast_thermo" ! This module's name.
   logical           :: debug
 
   call callTree_enter("SIS_fast_thermo_init(), SIS_fast_thermo.F90")
@@ -1350,39 +1350,39 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   endif
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This module applies rapidly varying heat fluxes to the ice and does an "//&
      "implicit surface temperature calculation.")
 
-  call get_param(param_file, mod, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
+  call get_param(param_file, mdl, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
                  "If true, rearrange the calculation of the heat fluxes \n"//&
                  "projected back to 0C to work on each contribution \n"//&
                  "separately, so that they can be indentically replicated \n"//&
                  "if there is a single fast timestep per coupled timestep \n"//&
                  "and REDO_FAST_ICE_UPDATE=True.", default=.false.)
-  call get_param(param_file, mod, "MAX_TSKIN_ITT", CS%max_tskin_itt, &
+  call get_param(param_file, mdl, "MAX_TSKIN_ITT", CS%max_tskin_itt, &
                  "The maximum number of iterations of the skin temperature \n"//&
                  "and optical properties during redo_update_ice_model_fast.", &
                  default=10)
-  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
-  call get_param(param_file, mod, "ICE_BOUNDS_CHECK", CS%bounds_check, &
+  call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug_slow, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug_slow, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "DEBUG_FAST_ICE", CS%debug_fast, &
+  call get_param(param_file, mdl, "DEBUG_FAST_ICE", CS%debug_fast, &
                  "If true, write out verbose debugging data on the fast ice PEs.", &
                  default=debug)
 

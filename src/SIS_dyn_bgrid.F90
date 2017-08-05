@@ -102,7 +102,7 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40) :: mod = "SIS_dyn_bgrid" ! This module's name.
+  character(len=40) :: mdl = "SIS_dyn_bgrid" ! This module's name.
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -116,64 +116,64 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   CS%Time => Time
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version)
-  call get_param(param_file, mod, "SPECIFIED_ICE", CS%specified_ice, &
+  call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
     CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
-    call log_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+    call log_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations in the EVP dynamics for each \n"//&
                  "slow time step.  With SPECIFIED_ICE this is always 0.")
   else
-    call get_param(param_file, mod, "DT_RHEOLOGY", CS%dt_Rheo, &
+    call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", &
                  default=-1.0)
     CS%evp_sub_steps = -1
     if (CS%dt_Rheo <= 0.0) &
-      call get_param(param_file, mod, "NSTEPS_DYN", CS%evp_sub_steps, &
+      call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations of the rheology and ice \n"//&
                  "momentum equations for each slow ice time step.", default=432)
   endif
 
-  call get_param(param_file, mod, "ICE_STRENGTH_PSTAR", CS%p0, &
+  call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
                  "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
-  call get_param(param_file, mod, "ICE_STRENGTH_CSTAR", CS%c0, &
+  call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
                  "A constant in the exponent of the expression for the \n"//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
                  units="nondim", default=20.)
-  call get_param(param_file, mod, "ICE_CDRAG_WATER", CS%cdw, &
+  call get_param(param_file, mdl, "ICE_CDRAG_WATER", CS%cdw, &
                  "The drag coefficient between the sea ice and water.", &
                  units="nondim", default=3.24e-3)
 
-  call get_param(param_file, mod, "RHO_OCEAN", CS%Rho_ocean, &
+  call get_param(param_file, mdl, "RHO_OCEAN", CS%Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
                  units="kg m-3", default=1030.0)
-  call get_param(param_file, mod, "RHO_ICE", CS%Rho_ice, &
+  call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
-  call get_param(param_file, mod, "DEBUG", debug, &
+  call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false.)
-  call get_param(param_file, mod, "DEBUG_SLOW_ICE", CS%debug, &
+  call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug)
-  call get_param(param_file, mod, "DEBUG_REDUNDANT", CS%debug_redundant, &
+  call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug)
   if ( CS%specified_ice ) then
     CS%slab_ice = .true.
-    call log_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mod, "USE_SLAB_ICE", CS%slab_ice, &
+    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
-  call get_param(param_file, mod, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
+  call get_param(param_file, mdl, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
                  "An angle by which to rotate the velocities at the air- \n"//&
                  "water boundary in calculating stresses.", units="degrees", &
                  default=0.0)

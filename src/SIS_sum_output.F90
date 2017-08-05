@@ -123,7 +123,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
   real :: Rho_0, maxvel
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_sum_output" ! This module's name.
+  character(len=40)  :: mdl = "SIS_sum_output" ! This module's name.
   character(len=200) :: statsfile  ! The name of the statistics file.
 
   if (associated(CS)) then
@@ -136,44 +136,44 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
   CS%ntrunc = 0
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mod, version, "")
-  call get_param(param_file, mod, "WRITE_STOCKS", CS%write_stocks, &
+  call log_version(param_file, mdl, version, "")
+  call get_param(param_file, mdl, "WRITE_STOCKS", CS%write_stocks, &
                  "If true, write the integrated tracer amounts to stdout \n"//&
                  "when the statistics files are written.", default=.true.)
-  call get_param(param_file, mod, "STDOUT_HEARTBEAT", CS%write_stdout, &
+  call get_param(param_file, mdl, "STDOUT_HEARTBEAT", CS%write_stdout, &
                  "If true, periodically write sea ice statistics to \n"//&
                  "stdout to allow the progress to be seen.", default=.true.)
-  call get_param(param_file, mod, "DT_ICE_DYNAMICS", CS%dt, &
+  call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
                  "the ice mass field and velocities.", units="s", &
                  default=-1.0, do_not_log=.true.)
-  call get_param(param_file, mod, "MAXTRUNC", CS%maxtrunc, &
+  call get_param(param_file, mdl, "MAXTRUNC", CS%maxtrunc, &
                  "The run will be stopped, and the day set to a very \n"//&
                  "large value if the velocity is truncated more than \n"//&
                  "MAXTRUNC times between  writing ice statistics. \n"//&
                  "Set MAXTRUNC to 0 to stop if there is any truncation \n"//&
                  "of sea ice velocities.", units="truncations save_interval-1", default=0)
 
-  call get_param(param_file, mod, "STATISTICS_FILE", statsfile, &
+  call get_param(param_file, mdl, "STATISTICS_FILE", statsfile, &
                  "The file to use to write the globally integrated \n"//&
                  "statistics.", default="seaice.stats")
 
   CS%statsfile = trim(slasher(directory))//trim(statsfile)
-  call log_param(param_file, mod, "output_path/STATISTICS_FILE", CS%statsfile)
+  call log_param(param_file, mdl, "output_path/STATISTICS_FILE", CS%statsfile)
 #ifdef STATSLABEL
   CS%statsfile = trim(CS%statsfile)//"."//trim(adjustl(STATSLABEL))
 #endif
 
-  call get_param(param_file, mod, "TIMEUNIT", CS%Timeunit, &
+  call get_param(param_file, mdl, "TIMEUNIT", CS%Timeunit, &
                  "The time unit in seconds a number of input fields", &
                  units="s", default=86400.0)
   if (CS%Timeunit < 0.0) CS%Timeunit = 86400.0
-  call get_param(param_file, mod, "COLUMN_CHECK", CS%column_check, &
+  call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
                  "can increase model run time.", default=.false.)
-  call get_param(param_file, mod, "IMBALANCE_TOLERANCE", CS%imb_tol, &
+  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9)
 

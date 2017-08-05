@@ -65,84 +65,84 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
   real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning, non-dim.
   real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning, non-dim.
   real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning, non-dim.
-  
+
   real :: T_range_dflt, alb_ice_dflt
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
-  character(len=40)  :: mod = "SIS_optics" ! This module's name.
+  character(len=40)  :: mdl = "SIS_optics" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
 
   CS%slab_optics = .false. ; if (present(slab_optics)) CS%slab_optics = slab_optics
 
-  call log_version(param_file, mod, version, &
+  call log_version(param_file, mdl, version, &
      "This module calculates the albedo and absorption profiles for shortwave radiation.")
 
   if (CS%slab_optics) then
-    call log_param(param_file, mod, "! USE_SLAB_ICE_OPTICS", CS%slab_optics, &
+    call log_param(param_file, mdl, "! USE_SLAB_ICE_OPTICS", CS%slab_optics, &
                  "Using the very old slab-style ice optics.")
   endif
 
-  call get_param(param_file, mod, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
+  call get_param(param_file, mdl, "DO_DELTA_EDDINGTON_SW", CS%do_deltaEdd, &
                  "If true, a delta-Eddington radiative transfer calculation \n"//&
                  "for the shortwave radiation within the sea-ice.", &
                  default=.not.CS%slab_optics)
-  call get_param(param_file, mod, "DO_POND", CS%do_pond, &
+  call get_param(param_file, mdl, "DO_POND", CS%do_pond, &
                  "If true, calculate melt ponds and use them for\n"//&
                  "shortwave radiation calculation.", default=.false.)
-  call get_param(param_file, mod, "MIN_POND_FRAC", CS%min_pond_frac, &
+  call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
                  "Minimum melt pond cover (by ponds at sea level)\n"//&
                  "pond drains to this when ice is porous.", default=0.2)
-  call get_param(param_file, mod, "MAX_POND_FRAC", CS%max_pond_frac, &
+  call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
                  "Maximum melt pond cover - associated with pond volume\n"//&
                  "that suppresses ice top to waterline", default=0.5)
 
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
+  call get_param(param_file, mdl, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of sea ice with the delta-Eddington radiative \n"//&
                  "transfer calculation.", units="nondimensional", default=0.0, &
                  do_not_log=.not.CS%do_deltaEdd)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
+  call get_param(param_file, mdl, "ICE_DELTA_EDD_R_SNOW", deltaEdd_R_snow, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of snow on sea ice with the delta-Eddington \n"//&
                  "radiative transfer calculation.", units="nondimensional", &
                  default=0.0, do_not_log=.not.CS%do_deltaEdd)
-  call get_param(param_file, mod, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
+  call get_param(param_file, mdl, "ICE_DELTA_EDD_R_POND", deltaEdd_R_pond, &
                  "A dreadfully documented tuning parameter for the radiative \n"//&
                  "propeties of meltwater ponds on sea ice with the delta-Eddington \n"//&
                  "radiative transfer calculation.", units="nondimensional", &
                  default=0.0, do_not_log=.not.CS%do_deltaEdd)
   call shortwave_dEdd0_set_params(deltaEdd_R_ice, deltaEdd_R_snow, deltaEdd_R_pond)
 
-  call get_param(param_file, mod, "SNOW_ALBEDO", CS%alb_snow, &
+  call get_param(param_file, mdl, "SNOW_ALBEDO", CS%alb_snow, &
                  "The albedo of dry snow atop sea ice.", units="nondim", &
                  default=0.85, do_not_log=CS%do_deltaEdd)
   alb_ice_dflt = 0.5826 ; if (CS%slab_optics) alb_ice_dflt = 0.8
-  call get_param(param_file, mod, "ICE_ALBEDO", CS%alb_ice, &
+  call get_param(param_file, mdl, "ICE_ALBEDO", CS%alb_ice, &
                  "The albedo of dry bare sea ice.", units="nondim", &
                  default=alb_ice_dflt, do_not_log=CS%do_deltaEdd)
-  call get_param(param_file, mod, "ICE_SW_PEN_FRAC", CS%pen_ice, &
+  call get_param(param_file, mdl, "ICE_SW_PEN_FRAC", CS%pen_ice, &
                  "The fraction of the unreflected shortwave radiation that \n"//&
                  "penetrates into the ice.", units="Nondimensional", &
                  default=0.3, do_not_log=CS%do_deltaEdd)
-  call get_param(param_file, mod, "ICE_OPTICAL_DEPTH", CS%opt_dep_ice, &
+  call get_param(param_file, mdl, "ICE_OPTICAL_DEPTH", CS%opt_dep_ice, &
                  "The optical depth of shortwave radiation in sea ice.", &
                  units="m", default=0.67, do_not_log=CS%do_deltaEdd)
   T_range_dflt = 1.0 ; if (CS%slab_optics) T_range_dflt = 10.0
-  call get_param(param_file, mod, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
+  call get_param(param_file, mdl, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
                  "The temperature range below freezing over which the \n"//&
                  "albedos are changed by partial melting.", units="degC", &
                  default=1.0, do_not_log=CS%do_deltaEdd)
 
   ! These parameters pertain only to the ancient slab ice optics parameterization.
-  call get_param(param_file, mod, "SLAB_OPTICS_CRITICAL_THICK", CS%slab_crit_thick, &
+  call get_param(param_file, mdl, "SLAB_OPTICS_CRITICAL_THICK", CS%slab_crit_thick, &
                  "The thickness beyond which the slab ice optics no longer \n"//&
                  "exhibits a thickness dependencs on albedo.", units="m", &
                  default=1.0, do_not_log=.not.CS%slab_optics)
-  call get_param(param_file, mod, "SLAB_OPTICS_OCEAN_ALBEDO", CS%slab_alb_ocean, &
+  call get_param(param_file, mdl, "SLAB_OPTICS_OCEAN_ALBEDO", CS%slab_alb_ocean, &
                  "The ocean albedo as used in the slab ice optics.", units="nondim", &
                  default=0.1, do_not_log=.not.CS%slab_optics)
-  call get_param(param_file, mod, "SLAB_OPTICS_MIN_ICE_ALBEDO", CS%slab_min_ice_alb, &
+  call get_param(param_file, mdl, "SLAB_OPTICS_MIN_ICE_ALBEDO", CS%slab_min_ice_alb, &
                  "The minimum thick ice albedo with the slab ice optics.", &
                  units="nondim", default=0.55, do_not_log=.not.CS%slab_optics)
 
@@ -268,7 +268,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
       alb = CS%slab_alb_ocean + (thick_ice_alb - CS%slab_alb_ocean) * &
                     sqrt(hi/CS%slab_CRIT_THICK)
     endif
-    
+
     do b=1,nb ; albedos(b) = alb ; enddo
     abs_sfc = 1.0
     abs_snow = 0.0 ; abs_ice_lay(:) = 0.0 ; abs_ocn = 0.0 ; abs_int = 0.0
@@ -402,7 +402,7 @@ function bright_ice_temp(CS, ITV) result(bright_temp)
   salin_max = 40.0
 
   temp_freeze_min = T_freeze(salin_max, ITV)
-  
+
   if (CS%do_deltaEdd) then ! This is hard-coded for the delta-Eddington scheme.
     bright_temp = temp_freeze_min - 1.0
   else
