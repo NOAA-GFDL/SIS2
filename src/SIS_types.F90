@@ -5,18 +5,14 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_types
 
-! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
-! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
-! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-! use fms_mod,          only: open_namelist_file, check_nml_error, close_file
-! use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
 use time_manager_mod, only : time_type, time_type_to_real
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_copy_data
-use coupler_types_mod, only : coupler_type_redistribute_data
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
+use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
+use coupler_types_mod, only : coupler_type_register_restarts
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
@@ -1906,9 +1902,9 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
-  type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain descriptor
-  type(restart_file_type), intent(inout) :: Ice_restart !< The restart_file_type for these restarts
-  character(len=*),        intent(in)    :: restart_file !< The name and path to the restart file
+  type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
+  type(restart_file_type),   pointer     :: Ice_restart !< The restart_file_type for these restarts
+  character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
 
   integer :: idr
 
@@ -1999,14 +1995,13 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                                longname="Total shortwave flux by frequency and angular band", &
                                domain=mpp_domain, mandatory=.false., units="W m-2")
 
-  !### These tracer fluxes will need to be dealt with, but because tracer packages can
-  !### be turned on or off at a model restart, these will have to be kept as
-  !### coupler_2d_bc_type and coupler_3d_bc_type structures.  To enable these, the
-  !### coupler types will have to be read before the ice model is initialized and
-  !### then passed in.
-
-!###  call coupler_type_register_restarts(TSF%tr_flux, restart_file, Ice_restart, mpp_domain)
-!###  call coupler_type_register_restarts(FIA%tr_flux, restart_file, Ice_restart, mpp_domain)
+  if (coupler_type_initialized(TSF%tr_flux) .and. &
+      coupler_type_initialized(FIA%tr_flux)) then
+    call coupler_type_register_restarts(TSF%tr_flux, restart_file, &
+                                        Ice_restart, mpp_domain, "TSF_")
+    call coupler_type_register_restarts(FIA%tr_flux, restart_file, &
+                                        Ice_restart, mpp_domain, "FIA_")
+  endif
 
 end subroutine register_fast_to_slow_restarts
 
