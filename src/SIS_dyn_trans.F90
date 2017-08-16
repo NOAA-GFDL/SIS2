@@ -55,6 +55,7 @@ use fms_mod, only : clock_flag_default
 use fms_io_mod, only : register_restart_field, restart_file_type
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
 
 use time_manager_mod, only : time_type, time_type_to_real, get_date, get_time
 use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
@@ -675,7 +676,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
-  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, CS%diag, &
+  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag, &
                                   h2o_chg_xprt=h2o_chg_xprt, rdg_rate=rdg_rate)
 
   call disable_SIS_averaging(CS%diag)
@@ -707,13 +708,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
 end subroutine SIS_dynamics_trans
 
-subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
+subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, diag, &
                                        h2o_chg_xprt, rdg_rate)
   type(ice_state_type),       intent(inout) :: IST
   type(ocean_sfc_state_type), intent(in)    :: OSS
 !  type(fast_ice_avg_type),    intent(inout) :: FIA
   type(ice_ocean_flux_type),  intent(in)    :: IOF
-  real,                       intent(in)    :: dt_slow
+  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
+  type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(ice_grid_type),        intent(inout) :: IG
   type(dyn_trans_CS),         pointer       :: CS
@@ -864,7 +866,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-   call post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
+   call post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
 
   if (CS%id_xprt>0 .and. present(h2o_chg_xprt)) then
     call post_data(CS%id_xprt, h2o_chg_xprt(isc:iec,jsc:jec)*864e2*365/dt_slow, &
@@ -921,9 +923,10 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, G, IG, diag, &
 
 end subroutine post_ice_state_diagnostics
 
-subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
+subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
   type(ocean_sfc_state_type), intent(in)    :: OSS
-  real,                       intent(in)    :: dt_slow
+  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
+  type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G
   type(SIS_diag_ctrl),        pointer       :: diag
 
@@ -944,6 +947,9 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, G, diag)
   endif
   if (OSS%id_frazil>0) &
     call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, diag)
+
+  if (coupler_type_initialized(OSS%tr_fields)) &
+    call coupler_type_send_data(OSS%tr_fields, Time)
 
 end subroutine post_ocean_sfc_diagnostics
 
