@@ -48,6 +48,8 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_hor_index, only : hor_index_type
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
+use coupler_types_mod, only : coupler_type_spawn
+use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
 use fms_mod, only : clock_flag_default
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
@@ -396,29 +398,10 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   ! IOF must be updated regardless of whether the ice is specified or the
   ! prognostic model is being used.
-  if (FIA%num_tr_fluxes>0) then
-    ! Only one OMP thread executes the following block because IOF is shared.
-    !$OMP SINGLE
-    if (IOF%num_tr_fluxes < 0) then
-      ! This is the first call when the number of tracer fluxes are known, and
-      ! the IOF tracer flux arrays need to be allocated now.
-      IOF%num_tr_fluxes = FIA%num_tr_fluxes
-
-      allocate(IOF%tr_flux_ocn_top(SZI_(G), SZJ_(G), IOF%num_tr_fluxes))
-      IOF%tr_flux_ocn_top(:,:,:) = 0.0
-    endif
-    !$OMP END SINGLE
-    !$OMP parallel do default(shared)
-    do m=1,FIA%num_tr_fluxes
-      do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,m) = IST%part_size(i,j,0) * FIA%tr_flux_top(i,j,0,m)
-      enddo ; enddo
-      do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-        IOF%tr_flux_ocn_top(i,j,m) = IOF%tr_flux_ocn_top(i,j,m) + &
-                   IST%part_size(i,j,k) * FIA%tr_flux_top(i,j,k,m)
-      enddo ; enddo ; enddo
-    enddo
-  endif
+  call coupler_type_spawn(FIA%tr_flux, IOF%tr_flux_ocn_top, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), as_needed=.true. )
+  call coupler_type_rescale_data(IOF%tr_flux_ocn_top, 0.0)
+  call coupler_type_increment_data(FIA%tr_flux, IST%part_size, IOF%tr_flux_ocn_top)
 
   ! No other thermodynamics need to be done for ice that is specified,
   if (CS%specified_ice) then
@@ -522,9 +505,7 @@ subroutine add_excess_fluxes(IOF, XSF, G)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - XSF%lprec(i,j)
     IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - XSF%fprec(i,j)
 
-    do n=1,XSF%num_tr_fluxes
-      IOF%tr_flux_ocn_top(i,j,n) = IOF%tr_flux_ocn_top(i,j,n) - XSF%tr_flux(i,j,n)
-    enddo
+    call coupler_type_increment_data(XSF%tr_flux, IOF%tr_flux_ocn_top, scale_factor=-1.0)
 
     ! The shortwave fluxes are more complicated because there are multiple bands
     ! and none of these should have negative fluxes if it can be avoided.
