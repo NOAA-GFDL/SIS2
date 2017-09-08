@@ -63,6 +63,9 @@ use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
+use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
 use fms_io_mod, only : restore_state, query_initialized
@@ -73,7 +76,6 @@ use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
-use coupler_types_mod, only : coupler_3d_bc_type
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
@@ -442,11 +444,43 @@ subroutine exchange_fast_to_slow_ice(Ice)
   type(ice_state_type),      pointer :: IST_null => NULL()
   type(ice_rad_type),        pointer :: Rad_null => NULL()
   type(total_sfc_flux_type), pointer :: TSF_null => NULL()
+
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
   logical :: redo_fast_update
 
   redo_fast_update = .false.
   if (associated(Ice%fCS)) redo_fast_update = Ice%fCS%redo_fast_update
   if (associated(Ice%sCS)) redo_fast_update = Ice%sCS%redo_fast_update
+
+  if (associated(Ice%fCS)) then
+    isc = Ice%fCS%G%isc ; iec = Ice%fCS%G%iec ; jsc = Ice%fCS%G%jsc ; jec = Ice%fCS%G%jec
+    isd = Ice%fCS%G%isd ; ied = Ice%fCS%G%ied ; jsd = Ice%fCS%G%jsd ; jed = Ice%fCS%G%jed
+
+    ! Propagate the coupler_type info to Ice%fCS%FIA%tr_flux and allocate its arrays.
+    call coupler_type_spawn(Ice%ocean_fluxes, Ice%fCS%FIA%tr_flux, &
+                            (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), &
+                            (/0, Ice%fCS%IG%CatIce/), as_needed=.true.)
+
+    if (redo_fast_update) &
+      ! Propagate the coupler_type info to Ice%fCS%TSF%tr_flux and allocate its arrays.
+      call coupler_type_spawn(Ice%ocean_fluxes, Ice%fCS%TSF%tr_flux, &
+                              (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), as_needed=.true.)
+  endif
+
+  if (associated(Ice%sCS)) then
+    isc = Ice%sCS%G%isc ; iec = Ice%sCS%G%iec ; jsc = Ice%sCS%G%jsc ; jec = Ice%sCS%G%jec
+    isd = Ice%sCS%G%isd ; ied = Ice%sCS%G%ied ; jsd = Ice%sCS%G%jsd ; jed = Ice%sCS%G%jed
+
+    ! Propagate the coupler_type info to Ice%sCS%FIA%tr_flux and allocate its arrays.
+    call coupler_type_spawn(Ice%ocean_fluxes, Ice%sCS%FIA%tr_flux, &
+                            (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), &
+                            (/0, Ice%sCS%IG%CatIce/), as_needed=.true.)
+
+    if (redo_fast_update) &
+      ! Propagate the coupler_type info to Ice%sCS%TSF%tr_flux and allocate its arrays.
+      call coupler_type_spawn(Ice%ocean_fluxes, Ice%sCS%TSF%tr_flux, &
+                              (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), as_needed=.true.)
+  endif
 
   if(Ice%xtype == DIRECT) then
     if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
@@ -540,7 +574,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
-  integer :: i2, j2, i_off, j_off, ind, ncat, NkIce
+  integer :: i2, j2, i_off, j_off, ncat, NkIce
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   ncat = IG%CatIce ; NkIce = IG%NkIce
 
@@ -568,9 +602,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   Ice%flux_sw_vis_dir(:,:) = 0.0 ; Ice%flux_sw_vis_dif(:,:) = 0.0
   Ice%flux_lw(:,:) = 0.0 ; Ice%flux_lh(:,:) = 0.0
   Ice%fprec(:,:) = 0.0 ; Ice%lprec(:,:) = 0.0
-  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    Ice%ocean_fluxes%bc(n)%field(m)%values(:,:) = 0.0
-  enddo ; enddo
+  call coupler_type_rescale_data(Ice%ocean_fluxes, 0.0)
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G,OSS) &
@@ -610,22 +642,10 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
     enddo ; enddo
   endif
 
-  ind = 0
-  do n=1,Ice%ocean_fluxes%num_bcs ; do m=1,Ice%ocean_fluxes%bc(n)%num_fields
-    ind = ind + 1
-    if (ind <= IOF%num_tr_fluxes) then
-      do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off  ! Use these to correct for indexing differences.
-        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = IOF%tr_flux_ocn_top(i,j,ind)
-      enddo ; enddo
-    else
-      ! This can occur the first step of a cold-start run with lagged ice
-      ! coupling, but otherwise it may indicate a problem that should be trapped.
-      do j2=jsc+j_off,jec+j_off ; do i2=isc+i_off,iec+i_off
-        Ice%ocean_fluxes%bc(n)%field(m)%values(i2,j2) = 0.0
-      enddo ; enddo
-    endif
-  enddo ; enddo
+  ! This copy may need to be skipped in the first step of a cold-start run with lagged ice
+  ! coupling, but otherwise if it is skipped may indicate a problem that should be trapped.
+  if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
+    call coupler_type_copy_data(IOF%tr_flux_ocn_top, Ice%ocean_fluxes)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("End set_ocean_top_fluxes", Ice, check_slow=.true.)
@@ -753,8 +773,18 @@ subroutine exchange_slow_to_fast_ice(Ice)
   type(simple_OSS_type), pointer :: sOSS_null => NULL()
   type(ice_state_type),  pointer :: IST_null => NULL()
 
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
+
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_exchange)
 
+  if (associated(Ice%fCS)) then
+    isc = Ice%fCS%G%isc ; iec = Ice%fCS%G%iec ; jsc = Ice%fCS%G%jsc ; jec = Ice%fCS%G%jec
+    isd = Ice%fCS%G%isd ; ied = Ice%fCS%G%ied ; jsd = Ice%fCS%G%jsd ; jed = Ice%fCS%G%jed
+
+    ! Propagate the coupler_type info to Ice%fCS%sOSS%tr_fields and allocate its arrays.
+    call coupler_type_spawn(Ice%ocean_fields, Ice%fCS%sOSS%tr_fields, &
+                            (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), as_needed=.true. )
+  endif
 
   if (Ice%xtype == DIRECT) then
     if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
@@ -841,7 +871,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: Cgrid_ocn
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, index
+  integer :: isd, ied, jsd, jed
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   i_off = LBOUND(OIB%t,1) - G%isc ; j_off = LBOUND(OIB%t,2) - G%jsc
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
@@ -948,27 +981,9 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
   call pass_var(OSS%sea_lev, G%Domain)
 
 ! Transfer the ocean state for extra tracer fluxes.
-  if (OSS%num_tr<0) then
-    ! Determine the number of tracer arrays and allocate them.
-    OSS%num_tr = 0
-    do n=1,OIB%fields%num_bcs
-      OSS%num_tr = OSS%num_tr + OIB%fields%bc(n)%num_fields
-    enddo
-    if (OSS%num_tr > 0) then
-      allocate(OSS%tr_array(G%isd:G%ied,G%jsd:G%jed,OSS%num_tr)) ; OSS%tr_array(:,:,:) = 0.0
-    endif
-  endif
-  index = 0
-  do n=1,OIB%fields%num_bcs  ; do m=1,OIB%fields%bc(n)%num_fields
-    index = index+1
-    if (index == 1) then
-      i_off = LBOUND(OIB%fields%bc(n)%field(m)%values,1) - G%isc
-      j_off = LBOUND(OIB%fields%bc(n)%field(m)%values,2) - G%jsc
-    endif
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      OSS%tr_array(i,j,index) = OIB%fields%bc(n)%field(m)%values(i2,j2)
-    enddo ; enddo
-  enddo ; enddo
+  call coupler_type_spawn(OIB%fields, OSS%tr_fields, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), as_needed=.true. )
+  call coupler_type_copy_data(OIB%fields, OSS%tr_fields)
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
@@ -1169,18 +1184,9 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     enddo
   endif
 
-  ! Copy over the additional tracer fields into the ocean_fields structure.
-  index = 0
-  do n=1,Ice%ocean_fields%num_bcs  ; do m=1,Ice%ocean_fields%bc(n)%num_fields
-    index = index+1
-    if (index == 1) then
-      i_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,1) - G%isc
-      j_off = LBOUND(Ice%ocean_fields%bc(n)%field(m)%values,2) - G%jsc
-    endif
-    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%ocean_fields%bc(n)%field(m)%values(i2,j2,1) = OSS%tr_array(i,j,index)
-    enddo ; enddo
-  enddo ; enddo
+  ! Copy over the additional tracer fields into the the open-ocean category of
+  ! the Ice%ocean_fields structure.
+  call coupler_type_copy_data(OSS%tr_fields, Ice%ocean_fields, ind3_start=1, ind3_end=1)
 
   if (fCS%debug) then
     call IST_chksum("End set_ice_surface_state", IST, G, IG)
@@ -1601,7 +1607,7 @@ end subroutine add_diurnal_sw
 !> ice_model_init - initializes ice model data, parameters and diagnostics. It
 !! might operate on the fast ice processors, the slow ice processors or both.
 subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, &
-                          Verona_coupler, Concurrent_ice )
+                          Verona_coupler, Concurrent_ice, gas_fluxes, gas_fields_ocn )
 
   type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
   type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
@@ -1619,6 +1625,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
                                               !! slow sea-ice time stepping in the ocean model.
+  type(coupler_1d_bc_type), &
+             optional, intent(in)     :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere, and can be used to
+                                              !! spawn related internal variables in the ice model.
+  type(coupler_1d_bc_type), &
+             optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes, and can be used to spawn related
+                                              !! internal variables in the ice model.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -2070,19 +2087,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf)
     call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart, restart_file)
 
-    call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn)
+    call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
     Ice%sCS%OSS%kmelt = kmelt
 
-    call alloc_simple_OSS(Ice%sCS%sOSS, sHI)
+    call alloc_simple_OSS(Ice%sCS%sOSS, sHI, gas_fields_ocn)
 
     call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes)
+    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes, gas_fluxes)
 
     if (Ice%sCS%redo_fast_update) then
-      call alloc_total_sfc_flux(Ice%sCS%TSF, sHI)
-      call alloc_total_sfc_flux(Ice%sCS%XSF, sHI)
+      call alloc_total_sfc_flux(Ice%sCS%TSF, sHI, gas_fluxes)
+      call alloc_total_sfc_flux(Ice%sCS%XSF, sHI, gas_fluxes)
       call alloc_ice_rad(Ice%sCS%Rad, sHI, sIG)
     endif
 
@@ -2217,11 +2234,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
     endif
     if (.not.single_IST) then
-      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes)
+      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes, gas_fluxes)
 
-      call alloc_simple_OSS(Ice%fCS%sOSS, fHI)
+      call alloc_simple_OSS(Ice%fCS%sOSS, fHI, gas_fields_ocn)
     endif
-    call alloc_total_sfc_flux(Ice%fCS%TSF, fHI)
+    call alloc_total_sfc_flux(Ice%fCS%TSF, fHI, gas_fluxes)
     Ice%fCS%FIA%atmos_winds = atmos_winds
 
     call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &

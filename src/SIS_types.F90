@@ -5,17 +5,14 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_types
 
-! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
-! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
-! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-! use fms_mod,          only: open_namelist_file, check_nml_error, close_file
-! use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
 use time_manager_mod, only : time_type, time_type_to_real
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
-
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
+use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
+use coupler_types_mod, only : coupler_type_register_restarts
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 
@@ -131,10 +128,9 @@ type ocean_sfc_state_type
                 ! (partially) converted back to its equivalent by the
                 ! ocean.
 
-  real, allocatable, dimension(:,:,:) :: &
-    tr_array    ! An array of fields related to properties for additional tracers.
+  type (coupler_2d_bc_type) :: &
+    tr_fields   ! A structure of fields related to properties for additional tracers.
 
-  integer :: num_tr = -1  ! The number of additional tracer-related arrays.
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt ! A constant that is used in the calculation of the ocean/ice
@@ -166,11 +162,8 @@ type simple_OSS_type
     bheat       ! The upward diffusive heat flux from the ocean
                 ! to the ice at the base of the ice, in W m-2.
 
-  real, allocatable, dimension(:,:,:) :: &
-    tr_array    ! An array of fields related to properties for additional tracers.
-  integer :: num_tr = -1  ! The number of additional tracer-related arrays.
-  logical :: first_copy = .true.
-
+  type (coupler_2d_bc_type) :: &
+    tr_fields   ! A structure of fields related to properties for additional tracers.
 end type simple_OSS_type
 
 
@@ -257,10 +250,9 @@ type fast_ice_avg_type
 
   integer :: copy_calls = 0  ! The number of times this structure has been
                     ! copied from the fast ice to the slow ice.
-  integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
-  real, allocatable, dimension(:,:,:,:) :: &
-    tr_flux_top     ! An array of tracer fluxes at the top of the
-                    ! sea ice.
+  type (coupler_3d_bc_type) :: &
+    tr_flux         ! A structure of additional tracer fluxes at the top
+                    ! of the sea-ice
 
   ! These are the arrays that are averaged over the fast thermodynamics and
   ! then interpolated into unoccupied categories for the purpose of redoing
@@ -329,10 +321,9 @@ type total_sfc_flux_type
                 ! from this module helping to distinguish them.
   integer :: copy_calls = 0  ! The number of times this structure has been
                 ! copied from the fast ice to the slow ice.
-  integer :: num_tr_fluxes = -1   ! The number of tracer flux fields
-  real, allocatable, dimension(:,:,:) :: &
-    tr_flux        ! An array of tracer fluxes at the top of the
-                   ! sea ice.
+  type (coupler_2d_bc_type) :: &
+    tr_flux         ! A structure of additional tracer fluxes at the top
+                    ! of the sea-ice
 end type total_sfc_flux_type
 
 
@@ -455,11 +446,9 @@ type ice_ocean_flux_type
                     ! to determine its value.
   logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
 
-!   type(coupler_2d_bc_type)   :: ocean_fluxes       ! array of fluxes used for additional tracers
-
-  integer :: num_tr_fluxes = -1 ! The number of tracer flux fields
-  real, allocatable, dimension(:,:,:) :: &
-    tr_flux_ocn_top     ! An array of tracer fluxes at the ocean's surface.
+  type (coupler_2d_bc_type) :: &
+    tr_flux_ocn_top ! A structure of additional tracer fluxes at the top
+                    ! of the ocean
 
   ! diagnostic IDs for ice-to-ocean fluxes.
   integer :: id_saltf=-1
@@ -736,16 +725,20 @@ end subroutine ice_state_read_alt_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
-subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
+subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   type(fast_ice_avg_type), pointer    :: FIA
   type(hor_index_type),    intent(in) :: HI
   type(ice_grid_type),     intent(in) :: IG
   logical,                 intent(in) :: interp_fluxes
-
-  integer :: isd, ied, jsd, jed, CatIce
+  type(coupler_1d_bc_type), &
+                 optional, intent(in) :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere.
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, CatIce
 
   if (.not.associated(FIA)) allocate(FIA)
   CatIce = IG%CatIce
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
@@ -790,17 +783,27 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes)
   allocate(FIA%flux_sw_dn(isd:ied, jsd:jed, NBANDS)) ; FIA%flux_sw_dn(:,:,:) = 0.0
   allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
 
+  if (present(gas_fluxes)) &
+    call coupler_type_spawn(gas_fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/), (/0, CatIce/))
+
 end subroutine alloc_fast_ice_avg
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_total_sfc_flux allocates and zeros out the arrays in a total_sfc_flux_type.
-subroutine alloc_total_sfc_flux(TSF, HI)
-  type(total_sfc_flux_type), pointer    :: TSF
-  type(hor_index_type),      intent(in) :: HI
+subroutine alloc_total_sfc_flux(TSF, HI, gas_fluxes)
+  type(total_sfc_flux_type), pointer    :: TSF  !< The total surface flux type being allocated
+  type(hor_index_type),      intent(in) :: HI   !< The hor_index_type with information about the
+                                                !! array extents to be allocated.
+  type(coupler_1d_bc_type), &
+                optional, intent(in)    :: gas_fluxes !< If present, this type describes the
+                                              !! additional gas or other tracer fluxes between the
+                                              !! ocean, ice, and atmosphere.
 
-  integer :: isd, ied, jsd, jed
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
 
   if (.not.associated(TSF)) allocate(TSF)
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
@@ -812,6 +815,9 @@ subroutine alloc_total_sfc_flux(TSF, HI)
   allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
   allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
   allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
+  if (present(gas_fluxes)) &
+    call coupler_type_spawn(gas_fluxes, TSF%tr_flux, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
 
 end subroutine alloc_total_sfc_flux
 
@@ -924,10 +930,21 @@ end subroutine alloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ocean_sfc_state allocates and zeros out the arrays in an ocean_sfc_state_type.
-subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
-  type(ocean_sfc_state_type), pointer    :: OSS
-  type(hor_index_type),       intent(in) :: HI
-  logical,                    intent(in) :: Cgrid_dyn
+subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn, gas_fields_ocn)
+  type(ocean_sfc_state_type), pointer    :: OSS  !< The ocean_sfc_state_type being allocated
+  type(hor_index_type),       intent(in) :: HI   !< The hor_index_type with information about the
+                                                 !! array extents to be allocated.
+  logical,                    intent(in) :: Cgrid_dyn  !< A variable indicating whether the ice
+                                                 !! ice dynamics are calculated on a C-grid (true)
+                                                 !! or on a B-grid (false).
+  type(coupler_1d_bc_type), &
+           optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes.
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   if (.not.associated(OSS)) allocate(OSS)
 
@@ -949,19 +966,30 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn)
 
   OSS%Cgrid_dyn = Cgrid_dyn
 
+  if (present(gas_fields_ocn)) &
+    call coupler_type_spawn(gas_fields_ocn, OSS%tr_fields, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
+
 end subroutine alloc_ocean_sfc_state
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_simple_ocean_sfc_state allocates and zeros out the arrays in a
 !! simple_OSS_type.
-subroutine alloc_simple_OSS(OSS, HI)
-  type(simple_OSS_type), pointer    :: OSS
-  type(hor_index_type),  intent(in) :: HI
+subroutine alloc_simple_OSS(OSS, HI, gas_fields_ocn)
+  type(simple_OSS_type), pointer    :: OSS    !< The simple_OSS_type being allocated
+  type(hor_index_type),  intent(in) :: HI     !< The hor_index_type with information about the
+                                              !! array extents to be allocated.
+  type(coupler_1d_bc_type), &
+           optional, intent(in)     :: gas_fields_ocn !< If present, this type describes the
+                                              !! ocean and surface-ice fields that will participate
+                                              !! in the calculation of additional gas or other
+                                              !! tracer fluxes.
 
-  integer :: isd, ied, jsd, jed
+  integer :: isc, iec, jsc, jec, isd, ied, jsd, jed
 
   if (.not.associated(OSS)) allocate(OSS)
+  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
@@ -972,9 +1000,11 @@ subroutine alloc_simple_OSS(OSS, HI)
   allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
   allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
   allocate(OSS%v_ice_A(isd:ied, jsd:jed)) ; OSS%v_ice_A(:,:) = 0.0
+  if (present(gas_fields_ocn)) &
+    call coupler_type_spawn(gas_fields_ocn, OSS%tr_fields, (/isd, isc, iec, ied/), &
+                            (/jsd, jsc, jec, jed/))
 
 end subroutine alloc_simple_OSS
-
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> copy_IST_to_IST copies the computational domain of one ice state type into
@@ -1127,8 +1157,10 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
   type(SIS_hor_grid_type),    intent(in)    :: G
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+  integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,sOSS,OSS,IST)
   do j=jsc,jec ; do i=isc,iec
@@ -1164,15 +1196,10 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
     endif
   enddo ; enddo
 
-  if (sOSS%num_tr<0) then
-    sOSS%num_tr = OSS%num_tr
-    if (sOSS%num_tr > 0) then
-      allocate(sOSS%tr_array(G%isd:G%ied,G%jsd:G%jed,sOSS%num_tr)) ; sOSS%tr_array(:,:,:) = 0.0
-    endif
-  endif
-  do m=1,OSS%num_tr ; do j=jsc,jec ; do i=isc,iec
-    sOSS%tr_array(i,j,m) = OSS%tr_array(i,j,m)
-  enddo ; enddo ; enddo
+  call coupler_type_spawn(OSS%tr_fields, sOSS%tr_fields, (/isd, isc, iec, ied/), &
+                          (/jsd, jsc, jec, jed/), as_needed=.true. )
+
+  call coupler_type_copy_data(OSS%tr_fields, sOSS%tr_fields)
 
 end subroutine translate_OSS_to_sOSS
 
@@ -1186,7 +1213,7 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
   type(simple_OSS_type), intent(inout) :: OSS_out
   type(hor_index_type),  intent(in)    :: HI_in, HI_out
 
-  integer :: i, j, m, isc, iec, jsc, jec
+  integer :: i, j, isc, iec, jsc, jec
   integer :: i2, j2, i_off, j_off
 
   isc = HI_in%isc ; iec = HI_in%iec ; jsc = HI_in%jsc ; jec = HI_in%jec
@@ -1209,18 +1236,7 @@ subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
     OSS_out%v_ice_A(i2,j2) = OSS_in%v_ice_A(i,j)
   enddo ; enddo
 
-  if (OSS_out%first_copy) then
-    OSS_in%first_copy = .false. ; OSS_out%first_copy = .false.
-    OSS_out%num_tr = OSS_in%num_tr
-    if (OSS_out%num_tr > 0) then
-      allocate(OSS_out%tr_array(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,OSS_out%num_tr))
-      OSS_out%tr_array(:,:,:) = 0.0
-    endif
-  endif
-
-  do m=1,OSS_in%num_tr ; do j=jsc,jec ; do i=isc,iec ; i2=i+i_off ; j2=j+j_off
-    OSS_out%tr_array(i2,j2,m) = OSS_in%tr_array(i,j,m)
-  enddo ; enddo ; enddo
+  call coupler_type_copy_data(OSS_in%tr_fields, OSS_out%tr_fields)
 
 end subroutine copy_sOSS_to_sOSS
 
@@ -1235,46 +1251,17 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
   type(domain2d),                 intent(in) :: domain_out !< The target data domain.
   type(hor_index_type), optional, intent(in) :: HI_out     !< The hor_index_type on the target domain; HI_out
                                                            !! may be omitted if this is not a target PE.
-
   real, pointer, dimension(:,:) :: null_ptr => NULL()
-  logical :: first_copy
-  integer :: m, num_tr
+  type(coupler_2d_bc_type)  :: null_bc
 
   if (.not. (associated(OSS_out) .or. associated(OSS_in))) &
     call SIS_error(FATAL, "redistribute_sOSS_to_sOSS called with "//&
                           "neither OSS_in nor OSS_out associated.")
-  first_copy = .false.
-  if (associated(OSS_out)) first_copy = OSS_out%first_copy
-  if (associated(OSS_in)) first_copy = first_copy .or. OSS_in%first_copy
-
-  if (first_copy) then
-    ! Determine the number of fluxes.
-    num_tr = 0 ; if (associated(OSS_in)) num_tr = OSS_in%num_tr
-    call max_across_PEs(num_tr)
-
-    if (associated(OSS_out)) then
-      if (.not. present(HI_out)) &
-        call SIS_error(FATAL, "redistribute_sOSS_to_sOSS called with an "//&
-                              "associated OSS_out but without HI_out.")
-      OSS_out%num_tr = num_tr
-      if ((num_tr > 0) .and. .not.allocated(OSS_out%tr_array)) then
-        allocate(OSS_out%tr_array(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,num_tr))
-        OSS_out%tr_array(:,:,:) = 0.0
-      endif
-      OSS_out%first_copy = .false.
-    endif
-
-    if (associated(OSS_in)) OSS_in%first_copy = .false.
-  endif
 
   if (associated(OSS_out) .and. associated(OSS_in)) then
-    ! The extra tracer arrays are copied first so that they can all have
-    ! complete=.false.
-    do m=1,OSS_in%num_tr
-      call mpp_redistribute(domain_in, OSS_in%tr_array(:,:,m), domain_out, &
-                            OSS_out%tr_array(:,:,m), complete=.false.)
-    enddo
-
+    ! This could have complete set to .false. if the halo sizes matched.
+    call coupler_type_redistribute_data(OSS_in%tr_fields, domain_in, &
+                          OSS_out%tr_fields, domain_out, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
                           OSS_out%SST_C, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
@@ -1293,11 +1280,9 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
                           OSS_out%v_ice_A, complete=.true.)
   elseif (associated(OSS_out)) then
     ! Use the null pointer in place of the unneeded input arrays.
-    do m=1,OSS_out%num_tr
-      call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                            OSS_out%tr_array(:,:,m), complete=.false.)
-    enddo
 
+    call coupler_type_redistribute_data(null_bc, domain_in, &
+                          OSS_out%tr_fields, domain_out, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
                           OSS_out%SST_C, complete=.false.)
     call mpp_redistribute(domain_in, null_ptr, domain_out, &
@@ -1316,11 +1301,8 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
                           OSS_out%v_ice_A, complete=.true.)
   elseif (associated(OSS_in)) then
     ! Use the null pointer in place of the unneeded output arrays.
-    do m=1,OSS_in%num_tr
-      call mpp_redistribute(domain_in, OSS_in%tr_array(:,:,m), domain_out, &
-                            null_ptr, complete=.false.)
-    enddo
-
+    call coupler_type_redistribute_data(OSS_in%tr_fields, domain_in, &
+                          null_bc, domain_out, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
                           null_ptr, complete=.false.)
     call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
@@ -1426,29 +1408,8 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     "copy_FIA_to_FIA called an inconsistent number of time for the input and output types.")
 
   FIA_in%copy_calls = FIA_in%copy_calls + 1 ; FIA_out%copy_calls = FIA_out%copy_calls + 1
-  if (FIA_in%copy_calls <= 2) then
-    if ((FIA_in%num_tr_fluxes >= 0) .and. (FIA_out%num_tr_fluxes < 0)) then
-      ! Allocate the tr_flux_top arrays to accommodate the size of the input
-      ! fluxes.  This only occurs the first time FIA_out is copied from a fully
-      ! initialized FIA_in.
-      FIA_out%num_tr_fluxes = FIA_in%num_tr_fluxes
-      if (FIA_out%num_tr_fluxes > 0) then
-        isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
-        allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, FIA_out%num_tr_fluxes))
-        FIA_out%tr_flux_top(:,:,:,:) = 0.0
-      endif
-    endif
-  endif
 
-  if (FIA_in%num_tr_fluxes >= 0) then
-    if (FIA_in%num_tr_fluxes /= FIA_out%num_tr_fluxes) &
-      call SIS_error(FATAL, "copy_FIA_to_FIA called with different num_tr_fluxes.")
-
-    do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
-      FIA_out%tr_flux_top(i2,j2,k,n) = FIA_in%tr_flux_top(i,j,k,n)
-    enddo ; enddo ; enddo ; enddo
-  endif
+  call coupler_type_copy_data(FIA_in%tr_flux, FIA_out%tr_flux)
 
   ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 end subroutine copy_FIA_to_FIA
@@ -1467,9 +1428,9 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   real, pointer, dimension(:,:) :: null_ptr2D => NULL()
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  type(coupler_3d_bc_type)  :: null_bc
   integer :: copy_calls  ! The number of times these FIA_types have been copied.
   integer :: i, j, b, isd, ied, jsd, jed, ncat
-  integer :: num_tr
 
   copy_calls = 0
   if (associated(FIA_out)) then
@@ -1481,28 +1442,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     copy_calls = max(copy_calls,FIA_in%copy_calls)
   endif
 
-  if (copy_calls <= 2) then
-    ! Determine the number of fluxes.
-    num_tr = 0 ; if (associated(FIA_in)) num_tr = FIA_in%num_tr_fluxes
-    call max_across_PEs(num_tr)
-
-    if (associated(FIA_out)) then
-      if (.not. present(G_out)) &
-        call SIS_error(FATAL, "redistribute_sFIA_to_sFIA called with an "//&
-                              "associated FIA_out but without G_out.")
-      if (.not. present(IG)) &
-        call SIS_error(FATAL, "redistribute_sFIA_to_sFIA called with an "//&
-                              "associated FIA_out but without IG.")
-      FIA_out%num_tr_fluxes = num_tr
-      if ((num_tr > 0) .and. .not.allocated(FIA_out%tr_flux_top)) then
-        isd = G_out%isd ; ied = G_out%ied ; jsd = G_out%jsd ; jed = G_out%jed
-        ncat = IG%CatIce
-        allocate(FIA_out%tr_flux_top(isd:ied, jsd:jed, 0:ncat, num_tr))
-        FIA_out%tr_flux_top(:,:,:,:) = 0.0
-      endif
-    endif
-  endif
-
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
   ! are only needed on the fast_ice_PEs
   !   FIA%frazil_left is deliberately not being copied, as it is only valid on
@@ -1512,6 +1451,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   ! avg_count, atmos_winds, and the IDs are deliberately not being copied.
 
   if (associated(FIA_out) .and. associated(FIA_in)) then
+    call coupler_type_redistribute_data(FIA_in%tr_flux, domain_in, &
+                          FIA_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(FIA_in%flux_sw_top,4)
       call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
                             FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
@@ -1582,12 +1523,10 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                             FIA_out%Tskin_cat, complete=.true.)
     endif
 
-    if (FIA_in%num_tr_fluxes > 0) then
-      call mpp_redistribute(domain_in, FIA_in%tr_flux_top, domain_out, &
-                            FIA_out%tr_flux_top)
-    endif
   elseif (associated(FIA_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
+    call coupler_type_redistribute_data(null_bc, domain_in, &
+                          FIA_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(FIA_out%flux_sw_top,4)
       call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
                             FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
@@ -1659,12 +1598,10 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     endif
 
 
-    if (FIA_out%num_tr_fluxes > 0) then
-      call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
-                            FIA_out%tr_flux_top)
-    endif
   elseif (associated(FIA_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
+    call coupler_type_redistribute_data(FIA_in%tr_flux, domain_in, &
+                          null_bc, domain_out, complete=.false.)
     do b=1,size(FIA_in%flux_sw_top,4)
       call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
                             null_ptr3D, complete=.false.)
@@ -1735,10 +1672,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                             null_ptr3D, complete=.true.)
     endif
 
-    if (FIA_in%num_tr_fluxes > 0) then
-      call mpp_redistribute(domain_in, FIA_in%tr_flux_top, domain_out, &
-                            null_ptr4D)
-    endif
   else
     call SIS_error(FATAL, "redistribute_FIA_to_FIA called with "//&
                           "neither FIA_in nor FIA_out associated.")
@@ -1783,31 +1716,9 @@ subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
 
   if (TSF_in%copy_calls /= TSF_out%copy_calls) call SIS_error(WARNING, &
     "copy_TSF_to_TSF called an inconsistent number of time for the input and output types.")
-
   TSF_in%copy_calls = TSF_in%copy_calls + 1 ; TSF_out%copy_calls = TSF_out%copy_calls + 1
-  if (TSF_in%copy_calls <= 2) then
-    if ((TSF_in%num_tr_fluxes >= 0) .and. (TSF_out%num_tr_fluxes < 0)) then
-      ! Allocate the tr_flux_top arrays to accommodate the size of the input
-      ! fluxes.  This only occurs the first time TSF_out is copied from a fully
-      ! initialized TSF_in.
-      TSF_out%num_tr_fluxes = TSF_in%num_tr_fluxes
-      if (TSF_out%num_tr_fluxes > 0) then
-        isd = HI_out%isd ; ied = HI_out%ied ; jsd = HI_out%jsd ; jed = HI_out%jed
-        allocate(TSF_out%tr_flux(isd:ied, jsd:jed, TSF_out%num_tr_fluxes))
-        TSF_out%tr_flux(:,:,:) = 0.0
-      endif
-    endif
-  endif
 
-  if (TSF_in%num_tr_fluxes >= 0) then
-    if (TSF_in%num_tr_fluxes /= TSF_out%num_tr_fluxes) &
-      call SIS_error(FATAL, "copy_TSF_to_TSF called with different num_tr_fluxes.")
-
-    do n=1,TSF_in%num_tr_fluxes ; do j=jsc,jec ; do i=isc,iec
-      i2 = i+i_off ; j2 = j+j_off
-      TSF_out%tr_flux(i2,j2,n) = TSF_in%tr_flux(i,j,n)
-    enddo ; enddo ; enddo
-  endif
+  call coupler_type_copy_data(TSF_in%tr_flux, TSF_out%tr_flux)
 
 end subroutine copy_TSF_to_TSF
 
@@ -1823,6 +1734,7 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
                                                        !! may be omitted if this is not a target PE.
 
   real, pointer, dimension(:,:) :: null_ptr2D => NULL()
+  type(coupler_2d_bc_type)  :: null_bc
   integer :: copy_calls  ! The number of times these TSF_types have been copied.
   integer :: b, m, num_tr
 
@@ -1839,30 +1751,11 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
     copy_calls = max(copy_calls,TSF_in%copy_calls)
   endif
 
-  if (copy_calls <= 2) then
-    ! Determine the number of fluxes.
-    num_tr = 0 ; if (associated(TSF_in)) num_tr = TSF_in%num_tr_fluxes
-    call max_across_PEs(num_tr)
-
-    if (associated(TSF_out)) then
-      if (.not. present(HI_out)) &
-        call SIS_error(FATAL, "redistribute_TSF_to_TSF called with an "//&
-                              "associated TSF_out but without HI_out.")
-      TSF_out%num_tr_fluxes = num_tr
-      if ((num_tr > 0) .and. .not.allocated(TSF_out%tr_flux)) then
-        allocate(TSF_out%tr_flux(HI_out%isd:HI_out%ied,HI_out%jsd:HI_out%jed,num_tr))
-        TSF_out%tr_flux(:,:,:) = 0.0
-      endif
-    endif
-  endif
-
   if (associated(TSF_out) .and. associated(TSF_in)) then
     ! The extra tracer arrays are copied first so that they can all have
     ! complete=.false.
-    do m=1,TSF_in%num_tr_fluxes
-      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
-                            TSF_out%tr_flux(:,:,m), complete=.false.)
-    enddo
+    call coupler_type_redistribute_data(TSF_in%tr_flux, domain_in, &
+                          TSF_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(TSF_in%flux_sw,3)
       call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
                           TSF_out%flux_sw(:,:,b), complete=.false.)
@@ -1881,10 +1774,8 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
                           TSF_out%fprec, complete=.true.)
   elseif (associated(TSF_out)) then
     ! Use the null pointer in place of the unneeded input arrays.
-    do m=1,TSF_out%num_tr_fluxes
-      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                            TSF_out%tr_flux(:,:,m), complete=.false.)
-    enddo
+    call coupler_type_redistribute_data(null_bc, domain_in, &
+                          TSF_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(TSF_out%flux_sw,3)
       call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
                           TSF_out%flux_sw(:,:,b), complete=.false.)
@@ -1903,10 +1794,8 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
                           TSF_out%fprec, complete=.true.)
   elseif (associated(TSF_in)) then
     ! Use the null pointer in place of the unneeded output arrays.
-    do m=1,TSF_in%num_tr_fluxes
-      call mpp_redistribute(domain_in, TSF_in%tr_flux(:,:,m), domain_out, &
-                            null_ptr2D, complete=.false.)
-    enddo
+    call coupler_type_redistribute_data(TSF_in%tr_flux, domain_in, &
+                          null_bc, domain_out, complete=.false.)
     do b=1,size(TSF_in%flux_sw,3)
       call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
                             null_ptr2D, complete=.false.)
@@ -2013,9 +1902,9 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
-  type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain descriptor
-  type(restart_file_type), intent(inout) :: Ice_restart !< The restart_file_type for these restarts
-  character(len=*),        intent(in)    :: restart_file !< The name and path to the restart file
+  type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
+  type(restart_file_type),   pointer     :: Ice_restart !< The restart_file_type for these restarts
+  character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
 
   integer :: idr
 
@@ -2106,21 +1995,14 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                                longname="Total shortwave flux by frequency and angular band", &
                                domain=mpp_domain, mandatory=.false., units="W m-2")
 
-  !### These tracer fluxes will need to be dealt with, but because tracer packages can
-  !### be turned on or off at a model restart, these will have to be kept as
-  !### coupler_2d_bc_type and coupler_3d_bc_type structures, and be dealt with outside
-  !### at the coupler level, using the whole <adjective deleted> coupler types package.
+  if (coupler_type_initialized(TSF%tr_flux) .and. &
+      coupler_type_initialized(FIA%tr_flux)) then
+    call coupler_type_register_restarts(TSF%tr_flux, restart_file, &
+                                        Ice_restart, mpp_domain, "TSF_")
+    call coupler_type_register_restarts(FIA%tr_flux, restart_file, &
+                                        Ice_restart, mpp_domain, "FIA_")
+  endif
 
-! if (FIA_in%num_tr_fluxes >= 0) then
-!   do n=1,TSF_in%num_tr_fluxes ; do j=jsc,jec ; do i=isc,iec
-!     i2 = i+i_off ; j2 = j+j_off
-!     TSF_out%tr_flux(i2,j2,n) = TSF_in%tr_flux(i,j,n)
-
-!   do n=1,FIA_in%num_tr_fluxes ; do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-!     i2 = i+i_off ; j2 = j+j_off
-!     FIA_out%tr_flux_top(i2,j2,k,n) = FIA_in%tr_flux_top(i,j,k,n)
-!   enddo ; enddo ; enddo ; enddo
-! endif
 end subroutine register_fast_to_slow_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

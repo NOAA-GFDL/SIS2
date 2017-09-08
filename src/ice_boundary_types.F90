@@ -6,7 +6,7 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_boundary_types
 
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
 use fms_mod,           only : stdout
 use mpp_mod,           only : mpp_chksum
 use mpp_parameter_mod, only : CGRID_NE, BGRID_NE, AGRID
@@ -125,14 +125,7 @@ subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
   !    write(outunit,100) 'ocn_ice_bnd_type%data     ',mpp_chksum(bnd_type%data     )
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 
-  do n = 1, bnd_type%fields%num_bcs  !{
-    do m = 1, bnd_type%fields%bc(n)%num_fields  !{
-        write(outunit,101) 'oibt%',trim(bnd_type%fields%bc(n)%name), &
-             trim(bnd_type%fields%bc(n)%field(m)%name), &
-             mpp_chksum(bnd_type%fields%bc(n)%field(m)%values)
-    enddo  !} m
-  enddo  !} n
-  101 FORMAT("CHECKSUM::",A16,a,'%',a," = ",Z20)
+  call coupler_type_write_chksums(bnd_type%fields, outunit, 'oibt%')
 
 end subroutine ocn_ice_bnd_type_chksum
 
