@@ -48,8 +48,9 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_hor_index, only : hor_index_type
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
-use coupler_types_mod, only : coupler_type_spawn
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
+use coupler_types_mod, only : coupler_type_send_data
 use fms_mod, only : clock_flag_default
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
@@ -1295,6 +1296,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                     scale=Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)
   if (CS%id_qfres>0) call post_data(CS%id_qfres, qflx_res_ice, CS%diag)
+
+  if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
+    call coupler_type_send_data(IOF%tr_flux_ocn_top, CS%Time)
 
   call disable_SIS_averaging(CS%diag)
 
