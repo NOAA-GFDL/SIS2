@@ -301,8 +301,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
 
   ! Convert mca_ice and mca_snow back to part_sz and mH_snow.
   ice_cover(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,CS,mca_ice,mH_ice,part_sz, &
-!$OMP                                  mH_snow,mH_pond,ice_cover,mca_snow,mca_pond,nCat)
+  !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (mca_ice(i,j,k) > 0.0) then
       if (CS%roll_factor * (mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
