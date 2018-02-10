@@ -484,7 +484,7 @@ subroutine ice_model_restart(Ice, time_stamp)
   elseif (associated(Ice%Ice_fast_restart)) then
     call save_restart(Ice%Ice_fast_restart, time_stamp)
   endif
-  call icebergs_save_restart(Ice%icebergs)
+  call icebergs_save_restart(Ice%icebergs, time_stamp)
 
 end subroutine ice_model_restart
 ! </SUBROUTINE>
