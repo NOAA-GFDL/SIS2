@@ -61,7 +61,6 @@ type, public :: SIS_hor_grid_type
     dxCu, IdxCu, & ! dxCu is delta x at u points, in m, and IdxCu is 1/dxCu in m-1.
     dyCu, IdyCu, & ! dyCu is delta y at u points, in m, and IdyCu is 1/dyCu in m-1.
     dy_Cu, &     ! The unblocked lengths of the u-faces of the h-cell in m.
-    dy_Cu_obc, & ! The unblocked lengths of the u-faces of the h-cell in m for OBC.
     IareaCu, &   ! The masked inverse areas of u-grid cells in m2.
     areaCu       ! The areas of the u-grid cells in m2.
 
@@ -72,7 +71,6 @@ type, public :: SIS_hor_grid_type
     dxCv, IdxCv, & ! dxCv is delta x at v points, in m, and IdxCv is 1/dxCv in m-1.
     dyCv, IdyCv, & ! dyCv is delta y at v points, in m, and IdyCv is 1/dyCv in m-1.
     dx_Cv, &     ! The unblocked lengths of the v-faces of the h-cell in m.
-    dx_Cv_obc, & ! The unblocked lengths of the v-faces of the h-cell in m for OBC.
     IareaCv, &   ! The masked inverse areas of v-grid cells in m2.
     areaCv       ! The areas of the v-grid cells in m2.
 
@@ -425,8 +423,6 @@ subroutine allocate_metrics(G)
 
   ALLOC_(G%dx_Cv(isd:ied,JsdB:JedB))     ; G%dx_Cv(:,:) = 0.0
   ALLOC_(G%dy_Cu(IsdB:IedB,jsd:jed))     ; G%dy_Cu(:,:) = 0.0
-  ALLOC_(G%dx_Cv_obc(isd:ied,JsdB:JedB)) ; G%dx_Cv_obc(:,:) = 0.0
-  ALLOC_(G%dy_Cu_obc(IsdB:IedB,jsd:jed)) ; G%dy_Cu_obc(:,:) = 0.0
 
   ALLOC_(G%areaCu(IsdB:IedB,jsd:jed))  ; G%areaCu(:,:) = 0.0
   ALLOC_(G%areaCv(isd:ied,JsdB:JedB))  ; G%areaCv(:,:) = 0.0
@@ -473,7 +469,6 @@ subroutine SIS_hor_grid_end(G)
   DEALLOC_(G%geoLonCv) ; DEALLOC_(G%geoLonBu)
 
   DEALLOC_(G%dx_Cv) ; DEALLOC_(G%dy_Cu)
-  DEALLOC_(G%dx_Cv_obc) ; DEALLOC_(G%dy_Cu_obc)
 
   DEALLOC_(G%bathyT)  ; DEALLOC_(G%CoriolisBu)
   DEALLOC_(G%dF_dx)  ; DEALLOC_(G%dF_dy)
