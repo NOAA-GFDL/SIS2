@@ -156,7 +156,7 @@ type slow_thermo_CS ; private
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
   type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
 
-  integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1
+  integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1, id_net_melt=-1, id_CMOR_melt=-1
   integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
 end type slow_thermo_CS
 
@@ -1296,6 +1296,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                     scale=Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)
   if (CS%id_qfres>0) call post_data(CS%id_qfres, qflx_res_ice, CS%diag)
+  if (CS%id_net_melt>0) call post_data(CS%id_net_melt, net_melt, CS%diag)
+  if (CS%id_CMOR_melt>0) call post_data(CS%id_CMOR_melt, net_melt, CS%diag)
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_send_data(IOF%tr_flux_ocn_top, CS%Time)
@@ -1439,6 +1441,12 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                'frozen water local bottom sink', 'kg/(m^2*yr)', missing_value=missing)
   CS%id_sn2ic = register_diag_field('ice_model','SN2IC'  ,diag%axesT1,Time, &
                'rate of snow to ice conversion', 'kg/(m^2*s)', missing_value=missing)
+  CS%id_net_melt = register_diag_field('ice_model','net_melt' ,diag%axesT1, Time, &
+               'net mass flux from ice & snow to ocean due to melting & freezing', &
+               'kg m-2 s-1', missing_value=missing)
+  CS%id_CMOR_melt = register_diag_field('ice_model','fsitherm' ,diag%axesT1, Time, &
+               'water_flux_into_sea_water_due_to_sea_ice_thermodynamics', &
+               'kg m-2 s-1', missing_value=missing)
 
   if (CS%do_ice_restore) then
     CS%id_qfres = register_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
