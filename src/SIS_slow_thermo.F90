@@ -1415,17 +1415,19 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
                  default=1.0, do_not_log=.not.CS%nudge_sea_ice)
 
   call get_param(param_file, mdl, "DEBUG", debug, &
-                 "If true, write out verbose debugging data.", default=.false.)
+                 "If true, write out verbose debugging data.", &
+                 default=.false., debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
-                 "can increase model run time.", default=.false.)
+                 "can increase model run time.", default=.false., &
+                 debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
-                 units="nondim", default=1.0e-9)
+                 units="nondim", default=1.0e-9, debuggingParam=.true.)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&

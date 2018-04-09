@@ -1095,7 +1095,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow \n"//&
                  "mass conservation in the sea-ice transport code.  This \n"//&
-                 "is expensive and should be used sparingly.", default=.false.)
+                 "is expensive and should be used sparingly.", &
+                 default=.false., debuggingParam=.true.)
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&

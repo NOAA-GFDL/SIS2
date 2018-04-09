@@ -1832,7 +1832,7 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
   call get_param(param_file, mdl, "DEBUG", debug, default=.false.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
   if (present(scheme)) then ; mesg = scheme ; else
     call get_param(param_file, mdl, "SIS_TRACER_ADVECTION_SCHEME", mesg, &
           desc="The horizontal transport scheme for tracers:\n"//&

@@ -158,12 +158,14 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
   call get_param(param_file, mdl, "DEBUG", debug, &
-                 "If true, write out verbose debugging data.", default=.false.)
+                 "If true, write out verbose debugging data.", default=.false., &
+                 debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
-                 "If true, debug redundant data points.", default=CS%debug)
+                 "If true, debug redundant data points.", default=CS%debug, &
+                 debuggingParam=.true.)
   if ( CS%specified_ice ) then
     CS%slab_ice = .true.
     call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
