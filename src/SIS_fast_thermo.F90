@@ -272,7 +272,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
 !        FIA%evap_top(i,j,k) = 0.0
 !      endif
     enddo ; enddo
-    
+
     do b=1,nb ; do i=isc,iec
       FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b)*I_avc
     enddo ; enddo
