@@ -53,7 +53,7 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   call get_param(PF, mdl, "DEBUG", debug, default=.false.)
   call get_param(PF, mdl, "DEBUG_SLOW_ICE", debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
 
   call get_param(PF, mdl, "INPUTDIR", inputdir, &
          "The directory in which input files are found.", default=".")

@@ -272,7 +272,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
 !        FIA%evap_top(i,j,k) = 0.0
 !      endif
     enddo ; enddo
-    
+
     do b=1,nb ; do i=isc,iec
       FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b)*I_avc
     enddo ; enddo
@@ -1294,10 +1294,11 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
                  "If true, add code to allow debugging of conservation \n"//&
                  "column-by-column.  This does not change answers, but \n"//&
-                 "can increase model run time.", default=.false.)
+                 "can increase model run time.", default=.false., &
+                 debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
-                 units="nondim", default=1.0e-9)
+                 units="nondim", default=1.0e-9, debuggingParam=.true.)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
                  "If true, periodically check the values of ice and snow \n"//&
                  "temperatures and thicknesses to ensure that they are \n"//&
@@ -1305,13 +1306,14 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
   call get_param(param_file, mdl, "DEBUG", debug, &
-                 "If true, write out verbose debugging data.", default=.false.)
+                 "If true, write out verbose debugging data.", &
+                 default=.false., debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug_slow, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_FAST_ICE", CS%debug_fast, &
                  "If true, write out verbose debugging data on the fast ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
 
   call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
 

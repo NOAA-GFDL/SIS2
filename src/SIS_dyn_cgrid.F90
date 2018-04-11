@@ -266,15 +266,17 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "are used for transport are checked.", &
                  default=.false.)
   call get_param(param_file, mdl, "DEBUG", debug, &
-                 "If true, write out verbose debugging data.", default=.false.)
+                 "If true, write out verbose debugging data.", &
+                 default=.false., debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &
-                 default=debug)
+                 default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_EVP_SUBSTEPS", CS%debug_EVP, &
                  "If true, write out verbose debugging data for each of the \n"//&
-                 "steps within the EVP solver.", default=debug)
+                 "steps within the EVP solver.", default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
-                 "If true, debug redundant data points.", default=CS%debug)
+                 "If true, debug redundant data points.", default=CS%debug, &
+                 debuggingParam=.true.)
   if ( CS%specified_ice ) then
     CS%slab_ice = .true.
     call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
@@ -288,15 +290,15 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to zonal velocity truncations are written. \n"//&
                  "Leave this empty for efficiency if this diagnostic is \n"//&
-                 "not needed.", default="")
+                 "not needed.", default="", debuggingParam=.true.)
   call get_param(param_file, mdl, "V_TRUNC_FILE", CS%v_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to meridional velocity truncations are written. \n"//&
                  "Leave this empty for efficiency if this diagnostic is \n"//&
-                 "not needed.", default="")
+                 "not needed.", default="", debuggingParam=.true.)
   call get_param(param_file, mdl, "MAX_TRUNC_FILE_SIZE_PER_PE", CS%max_writes, &
                  "The maximum number of colums of truncations that any PE \n"//&
-                 "will write out during a run.", default=50)
+                 "will write out during a run.", default=50, debuggingParam=.true.)
 
 !  if (len_trim(dirs%output_directory) > 0) then
 !    if (len_trim(CS%u_trunc_file) > 0) &
