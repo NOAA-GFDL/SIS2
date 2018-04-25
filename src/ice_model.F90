@@ -2921,7 +2921,7 @@ contains
     real :: fw_diff, fw_scaling
     logical :: debug=.false.
 
-    debug=.true.
+    debug=.false.
     is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
     net_in(:,:) = 0.0; net_out(:,:) = 0.0; cell_area(:,:) = 0.0; mask(:,:) = 0.0
     ! calculate FW in (precip) and out (evap) in units of kg s-1
@@ -2949,27 +2949,17 @@ contains
     area_sum = reproducing_sum(cell_area(:,:))
     fw_diff = pmt - (total_mass_in - total_mass_out) ! difference from constraint (kg s-1)
     fw_scaling = 1.0
-    if (fw_diff>0 .and. total_mass_in > fw_diff) then
+    if ( total_mass_in > abs(fw_diff)) then ! only apply the scaling adjustment if
        ! the total precipitation exceeds the required adjustment
        fw_scaling =(total_mass_in+fw_diff)/total_mass_in
-    else if (fw_diff<0 .and. total_mass_out > -1.0*fw_diff) then ! only apply the scaling adjustment if
-       ! the total evaporation exceeds the required adjustment
-       fw_scaling =(total_mass_out-fw_diff)/total_mass_out
     endif
-    if (fw_diff>0.0) then  ! The adjustment will be applied to liquid and frozen precipitation
-       do j=js,je ; do k=0,ncat; do i=is,ie
-         if (mask(i,j).gt.0.0) then
-            FIA%lprec_top(i,j,k) = FIA%lprec_top(i,j,k)*fw_scaling
-            FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k)*fw_scaling
-         endif
-       enddo; enddo; enddo
-    else if (fw_diff<0.0) then  ! The adjustment will be applied to evaporation
-       do j=js,je ; do k=0,ncat; do i=is,ie
-         if (mask(i,j).gt.0.0) then
-            FIA%evap_top(i,j,k) = FIA%evap_top(i,j,k)*fw_scaling
-         endif
-       enddo; enddo; enddo
-    endif
+   ! The adjustment is applied to liquid and frozen precipitation
+    do j=js,je ; do k=0,ncat; do i=is,ie
+      if (mask(i,j).gt.0.0) then
+         FIA%lprec_top(i,j,k) = FIA%lprec_top(i,j,k)*fw_scaling
+         FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k)*fw_scaling
+      endif
+    enddo; enddo; enddo
     if (debug .and. is_root_pe()) then
        print *,'pmt= ',pmt*1.e-9
        print *,' fw_in= ',total_mass_in*1.e-9
