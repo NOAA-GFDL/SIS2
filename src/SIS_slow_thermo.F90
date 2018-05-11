@@ -123,7 +123,7 @@ type slow_thermo_CS ; private
                             ! do_ice_limit is true.
 
   logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
-  real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
+  real, dimension(2)    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
                               ! should be ice  covered in order to constrained the
                               ! ice concentration to track observations.  A suggested
                               ! value is of order 10000 W m-2.
@@ -691,7 +691,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
     do j=jsc,jec ; do i=isc,iec
       if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
-        cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
+        cool_nudge(i,j) = CS%nudge_sea_ice_rate(1) * &
              ((icec_obs(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
@@ -703,7 +703,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         endif
       elseif (icec(i,j) > icec_obs(i,j) + CS%nudge_conc_tol) then
         ! Heat the ice but do not apply a fresh water flux.
-        cool_nudge(i,j) = -CS%nudge_sea_ice_rate * &
+        cool_nudge(i,j) = -CS%nudge_sea_ice_rate(2) * &
              (icec(i,j) - (icec_obs(i,j)+CS%nudge_conc_tol))**2.0 ! W/m2
       endif
 

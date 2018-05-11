@@ -146,6 +146,37 @@ type ice_data_type !  ice_public_type
   type(SIS_slow_CS), pointer :: sCS => NULL()
   type(restart_file_type), pointer :: Ice_restart => NULL()
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
+
+  logical :: constrain_pmt! If true, then apply constraints to the meridional
+                          ! moisture transport implied by the surface mass
+                          ! balance at the top of the sea-ice
+  real    :: pmt_lat_north ! If constrain_pmt is True, the northern hemisphere
+                          ! latitude poleward of which the surface mass balance
+                          ! is constrained by the externally specified moisture
+                          ! transport at this latitude.
+  real    :: pmt_lat_south ! If constrain_pmt is True, the southern hemisphere
+                          ! latitude poleward of which the surface mass balance
+                          ! is constrained by the externally specified moisture
+                          ! transport at this latitude.
+  logical :: read_pmt     ! If True, read moisture transport constraint from a
+                          ! file containing time-varying values which will
+                          ! be interpolated to the current model timestep.
+  real    :: pmt_north    ! If read_pmt if False, then use this value for the
+                          ! northern hemisphere constraint.
+  real    :: pmt_south    ! If read_pmt if False, then use this value for the
+                          ! southern hemisphere constraint.
+  character(len=128)  :: pmt_north_file ! If read_pmt is True, then read from
+                          ! this file.
+  character(len=128)  :: pmt_south_file ! If read_pmt is True, then read from
+                          ! this file.
+  character(len=32)   :: pmt_file_variable ! If read_pmt is True, the variable
+                          ! name of the moisture transport constraint contained
+                          ! in the file.
+  integer :: id_pmt_north ! The handle for PMT_NORTH_FILE used for reading and
+                          ! time interpolation to the current model time.
+  integer :: id_pmt_south ! The handle for PMT_SOUTH_FILE used for reading and
+                          ! time interpolation to the current model time.
+
 end type ice_data_type !  ice_public_type
 
 contains
