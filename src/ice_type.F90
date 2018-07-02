@@ -4,10 +4,10 @@
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module ice_type_mod
 
-use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
+use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe, mpp_chksum
 use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-use fms_mod,          only: open_namelist_file, check_nml_error, close_file
+use fms_mod,          only: open_namelist_file, check_nml_error, close_file, stdout
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
 use time_manager_mod, only: time_type, time_type_to_real
@@ -39,108 +39,113 @@ public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! This structure contains the ice model data (some used by calling routines);   !
-! the third index is partition (1 is open water; 2... are ice cover by category)!
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> This structure contains the ice model data (some used by calling routines);   !
+!! the third index is partition (1 is open water; 2... are ice cover by category)!
 type ice_data_type !  ice_public_type
-  type(domain2D)          :: Domain         ! A copy of the fast ice domain without halos.
-  type(domain2D)          :: slow_Domain_NH ! A copy of the slow ice domain without halos.
+  type(domain2D)          :: Domain         !< A copy of the fast ice domain without halos.
+  type(domain2D)          :: slow_Domain_NH !< A copy of the slow ice domain without halos.
   type(domain2D), pointer :: &
-    fast_domain => NULL(), & ! A pointer to the fast ice mpp domain or a copy
-                             ! on slow ice PEs.
-    slow_domain => NULL()    ! A pointer to the fast ice mpp domain or a copy
-                             ! on slow ice PEs.
-  type(time_type)                  :: Time
-  logical                          :: pe
-  logical                          :: slow_ice_pe = .false.
-  logical                          :: fast_ice_pe = .false.
-  logical                          :: shared_slow_fast_PEs = .true.
-  integer                          :: xtype
-  integer, pointer, dimension(:)   :: slow_pelist =>NULL() ! Used for flux-exchange with slow processes.
-  integer, pointer, dimension(:)   :: fast_pelist =>NULL() ! Used for flux-exchange with fast processes.
-  integer, pointer, dimension(:)   :: pelist   =>NULL() ! Used for flux-exchange.
-  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() ! An array that indicates all ocean points as true.
+    fast_domain => NULL(), & !< A pointer to the fast ice mpp domain or a copy
+                             !! on slow ice PEs.
+    slow_domain => NULL()    !< A pointer to the fast ice mpp domain or a copy
+                             !! on slow ice PEs.
+  type(time_type) :: Time    !< The sea-ice model's clock, that
+                             !! set with the current model time.
+  logical  :: pe     !< If true, there is ice on this PE.
+  logical  :: slow_ice_pe = .false. !< If true, this is a slow ice PE
+  logical  :: fast_ice_pe = .false. !< If true, this is a fast ice PE
+  logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
+                                    !! and domain decomposiion
+  integer  :: xtype
+  integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
+  integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
+  integer, pointer, dimension(:)   :: pelist   =>NULL() !< Used for flux-exchange.
+  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() !< An array that indicates ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
   real, pointer, dimension(:,:,:) :: &
-    part_size => NULL(), &    ! The fractional coverage of a grid cell by each ice
-                              ! thickness category, nondim, 0 to 1.  Category 1 is
-                              ! open ocean.  The sum of part_size is 1.
-    albedo    => NULL(), &    ! The surface albedo averaged across all wavelength
-                              ! and orientation bands within each ice-thickness
-                              ! category.  Nondimensional, between 0 and 1.
-    albedo_vis_dir => NULL(), &  ! The surface albedos for visible (_vis) or
-    albedo_nir_dir => NULL(), &  ! near-infrared (_nir) wavelengths of direct (_dir)
-    albedo_vis_dif => NULL(), &  ! diffuse (_dif) shortwave radiation in each
-    albedo_nir_dif => NULL(), &  ! ice-thickness category. Nondim, between 0 and 1.
-    rough_mom   => NULL(), &  ! The roughnesses for momentum, heat, and moisture
-    rough_heat  => NULL(), &  ! at the ocean surface, as provided by ocean_rough_mod,
-    rough_moist => NULL(), &  ! apparently in m.
-    t_surf      => NULL(), &  ! The surface temperature for the ocean or for
-                              ! each ice-thickness category, in Kelvin.
-    u_surf      => NULL(), &  ! The eastward (u_) and northward (v_) surface
-    v_surf      => NULL()     ! velocities of the ocean (:,:,1) or sea-ice, in m s-1.
+    part_size => NULL(), &    !< The fractional coverage of a grid cell by each ice
+                              !! thickness category, nondim, 0 to 1.  Category 1 is
+                              !! open ocean.  The sum of part_size is 1.
+    albedo    => NULL(), &    !< The surface albedo averaged across all wavelength
+                              !! and orientation bands within each ice-thickness
+                              !! category.  Nondimensional, between 0 and 1.
+    albedo_vis_dir => NULL(), & !< The surface albedo for direct visible shortwave radiation
+                                !! in each ice-thickness category. Nondim, between 0 and 1.
+    albedo_nir_dir => NULL(), & !< The surface albedo for diffuse visible shortwave radiation
+                                !! in each ice-thickness category. Nondim, between 0 and 1.
+    albedo_vis_dif => NULL(), & !< The surface albedo for direct near-infrared shortwave radiation
+                                !! in each ice-thickness category. Nondim, between 0 and 1.
+    albedo_nir_dif => NULL(), & !< The surface albedo for diffuse near-infrared shortwave radiation
+                                !! in each ice-thickness category. Nondim, between 0 and 1.
+    rough_mom   => NULL(), &  !< The roughness for momentum at the ocean surface, as provided by
+                              !! ocean_rough_mod, apparently in m.
+    rough_heat  => NULL(), &  !< The roughness for heat at the ocean surface, as provided by
+                              !! ocean_rough_mod, apparently in m.
+    rough_moist => NULL(), &  !< The roughness for moisture at the ocean surface, as provided by
+                              !! ocean_rough_mod, apparently in m.
+    t_surf      => NULL(), &  !< The surface temperature for the ocean or for
+                              !! each ice-thickness category, in Kelvin.
+    u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice, in m s-1.
+    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice, in m s-1.
   real, pointer, dimension(:,:)   :: &
-    s_surf         =>NULL()   ! The ocean's surface salinity, in g/kg.
+    s_surf         =>NULL()   !< The ocean's surface salinity, in g/kg.
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
-    SST_C => NULL(), &    ! The ocean surface temperature, in deg C.
-    flux_u => NULL(), &   ! The flux of x-momentum into the ocean, in Pa.
-    flux_v => NULL(), &   ! The flux of y-momentum into the ocean, in Pa.
-    flux_t => NULL(), &   ! The flux of sensible heat out of the ocean, in W m-2.
-    flux_q => NULL(), &   ! The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  ! The longwave flux out of the ocean, in W m-2.
-    flux_sw_vis_dir => NULL(), &  ! The direct (dir) or diffuse (dif) shortwave
-    flux_sw_vis_dif => NULL(), &  ! heat fluxes into the ocean in the visible
-    flux_sw_nir_dir => NULL(), &  ! (vis) or near-infrared (nir) band, all
-    flux_sw_nir_dif => NULL(), &  ! in W m-2.
-    flux_lh => NULL(), &  ! The latent heat flux out of the ocean, in W m-2.
-    lprec => NULL(), &    ! The liquid precipitation flux into the ocean, in kg m-2.
-    fprec => NULL(), &    ! The frozen precipitation flux into the ocean, in kg m-2.
-    p_surf => NULL(), &   ! The pressure at the ocean surface, in Pa.  This may
-                          ! or may not include atmospheric pressure.
-    runoff => NULL(), &   ! Liquid runoff into the ocean, in kg m-2.
-    calving => NULL(), &  ! Calving of ice or runoff of frozen fresh water into
-                          ! the ocean, in kg m-2.
-    ustar_berg => NULL(), &  !ustar contribution below icebergs in m/s
-    area_berg => NULL(),  &  !fraction of grid cell covered by icebergs in m2/m2
-    mass_berg => NULL(),  &  !mass of icebergs in km/m^2
-    runoff_hflx => NULL(), &  ! The heat flux associated with runoff, based on
-                              ! the temperature difference relative to a
-                              ! reference temperature, in ???.
-    calving_hflx => NULL(), & ! The heat flux associated with calving, based on
-                              ! the temperature difference relative to a
-                              ! reference temperature, in ???.
-    flux_salt  => NULL()  ! The flux of salt out of the ocean in kg m-2.
+    SST_C => NULL(), &    !< The ocean surface temperature, in deg C.
+    flux_u => NULL(), &   !< The flux of x-momentum into the ocean, in Pa.
+    flux_v => NULL(), &   !< The flux of y-momentum into the ocean, in Pa.
+    flux_t => NULL(), &   !< The flux of sensible heat out of the ocean, in W m-2.
+    flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean, in kg m-2 s-1.
+    flux_lw => NULL(), &  !< The longwave flux out of the ocean, in W m-2.
+    flux_sw_vis_dir => NULL(), & !< The direct visible shortwave heat flux into the ocean in W m-2.
+    flux_sw_vis_dif => NULL(), & !< The diffuse visible shortwave heat flux into the ocean in W m-2.
+    flux_sw_nir_dir => NULL(), & !< The direct near-infrared heat flux into the ocean in W m-2.
+    flux_sw_nir_dif => NULL(), & !< The diffuse near-infrared heat flux into the ocean in W m-2.
+    flux_lh => NULL(), &  !< The latent heat flux out of the ocean, in W m-2.
+    lprec => NULL(), &    !< The liquid precipitation flux into the ocean, in kg m-2.
+    fprec => NULL(), &    !< The frozen precipitation flux into the ocean, in kg m-2.
+    p_surf => NULL(), &   !< The pressure at the ocean surface, in Pa.  This may
+                          !! or may not include atmospheric pressure.
+    runoff => NULL(), &   !< Liquid runoff into the ocean, in kg m-2.
+    calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
+                          !! the ocean, in kg m-2.
+    ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
+    area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
+    mass_berg => NULL(),  &  !< mass of icebergs in kg/m^2
+    runoff_hflx => NULL(), &  !< The heat flux associated with runoff, based on
+                              !! the temperature difference relative to a
+                              !! reference temperature, in ???.
+    calving_hflx => NULL(), & !< The heat flux associated with calving, based on
+                              !! the temperature difference relative to a
+                              !! reference temperature, in ???.
+    flux_salt  => NULL()  !< The flux of salt out of the ocean in kg m-2.
 
   real, pointer, dimension(:,:) :: &
-    area => NULL() , &    ! The area of ocean cells, in m2.  Land cells have
-                          ! a value of 0, so this could also be used as a mask.
-    mi   => NULL()        ! The total ice+snow mass, in kg m-2.
+    area => NULL() , &    !< The area of ocean cells, in m2.  Land cells have
+                          !! a value of 0, so this could also be used as a mask.
+    mi   => NULL()        !< The total ice+snow mass, in kg m-2.
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
              ! h_ice outside the ice module.
   integer, dimension(3)    :: axes
-  type(coupler_3d_bc_type) :: ocean_fields ! array of fields used for additional tracers
-                                           ! whose surface state is shared with the atmosphere.
-  type(coupler_2d_bc_type) :: ocean_fluxes ! array of fluxes from the ice to the ocean used
-                                           ! for additional tracers
+  type(coupler_3d_bc_type) :: ocean_fields !< array of fields used for additional tracers
+                                           !! whose surface state is shared with the atmosphere.
+  type(coupler_2d_bc_type) :: ocean_fluxes !< array of fluxes from the ice to the ocean used
+                                           !! for additional tracers
   type(coupler_3d_bc_type) :: ocean_fluxes_top   ! ###THIS IS ARCHAIC AND COULD BE DELETED!
-  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
-                    ! points of the two wind stress components. Valid entries
-                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
-                    ! corresponding to the community-standard Arakawa notation.
-                    ! (These are named integers taken from mpp_parameter_mod.)
-                    ! Following SIS, this is BGRID_NE by default when the sea
-                    ! ice is initialized, but here it is set to -999 so that a
-                    ! global max across ice and non-ice processors can be used
-                    ! to determine its value.
+  integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two
+                          !! wind stress components. Valid entries include AGRID, BGRID_NE,
+                          !! CGRID_NE, BGRID_SW, and CGRID_SW, corresponding to the community-
+                          !! standard Arakawa notation. (These are named integers taken from
+                          !! mpp_parameter_mod.) Following SIS, this is BGRID_NE by default when the
+                          !! sea ice is initialized, but here it is set to -999 so that a global max
+                          !! across ice and non-ice processors can be used to determine its value.
 
-  ! The following are actually private to SIS2, and are not used elsewhere by
-  ! other FMS modules.
+  ! The following are actually private to SIS2, and are not used elsewhere by other FMS modules.
   type(icebergs),    pointer :: icebergs => NULL()
   type(SIS_fast_CS), pointer :: fCS => NULL()
   type(SIS_slow_CS), pointer :: sCS => NULL()
@@ -151,19 +156,17 @@ end type ice_data_type !  ice_public_type
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_type_slow_reg_restarts - allocate the arrays in the ice_data_type        !
-!     that are predominantly associated with the slow processors, and register !
-!     any variables in the ice data type that need to be included in the slow  !
-!     ice restart files.                                                       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_type_slow_reg_restarts allocates the arrays in the ice_data_type that are
+!! predominantly associated with the slow processors, and register any variables
+!! in the ice data type that need to be included in the slow ice restart files.
 subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                       Ice_restart, restart_file, gas_fluxes)
-  type(domain2d),          intent(in)    :: domain
-  integer,                 intent(in)    :: CatIce
-  type(param_file_type),   intent(in)    :: param_file
-  type(ice_data_type),     intent(inout) :: Ice
-  type(restart_file_type), pointer       :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in)    :: domain   !< The ice models' FMS domain type
+  integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
+  type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
+  type(restart_file_type), pointer       :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   type(coupler_1d_bc_type), &
                  optional, intent(in)    :: gas_fluxes !< If present, this type describes the
                                               !! additional gas or other tracer fluxes between the
@@ -223,8 +226,10 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx,  domain=domain, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, domain=domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx, &
+                                 domain=domain, mandatory=.false.)
+    idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, &
+                                 domain=domain, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
                                         domain=domain)
@@ -239,17 +244,16 @@ end subroutine ice_type_slow_reg_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_type_fast_reg_restarts allocates the arrays in the ice_data_type that are
-!!     predominantly associated with the fast processors, and registers any
-!!     variables in the ice data type that need to be included in the fast
-!!     ice restart files.
+!! predominantly associated with the fast processors, and registers any variables
+!! in the ice data type that need to be included in the fast ice restart files.
 subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
                                       Ice_restart, restart_file, gas_fields_ocn)
-  type(domain2d),          intent(in)    :: domain
-  integer,                 intent(in)    :: CatIce
-  type(param_file_type),   intent(in)    :: param_file
-  type(ice_data_type),     intent(inout) :: Ice
-  type(restart_file_type), pointer       :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in)    :: domain   !< The ice models' FMS domain type
+  integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
+  type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
+  type(restart_file_type), pointer       :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   type(coupler_1d_bc_type), &
                  optional, intent(in)    :: gas_fields_ocn !< If present, this type describes the
                                               !! ocean and surface-ice fields that will participate
@@ -295,9 +299,10 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
 
 end subroutine ice_type_fast_reg_restarts
 
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> dealloc_Ice_arrays deallocates the memory in the publicly visible ice data type.
 subroutine dealloc_Ice_arrays(Ice)
-  type(ice_data_type), intent(inout) :: Ice
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   if (associated(Ice%ocean_pt)) deallocate(Ice%ocean_pt)
   if (associated(Ice%t_surf)) deallocate(Ice%t_surf)
@@ -342,14 +347,15 @@ subroutine dealloc_Ice_arrays(Ice)
 
 end subroutine dealloc_Ice_arrays
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Ice_public_type_chksum writes out checksums of the variables in a publicly
+!! visible ice data type
 subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
-  character(len=*),    intent(in) :: mesg
-  type(ice_data_type), intent(in) :: Ice
-  logical, optional,   intent(in) :: check_fast, check_slow
+  character(len=*),    intent(in) :: mesg !< An identifying message
+  type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
+  logical, optional,   intent(in) :: check_fast !< If true, check the fast ice fields
+  logical, optional,   intent(in) :: check_slow !< If true, check the slow ice fields
 !   This subroutine writes out chksums for the model's basic state variables.
-! Arguments: mesg - A message that appears on the chksum lines.
-!  (in)      Ice - An ice_data_type structure whose elements are to be
-!                  checksummed.
 
   ! Note that the publicly visible ice_data_type has no halos, so it is not
   ! possible do check their values.
@@ -408,10 +414,13 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
   endif ; endif
 end subroutine Ice_public_type_chksum
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Ice_public_type_bounds_check checks for unphysical values in a publicly
+!! visible ice data type, and writes out dianostics for any offending columns
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
-  type(ice_data_type),     intent(in)    :: Ice
-  type(SIS_hor_grid_type), intent(inout) :: G
-  character(len=*),        intent(in)    :: msg
+  type(ice_data_type),     intent(in)    :: Ice !< The publicly visible ice data type.
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  character(len=*),        intent(in)    :: msg !< An identifying message
 
   character(len=512) :: mesg1, mesg2
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -471,9 +480,11 @@ end subroutine Ice_public_type_bounds_check
 ! <DESCRIPTION>
 !  Write out restart files registered through register_restart_file
 ! </DESCRIPTION>
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!>  Write out restart files registered through register_restart_file
 subroutine ice_model_restart(Ice, time_stamp)
-  type(ice_data_type), intent(inout) :: Ice
-  character(len=*),    intent(in), optional :: time_stamp
+  type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
+  character(len=*), optional, intent(in)    :: time_stamp !< A date stamp to include in the restart file name
 
   if (associated(Ice%Ice_restart)) then
     call save_restart(Ice%Ice_restart, time_stamp)
@@ -491,17 +502,16 @@ end subroutine ice_model_restart
 !=======================================================================
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_stock_pe - returns stocks of heat, water, etc. for conservation checks   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_stock_pe returns stocks of heat, water, etc. for conservation checks
 subroutine ice_stock_pe(Ice, index, value)
 
   use stock_constants_mod, only : ISTOCK_WATER, ISTOCK_HEAT, ISTOCK_SALT
 
-  type(ice_data_type) :: Ice
-  integer, intent(in) :: index
-  real, intent(out)   :: value
-  type(ice_state_type), pointer :: IST => NULL()
+  type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
+  integer, intent(in) :: index !< A coded integer indicating which stock to find
+  real, intent(out)   :: value !< The integrated stock quantity
 
+  type(ice_state_type), pointer :: IST => NULL()
   real :: icebergs_value
   real :: LI
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
@@ -585,17 +595,19 @@ subroutine ice_stock_pe(Ice, index, value)
 
 end subroutine ice_stock_pe
 
-subroutine ice_data_type_chksum(id, timestep, Ice)
-  use fms_mod,                 only: stdout
-  use mpp_mod,                 only: mpp_chksum
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Write chksums of fields in the ice data type, using interfaces that shared
+!! with older sea ice models
+subroutine ice_data_type_chksum(mesg, timestep, Ice)
+  character(len=*), intent(in) :: mesg  !< An identifying message
+  integer         , intent(in) :: timestep !< The timestep number
+  type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
 
-  character(len=*), intent(in) :: id
-  integer         , intent(in) :: timestep
-  type(ice_data_type), intent(in) :: Ice
+  ! Local variables
   integer ::   n, m, outunit
 
   outunit = stdout()
-  write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", id, timestep
+  write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", mesg, timestep
 
 
   if (Ice%fast_ice_PE) then
