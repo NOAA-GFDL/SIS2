@@ -193,7 +193,8 @@ end subroutine update_slow_ice_and_ocean
 !> same_domain returns true if two domains use the same list of PEs and have
 !! the same size computational domains.
 function same_domain(a, b)
-  type(domain2D), intent(in) :: a, b
+  type(domain2D), intent(in) :: a !< The first domain in the comparison
+  type(domain2D), intent(in) :: b !< The second domain in the comparison
   integer :: isize_a, jsize_a, isize_b, jsize_b
   integer :: layout_a(2), layout_b(2)
   logical :: same_domain
