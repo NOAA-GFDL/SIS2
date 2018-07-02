@@ -62,7 +62,7 @@ type, public :: SIS_C_dyn_CS ; private
     str_s     ! The shearing stress tensor component (cross term), in Pa m.
 
   ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
+  logical :: SLAB_ICE = .false. ! Indicate whether to do old style GFDL slab ice
   real :: p0 = 2.75e4         ! pressure constant (Pa)
   real :: p0_rho              ! The pressure constant divided by ice density, N m kg-1.
   real :: c0 = 20.0           ! another pressure constant
@@ -105,9 +105,9 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
                               ! for each slow time step.
   real    :: dt_Rheo           ! The maximum sub-cycling time step for the EVP dynamics.
-  type(time_type), pointer :: Time ! A pointer to the ice model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
-                             ! timing of diagnostic output.
+  type(time_type), pointer :: Time !< A pointer to the ice model's clock.
+  type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
+                              !! timing of diagnostic output.
   integer, pointer :: ntrunc  ! The number of times the velocity has been truncated
                               ! since the last call to write_ice_statistics.
   character(len = 200) :: u_trunc_file ! The complete path to files in which a
@@ -143,15 +143,17 @@ end type SIS_C_dyn_CS
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_C_dyn_init - initialize the ice dynamics and set parameters.             !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_C_dyn_init initializes the ice dynamics, sets parameters, and registers diagnostics
 subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
-  type(time_type),     target, intent(in)    :: Time
-  type(SIS_hor_grid_type),     intent(in)    :: G
-  type(param_file_type),       intent(in)    :: param_file
-  type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(SIS_C_dyn_CS),          pointer       :: CS
-  integer, target, optional,   intent(inout) :: ntrunc
+  type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
+                                                     !! set with the current model time.
+  type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
+  type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
+  type(SIS_C_dyn_CS),          pointer       :: CS   !< The control structure for this module
+  integer, target, optional,   intent(inout) :: ntrunc !< The integer that stores the number of times
+                                                     !! the velocity has been truncated since the
+                                                     !! last call to write_ice_statistics.
 ! Arguments: Time - The current model time.
 !  (in)      G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -451,14 +453,14 @@ end subroutine SIS_C_dyn_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! find_ice_strength - magnitude of force on ice in plastic deformation         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> find_ice_strength returns the magnitude of force on ice in plastic deformation
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
-  type(SIS_hor_grid_type),          intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength
-  type(SIS_C_dyn_CS),               pointer     :: CS
-  integer,                optional, intent(in)  :: halo_sz
+  type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength in N m-1.
+  type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
+  integer,                optional, intent(in)  :: halo_sz !< The halo size to work on
   integer :: i, j, isc, iec, jsc, jec, halo
   halo = 0 ; if (present(halo_sz)) halo = halo_sz
   isc = G%isc-halo ; iec = G%iec+halo ; jsc = G%jsc-halo ; jec = G%jec+halo
@@ -470,24 +472,28 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may cha
 end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_C_dynamics - take a single dynamics timestep with EVP subcycles          !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_C_dynamics takes a single dynamics timestep with EVP subcycles
 subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
                           fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
-  type(SIS_hor_grid_type),           intent(inout) :: G
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci, msnow, mice  ! ice properties
-  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui      ! ice velocity
-  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi      ! ice velocity
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo      ! ocean velocity
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vo      ! ocean velocity
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  ! air stress on ice
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  ! air stress on ice
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: sea_lev     ! sea level
-  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  ! ice stress on ocean
-  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  ! ice stress on ocean
-  real,                              intent(in   ) :: dt_slow
-  type(SIS_C_dyn_CS),                pointer       :: CS
+  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: msnow !< Mass per unit ocean area of snow (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mice  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui    !< Zonal ice velocity in m s-1
+  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity in m s-1
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo    !< Zonal ocean velocity in m s-1
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity in m s-1
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice in Pa
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice in Pa
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: sea_lev !< The height of the sea level, including
+                                                            !! contributions from non-levitating ice from
+                                                            !! an earlier time step, in m.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean in Pa
+  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean in Pa
+  real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
+                                                            !! dynamics are to be advanced, in s.
+  type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
 ! Arguments: ci - The sea ice concentration, nondim.
 !  (in)      msnow - The mass per unit total area (ice covered and ice free)
 !                    of the snow, in kg m-2.
@@ -1405,13 +1411,20 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
 end subroutine SIS_C_dynamics
 
+!> This subroutine ensures that the input stresses are not larger than could be justified by the ice
+!! pressure now, as the ice might have melted or been advected away during the thermodynamic and
+!! transport phases, or the ice flow convergence or divergence may have altered the ice concentration.
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
-  type(SIS_hor_grid_type),            intent(in)    :: G
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice, mice
-  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d, str_t
-  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s
-  type(SIS_C_dyn_CS),                 pointer       :: CS
-  real, optional,                     intent(in)    :: limit
+  type(SIS_hor_grid_type),            intent(in)    :: G     !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice !< The ice internal pressure per
+                                                             !! unit column mass, in N m / kg.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: mice  !< The mass per unit total area (ice
+                                                             !! covered and ice free) of the ice, in kg m-2.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component, in Pa m.
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component, in Pa m.
+  type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
+  real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
 ! Arguments: pres_mice - The ice internal pressure per unit column mass, in N m / kg.
 !  (in)      mice - The mass per unit total area (ice covered and ice free)
 !                   of the ice, in kg m-2.
@@ -1531,13 +1544,15 @@ end subroutine limit_stresses
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_sigI finds the first stress invariant
 subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
-  type(SIS_hor_grid_type),          intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi, ci, str_d
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI
-  type(SIS_C_dyn_CS),               pointer     :: CS
+  type(SIS_hor_grid_type),          intent(in)  :: G  !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: str_d !< The divergence stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI  !< The first stress invariant, nondim
+  type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength, in Pa.
+    strength ! The ice strength, in Pa m.
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1553,17 +1568,19 @@ end subroutine find_sigI
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_sigII finds the second stress invariant
 subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
-  type(SIS_hor_grid_type),            intent(in)  :: G
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi, ci, str_t
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s
-  real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII
-  type(SIS_C_dyn_CS),                 pointer     :: CS
+  type(SIS_hor_grid_type),            intent(in)  :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component, in Pa m
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII !< The second stress invariant, nondim.
+  type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength, in Pa.
+    strength ! The ice strength, in Pa m.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
-  real :: strength_sum  ! The sum of the 4 neighboring strengths, in Pa.
+  real :: strength_sum  ! The sum of the 4 neighboring strengths, in Pa m.
   real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1600,12 +1617,12 @@ end subroutine find_sigII
 !!   SIS C-grid dynamics module that need to be included in the restart files.
 subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
                                        Ice_restart, restart_file)
-  type(domain2d),          intent(in) :: mpp_domain
-  type(hor_index_type),    intent(in) :: HI
-  type(param_file_type),   intent(in) :: param_file
-  type(SIS_C_dyn_CS),      pointer    :: CS
-  type(restart_file_type), pointer    :: Ice_restart
-  character(len=*),        intent(in) :: restart_file
+  type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
+  type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
+  type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
+  type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
+  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 ! Arguments: G - The ocean's grid structure.
 !  (in)      param_file - A structure indicating the open file to parse for
@@ -1651,11 +1668,11 @@ end subroutine SIS_C_dyn_register_restarts
 !!   specifically dealing with changing between symmetric and non-symmetric
 !!   memory restart files.
 subroutine SIS_C_dyn_read_alt_restarts(CS, G, Ice_restart, restart_file, restart_dir)
-  type(SIS_C_dyn_CS),      pointer    :: CS
-  type(SIS_hor_grid_type), intent(in) :: G
-  type(restart_file_type), pointer    :: Ice_restart
-  character(len=*),        intent(in) :: restart_file
-  character(len=*),        intent(in) :: restart_dir
+  type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
+  type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
+  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in) :: restart_file !< The ice restart file name
+  character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   ! These are temporary variables that will be used only here for reading and
   ! then discarded.
@@ -1712,13 +1729,20 @@ end subroutine SIS_C_dyn_read_alt_restarts
 !! truncations and related fields.
 subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, &
                          dt_slow, G, CS)
-  integer, intent(in) :: I, j
-  type(SIS_hor_grid_type),           intent(in) :: G
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui, u_IC, uo
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc, fxic, Cor_u, PFu, fxat
-  real,                              intent(in) :: dt_slow
-  type(SIS_C_dyn_CS),                pointer    :: CS
+  integer,                           intent(in) :: I    !< The i-index of the column to report on
+  integer,                           intent(in) :: j    !< The j-index of the column to report on
+  type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velicity in m s-1.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity in m s-1.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity in m s-1.
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration, in m s-2.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration, in m s-2.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress, in Pa.
+  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
+  type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
@@ -1775,13 +1799,20 @@ end subroutine write_u_trunc
 !! truncations and related fields.
 subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, &
                          dt_slow, G, CS)
-  integer, intent(in) :: i, j
-  type(SIS_hor_grid_type),           intent(in) :: G
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi, v_IC, vo
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc, fyic, Cor_v, PFv, fyat
-  real,                              intent(in) :: dt_slow
-  type(SIS_C_dyn_CS),                pointer    :: CS
+  integer,                           intent(in) :: i    !< The i-index of the column to report on
+  integer,                           intent(in) :: J    !< The j-index of the column to report on
+  type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi   !< The meridional ice velicity in m s-1.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: v_IC !< The initial meridional ice velicity in m s-1.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vo   !< The meridional ocean velicity in m s-1.
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc !< The meridional ocean-to-ice force, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyic !< The ice internal force, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: Cor_v !< The meridional Coriolis acceleration, in m s-2.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force accleration, in m s-2.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress, in Pa.
+  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
+  type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
@@ -1836,7 +1867,7 @@ end subroutine write_v_trunc
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_end deallocates the memory associated with this module.
 subroutine SIS_C_dyn_end(CS)
-  type(SIS_C_dyn_CS), pointer :: CS
+  type(SIS_C_dyn_CS), pointer :: CS    !< The control structure for this module
 
   deallocate(CS%str_d) ; deallocate(CS%str_t) ; deallocate(CS%str_s)
 
