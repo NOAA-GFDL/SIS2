@@ -29,7 +29,7 @@
 ! scales of the couplng or the interactions with the ocean, including the ice  !
 ! mass balance and related thermodynamics and salinity changes, and            !
 ! thermodynamic coupling with the ocean.  The radiative heating and diffusive  !
-! temperature changes due to coupling with the atmosphere are handled elsewhere.                                            !
+! temperature changes due to coupling with the atmosphere are handled elsewhere.!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 module SIS_slow_thermo
 
@@ -165,16 +165,18 @@ integer :: iceClock5, iceClock6, iceClock7
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! post_flux_diagnostics - write out any diagnostics of surface fluxes.         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> write out any diagnostics of surface fluxes
 subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
-  type(ice_state_type),      intent(in) :: IST
-  type(fast_ice_avg_type),   intent(in) :: FIA
-  type(ice_ocean_flux_type), intent(in) :: IOF
+  type(ice_state_type),      intent(in) :: IST !< A type describing the state of the sea ice
+  type(fast_ice_avg_type),   intent(in) :: FIA !< A type containing averages of fields
+                                               !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type), intent(in) :: IOF !< A structure containing fluxes from the ice to
+                                               !! the ocean that are calculated by the ice model.
   type(slow_thermo_CS),      pointer    :: CS
-  type(SIS_hor_grid_type),   intent(in) :: G
-  type(ice_grid_type),       intent(in) :: IG
-  real,                      intent(in) :: Idt_slow
+  type(SIS_hor_grid_type),   intent(in) :: G   !< The horizontal grid type
+  type(ice_grid_type),       intent(in) :: IG  !< The sea-ice specific grid type
+  real,                      intent(in) :: Idt_slow !< The inverse of the slow thermodynamic
+                                               !! time step, in s-1
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn
   real :: sw_cat
@@ -315,21 +317,25 @@ end subroutine post_flux_diagnostics
 !> slow_thermodynamics takes care of slow ice thermodynamics and mass changes
 subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
-  type(ice_state_type),       intent(inout) :: IST
-  real,                       intent(in)    :: dt_slow ! The thermodynamic step, in s.
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
   type(slow_thermo_CS),       pointer       :: CS
-  type(ocean_sfc_state_type), intent(inout) :: OSS
-  type(fast_ice_avg_type),    intent(inout) :: FIA
+  type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
   type(total_sfc_flux_type),  pointer       :: XSF
-  type(ice_ocean_flux_type),  intent(inout) :: IOF
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
 
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    h_ice_input         ! The specified ice thickness, with specified_ice, in m.
+    h_ice_input    ! The specified ice thickness, with specified_ice, in m.
 
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: Idt_slow
+  real :: Idt_slow ! The inverse of the slow thermodynamic time step, in s-1
   integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
 
@@ -483,12 +489,14 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 end subroutine slow_thermodynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> add_excess_fluxes adds in any excess fluxes due to ice state type into the
-!! ice_ocean_flux_type.
+!> Add in any excess fluxes due to ice state type into the ice_ocean_flux_type
 subroutine add_excess_fluxes(IOF, XSF, G)
-  type(ice_ocean_flux_type), intent(inout) :: IOF
-  type(total_sfc_flux_type), intent(in)    :: XSF
-  type(SIS_hor_grid_type),   intent(inout) :: G
+  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                  !! the ocean that are calculated by the ice model.
+  type(total_sfc_flux_type), intent(in)    :: XSF !< A structure of the excess fluxes between the
+                                                  !! atmosphere and the ice or ocean relative to
+                                                  !! those stored in TSF
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
 
   real :: sw_comb  ! A combination of two downward shortwave fluxes, in W m-2.
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec
@@ -561,14 +569,17 @@ end subroutine add_excess_fluxes
 !> SIS2_thermodynamics does the slow thermodynamic update of the ice state,
 !! including freezing or melting, and the accumulation of snow and frazil ice.
 subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
-  type(ice_state_type),       intent(inout) :: IST
-  real,                       intent(in)    :: dt_slow ! The thermodynamic step, in s.
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
   type(slow_thermo_CS),       pointer       :: CS
-  type(ocean_sfc_state_type), intent(inout) :: OSS
-  type(fast_ice_avg_type),    intent(inout) :: FIA
-  type(ice_ocean_flux_type),  intent(inout) :: IOF
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
+  type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
 
   ! This subroutine does the thermodynamic calculations in the same order as SIS1,
   ! but with a greater emphasis on enthalpy as the dominant state variable.
@@ -1319,11 +1330,12 @@ end subroutine SIS2_thermodynamics
 !> SIS_slow_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_slow_thermo module.
 subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_CSp)
-  type(time_type),     target, intent(in)    :: Time   ! current time
-  type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
-  type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
-  type(param_file_type),       intent(in)    :: param_file
-  type(SIS_diag_ctrl), target, intent(inout) :: diag
+  type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
+                                                     !! set with the current model.
+  type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
+  type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
+  type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(slow_thermo_CS),        pointer       :: CS
   type(SIS_tracer_flow_control_CS), pointer  :: tracer_flow_CSp
 

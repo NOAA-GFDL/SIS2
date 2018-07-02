@@ -26,12 +26,6 @@
 !                                         Mike Winton (Michael.Winton@noaa.gov)!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-! TK mod:  SLAB_ICE treatment modified to follow supersource
-!          (after Bryan 1969).  The conductive heat
-!           flux from ice to atmosphere is computed based on
-!           an effective ice thickness which ensures a minimum
-!           thickness of 1.7cm for the calculation.
-
 module ice_thm_mod
 
 implicit none ; private
@@ -48,12 +42,10 @@ real, parameter :: SI4   = 3.19      ! salinity of sea ice bottom layer
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_thermo_coefs - return various thermodynamic coefficients.                !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> get_thermo_coefs returns various thermodynamic coefficients.
 subroutine get_thermo_coefs(ice_salinity)
-  real, dimension(:), optional, intent(out) :: ice_salinity
-! Arguments: ice_salinity - The specified salinity of each layer when the
-!                           thermodynamic salinities are pre-specified.
+  real, dimension(:), optional, intent(out) :: ice_salinity !< The specified salinity of each layer
+                                            !! when the thermodynamic salinities are pre-specified.
   integer k, nk
 
   if (present(ice_salinity)) then
