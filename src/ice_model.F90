@@ -434,6 +434,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
 end subroutine unpack_land_ice_boundary
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine copies information (mostly fluxes and the updated temperatures)
 !! from the fast part of the sea-ice to the  slow part of the sea ice.
 subroutine exchange_fast_to_slow_ice(Ice)
@@ -563,14 +564,17 @@ end subroutine exchange_fast_to_slow_ice
 !!  tracers from the ice model's internal state to the public ice data type
 !!  for use by the ocean model.
 subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
-  type(ice_data_type),        intent(inout) :: Ice
-  type(ice_state_type),       intent(inout) :: IST
-  type(ice_ocean_flux_type),  intent(in)    :: IOF
-  type(fast_ice_avg_type),    intent(in)    :: FIA
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(in)    :: IG
-  type(SIS_slow_CS),          intent(in)    :: sCS
+  type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
+  type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
@@ -659,13 +663,15 @@ end subroutine set_ocean_top_fluxes
 !!  from the ice model's internal state to the public ice data type
 !!  for use by the ocean model.
 subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
-  type(ice_data_type),        intent(inout) :: Ice
-  type(ice_state_type),       intent(inout) :: IST
-  type(ice_ocean_flux_type),  intent(in)    :: IOF
-  type(fast_ice_avg_type),    intent(in)    :: FIA
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(in)    :: IG
-  type(SIS_slow_CS),          intent(in)    :: sCS
+  type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
+  type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec
@@ -737,7 +743,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
 end subroutine set_ocean_top_dyn_fluxes
 
 ! Coupler interface to provide ocean surface data to atmosphere.
-!
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> update_ice_model_slow_up prepares the ice surface data for forcing the atmosphere
 !! and also unpacks the data from the ocean and shares it between the fast and
 !! slow ice structures.
@@ -764,6 +770,7 @@ subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
 
 end subroutine update_ice_model_slow_up
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine copies information from the slow part of the sea-ice to the
 !! fast part of the sea ice.
 subroutine exchange_slow_to_fast_ice(Ice)
@@ -835,6 +842,7 @@ subroutine exchange_slow_to_fast_ice(Ice)
 
 end subroutine exchange_slow_to_fast_ice
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine copies information from an ocean_ice_boundary_type into the
 !! slow part of an ice_data type, using a coupler-friendly interface.
 subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
@@ -855,17 +863,20 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
 
 end subroutine unpack_ocean_ice_boundary
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
 subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
-  type(ocean_ice_boundary_type), intent(in)    :: OIB
-  type(ocean_sfc_state_type),    intent(inout) :: OSS
-  type(ice_thermo_type),         intent(in)    :: ITV
-  type(SIS_hor_grid_type),       intent(inout) :: G
-  logical,                       intent(in)    :: specified_ice ! If true, use specified ice properties.
-  type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  ! A structure of ocean fields, often
-                                                                ! related to passive tracers.
+  type(ocean_ice_boundary_type), intent(in)    :: OIB !< A type containing ocean surface fields that
+                                                      !! aare used to drive the sea ice
+  type(ocean_sfc_state_type),    intent(inout) :: OSS !< A structure containing the arrays that describe
+                                                      !! the ocean's surface state for the ice model.
+  type(ice_thermo_type),         intent(in)    :: ITV !< The ice themodynamics parameter structure.
+  type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  logical,                       intent(in)    :: specified_ice !< If true, use specified ice properties.
+  type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  !< A structure of ocean fields, often
+                                                                !! related to passive tracers.
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -1007,17 +1018,19 @@ subroutine set_ice_surface_fields(Ice)
 end subroutine set_ice_surface_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ice_surface_state - prepare surface state for atmosphere fast physics    !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ice_surface_state prepares the surface state for atmosphere fast physics
 subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
-  type(ice_data_type),        intent(inout) :: Ice
-  type(ice_state_type),       intent(in)    :: IST
-  type(simple_OSS_type),      intent(in)    :: OSS
-  type(ice_rad_type),         intent(inout) :: Rad
-  type(fast_ice_avg_type),    intent(inout) :: FIA
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(in)    :: IG
-  type(SIS_fast_CS),          intent(inout) :: fCS
+  type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ice_state_type),       intent(in)    :: IST !< A type describing the state of the sea ice
+  type(simple_OSS_type),      intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(ice_rad_type),         intent(inout) :: Rad !< A structure with fields related to the absorption,
+                                                   !! reflection and transmission of shortwave radiation.
+  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
+  type(SIS_fast_CS),          intent(inout) :: fCS !< The fast ice thermodynamics control structure
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
   real, dimension(IG%NkIce) :: sw_abs_lay
@@ -1198,18 +1211,22 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 
 end subroutine set_ice_surface_state
 
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!### set_ice_optics might not be used.
+!> Determine the sea ice shortwave optical properties
 subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
-  type(ice_state_type),    intent(in)    :: IST
-  type(simple_OSS_type),   intent(in)    :: OSS
-  type(SIS_hor_grid_type), intent(in)    :: G
-  type(ice_grid_type),     intent(in)    :: IG
+  type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
+  type(simple_OSS_type),   intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                !! the ocean's surface state for the ice model.
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice
+                           intent(in)    :: Tskin_ice !< The sea ice skin temperature in deg C.
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen
-  type(ice_rad_type),      intent(inout) :: Rad
-  type(SIS_optics_CS),     intent(in)    :: optics_CSp
+                           intent(in)    :: coszen  !< Cosine of the solar zenith angle for this step
+  type(ice_rad_type),      intent(inout) :: Rad !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation.
+  type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
   real, dimension(IG%NkIce) :: sw_abs_lay
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
@@ -1240,12 +1257,12 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
 end subroutine set_ice_optics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! update_ice_model_fast - records fluxes (in Ice) and calculates ice temp. on  !
-!                         (fast) atmospheric timestep (see coupler_main.f90)   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> update_ice_model_fast records fluxes (in Ice) and calculates ice temperature
+!!    on the (fast) atmospheric timestep
 subroutine update_ice_model_fast( Atmos_boundary, Ice )
-  type(ice_data_type),              intent(inout) :: Ice
-  type(atmos_ice_boundary_type),    intent(inout) :: Atmos_boundary
+  type(ice_data_type),           intent(inout) :: Ice !< The publicly visible ice data type.
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary !< A type containing atmospheric boundary
+                                                !! forcing fields that are used to drive the ice
 
   type(time_type) :: Time_start, Time_end, dT_fast
 
@@ -1288,16 +1305,23 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
 end subroutine update_ice_model_fast
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_fast_ocean_sfc_properties updates the ocean surface properties like
+!! roughness and albedo for the rapidly evolving atmospheric updates
 subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
                                           G, IG, Time_start, Time_end)
-  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary
-  type(ice_data_type),           intent(inout) :: Ice
-  type(ice_state_type),          intent(inout) :: IST
-  type(ice_rad_type),            intent(inout) :: Rad
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(SIS_hor_grid_type),       intent(inout) :: G
-  type(ice_grid_type),           intent(inout) :: IG
-  type(time_type),               intent(in)    :: Time_start, Time_end
+  type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary !< A type containing atmospheric boundary
+                                                      !! forcing fields that are used to drive the ice
+  type(ice_data_type),           intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ice_state_type),          intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ice_rad_type),            intent(inout) :: Rad !< A structure with fields related to the absorption,
+                                                      !! reflection and transmission of shortwave radiation.
+  type(fast_ice_avg_type),       intent(inout) :: FIA !< A type containing averages of fields
+                                                      !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
+  type(time_type),               intent(in)    :: Time_start !< The start of the time covered by this call
+  type(time_type),               intent(in)    :: Time_end   !< The end of the timee covered by this call
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
@@ -1313,17 +1337,14 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! Update publicly visible ice_data_type variables..
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,Atmos_boundary,Rad,&
-!$OMP                                  FIA,io_A,jo_A,io_I,jo_I ) &
-!$OMP                          private(i3,j3)
+  !$OMP parallel do default(shared) private(i3,j3)
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,Ice,io_I,jo_I ) &
-!$OMP                           private(i2,j2,k2)
+  !$OMP parallel do default(shared) private(i2,j2,k2)
   do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
     i2 = i+io_I ; j2 = j+jo_I ; k2 = k+1
     Ice%t_surf(i2,j2,k2) = Rad%t_skin(i,j,k) + T_0degC
@@ -1339,15 +1360,18 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
 
 end subroutine set_fast_ocean_sfc_properties
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ocean_albedo uses either the time or the input cosine of solar zenith
-!!   angle to calculate the ocean albedo.
+!! angle to calculate the ocean albedo.
 subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, coszen)
-  type(ice_data_type),     intent(inout) :: Ice
-  logical,                 intent(in)    :: recalc_sun_angle
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(time_type),         intent(in)    :: Time_start, Time_end
+  type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
+  logical,                 intent(in)    :: recalc_sun_angle !< If true, recalcuate the solar
+                                                !! zenith angle internally instead of using coszen
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(time_type),         intent(in)    :: Time_start !< The start of the time covered by this call
+  type(time_type),         intent(in)    :: Time_end   !< The end of the timee covered by this call
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen
+                           intent(in)    :: coszen !< Cosine of the solar zenith angle for this step
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
@@ -1375,18 +1399,25 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 
 end subroutine set_ocean_albedo
 
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> fast_radiation_diagnostics offers diagnostics of the rapidly changing shortwave
+!! radiative and other properties of the ice
 subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
                                       Time_start, Time_end)
-  type(atmos_ice_boundary_type), intent(in)    :: ABT
-  type(ice_data_type),           intent(in)    :: Ice
-  type(ice_state_type),          intent(in)    :: IST
-  type(ice_rad_type),            intent(in)    :: Rad
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(SIS_hor_grid_type),       intent(in)    :: G
-  type(ice_grid_type),           intent(in)    :: IG
-  type(SIS_fast_CS),             intent(inout) :: CS
-  type(time_type),               intent(in)    :: Time_start, Time_end
+  type(atmos_ice_boundary_type), &
+                           intent(in)    :: ABT !< A type containing atmospheric boundary
+                                                !! forcing fields that are used to drive the ice
+  type(ice_data_type),     intent(in)    :: Ice !< The publicly visible ice data type.
+  type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
+  type(ice_rad_type),      intent(in)    :: Rad !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation.
+  type(fast_ice_avg_type), intent(inout) :: FIA !< A type containing averages of fields
+                                                !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(SIS_fast_CS),       intent(inout) :: CS  !< The fast ice thermodynamics control structure
+  type(time_type),         intent(in)    :: Time_start !< The start time of the diagnostics in this call
+  type(time_type),         intent(in)    :: Time_end   !< The end time of the diagnostics in this call
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
   real, dimension(G%isd:G%ied, G%jsd:G%jed,size(FIA%flux_sw_dn,3)) :: &
@@ -1439,7 +1470,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   if (Rad%id_sw_pen>0) then
     tmp_diag(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,Rad,tmp_diag)
+    !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                      (Rad%sw_abs_ocn(i,j,k) + Rad%sw_abs_int(i,j,k))
@@ -1499,8 +1530,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
     ! Consider recalculating this as avg_alb(i,j) = 1.0 - net_sw(i,j) / sw_dn(i,j) ? -RWH
   endif ; enddo ; enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,Rad,IST,FIA) &
-!$OMP                          private(Tskin_avg, ice_conc)
+  !$OMP parallel do default(shared) private(Tskin_avg,ice_conc)
   do j=jsc,jec
     Tskin_avg(:) = 0.0 ; ice_conc(:) = 0.0
     do k=1,ncat ; do i=isc,iec
@@ -1538,6 +1568,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
 end subroutine fast_radiation_diagnostics
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> add_diurnal_SW adjusts the shortwave fluxes in an atmos_boundary_type variable
 !! to add a synthetic diurnal cycle.
 subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
@@ -1651,7 +1682,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   character(len=8)   :: nstr
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
 
-  type(param_file_type) :: param_file
+  type(param_file_type) :: param_file !< A structure to parse for run-time parameters
   type(hor_index_type)  :: fHI  !  A hor_index_type for array extents on fast_ice_PEs.
   type(hor_index_type)  :: sHI  !  A hor_index_type for array extents on slow_ice_PEs.
 
@@ -2726,9 +2757,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
 end subroutine ice_model_init
 
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> share_ice_domains exchanges domain information between the fast and slow ice PEs
 subroutine share_ice_domains(Ice)
-  type(ice_data_type), intent(inout) :: Ice
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   ! This code has to be called for all of the ice processors using the
   ! union of the fast and slow ice PE_lists.
@@ -2756,12 +2788,13 @@ subroutine share_ice_domains(Ice)
 
 end subroutine share_ice_domains
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
-  type(ice_grid_type),          intent(inout) :: IG
-  real,                         intent(in)    :: Rho_ice
-  type(param_file_type),        intent(in)    :: param_file
-  real, dimension(:), optional, intent(in)    :: hLim_vals
+  type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
+  real,                         intent(in)    :: Rho_ice !< The nominal ice density, in kg m-3.
+  type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
+  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits, in m.
 
   ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
   !  ###This subroutine should be extended to add more options.
@@ -2791,12 +2824,14 @@ subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   enddo
 end subroutine initialize_ice_categories
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> update_ice_atm_deposition_flux updates the values of any fluxes that are
 !! labeled as having the type 'air_sea_deposition'.  With the FMS coupler,
 !! these fluxes were not available when update_ice_model_fast was called.
 subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
-  type(ice_data_type),           intent(inout) :: Ice
-  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary
+  type(ice_data_type),           intent(inout) :: Ice !< The publicly visible ice data type.
+  type(atmos_ice_boundary_type), intent(inout) :: Atmos_boundary !< A type containing atmospheric boundary
+                                                      !! forcing fields that are used to drive the ice
 
   call accumulate_deposition_fluxes(Atmos_boundary, Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG)
 
@@ -2804,10 +2839,9 @@ end subroutine update_ice_atm_deposition_flux
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_model_end - writes the restart file and deallocates memory               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-subroutine ice_model_end (Ice)
-  type(ice_data_type), intent(inout) :: Ice
+!> ice_model_end writes the restart file and deallocates memory
+subroutine ice_model_end(Ice)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
