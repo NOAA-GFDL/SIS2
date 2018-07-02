@@ -18,29 +18,30 @@ public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 ! albedos within SIS2.
 integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
 
+!> This type contains the parameters regulating sea-ice optics.
 type, public :: SIS_optics_CS ; private
 
   ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-  real :: alb_snow        ! albedo of snow (not melting)
-  real :: alb_ice         ! albedo of ice (not melting)
-  real :: pen_ice         ! ice surface penetrating solar fraction
-  real :: opt_dep_ice     ! ice optical depth (m)
-  real :: t_range_melt    ! melt albedos scaled in below melting T
+  real :: alb_snow        !< albedo of snow (not melting)
+  real :: alb_ice         !< albedo of ice (not melting)
+  real :: pen_ice         !< ice surface penetrating solar fraction
+  real :: opt_dep_ice     !< ice optical depth (m)
+  real :: t_range_melt    !< melt albedos scaled in below melting T
 
-  logical :: do_deltaEdd = .true.  ! If true, use a delta-Eddington radiative
+  logical :: do_deltaEdd = .true.  !< If true, use a delta-Eddington radiative
                           ! transfer calculation for the shortwave radiation
                           ! within the sea-ice and snow.
 
-  logical :: do_pond = .false. ! activate melt pond scheme - mw/new
-  real :: max_pond_frac = 0.5  ! pond water beyond this is dumped
-  real :: min_pond_frac = 0.2  ! ponds below sea level don't drain
+  logical :: do_pond = .false. !< activate melt pond scheme - mw/new
+  real :: max_pond_frac = 0.5  !< pond water beyond this is dumped
+  real :: min_pond_frac = 0.2  !< ponds below sea level don't drain
 
-  logical :: slab_optics = .false. ! If true use the very old slab ice optics
-                                   ! from the supersource model.
-  real :: slab_crit_thick ! The thickness beyond which the slab ice optics no
-                          ! longer exhibits a thickness dependencs on albedo, in m.
-  real :: slab_alb_ocean  ! The ocean albedo as used in the slab ice optics.
-  real :: slab_min_ice_alb  ! The minimum thick ice albedo with the slab ice optics.
+  logical :: slab_optics = .false. !< If true use the very old slab ice optics
+                                   !! from the supersource model.
+  real :: slab_crit_thick !< The thickness beyond which the slab ice optics no
+                          !! longer exhibits a thickness dependencs on albedo, in m.
+  real :: slab_alb_ocean  !< The ocean albedo as used in the slab ice optics.
+  real :: slab_min_ice_alb !< The minimum thick ice albedo with the slab ice optics.
 
 end type SIS_optics_CS
 
@@ -53,7 +54,7 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
   type(param_file_type), intent(in) :: param_file !< Parameter file handle
   type(SIS_optics_CS),   pointer :: CS          !< A pointer to the SIS_optics control structure.
   logical,              optional :: slab_optics !< If true use the very old slab ice optics
-                                                !< from the supersource model.
+                                                !! from the supersource model.
 
   !
   ! Albedo tuning parameters are documented in:
@@ -149,25 +150,24 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
 end subroutine SIS_optics_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_optics - set albedo, penetrating solar, and ice/snow transmissivity      !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_optics_SIS2 sets albedo, penetrating solar, and ice/snow transmissivity
 subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
                     abs_snow, abs_ice_lay, abs_ocn, abs_int, CS, ITV, coszen_in)
-  real, intent(in   ) :: mp  ! pond mass (kg/m2) mw/new
-  real, intent(in   ) :: hs  ! snow thickness (m-snow)
-  real, intent(in   ) :: hi  ! ice thickness (m-ice)
-  real, intent(in   ) :: ts  ! surface temperature in deg C.
-  real, intent(in   ) :: tfw ! seawater freezing temperature
-  integer, intent(in) :: NkIce ! The number of sublayers in the ice
-  real, dimension(:), intent(  out) :: albedos  ! ice surface albedos (0-1)
-  real, intent(  out) :: abs_sfc  ! frac abs sw abs at surface
-  real, intent(  out) :: abs_snow ! frac abs sw abs in snow
-  real, intent(  out) :: abs_ice_lay(NkIce) ! frac abs sw abs by each ice layer
-  real, intent(  out) :: abs_ocn  ! frac abs sw abs in ocean
-  real, intent(  out) :: abs_int  ! frac abs sw abs in ice interior
-  type(SIS_optics_CS), intent(in) :: CS  ! The ice optics control structure.
-  type(ice_thermo_type), intent(in) :: ITV ! The ice thermodynamic parameter structure.
-  real, intent(in),optional :: coszen_in ! The cosine of the solar zenith angle.
+  real, intent(in   ) :: mp  !< pond mass (kg/m2)
+  real, intent(in   ) :: hs  !< snow thickness (m-snow)
+  real, intent(in   ) :: hi  !< ice thickness (m-ice)
+  real, intent(in   ) :: ts  !< surface temperature in deg C.
+  real, intent(in   ) :: tfw !< seawater freezing temperature
+  integer, intent(in) :: NkIce !< The number of sublayers in the ice
+  real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1)
+  real, intent(  out) :: abs_sfc  !< fraction of absorbed SW that is absorbed at surface
+  real, intent(  out) :: abs_snow !< fraction of absorbed SW that is absorbed in snow
+  real, intent(  out) :: abs_ice_lay(NkIce) !< fraction of absorbed SW that is absorbed by each ice layer
+  real, intent(  out) :: abs_ocn  !< fraction of absorbed SW that is absorbed in ocean
+  real, intent(  out) :: abs_int  !< fraction of absorbed SW that is absorbed in ice interior
+  type(SIS_optics_CS), intent(in) :: CS  !< The ice optics control structure.
+  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+  real, intent(in),optional :: coszen_in !< The cosine of the solar zenith angle.
 
   real :: alb             ! The albedo for all bands, 0-1, nondimensional.
   real :: as              ! A snow albedo, 0-1, nondimensional.
@@ -411,8 +411,9 @@ function bright_ice_temp(CS, ITV) result(bright_temp)
 
 end function bright_ice_temp
 
+!> Deallocate memory associated with the SIS_optics module
 subroutine SIS_optics_end(CS)
-  type(SIS_optics_CS), pointer :: CS
+  type(SIS_optics_CS), pointer :: CS !< The ice optics control structure that is deallocated here
 
   deallocate(CS)
 
