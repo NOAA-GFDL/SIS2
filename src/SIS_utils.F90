@@ -43,13 +43,13 @@ end interface
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_avg - take area weighted average over some or all thickness categories.  !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> get_avg calculates an area weighted average over some or all thickness categories
 subroutine get_avg(x, cn, avg, wtd)
-  real, dimension(:,:,:), intent(in)  :: x
-  real, dimension(:,:,:), intent(in)  :: cn
-  real, dimension(:,:),   intent(out) :: avg
-  logical,      optional, intent(in)  :: wtd
+  real, dimension(:,:,:), intent(in)  :: x   !< The field to average
+  real, dimension(:,:,:), intent(in)  :: cn  !< The concentration of each thickness category
+  real, dimension(:,:),   intent(out) :: avg !< The area-weighted average of x
+  logical,      optional, intent(in)  :: wtd !< Take a weighted average over the ice-covered area
+                                             !! as opposed to averaging over the full cell areas
 
   real, dimension(size(x,1),size(x,2)) :: wts
   logical :: do_wt
@@ -94,14 +94,17 @@ subroutine get_avg(x, cn, avg, wtd)
 end subroutine get_avg
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_line - Write out a line with the northern and southern hemisphere ice    !
-!            ice extents and global mean sea surface temperature.              !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_line writes out a line with the northern and southern hemisphere ice
+!!            extents and global mean sea surface temperature.
 subroutine ice_line(year, day, second, cn_ocn, sst, G)
-  integer,                         intent(in) :: year, day, second
-  type(SIS_hor_grid_type),         intent(in) :: G
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: cn_ocn
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), intent(in) :: sst
+  integer,                 intent(in) :: year !< The current model year
+  integer,                 intent(in) :: day  !< The current model year-day
+  integer,                 intent(in) :: second !< The second of the day
+  type(SIS_hor_grid_type), intent(in) :: G    !< The horizontal grid type
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
+                           intent(in) :: cn_ocn !< The concentration of ocean in each cell, nondim, 0-1.
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
+                           intent(in) :: sst  !< The sea surface temperature in degC.
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
   real :: gx(3)
@@ -128,17 +131,21 @@ subroutine ice_line(year, day, second, cn_ocn, sst, G)
 end subroutine ice_line
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! post_avg - take area weighted average over some or all thickness categories  !
-!            and offer it for diagnostic output.                               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> post_avg_3d takes area weighted average over some or all thickness categories
+!!            and offers it for diagnostic output.
 subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
-  integer,                 intent(in) :: id
-  real, dimension(:,:,:),  intent(in) :: val, part
-  type(SIS_diag_ctrl),     intent(in) :: diag
-  type(SIS_hor_grid_type), optional, intent(in) :: G
-  logical, dimension(:,:), optional, intent(in) :: mask
-  real,                    optional, intent(in) :: scale, offset
-  logical,                 optional, intent(in) :: wtd
+  integer,                 intent(in) :: id   !< The ID for this diagnostic
+  real, dimension(:,:,:),  intent(in) :: val  !< The field to average
+  real, dimension(:,:,:),  intent(in) :: part !< The frational coverage of each cetegory
+  type(SIS_diag_ctrl),     intent(in) :: diag !< A structure that is used to regulate diagnostic output
+  type(SIS_hor_grid_type), &
+                 optional, intent(in) :: G   !< The horizontal grid type
+  logical, dimension(:,:), &
+                 optional, intent(in) :: mask !< A mask to use for the diagnostic
+  real,          optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
+  real,          optional, intent(in) :: offset !< An additive offset for the diagnostic
+  logical,       optional, intent(in) :: wtd !< Take a weighted average over the ice-covered area
+                                             !! as opposed to averaging over the full cell areas
   ! This subroutine determines the average of a quantity across thickness
   ! categories and does a send data on it.
 
@@ -208,18 +215,21 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
 end subroutine post_avg_3d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! post_avg - take area weighted average over some or all thickness categories  !
-!            and offer it for diagnostic output.                               !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> post_avg_4d takes an area weighted vertical average over some or all thickness categories
+!!            and offers it for diagnostic output.
 subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
-  integer, intent(in) :: id
-  real, dimension(:,:,:,:), intent(in) :: val
-  real, dimension(:,:,:),   intent(in) :: part
-  type(SIS_diag_ctrl),      intent(in) :: diag
-  type(SIS_hor_grid_type), optional, intent(in) :: G
-  logical, dimension(:,:), optional, intent(in) :: mask
-  real,                    optional, intent(in) :: scale, offset
-  logical,                 optional, intent(in) :: wtd
+  integer,                  intent(in) :: id   !< The ID for this diagnostic
+  real, dimension(:,:,:,:), intent(in) :: val  !< The field to average
+  real, dimension(:,:,:),   intent(in) :: part !< The frational coverage of each cetegory
+  type(SIS_diag_ctrl),      intent(in) :: diag !< A structure that is used to regulate diagnostic output
+  type(SIS_hor_grid_type), &
+                  optional, intent(in) :: G   !< The horizontal grid type
+  logical, dimension(:,:), &
+                  optional, intent(in) :: mask !< A mask to use for the diagnostic
+  real,           optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
+  real,           optional, intent(in) :: offset !< An additive offset for the diagnostic
+  logical,        optional, intent(in) :: wtd !< Take a weighted average over the ice-covered area
+                                              !! as opposed to averaging over the full cell areas
   ! This subroutine determines the average of a quantity across thickness
   ! categories and does a send data on it.
 
@@ -290,9 +300,10 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
 
 end subroutine post_avg_4d
 
+!> Write checksums of the elements of the sea-ice grid
 subroutine ice_grid_chksum(G, haloshift)
-  type(SIS_hor_grid_type), optional, intent(inout) :: G
-  integer, optional, intent(in) :: haloshift
+  type(SIS_hor_grid_type), optional, intent(inout) :: G   !< The horizontal grid type
+  integer,                 optional, intent(in)    :: haloshift !< The size of the halo to check
 
   integer :: isc, iec, jsc, jec, hs
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -345,9 +356,10 @@ subroutine ice_grid_chksum(G, haloshift)
 end subroutine ice_grid_chksum
 
 
+!> Return .true. if x is a NaN, and .false. otherwise.
 function is_NaN(x)
-  real, intent(in) :: x
-  logical :: is_nan
+  real, intent(in) :: x !< The number to evaluate if it is a NaN
+  logical :: is_nan !< Returned as true if x is a NaN and false otherwise
 ! This subroutine returns .true. if x is a NaN, and .false. otherwise.
 
   is_nan = (((x < 0.0) .and. (x >= 0.0)) .or. &

@@ -72,9 +72,8 @@ type, private :: diag_type
   real, pointer, dimension(:,:,:) :: mask3d => null()
 end type diag_type
 
-!   The following data type contains pointers to diagnostic fields that might
-! be shared between modules, and also to the variables that control the handling
-! of model output.
+!>   The SIS_diag_ctrl data type contains times to regulate diagnostics along with masks and
+!! axes to use with diagnostics, and a list of structures with data about each diagnostic.
 type, public :: SIS_diag_ctrl
   integer :: doc_unit = -1 ! The unit number of a diagnostic documentation file.
                            ! This file is open if doc_unit is > 0.
@@ -85,11 +84,11 @@ type, public :: SIS_diag_ctrl
   integer :: is, ie, js, je
 ! These give the memory-domain sizes, and can be start at any value on each PE.
   integer :: isd, ied, jsd, jed
-  real :: time_int              ! The time interval in s for any fields
-                                ! that are offered for averaging.
-  type(time_type) :: time_end   ! The end time of the valid
-                                ! interval for any offered field.
-  logical :: ave_enabled = .false. ! .true. if averaging is enabled.
+  real :: time_int              !< The time interval in s for any fields
+                                !! that are offered for averaging.
+  type(time_type) :: time_end   !< The end time of the valid
+                                !! interval for any offered field.
+  logical :: ave_enabled = .false. !< .true. if averaging is enabled.
 
   ! The following are axis types defined for output.
   type(axesType) :: axesBL, axesTL, axesCuL, axesCvL
@@ -122,29 +121,25 @@ type, public :: SIS_diag_ctrl
   type(diag_type), dimension(:), allocatable :: diags
   integer :: next_free_diag_id
 
-  !default missing value to be sent to ALL diagnostics registerations
+  !> default missing value to be sent to ALL diagnostics registerations
   real :: missing_value = -1.0e34
 
 end type SIS_diag_ctrl
 
 contains
 
+!> Set up the grid and axis information for use by SIS.
 subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_name)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(param_file_type),   intent(in)    :: param_file
-  type(SIS_diag_ctrl),     intent(inout) :: diag_cs
-  logical,          optional, intent(in)    :: set_vertical
-  character(len=*), optional, intent(in)    :: axes_set_name
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl),     intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
+  logical,          optional, intent(in) :: set_vertical !< If true (or missing), set up the vertical axes
+  character(len=*), optional, intent(in) :: axes_set_name !<  A name to use for this set of axes.
+                                                !! The default is "ice".
 !   This subroutine sets up the grid and axis information for use by SIS.
-!
-! Arguments: G - The ocean's grid structure.
-!  (in)      IG - The sea-ice-specific grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
-!  (in,opt)  set_vertical - If true (or missing), set up the vertical axes.
-!  (in,opt)  axes_set_name - A name to use for this set of axes.  The default is "ice".
+
+  ! Local variables
   integer :: id_xq, id_yq, id_zl, id_zi, id_xh, id_yh, id_ct, id_ct0
   integer :: id_xhe, id_yhe
   integer :: k
@@ -267,11 +262,13 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 
 end subroutine set_SIS_axes_info
 
+!> Define an a group of axes from a list of handles
 subroutine defineAxes(diag_cs, handles, axes)
   ! Defines "axes" from list of handle and associates mask
-  type(SIS_diag_ctrl), target, intent(in)  :: diag_cs
-  integer, dimension(:),       intent(in)  :: handles
-  type(axesType),              intent(out) :: axes
+  type(SIS_diag_ctrl), target, intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
+  integer, dimension(:),       intent(in)  :: handles !< A set of axis handles that define the axis group
+  type(axesType),              intent(out) :: axes    !< A group of axes that is set up here
+
   ! Local variables
   integer :: n
   n = size(handles)
@@ -283,28 +280,27 @@ subroutine defineAxes(diag_cs, handles, axes)
   axes%diag_cs => diag_cs ! A [circular] link back to the SIS_diag_ctrl structure
 end subroutine defineAxes
 
+!> Set up the current grid for the diag mediator
 subroutine set_SIS_diag_mediator_grid(G, diag_cs)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(SIS_diag_ctrl),     intent(inout) :: diag_cs
-! Arguments: G - The ocean's grid structure.
-!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(SIS_diag_ctrl),     intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
+
   diag_cs%is = G%isc - (G%isd-1) ; diag_cs%ie = G%iec - (G%isd-1)
   diag_cs%js = G%jsc - (G%jsd-1) ; diag_cs%je = G%jec - (G%jsd-1)
   diag_cs%isd = G%isd ; diag_cs%ied = G%ied ; diag_cs%jsd = G%jsd ; diag_cs%jed = G%jed
 end subroutine set_SIS_diag_mediator_grid
 
+!> Offer a 2d diagnostic field for output or averaging
 subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
-  integer,           intent(in) :: diag_field_id
-  real,              intent(in) :: field(:,:)
-  type(SIS_diag_ctrl), target, intent(in) :: diag_cs
-  logical, optional, intent(in) :: is_static
-  logical, optional, intent(in) :: mask(:,:)
-! Arguments: diag_field_id - the id for an output variable returned by a
-!                            previous call to register_diag_field.
-!  (in)      field - The 2-d array being offered for output or averaging.
-!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
-!  (in,opt)  is_static - If true, this is a static field that is always offered.
-!  (in,opt)  mask - If present, use this real array as the data mask.
+  integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
+                                              !! previous call to register_diag_field.
+  real,              intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
+  type(SIS_diag_ctrl), target, &
+                     intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
+  logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
+  logical, optional, intent(in) :: mask(:,:) !< If present, use this logical array as the data mask.
+
+  ! Local variables
   logical :: used, is_stat
   logical :: i_data, j_data
   integer :: isv, iev, jsv, jev
@@ -400,18 +396,17 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 
 end subroutine post_data_2d
 
+!> Offer a 3d diagnostic field for output or averaging
 subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
-  integer,           intent(in) :: diag_field_id
-  real,              intent(in) :: field(:,:,:)
-  type(SIS_diag_ctrl), target,  intent(in) :: diag_cs
-  logical, optional, intent(in) :: is_static
-  logical, optional, intent(in) :: mask(:,:,:)
-! Arguments: diag_field_id - the id for an output variable returned by a
-!                            previous call to register_diag_field.
-!  (in)      field - The 3-d array being offered for output or averaging.
-!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
-!  (in)      static - If true, this is a static field that is always offered.
-!  (in,opt)  mask - If present, use this real array as the data mask.
+  integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
+                                              !! previous call to register_diag_field.
+  real,              intent(in) :: field(:,:,:) !< The 3-d array being offered for output or averaging.
+  type(SIS_diag_ctrl), target, &
+                     intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
+  logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
+  logical, optional, intent(in) :: mask(:,:,:) !< If present, use this logical array as the data mask.
+
+  ! Local variables
   logical :: used  ! The return value of send_data is not used for anything.
   logical :: is_stat
   integer :: isv, iev, jsv, jev
@@ -494,18 +489,14 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
 
 end subroutine post_data_3d
 
-
+!> Enable the accumulation of time averages over the specified time interval.
 subroutine enable_SIS_averaging(time_int_in, time_end_in, diag_cs)
-  real, intent(in) :: time_int_in
-  type(time_type), intent(in) :: time_end_in
-  type(SIS_diag_ctrl), intent(inout) :: diag_cs
+  real,                intent(in)    :: time_int_in !< The time interval in s over which any
+!                                                   !! values that are offered are valid.
+  type(time_type),     intent(in)    :: time_end_in !< The end time of the valid interval.
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 ! This subroutine enables the accumulation of time averages over the
 ! specified time interval.
-
-! Arguments: time_int_in - the time interval in s over which any
-!                          values that are offered are valid.
-!  (in)      time_end_in - the end time in s of the valid interval.
-!  (inout)   diag_cs - A structure that is used to regulate diagnostic output.
 
 !  if (num_file==0) return
   diag_cs%time_int = time_int_in
@@ -513,36 +504,30 @@ subroutine enable_SIS_averaging(time_int_in, time_end_in, diag_cs)
   diag_cs%ave_enabled = .true.
 end subroutine enable_SIS_averaging
 
-! Call this subroutine to avoid averaging any offered fields.
+! Put a block on averaging any offered fields.
 subroutine disable_SIS_averaging(diag_cs)
-  type(SIS_diag_ctrl), intent(inout) :: diag_cs
-! Argument: diag_cs - A structure that is used to regulate diagnostic output.
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 
   diag_cs%time_int = 0.0
   diag_cs%ave_enabled = .false.
 
 end subroutine disable_SIS_averaging
 
-! Call this subroutine to determine whether the averaging is
-! currently enabled.  .true. is returned if it is.
-function query_SIS_averaging_enabled(diag_cs, time_int, time_end)
-  type(SIS_diag_ctrl),           intent(in)  :: diag_cs
-  real,            optional, intent(out) :: time_int
-  type(time_type), optional, intent(out) :: time_end
-  logical :: query_SIS_averaging_enabled
-! Arguments: diag - A structure that is used to regulate diagnostic output.
-!  (out,opt) time_int - The current setting of diag_cs%time_int, in s.
-!  (out,opt) time_end - The current setting of diag_cs%time_end.
+!> Indicate whether averaging diagnostics is currently enabled
+logical function query_SIS_averaging_enabled(diag_cs, time_int, time_end)
+  type(SIS_diag_ctrl),           intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
+  real,            optional, intent(out) :: time_int !< The current setting of diag_cs%time_int, in s.
+  type(time_type), optional, intent(out) :: time_end !< The current setting of diag_cs%time_end.
 
   if (present(time_int)) time_int = diag_cs%time_int
   if (present(time_end)) time_end = diag_cs%time_end
   query_SIS_averaging_enabled = diag_cs%ave_enabled
 end function query_SIS_averaging_enabled
 
+!> Return the currently specified valid end time for diagnostics
 function get_SIS_diag_time_end(diag_cs)
-  type(SIS_diag_ctrl),           intent(in)  :: diag_cs
+  type(SIS_diag_ctrl),           intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
   type(time_type) :: get_SIS_diag_time_end
-! Argument: diag_cs - A structure that is used to regulate diagnostic output.
 
 !   This function returns the valid end time for diagnostics that are handled
 ! outside of the MOM6 infrastructure, such as via the generic tracer code.
@@ -550,39 +535,35 @@ function get_SIS_diag_time_end(diag_cs)
   get_SIS_diag_time_end = diag_cs%time_end
 end function get_SIS_diag_time_end
 
+!> Returns the "SIS_diag_mediator" handle for a group of diagnostics derived from one field.
 function register_SIS_diag_field(module_name, field_name, axes, init_time, &
      long_name, units, missing_value, range, mask_variant, standard_name, &
      verbose, do_not_log, err_msg, interp_method, tile_count) result (register_diag_field)
-  integer :: register_diag_field
-  character(len=*), intent(in) :: module_name, field_name
-  type(axesType),   intent(in) :: axes
-  type(time_type),  intent(in) :: init_time
-  character(len=*), optional, intent(in) :: long_name, units, standard_name
-  real,             optional, intent(in) :: missing_value, range(2)
-  logical,          optional, intent(in) :: mask_variant, verbose, do_not_log
-  character(len=*), optional, intent(out):: err_msg
-  character(len=*), optional, intent(in) :: interp_method
-  integer,          optional, intent(in) :: tile_count
-! Output:    An integer handle for a diagnostic array.
-! Arguments: module_name - The name of this module, usually "ocean_model" or "ice_shelf_model".
-!  (in)      field_name - The name of the diagnostic field.
-!  (in)      axes - A type that indicates the axes for this field.
-!  (in)      init_time - The time at which a field is first available?
-!  (in,opt)  long_name - The long name of a field.
-!  (in,opt)  units - The units of a field.
-!  (in,opt)  standard_name - The standardized name associated with a field. (Not yet used in MOM.)
-!  (in,opt)  missing_value - A value that indicates missing values.
-!  (in,opt)  range - The valid range of a variable. (Not used in MOM.)
-!  (in,opt)  mask_variant - If true a logical mask must be provided with post_data calls.  (Not used in MOM.)
-!  (in,opt)  verbose - If true, FMS is verbosed. (Not used in MOM.)
-!  (in,opt)  do_not_log - If true, do not log something. (Not used in MOM.)
-!  (out,opt) err_msg - An character string into which an error message might be placed. (Not used in MOM.)
-!  (in,opt)  interp_method - No clue. (Not used in MOM.)
-!  (in,opt)  tile_count - No clue. (Not used in MOM.)
+  integer :: register_diag_field  !< The returned diagnostic handle
+  character(len=*), intent(in) :: module_name !< Name of this module, usually "ice_model"
+  character(len=*), intent(in) :: field_name !< Name of the diagnostic field
+  type(axesType),   intent(in) :: axes       !< The axis group for this field
+  type(time_type),  intent(in) :: init_time !< Time at which a field is first available?
+  character(len=*), optional, intent(in) :: long_name !< Long name of a field.
+  character(len=*), optional, intent(in) :: units !< Units of a field.
+  character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
+  real,             optional, intent(in) :: missing_value !< A value that indicates missing values.
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
+  logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
+                                                         !! post_data calls (not used in MOM?)
+  logical,          optional, intent(in) :: verbose !< If true, FMS is verbose (not used in MOM?)
+  logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in MOM?)
+  character(len=*), optional, intent(out):: err_msg !< String into which an error message might be
+                                                         !! placed (not used in MOM?)
+  character(len=*), optional, intent(in) :: interp_method !< If 'none' indicates the field should not
+                                                         !! be interpolated as a scalar
+  integer,          optional, intent(in) :: tile_count   !< no clue (not used in SIS?)
+
+  ! Local variables
   character(len=240) :: mesg
   real :: MOM_missing_value
   integer :: primary_id, fms_id
-  type(SIS_diag_ctrl), pointer :: diag_cs
+  type(SIS_diag_ctrl), pointer :: diag_cs !< A structure that is used to regulate diagnostic output
   type(diag_type), pointer :: diag
 
   MOM_missing_value = axes%diag_cs%missing_value
@@ -685,34 +666,31 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
 
 end function register_SIS_diag_field
 
+!> Registers a static diagnostic, returning an integer handle
 function register_static_field(module_name, field_name, axes, &
      long_name, units, missing_value, range, mask_variant, standard_name, &
      do_not_log, interp_method, tile_count)
-  integer :: register_static_field
-  character(len=*), intent(in) :: module_name, field_name
-  type(axesType),   intent(in) :: axes
-  character(len=*), optional, intent(in) :: long_name, units, standard_name
-  real,             optional, intent(in) :: missing_value, range(2)
-  logical,          optional, intent(in) :: mask_variant, do_not_log
-  character(len=*), optional, intent(in) :: interp_method
-  integer,          optional, intent(in) :: tile_count
-  ! Output:    An integer handle for a diagnostic array.
-  ! Arguments: module_name - The name of this module, usually "ocean_model" or "ice_shelf_model".
-  !  (in)      field_name - The name of the diagnostic field.
-  !  (in)      axes - A container with up to 3 integer handles that indicates the axes for this field.
-  !  (in,opt)  long_name - The long name of a field.
-  !  (in,opt)  units - The units of a field.
-  !  (in,opt)  standard_name - The standardized name associated with a field. (Not yet used in MOM.)
-  !  (in,opt)  missing_value - A value that indicates missing values.
-  !  (in,opt)  range - The valid range of a variable. (Not used in MOM.)
-  !  (in,opt)  mask_variant - If true a logical mask must be provided with post_data calls.  (Not used in MOM.)
-  !  (in,opt)  do_not_log - If true, do not log something. (Not used in MOM.)
-  !  (in,opt)  interp_method - No clue. (Not used in MOM.)
-  !  (in,opt)  tile_count - No clue. (Not used in MOM.)
+  integer :: register_static_field !< The returned diagnostic handle
+  character(len=*), intent(in) :: module_name !< Name of this module, usually "ice_model"
+  character(len=*), intent(in) :: field_name !< Name of the diagnostic field
+  type(axesType),   intent(in) :: axes       !< The axis group for this field
+  character(len=*), optional, intent(in) :: long_name !< Long name of a field.
+  character(len=*), optional, intent(in) :: units !< Units of a field.
+  character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
+  real,             optional, intent(in) :: missing_value !< A value that indicates missing values.
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in MOM?)
+  logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
+                                                         !! post_data calls (not used in MOM?)
+  logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in MOM?)
+  character(len=*), optional, intent(in) :: interp_method !< If 'none' indicates the field should not
+                                                         !! be interpolated as a scalar
+  integer,          optional, intent(in) :: tile_count   !< no clue (not used in SIS?)
+
+  ! Local variables
   character(len=240) :: mesg
   real :: MOM_missing_value
   integer :: primary_id, fms_id
-  type(SIS_diag_ctrl), pointer :: diag_cs
+  type(SIS_diag_ctrl), pointer :: diag_cs !< A structure that is used to regulate diagnostic output
 
   MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
@@ -734,10 +712,13 @@ function register_static_field(module_name, field_name, axes, &
 
 end function register_static_field
 
+!> Add a description of an option to the documentation file
 subroutine describe_option(opt_name, value, diag_CS)
-  character(len=*),    intent(in) :: opt_name, value
-  type(SIS_diag_ctrl), intent(in) :: diag_CS
+  character(len=*),    intent(in) :: opt_name !< The name of the option
+  character(len=*),    intent(in) :: value    !< The value of the option
+  type(SIS_diag_ctrl), intent(in) :: diag_CS  !< Diagnostic being documented
 
+  ! Local variables
   character(len=240) :: mesg
   integer :: start_ind = 1, end_ind, len_ind
 
@@ -747,39 +728,43 @@ subroutine describe_option(opt_name, value, diag_CS)
   write(diag_CS%doc_unit, '(a)') trim(mesg)
 end subroutine describe_option
 
-function i2s(a,n_in)
-!   "Convert the first n elements of an integer array to a string."
-    integer, dimension(:), intent(in) :: a
-    integer, optional    , intent(in) :: n_in
-    character(len=15) :: i2s
+!> Convert the first n elements (up to 3) of an integer array to an underscore delimited string.
+function i2s(a, n_in)
+  integer, dimension(:), intent(in) :: a    !< The array of integers to translate
+  integer, optional    , intent(in) :: n_in !< The number of elements to translate, by default all
+  character(len=15) :: i2s !< The returned string
 
-    character(len=15) :: i2s_temp
-    integer :: i,n
+  ! Local variables
+  character(len=15) :: i2s_temp
+  integer :: i,n
 
-    n=size(a)
-    if(present(n_in)) n = n_in
+  n=size(a)
+  if(present(n_in)) n = n_in
 
-    i2s = ''
-    do i=1,n
-       write (i2s_temp, '(I4.4)') a(i)
-       i2s = trim(i2s) //'_'// trim(i2s_temp)
-    enddo
-    i2s = adjustl(i2s)
+  i2s = ''
+  do i=1,n
+     write (i2s_temp, '(I4.4)') a(i)
+     i2s = trim(i2s) //'_'// trim(i2s_temp)
+  enddo
+  i2s = adjustl(i2s)
 end function i2s
 
+!> Initialize the SIS diag_mediator and opens the available diagnostics file.
 subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg, &
                                   doc_file_dir)
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
-  type(param_file_type),      intent(in)    :: param_file
-  type(SIS_diag_ctrl),        intent(inout) :: diag_cs
-  character(len=*), optional, intent(in)    :: component
-  character(len=*), optional, intent(out)   :: err_msg
-  character(len=*), optional, intent(in)    :: doc_file_dir
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(param_file_type),      intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl),        intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
+  character(len=*), optional, intent(in)    :: component !< An opitonal component name
+  character(len=*), optional, intent(out)   :: err_msg !< A string for a returned error message
+  character(len=*), optional, intent(in)    :: doc_file_dir !< A directory in which to create the file
 
   ! This subroutine initializes the diag_mediator and the diag_manager.
   ! The grid type should have its dimensions set by this point, but it
   ! is not necessary that the metrics and axis labels be set up yet.
+
+  ! Local variables
   integer :: ios, new_unit
   logical :: opened, new_file
   character(len=8)   :: this_pe
@@ -849,10 +834,11 @@ end subroutine SIS_diag_mediator_init
 
 subroutine diag_masks_set(G, IG, missing_value, diag_cs)
 ! Setup the 2d masks for diagnostics
-  type(SIS_hor_grid_type), target, intent(in)    :: G
-  type(ice_grid_type),             intent(inout) :: IG
-  real,                            intent(in)    :: missing_value
-  type(SIS_diag_ctrl),             intent(inout) :: diag_cs
+  type(SIS_hor_grid_type), target, intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),             intent(inout) :: IG  !< The sea-ice specific grid type
+  real,                            intent(in)    :: missing_value !< A fill value for missing points
+  type(SIS_diag_ctrl),             intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
+
   ! Local variables
   integer :: i, j, k, NkIce, CatIce
 
@@ -905,8 +891,9 @@ subroutine diag_masks_set(G, IG, missing_value, diag_cs)
 
 end subroutine diag_masks_set
 
+!> Prevent the registration of additional diagnostics, so that the creation of files can occur
 subroutine SIS_diag_mediator_close_registration(diag_CS)
-  type(SIS_diag_ctrl), intent(inout) :: diag_CS
+  type(SIS_diag_ctrl), intent(inout) :: diag_CS !< A structure that is used to regulate diagnostic output
 
   if (diag_CS%doc_unit > -1) then
     close(diag_CS%doc_unit) ; diag_CS%doc_unit = -2
@@ -914,9 +901,10 @@ subroutine SIS_diag_mediator_close_registration(diag_CS)
 
 end subroutine SIS_diag_mediator_close_registration
 
+!> Deallocate memory associated with the SIS diag mediator
 subroutine SIS_diag_mediator_end(time, diag_CS)
-  type(time_type), intent(in) :: time
-  type(SIS_diag_ctrl), intent(inout) :: diag_CS
+  type(time_type), intent(in) :: time !< The current model time
+  type(SIS_diag_ctrl), intent(inout) :: diag_CS !< A structure that is used to regulate diagnostic output
 
   if (diag_CS%doc_unit > -1) then
     close(diag_CS%doc_unit) ; diag_CS%doc_unit = -3
@@ -924,15 +912,13 @@ subroutine SIS_diag_mediator_end(time, diag_CS)
 
 end subroutine SIS_diag_mediator_end
 
-! Allocate a new diagnostic id, it may be necessary to expand the diagnostics
-! array.
+!> Allocate a new diagnostic id, noting that it may be necessary to expand the diagnostics array.
 function get_new_diag_id(diag_cs)
 
-  integer :: get_new_diag_id
-  type(SIS_diag_ctrl), intent(inout) :: diag_cs
-  ! Arguments:
-  !  (inout)   diag_cs  - diagnostics control structure
+  integer :: get_new_diag_id !< The returned ID for the new diagnostic
+  type(SIS_diag_ctrl), intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 
+  ! Local variables
   type(diag_type), dimension(:), allocatable :: tmp
   integer :: i
 
@@ -960,10 +946,11 @@ function get_new_diag_id(diag_cs)
 
 end function get_new_diag_id
 
+!> Test whether a logical test is true, and write a fatal error if it is false
 subroutine assert(logical_arg, msg)
 
-  logical, intent(in) :: logical_arg
-  character(len=*), intent(in) :: msg
+  logical, intent(in) :: logical_arg !< The logical tests
+  character(len=*), intent(in) :: msg !< An identifying error message.
 
   if (.not. logical_arg) then
     call SIS_error(FATAL, 'Assert failed: '//msg)
