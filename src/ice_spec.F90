@@ -40,16 +40,19 @@ namelist / ice_spec_nml / mcm_ice, do_leads, minimum_ice_concentration, &
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! get_sea_surface - get SST, ice concentration and thickness from data         !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> get_sea_surface obtains SST, ice concentration and thickness from data
 subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in_K)
-  type (time_type),                         intent(in)  :: Time
-  real, dimension(:, :),                    intent(out) :: ts
-  real, dimension(size(ts,1),size(ts,2),2), intent(out) :: cn
-  real, dimension(size(ts,1),size(ts,2)),   intent(out) :: iceh
-  type(domain2d),                 optional, intent(in)  :: ice_domain
-  type(domain2d),                 optional, intent(in)  :: ice_domain_end
-  logical,                        optional, intent(in)  :: ts_in_K
+  type (time_type),         intent(in)  :: Time !< The current model time
+  real, dimension(:, :),    intent(out) :: ts !< The surface temperature in degC or degK
+  real, dimension(size(ts,1),size(ts,2),2), &
+                            intent(out) :: cn !< The fractional ocean and ice concentration
+  real, dimension(size(ts,1),size(ts,2)), &
+                            intent(out) :: iceh !< The ice thickness in m
+  type(domain2d), optional, intent(in)  :: ice_domain !< The domain used to read this data
+  type(domain2d), optional, intent(in)  :: ice_domain_end !< If present reset the data override ice
+                                                   !! domain back to this one at the end of this routine
+  logical,        optional, intent(in)  :: ts_in_K !< If true, return the surface temperature in deg K.
+                                                   !! The default is true.
 
   real, dimension(size(ts,1),size(ts,2))                :: sst, icec
 
