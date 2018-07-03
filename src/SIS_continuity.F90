@@ -248,15 +248,18 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, IG, CS, LB)
 ! faces, and other related quantities.
 
   ! Local variables
-  real, dimension(SZIB_(G)) :: &
-    duhdu      ! Partial derivative of uh with u, in H m.
+!  real, dimension(SZIB_(G)) :: &
+!    duhdu      ! Partial derivative of uh with u, in H m.
   real, dimension(SZI_(G),SZJ_(G)) :: &
     htot, &    ! The total thickness summed across categories, in H.
     I_htot, &  ! The inverse of htot or 0, in H-1.
     hl, hr      ! Left and right face thicknesses, in H.
   real, dimension(SZIB_(G)) :: &
     uhtot      ! The total transports in H m2 s-1.
-  logical, dimension(SZIB_(G)) :: do_i
+  real :: CFL  ! The CFL number based on the local velocity and grid spacing, ND.
+  real :: curv_3 ! A measure of the thickness curvature over a grid length,
+                 ! with the same units as h_in.
+!  real :: h_marg ! The marginal thickness of a flux, in H.
   real :: dx_E, dx_W ! Effective x-grid spacings to the east and west, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
@@ -288,12 +291,31 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, IG, CS, LB)
 
   call cpu_clock_begin(id_clock_correct)
 
-  !$OMP parallel do default(shared) private(do_i,uhtot)
+  !$OMP parallel do default(shared) private(uhtot)
   do j=jsh,jeh
-    do I=ish-1,ieh ; do_i(I) = .true. ; enddo
     ! Set uhtot and duhdu.
-    call zonal_flux_layer(u(:,j), htot(:,j), hL(:,j), hR(:,j), uhtot, duhdu, &
-                          dt, G, j, ish, ieh, do_i, CS%vol_CFL)
+    do I=ish-1,ieh
+      ! Set new values of uh and duhdu.
+      if (u(I,j) > 0.0) then
+        if (CS%vol_CFL) then ; CFL = (u(I,j) * dt) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+        else ; CFL = u(I,j) * dt * G%IdxT(i,j) ; endif
+        curv_3 = hL(i,j) + hR(i,j) - 2.0*htot(i,j)
+        uhtot(I) = G%dy_Cu(I,j) * u(I,j) * &
+            (hR(i,j) + CFL * (0.5*(hL(i,j) - hR(i,j)) + curv_3*(CFL - 1.5)))
+!        h_marg = hR(i,j) + CFL * ((hL(i,j) - hR(i,j)) + 3.0*curv_3*(CFL - 1.0))
+      elseif (u(I,j) < 0.0) then
+        if (CS%vol_CFL) then ; CFL = (-u(I,j) * dt) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+        else ; CFL = -u(I,j) * dt * G%IdxT(i+1,j) ; endif
+        curv_3 = hL(i+1,j) + hR(i+1,j) - 2.0*htot(i+1,j)
+        uhtot(I) = G%dy_Cu(I,j) * u(I,j) * &
+            (hL(i+1,j) + CFL * (0.5*(hR(i+1,j)-hL(i+1,j)) + curv_3*(CFL - 1.5)))
+!        h_marg = hL(i+1) + CFL * ((hR(i+1,j)-hL(i+1,j)) + 3.0*curv_3*(CFL - 1.0))
+      else
+        uhtot(I) = 0.0
+!        h_marg = 0.5 * (hl(i+1,j) + hr(i,j))
+      endif
+!      duhdu(I,j) = G%dy_Cu(I,j) * h_marg ! * visc_rem(I)
+    enddo
 
     ! Partition the transports by category in proportion to their relative masses.
     do k=1,nz ; do I=ish-1,ieh
@@ -308,58 +330,6 @@ subroutine zonal_mass_flux(u, h_in, uh, dt, G, IG, CS, LB)
   call cpu_clock_end(id_clock_correct)
 
 end subroutine zonal_mass_flux
-
-!> zonal_flux_layer evaluates the zonal mass or volume fluxes in single
-!! j-row of ice.
-subroutine zonal_flux_layer(u, h, hL, hR, uh, duhdu, dt, G, j, &
-                            ish, ieh, do_i, vol_CFL)
-  type(SIS_hor_grid_type),      intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZIB_(G)),    intent(in)    :: u   !< Zonal velocity, in m s-1.
-  real, dimension(SZI_(G)),     intent(in)    :: h   !< Category thickness used to calculate the fluxes, in H.
-  real, dimension(SZI_(G)),     intent(in)    :: hL  !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G)),     intent(in)    :: hR  !< Right edge value of thickness reconstruction, in H
-  real, dimension(SZIB_(G)),    intent(inout) :: uh  !< The zonal mass or volume transport, in H m2 s-1.
-  real, dimension(SZIB_(G)),    intent(inout) :: duhdu !< The partial derivative of uh with u, in H m.
-  real,                         intent(in)    :: dt  !< Time increment in s
-  integer,                      intent(in)    :: j   !< The j-index to work on
-  integer,                      intent(in)    :: ish !< The starting i-index to work on
-  integer,                      intent(in)    :: ieh !< The ending i-index to work on
-  logical, dimension(SZIB_(G)), intent(in)    :: do_i !< A logical flag indiciating which i values to work on.
-  logical,                      intent(in)    :: vol_CFL !< If true, rescale the ratio of face areas to
-                                                     !! the cell areas when estimating the CFL number.
-!   This subroutines evaluates the zonal mass or volume fluxes in a layer.
-
-  ! Local variables
-  real :: CFL  ! The CFL number based on the local velocity and grid spacing, ND.
-  real :: curv_3 ! A measure of the thickness curvature over a grid length,
-                 ! with the same units as h_in.
-  real :: h_marg ! The marginal thickness of a flux, in H.
-  integer :: i
-
-  do I=ish-1,ieh ; if (do_i(I)) then
-    ! Set new values of uh and duhdu.
-    if (u(I) > 0.0) then
-      if (vol_CFL) then ; CFL = (u(I) * dt) * (G%dy_Cu(I,j) * G%IareaT(i,j))
-      else ; CFL = u(I) * dt * G%IdxT(i,j) ; endif
-      curv_3 = hL(i) + hR(i) - 2.0*h(i)
-      uh(I) = G%dy_Cu(I,j) * u(I) * &
-          (hR(i) + CFL * (0.5*(hL(i) - hR(i)) + curv_3*(CFL - 1.5)))
-      h_marg = hR(i) + CFL * ((hL(i) - hR(i)) + 3.0*curv_3*(CFL - 1.0))
-    elseif (u(I) < 0.0) then
-      if (vol_CFL) then ; CFL = (-u(I) * dt) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
-      else ; CFL = -u(I) * dt * G%IdxT(i+1,j) ; endif
-      curv_3 = hL(i+1) + hR(i+1) - 2.0*h(i+1)
-      uh(I) = G%dy_Cu(I,j) * u(I) * &
-          (hL(i+1) + CFL * (0.5*(hR(i+1)-hL(i+1)) + curv_3*(CFL - 1.5)))
-      h_marg = hL(i+1) + CFL * ((hR(i+1)-hL(i+1)) + 3.0*curv_3*(CFL - 1.0))
-    else
-      uh(I) = 0.0
-      h_marg = 0.5 * (hl(i+1) + hr(i))
-    endif
-    duhdu(I) = G%dy_Cu(I,j) * h_marg ! * visc_rem(I)
-  endif ; enddo
-
-end subroutine zonal_flux_layer
 
 !> Calculates the mass or volume fluxes through the meridional
 !! faces, and other related quantities.
@@ -389,7 +359,10 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, IG, CS, LB)
     hl, hr     ! Left and right face thicknesses, in m.
   real, dimension(SZI_(G)) :: &
     vhtot      ! The total transports in H m2 s-1.
-  logical, dimension(SZI_(G)) :: do_i
+  real :: CFL ! The CFL number based on the local velocity and grid spacing, ND.
+  real :: curv_3 ! A measure of the thickness curvature over a grid length,
+                 ! with the same units as h_in.
+  real :: h_marg ! The marginal thickness of a flux, in m.
   real :: dy_N, dy_S ! Effective y-grid spacings to the north and south, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
@@ -421,12 +394,30 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, IG, CS, LB)
   call cpu_clock_end(id_clock_update)
 
   call cpu_clock_begin(id_clock_correct)
-  !$OMP parallel do default(shared) private(do_i,vhtot)
+  !$OMP parallel do default(shared) private(vhtot)
   do J=jsh-1,jeh
-    do i=ish,ieh ; do_i(i) = .true. ; enddo
     ! This sets vh and dvhdv.
-    call merid_flux_layer(v(:,J), htot, hL, hR, vhtot, dvhdv, &
-                          dt, G, J, ish, ieh, do_i, CS%vol_CFL)
+    do i=ish,ieh
+      if (v(i,J) > 0.0) then
+        if (CS%vol_CFL) then ; CFL = (v(i,J) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+        else ; CFL = v(i,J) * dt * G%IdyT(i,j) ; endif
+        curv_3 = hL(i,j) + hR(i,j) - 2.0*htot(i,j)
+        vhtot(i) = G%dx_Cv(i,J) * v(i,J) * ( hR(i,j) + CFL * &
+            (0.5*(hL(i,j) - hR(i,j)) + curv_3*(CFL - 1.5)) )
+       ! h_marg = hR(i,j) + CFL * ((hL(i,j) - hR(i,j)) + 3.0*curv_3*(CFL - 1.0))
+      elseif (v(i,J) < 0.0) then
+        if (CS%vol_CFL) then ; CFL = (-v(i,J) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+        else ; CFL = -v(i,J) * dt * G%IdyT(i,j+1) ; endif
+        curv_3 = hL(i,j+1) + hR(i,j+1) - 2.0*htot(i,j+1)
+        vhtot(i) = G%dx_Cv(i,J) * v(i,J) * ( hL(i,j+1) + CFL * &
+            (0.5*(hR(i,j+1)-hL(i,j+1)) + curv_3*(CFL - 1.5)) )
+       ! h_marg = hL(i,j+1) + CFL * ((hR(i,j+1)-hL(i,j+1)) + 3.0*curv_3*(CFL - 1.0))
+      else
+        vhtot(i) = 0.0
+        ! h_marg = 0.5 * (hl(i,j+1) + hr(i,j))
+      endif
+      ! dvhdv(i) = G%dx_Cv(i,J) * h_marg ! * visc_rem(i)
+    enddo
 
     ! Partition the transports by category in proportion to their relative masses.
     do k=1,nz ; do i=ish,ieh
@@ -441,59 +432,6 @@ subroutine meridional_mass_flux(v, h_in, vh, dt, G, IG, CS, LB)
   call cpu_clock_end(id_clock_correct)
 
 end subroutine meridional_mass_flux
-
-!> merid_flux_layer evaluates the meridional mass or volume fluxes in single
-!! J-row of ice.
-subroutine merid_flux_layer(v, h, hL, hR, vh, dvhdv, dt, G, J, &
-                            ish, ieh, do_i, vol_CFL)
-  type(SIS_hor_grid_type),          intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZI_(G)),         intent(in)    :: v   !< Meridional velocity, in m s-1.
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h   !< Category thickness used to calculate the fluxes, in H.
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: hL  !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: hR  !< Right edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G)),         intent(inout) :: vh  !< The meridional mass or volume transport, in H m2 s-1.
-  real, dimension(SZI_(G)),         intent(inout) :: dvhdv !< The partial derivative of vh with v, in H m.
-  real,                             intent(in)    :: dt  !< Time increment in s
-  integer,                          intent(in)    :: J   !< The j-index to work on
-  integer,                          intent(in)    :: ish !< The starting i-index to work on
-  integer,                          intent(in)    :: ieh !< The ending i-index to work on
-  logical, dimension(SZI_(G)),      intent(in)    :: do_i !< A logical flag indiciating which i values to work on.
-  logical,                          intent(in)    :: vol_CFL !< If true, rescale the ratio of face areas to
-                                                     !! the cell areas when estimating the CFL number.
-!   This subroutines evaluates the meridional mass or volume fluxes in a layer.
-
-  ! Local variables
-  real :: CFL ! The CFL number based on the local velocity and grid spacing, ND.
-  real :: curv_3 ! A measure of the thickness curvature over a grid length,
-                 ! with the same units as h_in.
-  real :: h_marg ! The marginal thickness of a flux, in m.
-  integer :: i
-
-  do i=ish,ieh ; if (do_i(i)) then
-    if (v(i) > 0.0) then
-      if (vol_CFL) then ; CFL = (v(i) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j))
-      else ; CFL = v(i) * dt * G%IdyT(i,j) ; endif
-      curv_3 = hL(i,j) + hR(i,j) - 2.0*h(i,j)
-      vh(i) = G%dx_Cv(i,J) * v(i) * ( hR(i,j) + CFL * &
-          (0.5*(hL(i,j) - hR(i,j)) + curv_3*(CFL - 1.5)) )
-      h_marg = hR(i,j) + CFL * ((hL(i,j) - hR(i,j)) + &
-                                  3.0*curv_3*(CFL - 1.0))
-    elseif (v(i) < 0.0) then
-      if (vol_CFL) then ; CFL = (-v(i) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
-      else ; CFL = -v(i) * dt * G%IdyT(i,j+1) ; endif
-      curv_3 = hL(i,j+1) + hR(i,j+1) - 2.0*h(i,j+1)
-      vh(i) = G%dx_Cv(i,J) * v(i) * ( hL(i,j+1) + CFL * &
-          (0.5*(hR(i,j+1)-hL(i,j+1)) + curv_3*(CFL - 1.5)) )
-      h_marg = hL(i,j+1) + CFL * ((hR(i,j+1)-hL(i,j+1)) + &
-                                    3.0*curv_3*(CFL - 1.0))
-    else
-      vh(i) = 0.0
-      h_marg = 0.5 * (hl(i,j+1) + hr(i,j))
-    endif
-    dvhdv(i) = G%dx_Cv(i,J) * h_marg ! * visc_rem(i)
-  endif ; enddo
-
-end subroutine merid_flux_layer
 
 !> Calculate a piecewise parabolic thickness reconstruction in the x-direction.
 subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_2nd)
