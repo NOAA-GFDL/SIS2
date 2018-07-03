@@ -45,33 +45,34 @@ implicit none ; private
 
 public :: SIS_B_dyn_init, SIS_B_dynamics, SIS_B_dyn_end, SIS_B_dyn_register_restarts
 
+!> The control structure with parameters regulating B-grid ice dynamics
 type, public :: SIS_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
-    sig11 => NULL(), &  ! sig11, sig12, and sig22 are the three elements of
-    sig12 => NULL(), &  ! the stress tensor, all in units of Pa m.
-    sig22 => NULL()
+    sig11 => NULL(), &  !< The xx component of the stress tensor in Pa m (or N m-1).
+    sig12 => NULL(), &  !< The xy and yx component of the stress tensor in Pa m (or N m-1).
+    sig22 => NULL()     !< The yy component of the stress tensor in Pa m (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
-  real :: p0 = 2.75e4         ! pressure constant (Pa)
-  real :: p0_rho              ! The pressure constant divided by ice density, N m kg-1.
-  real :: c0 = 20.0           ! another pressure constant
-  real :: cdw = 3.24e-3       ! ice/water drag coef. (nondim)
-  real :: blturn = 0.0        ! air/water surf. turning angle (degrees)
-  real :: EC = 2.0            ! yield curve axis ratio
-  real :: MIV_MIN =  1.0      ! min ice mass to do dynamics (kg/m^2)
-  real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
-  real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
-  logical :: specified_ice    ! If true, the sea ice is specified and there is
-                              ! no need for ice dynamics.
-  logical :: debug            ! If true, write verbose checksums for debugging purposes.
-  logical :: debug_redundant  ! If true, debug redundant points
-  integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
-                              ! for each slow time step.
-  real    :: dt_Rheo          ! The maximum sub-cycling time step for the rheology
-                              ! and momentum equations.
-  type(time_type), pointer :: Time !< A pointer to the ice model's clock.
-  type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
+  logical :: SLAB_ICE = .false. !< should we do old style GFDL slab ice?
+  real :: p0 = 2.75e4         !< Hibbler rheology pressure constant (Pa)
+  real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
+  real :: c0 = 20.0           !< another pressure constant
+  real :: cdw = 3.24e-3       !< ice/water drag coef. (nondim)
+  real :: blturn = 0.0        !< air/water surf. turning angle (degrees)
+  real :: EC = 2.0            !< yield curve axis ratio
+  real :: MIV_MIN =  1.0      !< min ice mass to do dynamics (kg/m^2)
+  real :: Rho_ocean = 1030.0  !< The nominal density of sea water, in kg m-3.
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  logical :: specified_ice    !< If true, the sea ice is specified and there is
+                              !! no need for ice dynamics.
+  logical :: debug            !< If true, write verbose checksums for debugging purposes.
+  logical :: debug_redundant  !< If true, debug redundant points
+  integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
+                              !! for each slow time step.
+  real    :: dt_Rheo          !< The maximum sub-cycling time step for the rheology
+                              !! and momentum equations.
+  type(time_type), pointer :: Time => NULL() !< A pointer to the ice model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                              !! timing of diagnostic output.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
