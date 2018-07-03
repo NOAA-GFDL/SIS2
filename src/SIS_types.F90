@@ -28,7 +28,6 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,   only : check_redundant_B, check_redundant_C
-use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 implicit none ; private

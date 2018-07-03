@@ -30,7 +30,7 @@ use MOM_file_parser, only : param_file_type
 use MOM_hor_index,   only : hor_index_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_sum_output_type, only : SIS_sum_out_CS
+use SIS_sum_output, only : SIS_sum_out_CS
 ! use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 
