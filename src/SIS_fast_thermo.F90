@@ -74,8 +74,8 @@ public :: redo_update_ice_model_fast, find_excess_fluxes
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
-  real, pointer, dimension(:,:,:) :: &
-    enth_prev, heat_in
+  real, pointer, dimension(:,:,:) :: enth_prev => NULL()
+  real, pointer, dimension(:,:,:) :: heat_in => NULL()
 
   logical :: debug_fast   ! If true, write verbose checksums of code that is
                           ! executed on fast ice PEs for debugging purposes.
@@ -1291,7 +1291,9 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
-  type(fast_thermo_CS),        pointer       :: CS
+  type(fast_thermo_CS),        pointer       :: CS   !< The control structure for the SIS_fast_thermo
+                                                     !! module that is initialized here
+
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1361,7 +1363,8 @@ end subroutine SIS_fast_thermo_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_fast_thermo_end deallocates any memory associated with this module.
 subroutine SIS_fast_thermo_end(CS)
-  type(fast_thermo_CS), pointer :: CS
+  type(fast_thermo_CS), pointer :: CS   !< The control structure for the SIS_slow_thermo
+                                        !! module that is deallocated here
 
   call SIS2_ice_thm_end(CS%ice_thm_CSp)
 

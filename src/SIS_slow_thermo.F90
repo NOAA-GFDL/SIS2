@@ -145,9 +145,9 @@ type slow_thermo_CS ; private
   integer :: n_calls = 0  ! The number of times update_ice_model_slow_down
                           ! has been called.
 
-  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
-                                   ! timing of diagnostic output.
+  type(time_type), pointer :: Time => NULL() ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() ! A structure that is used to
+                                   ! regulate the timing of diagnostic output.
 
   ! These are pointers to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
@@ -172,7 +172,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
                                                !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type), intent(in) :: IOF !< A structure containing fluxes from the ice to
                                                !! the ocean that are calculated by the ice model.
-  type(slow_thermo_CS),      pointer    :: CS
+  type(slow_thermo_CS),      pointer    :: CS  !< The control structure for the SIS_slow_thermo module
   type(SIS_hor_grid_type),   intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),       intent(in) :: IG  !< The sea-ice specific grid type
   real,                      intent(in) :: Idt_slow !< The inverse of the slow thermodynamic
@@ -319,12 +319,14 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
-  type(slow_thermo_CS),       pointer       :: CS
+  type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
                                                    !! (mostly fluxes) over the fast updates
-  type(total_sfc_flux_type),  pointer       :: XSF
+  type(total_sfc_flux_type),  pointer       :: XSF !< A structure of the excess fluxes between the
+                                                   !! atmosphere and the ice or ocean relative to
+                                                   !! those stored in TSF
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
@@ -571,7 +573,7 @@ end subroutine add_excess_fluxes
 subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
-  type(slow_thermo_CS),       pointer       :: CS
+  type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
@@ -626,7 +628,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                           ! the NkIce+1 (surface ocean layer) are both set to 0
                           ! for all tracers
 
-  type(EOS_type), pointer :: EOS
+  type(EOS_type), pointer :: EOS => NULL()
   real :: Cp_water
   real :: drho_dT(1), drho_dS(1), pres_0(1)
   real :: rho_ice     ! The nominal density of sea ice in kg m-3.
@@ -1336,8 +1338,11 @@ subroutine SIS_slow_thermo_init(Time, G, IG, param_file, diag, CS, tracer_flow_C
   type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
-  type(slow_thermo_CS),        pointer       :: CS
-  type(SIS_tracer_flow_control_CS), pointer  :: tracer_flow_CSp
+  type(slow_thermo_CS),        pointer       :: CS   !< The control structure for the SIS_slow_thermo
+                                                     !! module that is initialized here
+  type(SIS_tracer_flow_control_CS), &
+                               pointer       :: tracer_flow_CSp !< A structure that is used to
+                                                     !! orchestrate the calling ice tracer packages
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1489,9 +1494,13 @@ end subroutine SIS_slow_thermo_init
 !> SIS_slow_thermo_set_ptrs can be used to set one of several pointers that
 !! are in the slow_therm_CS.
 subroutine SIS_slow_thermo_set_ptrs(CS, transport_CSp, sum_out_CSp)
-  type(slow_thermo_CS), pointer :: CS
-  type(SIS_transport_CS), optional, pointer :: transport_CSp
-  type(SIS_sum_out_CS),   optional, pointer :: sum_out_CSp
+  type(slow_thermo_CS), pointer :: CS   !< The control structure for the SIS_slow_thermo module
+  type(SIS_transport_CS), &
+              optional, pointer :: transport_CSp !< This pointer will be set to the control structure
+                                        !! for ice transport
+  type(SIS_sum_out_CS), &
+              optional, pointer :: sum_out_CSp !< This pointer will be set to the control structure
+                                        !! for globally summed diagnostics
 
   if (present(transport_CSp)) CS%SIS_transport_CSp => transport_CSp
   if (present(sum_out_CSp)) CS%sum_output_CSp => sum_out_CSp
@@ -1501,7 +1510,8 @@ end subroutine SIS_slow_thermo_set_ptrs
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_slow_thermo_end deallocates any memory associated with this module.
 subroutine SIS_slow_thermo_end (CS)
-  type(slow_thermo_CS), pointer :: CS
+  type(slow_thermo_CS), pointer :: CS   !< The control structure for the SIS_slow_thermo module
+                                        !! that is deallocated here
 
   call SIS2_ice_thm_end(CS%ice_thm_CSp)
 
