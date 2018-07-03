@@ -155,25 +155,13 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
-  ! Arguments:
-  !  (in)      Ice - The ice data type
-  !  (in)      G - The ocean's grid structure.
-  !  (in)      IG - Ice model's grid structure
-  !  (in)      param_file - A structure indicating the open file to parse for
-  !                         model parameter values.
-  !  (in/out)  CS - A pointer that is set to point to the control structure
-  !                 for the ice age tracer
-  !  (in)      diag - A structure that is used to regulate diagnostic output.
-  !  (in/out)  TrReg - A pointer that is set to point to the control structure
-  !                  for the tracer advection and diffusion module.
-  !  (in)      restart_file - Name of the restart file for the ice model.
 
   ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mdl = "ice_age_tracer" ! This module's name.
   character(len=200) :: inputdir ! The directory where the input files are.
   character(len=48)  :: var_name ! The variable's name.
-  real, dimension(:,:,:), pointer :: ocean_BC_ptr, snow_BC_ptr
+  real, dimension(:,:,:), pointer :: ocean_BC_ptr => NULL(), snow_BC_ptr => NULL()
   integer :: isc, iec, jsc, jec, k, m, tr
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -285,13 +273,7 @@ subroutine initialize_ice_age_tracer( day, G, IG, CS, is_restart )
   !   This subroutine initializes the CS%ntr tracer fields in tr(:,:,:,:)
   ! and it sets up the tracer output.
 
-  ! Arguments: restart - .true. if the fields have already been read from
-  !                     a restart file.
-  !  (in)      day - Time of the start of the run.
-  !  (in)      G - The ocean's grid structure.
-  !  (in)      IG - The ice model's grid structure.
-  !  (in/out)  CS - The control structure returned by a previous call to
-  !                 register_ideal_age_tracer.
+  ! Local variables
   real, parameter   :: missing = -1.0e34
   character(len=24) :: name     ! A variable's name in a NetCDF file.
   character(len=72) :: longname ! The long name of that variable.
@@ -361,14 +343,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
                            intent(in) :: mi_old  !< Mass of ice in a given category in kg m-2 at the
                                              !! beginning of the timestep
 
-  ! Arguments:
-  !  (in)      dt - The amount of time covered by this call, in s.
-  !  (in)      mi_old - Mass of ice at the beginning of the ice model timestep
-  !  (in)      G - The ocean model's grid structure.
-  !  (in)      IG - The ice model's grid structure.
-  !  (in)      CS - The control structure returned by a previous call to
-  !                 register_ideal_age_tracer.
-
+  ! Local variables
   real :: Isecs_per_year  ! The number of seconds in a year.
   real :: year            ! The time in years.
   real :: dt_year         ! Timestep in units of years
@@ -465,21 +440,12 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
   character(len=*), dimension(:), intent(out) :: names !< The names of the summed tracer stocks.
   character(len=*), dimension(:), intent(out) :: units !< The units of the tracer stocks
 
-  integer ice_age_stock
+  integer :: ice_age_stock !<  the number of stocks calculated here.
   ! This function calculates the mass-weighted integral of all tracer stocks,
   ! returning the number of stocks it has calculated.  If the stock_index
   ! is present, only the stock corresponding to that coded index is returned.
 
-  ! Arguments: stocks - the mass-weighted integrated amount of each tracer,
-  !                     in kg times concentration units.
-  !  (in)      G - The ocean's grid structure.
-  !  (in)      G - The ice model's grid structure.
-  !  (in)      CS - The control structure returned by a previous call to
-  !                 register_ideal_age_tracer.
-  !  (out)     names - the names of the stocks calculated.
-  !  (out)     units - the units of the stocks calculated.
-  ! Return value: the number of stocks calculated here.
-
+  ! Local variables
   integer :: i, j, k, m, tr, nstocks
   integer :: isc, iec, jsc, jec
   real :: avg_tr
