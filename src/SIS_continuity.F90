@@ -61,22 +61,23 @@ public ice_continuity, SIS_continuity_init, SIS_continuity_end
 
 integer :: id_clock_update, id_clock_correct
 
+!> The control structure with parameters regulating the continuity solver
 type, public :: SIS_continuity_CS ; private
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
-                             ! timing of diagnostic output.
-  logical :: use_upwind2d    ! If true, use the non-split upwind scheme that was
-                             ! used in older versions of SIS.
-  logical :: upwind_1st      ! If true, use a directionally-split first-order
-                             ! upwind scheme.
-  logical :: monotonic       ! If true, use the Colella & Woodward monotonic
-                             ! limiter; otherwise use a simple positive
-                             ! definite limiter.
-  logical :: simple_2nd      ! If true, use a simple second order (arithmetic
-                             ! mean) interpolation of the edge values instead
-                             ! of the higher order interpolation.
-  logical :: vol_CFL         ! If true, use the ratio of the open face lengths
-                             ! to the tracer cell areas when estimating CFL
-                             ! numbers.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
+                             !! timing of diagnostic output.
+  logical :: use_upwind2d    !< If true, use the non-split upwind scheme that was
+                             !! used in older versions of SIS.
+  logical :: upwind_1st      !< If true, use a directionally-split first-order
+                             !! upwind scheme.
+  logical :: monotonic       !< If true, use the Colella & Woodward monotonic
+                             !! limiter; otherwise use a simple positive
+                             !! definite limiter.
+  logical :: simple_2nd      !< If true, use a simple second order (arithmetic
+                             !! mean) interpolation of the edge values instead
+                             !! of the higher order interpolation.
+  logical :: vol_CFL         !< If true, use the ratio of the open face lengths
+                             !! to the tracer cell areas when estimating CFL
+                             !! numbers.
 end type SIS_continuity_CS
 
 type :: loop_bounds_type ; private
