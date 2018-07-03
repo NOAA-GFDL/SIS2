@@ -55,70 +55,74 @@ implicit none ; private
 public :: SIS_C_dyn_init, SIS_C_dynamics, SIS_C_dyn_end
 public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
 
+!> The control structure with parameters regulating C-grid ice dynamics
 type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
-    str_t, &  ! The tension stress tensor component, in Pa m.
-    str_d, &  ! The divergence stress tensor component, in Pa m.
-    str_s     ! The shearing stress tensor component (cross term), in Pa m.
+    str_t, &  !< The tension stress tensor component, in Pa m.
+    str_d, &  !< The divergence stress tensor component, in Pa m.
+    str_s     !< The shearing stress tensor component (cross term), in Pa m.
 
   ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. ! Indicate whether to do old style GFDL slab ice
-  real :: p0 = 2.75e4         ! pressure constant (Pa)
-  real :: p0_rho              ! The pressure constant divided by ice density, N m kg-1.
-  real :: c0 = 20.0           ! another pressure constant
-  real :: cdw = 3.24e-3       ! ice/water drag coef. (nondim)
-  real :: EC = 2.0            ! yield curve axis ratio
-  real :: Rho_ocean = 1030.0  ! The nominal density of sea water, in kg m-3.
-  real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
-  real :: drag_bg_vel2 = 0.0  ! A background (subgridscale) velocity for drag
-                              ! with the ocean squared, in m2 s-2.
-  real :: min_ocn_inertial_h = 0. ! A minimum ocean thickness used to limit the viscous coupling
-                              ! rate implied for the ocean by the ice-ocean stress.
-  real :: Tdamp   ! The damping timescale of the stress tensor components
-                  ! toward their equilibrium solution due to the elastic terms,
-                  ! in s.
-  real :: del_sh_min_scale = 2.0 ! A scaling factor for the minimum permitted
-                              ! value of minimum shears used in the denominator
-                              ! of the stress equations, nondim.  I suspect that
-                              ! this needs to be greater than 1.
-  real    :: CFL_trunc        ! Velocity components will be truncated when they
-                              ! are large enough that the corresponding CFL number
-                              ! exceeds this value, nondim.
-  logical :: CFL_check_its    ! If true, check the CFL number for every iteration
-                              ! of the rheology solver; otherwise only check the
-                              ! final velocities that are used for transport.
-  logical :: specified_ice    ! If true, the sea ice is specified and there is
-                              ! no need for ice dynamics.
-  logical :: debug            ! If true, write verbose checksums for debugging purposes.
-  logical :: debug_EVP        ! If true, write out verbose debugging data for each of
-                              ! the steps within the EVP solver.
-  logical :: debug_redundant  ! If true, debug redundant points.
-  logical :: project_drag_vel ! If true, project forward the ice velocity used
-                              ! in the drag calculation to avoid an instability
-                              ! that can occur when an finite stress is applied
-                              ! to thin ice moving with the velocity of the ocean.
-  logical :: project_ci       ! If true, project the ice concentration and
-                              ! related ice strength changes due to the convergent
-                              ! or divergent ice flow.
-  logical :: weak_coast_stress = .false.
-  logical :: weak_low_shear = .false.
-  integer :: evp_sub_steps    ! The number of iterations in the EVP dynamics
-                              ! for each slow time step.
-  real    :: dt_Rheo           ! The maximum sub-cycling time step for the EVP dynamics.
-  type(time_type), pointer :: Time !< A pointer to the ice model's clock.
-  type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
+  logical :: SLAB_ICE = .false. !< If true do ancient GFDL slab ice that drifts with the ocean
+  real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology (Pa)
+  real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
+  real :: c0 = 20.0           !< another pressure constant
+  real :: cdw = 3.24e-3       !< ice/water drag coef. (nondim)
+  real :: EC = 2.0            !< yield curve axis ratio
+  real :: Rho_ocean = 1030.0  !< The nominal density of sea water, in kg m-3.
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag
+                              !< with the ocean squared, in m2 s-2.
+  real :: min_ocn_inertial_h = 0. !< A minimum ocean thickness used to limit the viscous coupling
+                              !! rate implied for the ocean by the ice-ocean stress.
+  real :: Tdamp               !< The damping timescale of the stress tensor components toward
+                              !! their equilibrium solution due to the elastic terms, in s.
+  real :: del_sh_min_scale = 2.0 !< A scaling factor for the minimum permitted value of minimum
+                              !! shears used in the denominator of the stress equations, nondim.
+                              !  I suspect that this needs to be greater than 1. -RWH
+  real    :: CFL_trunc        !< Velocity components will be truncated when they are large enough
+                              !! that the corresponding CFL number exceeds this value, nondim.
+  logical :: CFL_check_its    !< If true, check the CFL number for every iteration
+                              !! of the rheology solver; otherwise only check the
+                              !! final velocities that are used for transport.
+  logical :: specified_ice    !< If true, the sea ice is specified and there is
+                              !! no need for ice dynamics.
+  logical :: debug            !< If true, write verbose checksums for debugging purposes.
+  logical :: debug_EVP        !< If true, write out verbose debugging data for each of
+                              !! the steps within the EVP solver.
+  logical :: debug_redundant  !< If true, debug redundant points.
+  logical :: project_drag_vel !< If true, project forward the ice velocity used in the drag
+                              !! calculation to avoid an instability that can occur when an finite
+                              !! stress is applied to thin ice moving with the velocity of the ocean.
+  logical :: project_ci       !< If true, project the ice concentration and
+                              !! related ice strength changes due to the convergent
+                              !! or divergent ice flow.
+  logical :: weak_coast_stress = .false. !< If true, do not use land masks in determining the area
+                              !! for stress convergence, which acts to weaken the stress-driven
+                              !! acceleation in coastal points.
+  logical :: weak_low_shear = .false. !< If true, the divergent stresses go toward 0 in the C-grid
+                              !! dynamics when the shear magnitudes are very weak.
+                              !! Otherwise they go to -P_ice.  This setting is temporary.
+  integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
+                              !! for each slow time step.
+  real    :: dt_Rheo          !< The maximum sub-cycling time step for the EVP dynamics.
+  type(time_type), pointer :: Time => NULL() !< A pointer to the ice model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                               !! timing of diagnostic output.
-  integer, pointer :: ntrunc  ! The number of times the velocity has been truncated
-                              ! since the last call to write_ice_statistics.
-  character(len = 200) :: u_trunc_file ! The complete path to files in which a
-  character(len = 200) :: v_trunc_file ! column's worth of accelerations are
-                                       ! written if velocity truncations occur.
-  integer :: u_file, v_file ! The unit numbers for opened u- or v- truncation
-                            ! files, or -1 if they have not yet been opened.
-  integer :: cols_written   ! The number of columns whose output has been
-                            ! written by this PE during the current run.
-  integer :: max_writes     ! The maximum number of times any PE can write out
-                            ! a column's worth of accelerations during a run.
+  integer, pointer :: ntrunc => NULL() !< The number of times the velocity has been truncated
+                              !! since the last call to write_ice_statistics.
+  character(len = 200) :: u_trunc_file !< The complete path to the file in which a column's worth
+                              !! of u-accelerations are written if velocity truncations occur.
+  character(len = 200) :: v_trunc_file !< The complete path to the file in which a column's worth
+                              !! of v-accelerations are written if velocity truncations occur.
+  integer :: u_file = -1      !< The unit number for an opened u-truncation file, or -1 if it has
+                              !! not been opened.
+  integer :: v_file = -1      !< The unit number for an opened v-truncation file, or -1 if it has
+                              !! not been opened.
+  integer :: cols_written     !< The number of columns whose output has been
+                              !! written by this PE during the current run.
+  integer :: max_writes       !< The maximum number of times any PE can write out
+                              !! a column's worth of accelerations during a run.
 
   logical :: FirstCall = .true.
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
@@ -151,18 +155,9 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_C_dyn_CS),          pointer       :: CS   !< The control structure for this module
-  integer, target, optional,   intent(inout) :: ntrunc !< The integer that stores the number of times
+  integer,   target, optional, intent(inout) :: ntrunc !< The integer that stores the number of times
                                                      !! the velocity has been truncated since the
                                                      !! last call to write_ice_statistics.
-! Arguments: Time - The current model time.
-!  (in)      G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (in)      diag - A structure that is used to regulate diagnostic output.
-!  (in/out)  CS - A pointer that is set to point to the control structure
-!                 for this module.
-!  (in/out,opt)  ntrunc - The integer that stores the number of times the velocity
-!                     has been truncated since the last call to write_ice_statistics.
 
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
@@ -494,22 +489,8 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
                                                             !! dynamics are to be advanced, in s.
   type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
-! Arguments: ci - The sea ice concentration, nondim.
-!  (in)      msnow - The mass per unit total area (ice covered and ice free)
-!                    of the snow, in kg m-2.
-!  (in)      mice - The mass per unit total area (ice covered and ice free)
-!                   of the ice, in kg m-2.
-!  (inout)   ui - The zonal ice velocity, in m s-1.
-!  (inout)   vi - The meridional ice velocity, in m s-1.
-!  (in)      uo - The zonal ocean velocity, in m s-1.
-!  (in)      vo - The meridional ocean velocity, in m s-1.
-!  (in)      sea_lev - The height of the sea level, including contributions
-!                      from non-levitating ice from an earlier time step, in m.
-!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
-!                      advanced, in s.
-!  (in)      G - The ocean's grid structure.
-!  (in/out)  CS - A pointer to the control structure for this module.
 
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
     sh_Dt, &    ! sh_Dt is the horizontal tension (du/dx - dv/dy) including
                 ! all metric terms, in s-1.
@@ -1411,7 +1392,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
 end subroutine SIS_C_dynamics
 
-!> This subroutine ensures that the input stresses are not larger than could be justified by the ice
+!> limit_stresses ensures that the input stresses are not larger than could be justified by the ice
 !! pressure now, as the ice might have melted or been advected away during the thermodynamic and
 !! transport phases, or the ice flow convergence or divergence may have altered the ice concentration.
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
@@ -1425,21 +1406,13 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component, in Pa m.
   type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
   real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
-! Arguments: pres_mice - The ice internal pressure per unit column mass, in N m / kg.
-!  (in)      mice - The mass per unit total area (ice covered and ice free)
-!                   of the ice, in kg m-2.
-!  (in/out)  str_t - The tension stress tensor component, in Pa m.
-!  (in/out)  str_d - The divergence stress tensor component, in Pa m.
-!  (in/out)  str_s - The shearing stress tensor component (cross term), in Pa m.
-!  (in)      G - The ocean's grid structure.
-!  (in)      CS - A pointer to the control structure for this module.
-!  (in,opt)  limit - a factor by which the strength limits are changed.
 
 !   This subroutine ensures that the input stresses are not larger than could
 ! be justified by the ice pressure now, as the ice might have melted or been
 ! advected away during the thermodynamic and transport phases, or the
 ! ice flow convergence or divergence may have altered the ice concentration.
 
+  ! Local variables
   real :: pressure  ! The internal ice pressure at a point, in Pa.
   real :: pres_avg  ! The average of the internal ice pressures around a point, in Pa.
   real :: sum_area  ! The sum of ocean areas around a vorticity point, in m2.
@@ -1623,13 +1596,6 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
-
-! Arguments: G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (in/out)  CS - A pointer that is set to point to the control structure
-!                 for this module.
-!
 
 !   This subroutine registers the restart variables associated with the
 ! the ice dynamics.
