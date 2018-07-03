@@ -121,12 +121,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: rdg_vosh !< rate of ice volume shifted from level to ridged ice
 
   ! Local variables
-  real, dimension(:,:,:,:), pointer :: &
-    heat_ice=>NULL(), & ! Pointers to the enth_ice and enth_snow arrays from the
-    heat_snow=>NULL()   ! SIS tracer registry.  enth_ice is the enthalpy of the
-                        ! ice in each category and layer, while enth_snow is the
-                        ! enthalpy of the snow atop the ice in each category.
-                        ! Both are in enth_units (J or rescaled).
+  real, dimension(:,:,:,:), &
+    pointer :: heat_ice=>NULL() ! Pointer to the enth_ice array from the SIS tracer registry.
+                        ! Enth_ice is the enthalpy of the ice in each category and layer, in
+                        ! enth_units (J or rescaled).
+  real, dimension(:,:,:,:), &
+    pointer :: heat_snow=>NULL() ! Pointer to the enth_snow array from the SIS tracer registry.
+                        ! Enth_snow is the enthalpy of the snow atop the ice in each category, in
+                        ! enth_units (J or rescaled).
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
     uh_ice, &  ! Zonal fluxes of ice in H m2 s-1.
     uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
@@ -994,12 +996,14 @@ subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
   type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy in J.
 
   ! Local variables
-  real, dimension(:,:,:,:), pointer :: &
-    heat_ice=>NULL(), & ! Pointers to the enth_ice and enth_snow arrays from the
-    heat_snow=>NULL()   ! SIS tracer registry.  enth_ice is the enthalpy of the
-                        ! ice in each category and layer, while enth_snow is the
-                        ! enthalpy of the snow atop the ice in each category.
-                        ! Both are in enth_units (J or rescaled).
+  real, dimension(:,:,:,:), &
+    pointer :: heat_ice=>NULL() ! Pointer to the enth_ice array from the SIS tracer registry.
+                        ! Enth_ice is the enthalpy of the ice in each category and layer, in
+                        ! enth_units (J or rescaled).
+  real, dimension(:,:,:,:), &
+    pointer :: heat_snow=>NULL() ! Pointer to the enth_snow array from the SIS tracer registry.
+                        ! Enth_snow is the enthalpy of the snow atop the ice in each category, in
+                        ! enth_units (J or rescaled).
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
   real :: total, I_Nk
   integer :: i, j, k, m, isc, iec, jsc, jec, nLay

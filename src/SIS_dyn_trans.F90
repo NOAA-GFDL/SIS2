@@ -127,8 +127,8 @@ type dyn_trans_CS ; private
                           ! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
 
-  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+  type(time_type), pointer :: Time => NULL() ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1

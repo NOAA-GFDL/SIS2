@@ -39,7 +39,7 @@ type, public :: SIS_sum_out_CS ! ; private
                                 !! time that write_ice_statistics was called, in J m-2.
     salt_col_prev               !< The column integrated salt that was in the ice and snow the last
                                 !! time that write_ice_statistics was called, in kg m-2.
- 
+
   type(EFP_type) :: fresh_water_in_EFP !< An extended fixed point version of fresh_water_in
   type(EFP_type) :: net_salt_in_EFP !< An extended fixed point version of net_salt_in
   type(EFP_type) :: net_heat_in_EFP !< An extended fixed point version of net_heat_in

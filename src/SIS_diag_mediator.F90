@@ -54,15 +54,15 @@ interface post_SIS_data
   module procedure post_data_2d, post_data_3d
 end interface post_SIS_data
 
-! 2D/3D axes type to contain 1D axes handles and pointers to masks
+!> 2D/3D axes type to contain 1D axes handles and pointers to masks
 type, public :: axesType
   character(len=15) :: id ! This is the id string for this particular combination of handles
   integer :: rank ! The number of dimensions in the list of axes
   integer, dimension(:), allocatable :: handles ! Handles to 1D axes
-  type(SIS_diag_ctrl), pointer :: diag_cs => null()
+  type(SIS_diag_ctrl), pointer :: diag_cs => null() !< A structure that is used to regulate diagnostic output
 end type axesType
 
-! This type is used to represent a diagnostic at the diag_mediator level.
+!> This type is used to represent a diagnostic at the diag_mediator level.
 type, private :: diag_type
   logical :: in_use
   integer :: fms_diag_id         ! underlying FMS diag id
@@ -75,8 +75,8 @@ end type diag_type
 !>   The SIS_diag_ctrl data type contains times to regulate diagnostics along with masks and
 !! axes to use with diagnostics, and a list of structures with data about each diagnostic.
 type, public :: SIS_diag_ctrl
-  integer :: doc_unit = -1 ! The unit number of a diagnostic documentation file.
-                           ! This file is open if doc_unit is > 0.
+  integer :: doc_unit = -1 !< The unit number of a diagnostic documentation file.
+                           !! This file is open if doc_unit is > 0.
 
 ! The following fields are used for the output of the data.
 ! These give the computational-domain sizes, and are relative to a start value
@@ -305,7 +305,7 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   logical :: i_data, j_data
   integer :: isv, iev, jsv, jev
   integer :: fms_diag_id
-  type(diag_type), pointer :: diag
+  type(diag_type), pointer :: diag => NULL()
 
   is_stat = .false. ; if (present(is_static)) is_stat = is_static
 
@@ -411,7 +411,7 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   logical :: is_stat
   integer :: isv, iev, jsv, jev
   integer :: fms_diag_id
-  type(diag_type), pointer :: diag
+  type(diag_type), pointer :: diag => NULL()
 
   is_stat = .false. ; if (present(is_static)) is_stat = is_static
 
@@ -563,8 +563,9 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
   character(len=240) :: mesg
   real :: MOM_missing_value
   integer :: primary_id, fms_id
-  type(SIS_diag_ctrl), pointer :: diag_cs !< A structure that is used to regulate diagnostic output
-  type(diag_type), pointer :: diag
+  type(SIS_diag_ctrl), pointer :: diag_cs => NULL() ! A structure that is used
+                                               ! to regulate diagnostic output
+  type(diag_type), pointer :: diag => NULL()
 
   MOM_missing_value = axes%diag_cs%missing_value
   if(present(missing_value)) MOM_missing_value = missing_value
