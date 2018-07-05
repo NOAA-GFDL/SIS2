@@ -48,18 +48,11 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_grid initializes sea ice specific grid parameters
 subroutine set_ice_grid(IG, param_file, NCat_dflt, ocean_part_min_dflt)
-  type(ice_grid_type),   intent(inout) :: IG
-  type(param_file_type), intent(in)    :: param_file
-  integer,               intent(in)    :: NCat_dflt
-  real, optional,        intent(in)    :: ocean_part_min_dflt
+  type(ice_grid_type),   intent(inout) :: IG  !< The sea-ice specific grid type
+  type(param_file_type), intent(in)    :: param_file !< A structure to parse for run-time parameters
+  integer,               intent(in)    :: NCat_dflt !< The default number of ice categories
+  real, optional,        intent(in)    :: ocean_part_min_dflt !< The default value for the minimum open water area
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
-
-! Arguments: IG - The sea-ice specific grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (inout)   ice_domain - A domain with no halos that can be shared publicly.
-!  (in)      NCat_dflt - The default number of ice categories.
-!  (in,opt)  ocean_part_min_dflt - The default value for the minimum open water area.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -129,7 +122,7 @@ end subroutine set_ice_grid
 
 !> Allocate any required arrays in the ice_grid_type.
 subroutine allocate_ice_metrics(IG)
-  type(ice_grid_type), intent(inout) :: IG
+  type(ice_grid_type), intent(inout) :: IG  !< The sea-ice specific grid type
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB, isg, ieg, jsg, jeg
 
   ! This subroutine allocates any extensive elements of the ice_grid_type
@@ -141,7 +134,7 @@ end subroutine allocate_ice_metrics
 !---------------------------------------------------------------------
 !> Release memory used by the ice_grid_type and related structures.
 subroutine ice_grid_end(IG)
-  type(ice_grid_type), intent(inout) :: IG
+  type(ice_grid_type), intent(inout) :: IG  !< The sea-ice specific grid type
 
   deallocate(IG%cat_thick_lim)
   deallocate(IG%mH_cat_bound)

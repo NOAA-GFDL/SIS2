@@ -365,9 +365,11 @@ logical function isPointInCell(G, i, j, x, y)
   endif
 end function isPointInCell
 
+!> Specify which direction to work on first in directionally split algorithms.
 subroutine set_first_direction(G, y_first)
-  type(SIS_hor_grid_type), intent(inout) :: G
-  integer,               intent(in) :: y_first
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  integer, intent(in) :: y_first !< A flag indicating which diretion to work on first
+                                 !! in split algorithms. Even for x, odd for y.
 
   G%first_direction = y_first
 end subroutine set_first_direction

@@ -28,7 +28,6 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,   only : check_redundant_B, check_redundant_C
-use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 implicit none ; private
@@ -462,11 +461,11 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_IST_arrays allocates the arrays in an ice_state_type.
 subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG
-  type(ice_state_type),    intent(inout) :: IST
-  logical, optional,       intent(in)    :: omit_velocities
-  logical, optional,       intent(in)    :: omit_Tsurf
+  type(hor_index_type), intent(in)    :: HI  !< The horizontal index type describing the domain
+  type(ice_grid_type),  intent(in)    :: IG  !< The sea-ice specific grid type
+  type(ice_state_type), intent(inout) :: IST !< A type describing the state of the sea ice
+  logical,    optional, intent(in)    :: omit_velocities !< If true, do not allocate velocity arrays
+  logical,    optional, intent(in)    :: omit_Tsurf !< If true, do not allocate the surface temperature array
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel, do_Tsurf
@@ -511,11 +510,11 @@ end subroutine alloc_IST_arrays
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be includedin the restart files.
 subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(in)    :: G
-  type(ice_grid_type),     intent(in)    :: IG
-  type(restart_file_type), pointer       :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   integer :: idr
   type(domain2d), pointer :: mpp_domain => NULL()
@@ -580,12 +579,12 @@ end subroutine ice_state_register_restarts
 !! symmetric and non-symmetric memory restart files.
 subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
                                        restart_file, restart_dir)
-  type(ice_state_type),    intent(inout) :: IST
-  type(SIS_hor_grid_type), intent(in)    :: G
-  type(ice_grid_type),     intent(in)    :: IG
-  type(restart_file_type), pointer       :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
-  character(len=*),        intent(in)    :: restart_dir
+  type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
+  character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
   ! These are temporary variables that will be used only here for reading and
   ! then discarded.
@@ -726,14 +725,18 @@ end subroutine ice_state_read_alt_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
 subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
-  type(fast_ice_avg_type), pointer    :: FIA
-  type(hor_index_type),    intent(in) :: HI
-  type(ice_grid_type),     intent(in) :: IG
-  logical,                 intent(in) :: interp_fluxes
+  type(fast_ice_avg_type), pointer    :: FIA !< A type containing averages of fields
+                                             !! (mostly fluxes) over the fast updates
+  type(hor_index_type),    intent(in) :: HI  !< The horizontal index type describing the domain
+  type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
+  logical,                 intent(in) :: interp_fluxes !< If true, allocate fields to permit the
+                                             !! interpolation of a linearized version of the
+                                             !! fast fluxes into arealess categories.
   type(coupler_1d_bc_type), &
                  optional, intent(in) :: gas_fluxes !< If present, this type describes the
-                                              !! additional gas or other tracer fluxes between the
-                                              !! ocean, ice, and atmosphere.
+                                             !! additional gas or other tracer fluxes between the
+                                             !! ocean, ice, and atmosphere.
+
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, CatIce
 
   if (.not.associated(FIA)) allocate(FIA)
@@ -828,13 +831,14 @@ end subroutine alloc_total_sfc_flux
 !!     in the restart files.
 subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
                                        Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG
-  type(param_file_type),   intent(in)    :: param_file
-  type(ice_rad_type),      pointer       :: Rad
-  type(restart_file_type), intent(inout) :: Ice_restart
-  character(len=*),        intent(in)    :: restart_file
+  type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain describing the ice decomposition
+  type(hor_index_type),    intent(in)    :: HI  !< The horizontal index type describing the domain
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation.
+  type(restart_file_type), intent(inout) :: Ice_restart !< A pointer to the restart type for the ice
+  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
 
@@ -862,9 +866,10 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
 end subroutine ice_rad_register_restarts
 
 subroutine alloc_ice_rad(Rad, HI, IG)
-  type(ice_rad_type),      pointer       :: Rad
-  type(hor_index_type),    intent(in)    :: HI
-  type(ice_grid_type),     intent(in)    :: IG
+  type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation.
+  type(hor_index_type),    intent(in)    :: HI  !< The horizontal index type describing the domain
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce
 
@@ -889,9 +894,11 @@ end subroutine alloc_ice_rad
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
 subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
-  type(ice_ocean_flux_type), pointer    :: IOF
-  type(hor_index_type),      intent(in) :: HI
-  logical,         optional, intent(in) :: do_iceberg_fields
+  type(ice_ocean_flux_type), pointer    :: IOF !< A structure containing fluxes from the ice to
+                                               !! the ocean that are calculated by the ice model.
+  type(hor_index_type),      intent(in) :: HI  !< The horizontal index type describing the domain
+  logical,         optional, intent(in) :: do_iceberg_fields !< If true, allocate fields related
+                                               !! to exchanges with icebergs
 
   integer :: CatIce
   logical :: alloc_bergs
@@ -917,7 +924,7 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
   allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0
   allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0
 
-  !Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.)
+  ! Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.)
   ! Please note that these are only allocated on the computational domain so that they
   ! can be passed conveniently to the iceberg code.
   if (alloc_bergs) then
@@ -1012,10 +1019,11 @@ end subroutine alloc_simple_OSS
 !! domain decomposition and indexing convention (for now), but they may have
 !! different halo sizes.
 subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
-  type(ice_state_type), intent(in)    :: IST_in
-  type(ice_state_type), intent(inout) :: IST_out
-  type(hor_index_type), intent(in)    :: HI_in, HI_out
-  type(ice_grid_type),  intent(in)    :: IG
+  type(ice_state_type), intent(in)    :: IST_in !< The ice_state_type that is being copied from
+  type(ice_state_type), intent(inout) :: IST_out !< The ice_state_type that is being copied into
+  type(hor_index_type), intent(in)    :: HI_in  !< The horizontal index type for the input type
+  type(hor_index_type), intent(in)    :: HI_out !< The horizontal index type for the output type
+  type(ice_grid_type),  intent(in)    :: IG  !< The sea-ice specific grid type
 
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, i_off, j_off
@@ -1151,10 +1159,11 @@ end subroutine redistribute_IST_to_IST
 !! ice processors into a simplified version with the fields that are shared with
 !! the atmosphere and the fast ice thermodynamics.
 subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(ice_state_type),       intent(in)    :: IST
-  type(simple_OSS_type),      intent(inout) :: sOSS
-  type(SIS_hor_grid_type),    intent(in)    :: G
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(ice_state_type),       intent(in)    :: IST !< A type describing the state of the sea ice
+  type(simple_OSS_type),      intent(inout) :: sOSS !< The simple ocean surface state type that is being copied into
+  type(SIS_hor_grid_type),    intent(in)    :: G   !< The horizontal grid type
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
   integer :: isd, ied, jsd, jed
@@ -1209,9 +1218,10 @@ end subroutine translate_OSS_to_sOSS
 !! domain decomposition and indexing convention, but they may have different
 !! halo sizes.
 subroutine copy_sOSS_to_sOSS(OSS_in, OSS_out, HI_in, HI_out)
-  type(simple_OSS_type), intent(inout) :: OSS_in
-  type(simple_OSS_type), intent(inout) :: OSS_out
-  type(hor_index_type),  intent(in)    :: HI_in, HI_out
+  type(simple_OSS_type), intent(inout) :: OSS_in  !< The simple ocean surface state type that is being copied from
+  type(simple_OSS_type), intent(inout) :: OSS_out !< The simple ocean surface state type that is being copied into
+  type(hor_index_type),  intent(in)    :: HI_in  !< The horizontal index type for the input type
+  type(hor_index_type),  intent(in)    :: HI_out !< The horizontal index type for the output type
 
   integer :: i, j, isc, iec, jsc, jec
   integer :: i2, j2, i_off, j_off
@@ -1332,10 +1342,11 @@ end subroutine redistribute_sOSS_to_sOSS
 !! domain decomposition and indexing convention, but they may have different
 !! halo sizes.
 subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
-  type(fast_ice_avg_type), intent(inout) :: FIA_in
-  type(fast_ice_avg_type), intent(inout) :: FIA_out
-  type(hor_index_type),    intent(in)    :: HI_in, HI_out
-  type(ice_grid_type),     intent(in)    :: IG
+  type(fast_ice_avg_type), intent(inout) :: FIA_in   !< The fast_ice_avg_type that is being copied from.
+  type(fast_ice_avg_type), intent(inout) :: FIA_out  !< The fast_ice_avg_type that is being copied into.
+  type(hor_index_type),    intent(in)    :: HI_in  !< The horizontal index type for the input type
+  type(hor_index_type),    intent(in)    :: HI_out !< The horizontal index type for the output type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
 
   integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, i_off, j_off
@@ -1685,9 +1696,10 @@ end subroutine redistribute_FIA_to_FIA
 !! domain decomposition and indexing convention, but they may have different
 !! halo sizes.
 subroutine copy_TSF_to_TSF(TSF_in, TSF_out, HI_in, HI_out)
-  type(total_sfc_flux_type), intent(inout) :: TSF_in
-  type(total_sfc_flux_type), intent(inout) :: TSF_out
-  type(hor_index_type),      intent(in)    :: HI_in, HI_out
+  type(total_sfc_flux_type), intent(inout) :: TSF_in  !< The TSF type that is being copied from
+  type(total_sfc_flux_type), intent(inout) :: TSF_out !< The TSF type that is being copied into
+  type(hor_index_type),      intent(in)    :: HI_in  !< The horizontal index type for the input type
+  type(hor_index_type),      intent(in)    :: HI_out !< The horizontal index type for the output type
 
   integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat
   integer :: i2, j2, i_off, j_off
@@ -1726,8 +1738,8 @@ end subroutine copy_TSF_to_TSF
 !> redistribute_TSF_to_TSF redistributes the computational domain of one
 !! total_sfc_flux_type into the computational domain of another total_sfc_flux_type.
 subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_out)
-  type(total_sfc_flux_type), pointer    :: TSF_in     !< The total_sfc_flux_type that is being copied from (intent in).
-  type(total_sfc_flux_type), pointer    :: TSF_out    !< The total_sfc_flux_type that is being copied into (intent inout).
+  type(total_sfc_flux_type), pointer    :: TSF_in     !< The total_sfc_flux_type that is being copied from
+  type(total_sfc_flux_type), pointer    :: TSF_out    !< The total_sfc_flux_type that is being copied into
   type(domain2d),            intent(in) :: domain_in  !< The source data domain.
   type(domain2d),            intent(in) :: domain_out !< The target data domain.
   type(hor_index_type), optional, intent(in) :: HI_out !< The hor_index_type on the target domain; HI_out
@@ -1826,10 +1838,15 @@ end subroutine redistribute_TSF_to_TSF
 !! use the same domain decomposition and indexing convention, but they may have
 !! different halo sizes.
 subroutine copy_Rad_to_Rad(Rad_in, Rad_out, HI_in, HI_out, IG)
-  type(ice_rad_type),   intent(inout) :: Rad_in
-  type(ice_rad_type),   intent(inout) :: Rad_out
-  type(hor_index_type), intent(in)    :: HI_in, HI_out
-  type(ice_grid_type),  intent(in)    :: IG
+  type(ice_rad_type),   intent(inout) :: Rad_in !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation
+                                                !! that is being copied from
+  type(ice_rad_type),   intent(inout) :: Rad_out !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation
+                                                !! that is being copied into
+  type(hor_index_type), intent(in)    :: HI_in  !< The horizontal index type for the input type
+  type(hor_index_type), intent(in)    :: HI_out !< The horizontal index type for the output type
+  type(ice_grid_type),  intent(in)    :: IG     !< The sea-ice specific grid type
 
   integer :: b, i, j, k, m, n, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: i2, j2, i_off, j_off
@@ -2008,7 +2025,7 @@ end subroutine register_fast_to_slow_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_IST_arrays deallocates the arrays in an ice_state_type.
 subroutine dealloc_IST_arrays(IST)
-  type(ice_state_type), intent(inout) :: IST
+  type(ice_state_type), intent(inout) :: IST !< A type describing the state of the sea ice
 
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
@@ -2025,7 +2042,9 @@ end subroutine dealloc_IST_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_ocean_sfc_state deallocates the arrays in an ocean_sfc_state_type.
 subroutine dealloc_ocean_sfc_state(OSS)
-  type(ocean_sfc_state_type), pointer :: OSS
+  type(ocean_sfc_state_type), pointer :: OSS !< A structure containing the arrays that describe
+                                        !! the ocean's surface state that is dealloced here.
+
 
   if (.not.associated(OSS)) then
     call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
@@ -2044,7 +2063,8 @@ end subroutine dealloc_ocean_sfc_state
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_simple_OSS deallocates the arrays in a simple_OSS_type.
 subroutine dealloc_simple_OSS(OSS)
-  type(simple_OSS_type), pointer :: OSS
+  type(simple_OSS_type), pointer :: OSS !< A structure containing the arrays that describe
+                                        !! the ocean's surface state that is dealloced here.
 
   if (.not.associated(OSS)) then
     call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
@@ -2060,7 +2080,8 @@ end subroutine dealloc_simple_OSS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_fast_ice_avg deallocates the arrays in a fast_ice_avg_type.
 subroutine dealloc_fast_ice_avg(FIA)
-  type(fast_ice_avg_type), pointer    :: FIA
+  type(fast_ice_avg_type), pointer    :: FIA !< A type containing averages of fields
+                                             !! that is being deallocated here
 
   if (.not.associated(FIA)) then
     call SIS_error(WARNING, "dealloc_fast_ice_avg called with an unassociated pointer.")
@@ -2093,7 +2114,8 @@ end subroutine dealloc_fast_ice_avg
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_total_sfc_flux deallocates the arrays in a total_sfc_flux_type.
 subroutine dealloc_total_sfc_flux(TSF)
-  type(total_sfc_flux_type), pointer    :: TSF
+  type(total_sfc_flux_type), pointer :: TSF !< A type with averaged surface fluxes
+                                            !! that is to be deallocated here.
 
   if (.not.associated(TSF)) then
     call SIS_error(WARNING, "dealloc_total_sfc_flux called with an unassociated pointer.")
@@ -2109,7 +2131,9 @@ end subroutine dealloc_total_sfc_flux
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_ice_rad deallocates the arrays in a ice_rad_type.
 subroutine dealloc_ice_rad(Rad)
-  type(ice_rad_type), pointer    :: Rad
+  type(ice_rad_type), pointer :: Rad !< A structure with fields related to
+                            !! the absorption, reflection and transmission of
+                            !! shortwave radiation that is deallocated here.
 
   if (.not.associated(Rad)) then
     call SIS_error(WARNING, "dealloc_ice_rad called with an unassociated pointer.")
@@ -2127,7 +2151,8 @@ end subroutine dealloc_ice_rad
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> dealloc_ice_ocean_flux deallocates the arrays in a ice_ocean_flux_type.
 subroutine dealloc_ice_ocean_flux(IOF)
-  type(ice_ocean_flux_type), pointer    :: IOF
+  type(ice_ocean_flux_type), pointer :: IOF !< A structure containing fluxes from the ice to
+                                            !! the ocean that is deallocated here.
 
   if (.not.associated(IOF)) then
     call SIS_error(WARNING, "dealloc_ice_ocean_flux called with an unassociated pointer.")
@@ -2276,13 +2301,18 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
 
 end subroutine IST_chksum
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Check the ice state for bad values of temperature, thickness, areal coverage,
+!! enthalpy or ice mass, and write diagnostics about any offending columns
 subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
-  type(ice_state_type),    intent(in)    :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(in)    :: IG
-  character(len=*),        intent(in)    :: msg
-  type(ocean_sfc_state_type), optional, intent(in) :: OSS
-  type(ice_rad_type),         optional, intent(in) :: Rad
+  type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  character(len=*),        intent(in)    :: msg !< An identifying message
+  type(ocean_sfc_state_type), optional, intent(in) :: OSS !< A structure containing the arrays that describe
+                                                !! the ocean's surface state for the ice model.
+  type(ice_rad_type),         optional, intent(in) :: Rad !< A structure with fields related to the
+                                                !! absorption, reflection and transmission of shortwave radiation.
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err

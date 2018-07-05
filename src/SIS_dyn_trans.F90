@@ -127,8 +127,8 @@ type dyn_trans_CS ; private
                           ! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
 
-  type(time_type), pointer :: Time ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag ! A structure that is used to regulate the
+  type(time_type), pointer :: Time => NULL() ! A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() ! A structure that is used to regulate the
                                    ! timing of diagnostic output.
 
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
@@ -154,16 +154,22 @@ integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
 
 contains
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> update_icebergs calls icebergs_run and offers diagnostics of some of the
+!! iceberg fields that might drive the sea ice or ocean
 subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
-  type(ice_state_type),       intent(inout) :: IST
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(fast_ice_avg_type),    intent(inout) :: FIA
-  type(ice_ocean_flux_type),  intent(inout) :: IOF
-  real,                       intent(in)    :: dt_slow
-  type(icebergs),             pointer       :: icebergs_CS
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
-  type(dyn_trans_CS),         pointer       :: CS
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep, in s.
+  type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
@@ -240,20 +246,23 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 end subroutine update_icebergs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_dynamics_trans - do ice dynamics and mass and tracer transport           !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> SIS_dynamics_trans makes the calls to do ice dynamics and mass and tracer transport
 subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
 
-  type(ice_state_type),       intent(inout) :: IST
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-  type(fast_ice_avg_type),    intent(inout) :: FIA
-  type(ice_ocean_flux_type),  intent(inout) :: IOF
-  real,                       intent(in)    :: dt_slow
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
-  type(dyn_trans_CS),         pointer       :: CS
-  type(icebergs),             pointer       :: icebergs_CS
-  type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep, in s.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+  type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
+  type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp !< The structure for controlling calls to
+                                                   !! auxiliary ice tracer packages
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: h2o_chg_xprt, mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
@@ -708,21 +717,30 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
 end subroutine SIS_dynamics_trans
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Offer diagnostics of the slowly evolving sea ice state.
 subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, diag, &
                                        h2o_chg_xprt, rdg_rate)
-  type(ice_state_type),       intent(inout) :: IST
-  type(ocean_sfc_state_type), intent(in)    :: OSS
-!  type(fast_ice_avg_type),    intent(inout) :: FIA
-  type(ice_ocean_flux_type),  intent(in)    :: IOF
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+! type(fast_ice_avg_type),   intent (inout) :: FIA ! A type containing averages of fields
+                                                   ! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
   real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(ice_grid_type),        intent(inout) :: IG
-  type(dyn_trans_CS),         pointer       :: CS
-  type(SIS_diag_ctrl),        pointer       :: diag
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), optional, intent(in) :: h2o_chg_xprt
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+  type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
+  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
+                    optional, intent(in)    :: h2o_chg_xprt !< The total ice and snow mass change due to
+                                                   !! transport within a dynamics timestep, in kg m-2
+  real, dimension(SZI_(G),SZJ_(G)), &
+                    optional, intent(in)    :: rdg_rate !< The ice ridging rate in s-1.
 
+  ! Local variables
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature in degC.
@@ -923,12 +941,15 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
 
 end subroutine post_ice_state_diagnostics
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Offer diagnostics of the ocean surface field, as seen by the sea ice.
 subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
-  type(ocean_sfc_state_type), intent(in)    :: OSS
+  type(ocean_sfc_state_type), intent(in)    :: OSS  !< A structure containing the arrays that describe
+                                                    !! the ocean's surface state for the ice model.
   real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
-  type(SIS_hor_grid_type),    intent(inout) :: G
-  type(SIS_diag_ctrl),        pointer       :: diag
+  type(SIS_hor_grid_type),    intent(inout) :: G    !< The horizontal grid type
+  type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
 
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
@@ -954,12 +975,12 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
 end subroutine post_ocean_sfc_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! finish_ocean_top_stresses - Finish setting the ice-ocean stresses by dividing!
-!   them through the stresses by the number of times they have been augmented. !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Finish setting the ice-ocean stresses by dividing the running sums of the
+!! stresses by the number of times they have been augmented.
 subroutine finish_ocean_top_stresses(IOF, HI)
-  type(hor_index_type), intent(in)    :: HI
-  type(ice_ocean_flux_type), intent(inout) :: IOF
+  type(hor_index_type),      intent(in)    :: HI  !< The horizontal index type describing the domain
+  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                  !! the ocean that are calculated by the ice model.
 
   real :: I_count
   integer :: i, j, isc, iec, jsc, jec
@@ -976,19 +997,26 @@ subroutine finish_ocean_top_stresses(IOF, HI)
 end subroutine finish_ocean_top_stresses
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ocean_top_stress_Bgrid - Calculate the stresses on the ocean integrated  !
-!   across all the thickness categories with the appropriate staggering, and   !
-!   store them in the public ice data type for use by the ocean model.  This   !
-!   version of the routine uses wind and ice-ocean stresses on a B-grid.       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Calculate the stresses on the ocean integrated  across all the thickness categories with
+!! the appropriate staggering, and   store them in the public ice data type for use by the
+!! ocean model.  This version of the routine uses wind and ice-ocean stresses on a B-grid.
 subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_ocean_flux_type), intent(inout) :: IOF
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(inout) :: IG
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
-  real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
+  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                  !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),       intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZIB_(G),SZJB_(G)), &
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+  real, dimension(SZIB_(G),SZJB_(G)), &
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+  real, dimension(SZIB_(G),SZJB_(G)), &
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+  real, dimension(SZIB_(G),SZJB_(G)), &
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+  real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
+                             intent(in)    :: part_size !< The fractional area coverage of the ice
+                                                  !! thickness categories, nondim, 0-1
 
   real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
   integer :: i, j, k, isc, iec, jsc, jec, ncat
@@ -1080,19 +1108,26 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
 end subroutine set_ocean_top_stress_Bgrid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! set_ocean_top_stress_Cgrid - Calculate the stresses on the ocean integrated  !
-!   across all the thickness categories with the appropriate staggering, and   !
-!   store them in the public ice data type for use by the ocean model.  This   !
-!   version of the routine uses wind and ice-ocean stresses on a C-grid.       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Calculate the stresses on the ocean integrated across all the thickness categories with the
+!! appropriate staggering, and store them in the public ice data type for use by the ocean
+!! model.  This version of the routine uses wind and ice-ocean stresses on a C-grid.
 subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
                                       str_ice_oce_x, str_ice_oce_y, part_size, G, IG)
-  type(ice_ocean_flux_type), intent(inout) :: IOF
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(inout) :: IG
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: windstr_x_water, str_ice_oce_x
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: windstr_y_water, str_ice_oce_y
-  real, dimension (SZI_(G),SZJ_(G),0:IG%CatIce), intent(in) :: part_size
+  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                  !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),       intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZIB_(G),SZJ_(G)), &
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), &
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G)), &
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), &
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+  real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
+                             intent(in)    :: part_size !< The fractional area coverage of the ice
+                                                  !! thickness categories, nondim, 0-1
 
   real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
   integer :: i, j, k, isc, iec, jsc, jec, ncat
@@ -1185,20 +1220,13 @@ end subroutine set_ocean_top_stress_Cgrid
 !!      slow ice dynamics and transport that need to be included in the restart files.
 subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in) :: mpp_domain
-  type(hor_index_type),    intent(in) :: HI
-  type(ice_grid_type),     intent(in) :: IG     ! The sea-ice grid type
-  type(param_file_type),   intent(in) :: param_file
-  type(dyn_trans_CS),      pointer    :: CS
-  type(restart_file_type), pointer    :: Ice_restart
-  character(len=*),        intent(in) :: restart_file
-
-! Arguments: G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (in/out)  CS - A pointer that is set to point to the control structure
-!                 for this module.
-!
+  type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
+  type(hor_index_type),    intent(in) :: HI     !< The horizontal index type describing the domain
+  type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
+  type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
+  type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
+  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 !   This subroutine registers the restart variables associated with the
 ! the slow ice dynamics and thermodynamics.
@@ -1229,11 +1257,11 @@ end subroutine SIS_dyn_trans_register_restarts
 !!      slow ice dynamics and transport that need to be included in the restart files.
 subroutine SIS_dyn_trans_read_alt_restarts(CS, G, Ice_restart, &
                                            restart_file, restart_dir)
-  type(dyn_trans_CS),      pointer    :: CS
-  type(SIS_hor_grid_type), intent(in) :: G
-  type(restart_file_type), pointer    :: Ice_restart
-  character(len=*),        intent(in) :: restart_file
-  character(len=*),        intent(in) :: restart_dir
+  type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
+  type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
+  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  character(len=*),        intent(in) :: restart_file !< The ice restart file name
+  character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   if (CS%Cgrid_dyn) then
     call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, Ice_restart, &
@@ -1246,14 +1274,15 @@ end subroutine SIS_dyn_trans_read_alt_restarts
 !> SIS_dyn_trans_init initializes ice model data, parameters and diagnostics
 !!   associated with the SIS2 dynamics and transport modules.
 subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init)
-  type(time_type),     target, intent(in)    :: Time   ! current time
-  type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
-  type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
-  type(param_file_type),       intent(in)    :: param_file
-  type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(dyn_trans_CS),          pointer       :: CS
-  character(len=*),            intent(in)    :: output_dir
-  type(time_type),             intent(in)    :: Time_Init  ! starting time of model integration
+  type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
+                                                     !! set with the current model.
+  type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
+  type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
+  type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
+  type(dyn_trans_CS),          pointer       :: CS   !< The control structure for the SIS_dyn_trans module
+  character(len=*),            intent(in)    :: output_dir !< The directory to use for writing output
+  type(time_type),             intent(in)    :: Time_Init !< Starting time of the model integration
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1447,31 +1476,33 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 
 end subroutine SIS_dyn_trans_init
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Allocate an array of integer diagnostic arrays and set them to -1, if they are not already allocated
 subroutine safe_alloc_ids_1d(ids, nids)
-  integer, allocatable :: ids(:)
-  integer, intent(in)  :: nids
+  integer, allocatable, intent(inout) :: ids(:) !< An array of diagnostic IDs to allocate
+  integer,              intent(in)    :: nids   !< The number of IDs to allocate
 
   if (.not.ALLOCATED(ids)) then
     allocate(ids(nids)) ; ids(:) = -1
-  endif
+  endif;
 end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_transport_CS returns a pointer to the SIS_transport_CS type that
 !!  the dyn_trans_CS points to.
 function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
-  type(dyn_trans_CS), pointer :: CS
-  type(SIS_transport_CS), pointer :: transport_CSp
+  type(dyn_trans_CS),     pointer :: CS    !< The control structure for the SIS_dyn_trans module
+  type(SIS_transport_CS), pointer :: transport_CSp !< The SIS_transport_CS type used by SIS_dyn_trans
 
   transport_CSp => CS%SIS_transport_CSp
 end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_transport_CS returns a pointer to the sum_out_CS type that
-!!  the dyn_trans_CS points to.
+!! the dyn_trans_CS points to.
 function SIS_dyn_trans_sum_output_CS(CS) result(sum_out_CSp)
-  type(dyn_trans_CS), pointer :: CS
-  type(SIS_sum_out_CS), pointer :: sum_out_CSp
+  type(dyn_trans_CS),   pointer :: CS    !< The control structure for the SIS_dyn_trans module
+  type(SIS_sum_out_CS), pointer :: sum_out_CSp !< The SIS_sum_out_CS type used by SIS_dyn_trans
 
   sum_out_CSp => CS%sum_output_CSp
 end function SIS_dyn_trans_sum_output_CS
@@ -1480,7 +1511,8 @@ end function SIS_dyn_trans_sum_output_CS
 !> SIS_dyn_trans_end deallocates memory associated with the dyn_trans_CS type
 !! and calls similar routines for subsidiary modules.
 subroutine SIS_dyn_trans_end(CS)
-  type(dyn_trans_CS), pointer :: CS
+  type(dyn_trans_CS), pointer :: CS  !< The control structure for the SIS_dyn_trans module that
+                                     !! is dellocated here
 
   if (CS%Cgrid_dyn) then
     call SIS_C_dyn_end(CS%SIS_C_dyn_CSp)

@@ -96,16 +96,18 @@ contains
 ! machinery to register and call the subroutines that initialize
 ! tracers and apply vertical column processes to tracers.
 
+!> Call the routines that register all of tracers in the tracer packages
 subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-    Ice_restart, restart_file)
-  type(SIS_hor_grid_type),                intent(in) :: G
-  type(ice_grid_type),                    intent(in) :: IG
-  type(param_file_type),                  intent(in) :: param_file
-  type(SIS_tracer_flow_control_CS),       pointer    :: CS
-  type(SIS_diag_ctrl),                    target     :: diag
-  type(SIS_tracer_registry_type),         pointer    :: TrReg
-  type(restart_file_type),                intent(inout) :: Ice_restart
-  character(len=*),                       intent(in) :: restart_file
+                                    Ice_restart, restart_file)
+  type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
+  type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
+  type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
+  type(SIS_tracer_flow_control_CS), pointer    :: CS  !< A pointer that is set to point to the
+                                                      !! control structure for the tracer flow control
+  type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
+  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
+  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
+  character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! Argument:  G - The ice model's horizontal grid structure.
   !  (in)      IG - The ice model's grid structure.
@@ -147,15 +149,17 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
 
 end subroutine SIS_call_tracer_register
 
+!> Call all registered tracer initialization subroutines.
 subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS, is_restart)
-  type(time_type), target,                    intent(in) :: day
-  type(SIS_hor_grid_type),                    intent(inout) :: G
-  type(ice_grid_type),                        intent(in) :: IG
-  type(param_file_type),                      intent(in) :: param_file
-  type(SIS_tracer_flow_control_CS),           pointer    :: CS
-  logical,                                    intent(in) :: is_restart
-  !   This subroutine calls all registered tracer initialization
-  ! subroutines.
+  type(time_type),          target, intent(in)    :: day !< The current model time
+  type(SIS_hor_grid_type),          intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),              intent(in)    :: IG  !< The sea-ice specific grid type
+  type(param_file_type),            intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_tracer_flow_control_CS), pointer       :: CS  !< The control structure returned by a
+                                                         !! previous call to SIS_call_tracer_register.
+  logical,                          intent(in)    :: is_restart !< A flag indicating whether this run
+                                                         !! segment is being initialized from a restart file
+  ! This subroutine calls all registered tracer initialization subroutines.
 
   ! Arguments:
   !  (in)      day - Time of the start of the run.
@@ -173,21 +177,22 @@ subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS, is_restart)
 
 end subroutine SIS_tracer_flow_control_init
 
+!> Call all registered ice-tracer column physics subroutines
 subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
+  real,                    intent(in) :: dt  !< The amount of time covered by this call, in s.
+  type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
+  type(SIS_tracer_flow_control_CS), &
+                           pointer    :: CS  !< The control structure returned by a
+                                             !! previous call to SIS_call_tracer_register.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                           intent(in) :: mi  !< Mass of ice in a given category in kg m-2 at the
+                                             !! end of the timestep
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                           intent(in) :: mi_old  !< Mass of ice in a given category in kg m-2 at the
+                                             !! beginning of the timestep
 
-  real,                                           intent(in) :: dt
-  type(SIS_hor_grid_type),                        intent(in) :: G
-  type(ice_grid_type),                            intent(in) :: IG
-  type(SIS_tracer_flow_control_CS),               pointer    :: CS
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi_old
-  !   This subroutine calls all registered tracer column physics
-  ! subroutines.
-
-  ! Arguments:
-  !  (in)      dt - The amount of time covered by this call, in s.
-  !  (in)      G - The ice model's grid structure.
-  !  (in)      IG - The ice model's vertical grid structure.
+  ! This subroutine calls all registered ice-tracer column physics subroutines.
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_column_fns: "// &
       "Module must be initialized via call_tracer_register before it is used.")
@@ -197,16 +202,21 @@ subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
 
 end subroutine SIS_call_tracer_column_fns
 
+!> Determine integrated stocks for the SIS tracer packages
 subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
                                   stock_units, num_stocks)
-  type(SIS_hor_grid_type),                        intent(in) :: G
-  type(ice_grid_type),                            intent(in) :: IG
-  type(SIS_tracer_flow_control_CS),               pointer    :: CS
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)),    intent(in) :: mi
-  real, dimension(:),                             intent(  out) :: stock_values
-  character(len=*), dimension(:),      optional,  intent(  out) :: stock_names
-  character(len=*), dimension(:),      optional,  intent(  out) :: stock_units
-  integer,                             optional,  intent(  out) :: num_stocks
+  type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
+  type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
+  type(SIS_tracer_flow_control_CS), pointer     :: CS  !< The control structure returned by a
+                                                       !! previous call to SIS_call_tracer_register.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                                    intent(in)  :: mi  !< Mass of ice in a given category in kg m-2, used for summing
+  real, dimension(:),               intent(out) :: stock_values !< The values of the summed tracer stocks.
+  character(len=*), dimension(:), &
+                         optional,  intent(out) :: stock_names !< The names of the summed tracer stocks.
+  character(len=*), dimension(:), &
+                         optional,  intent(out) :: stock_units !< The units of the tracer stocks
+  integer,               optional,  intent(out) :: num_stocks  !< The number of summed tracer stocks.
 
   ! Arguments:
   !  (in)      G - The ocean's grid structure.
@@ -241,15 +251,22 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
 
 end subroutine SIS_call_tracer_stocks
 
+!> Store the stocks for for a single tracer package for SIS_call_tracer_stocks.
 subroutine SIS_store_stocks(pkg_name, ns, names, units, values, stock_values, &
                         ns_tot, stock_names, stock_units)
-  character(len=*),                         intent(in)    :: pkg_name
-  integer,                                  intent(in)    :: ns
-  character(len=*), dimension(:),           intent(in)    :: names, units
-  real, dimension(:),                       intent(in)    :: values
-  real, dimension(:),                       intent(inout) :: stock_values
-  integer,                                  intent(inout) :: ns_tot
-  character(len=*), dimension(:), optional, intent(inout) :: stock_names, stock_units
+  character(len=*),   intent(in)    :: pkg_name !< The name of this tracer package
+  integer,            intent(in)    :: ns    !< The number of stocks with this tracer package
+  character(len=*), dimension(:), &
+                      intent(in)    :: names !< The tracer names in this package
+  character(len=*), dimension(:), &
+                      intent(in)    :: units !< The tracer units
+  real, dimension(:), intent(in)    :: values !< The values of the tracer stocks
+  real, dimension(:), intent(inout) :: stock_values !< The stored tracer stock values
+  integer,            intent(inout) :: ns_tot !< The total number of tracer stocks across all packages
+  character(len=*), dimension(:), &
+            optional, intent(inout) :: stock_names !< The tracer names for use in the stock reporting
+  character(len=*), dimension(:), &
+            optional, intent(inout) :: stock_units !< The units for use in stock reporting
 
 ! This routine stores the stocks for SIS_call_tracer_stocks.
   integer :: n
@@ -263,8 +280,11 @@ subroutine SIS_store_stocks(pkg_name, ns, names, units, values, stock_values, &
 
 end subroutine SIS_store_stocks
 
+!> Call all of the tracer package end routines and deallocate tracer memory
 subroutine SIS_tracer_flow_control_end(CS)
-  type(SIS_tracer_flow_control_CS), pointer :: CS
+  type(SIS_tracer_flow_control_CS), pointer :: CS  !< The control structure returned by a previous
+                                                   !! call to SIS_call_tracer_register that is
+                                                   !! deallocated here
 
   if (CS%use_ice_age) call ice_age_end(CS%ice_age_tracer_CSp)
 

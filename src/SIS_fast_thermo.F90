@@ -74,8 +74,8 @@ public :: redo_update_ice_model_fast, find_excess_fluxes
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
-  real, pointer, dimension(:,:,:) :: &
-    enth_prev, heat_in
+  real, pointer, dimension(:,:,:) :: enth_prev => NULL()
+  real, pointer, dimension(:,:,:) :: heat_in => NULL()
 
   logical :: debug_fast   ! If true, write verbose checksums of code that is
                           ! executed on fast ice PEs for debugging purposes.
@@ -112,43 +112,58 @@ contains
 subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
        flux_sw, flux_lw, lprec, fprec, flux_lh, t_skin, SST, &
        sh_T0, evap_T0, lw_T0, dshdt, devapdt, dlwdt, G, IG)
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(atmos_ice_boundary_type), intent(in)    :: ABT
-  type(SIS_hor_grid_type),       intent(in)    :: G
-  type(ice_grid_type),           intent(in)    :: IG
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), intent(in) :: &
-    flux_u, &
-    flux_v, &
-    flux_sh, &  ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere in W m-2.
-    evap, &     ! The upward flux of water due to sublimation or evaporation
-                ! from the top of the ice to the atmosphere, in kg m-2 s-1.
-    flux_lw, &  ! The net longwave heat flux from the atmosphere into the
-                ! ice or ocean, in W m-2.
-    lprec, fprec, & ! The liquid and frozen precipitation onto the ice
-                ! in kg m-2 s-1.
-    flux_lh, &  ! The upward latent heat flux associated with sublimation or
-                ! evaporation, in W m-2.
-    sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 C, in W m-2.
-    evap_T0, &  ! The sublimation rate  when the skin temperature is 0 C,
-                ! in kg m-2 s-1.
-    lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 C, in W m-2.
-    dshdt, &    ! The derivative of the upward sensible heat flux from the
-                ! the top of the ice into the atmosphere with ice skin
-                ! temperature in W m-2 K-1.
-    devapdt, &  ! The derivative of the sublimation rate with the surface
-                ! temperature, in kg m-2 s-1 K-1.
-    dlwdt       ! The derivative of the longwave heat flux from the atmosphere
-                ! into the ice or ocean with ice skin temperature, in W m-2 K-1.
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), intent(in) :: &
-    t_skin
-  real, dimension(G%isd:G%ied,G%jsd:G%jed), intent(in) :: &
-    SST
+  type(fast_ice_avg_type),       intent(inout) :: FIA !< A type containing averages of fields
+                                                      !! (mostly fluxes) over the fast updates
+  type(atmos_ice_boundary_type), intent(in)    :: ABT !< A type containing atmospheric boundary
+                                                      !! forcing fields that are used to drive the ice
+  type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice in Pa.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice in Pa.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: flux_sh  !< The upward sensible heat flux from the top of the ice into
+                           !! the atmosphere in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: evap     !< The upward flux of water due to sublimation or evaporation
+                           !! from the top of the ice to the atmosphere, in kg m-2 s-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: flux_lw  !< The net longwave heat flux from the atmosphere into the
+                           !! ice or ocean, in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: lprec    !< The liquid precipitation onto the ice in kg m-2 s-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: fprec    !< The frozen precipitation onto the ice in kg m-2 s-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: flux_lh  !< The upward latent heat flux associated with sublimation or
+                           !! evaporation, in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: sh_T0    !< The upward sensible heat flux from the top of the ice into
+                           !! the atmosphere when the skin temperature is 0 C, in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: evap_T0  !< The sublimation rate  when the skin temperature is 0 C,
+                           !! in kg m-2 s-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: lw_T0    !< The downward longwave heat flux from the atmosphere into the
+                           !! ice or ocean when the skin temperature is 0 C, in W m-2.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: dshdt    !< The derivative of the upward sensible heat flux from the
+                           !! the top of the ice into the atmosphere with ice skin
+                           !! temperature in W m-2 K-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: devapdt  !< The derivative of the sublimation rate with the surface
+                           !! temperature, in kg m-2 s-1 K-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
+    intent(in) :: dlwdt    !< The derivative of the longwave heat flux from the atmosphere
+                           !! into the ice or ocean with ice skin temperature, in W m-2 K-1.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), &
+    intent(in) :: t_skin   !< The sea ice surface skin temperature in deg C.
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+    intent(in) :: SST      !< The sea surface temperature in deg C.
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
-    intent(in) :: flux_sw ! The downward shortwave heat fluxes in W m-2. The 4th
-                ! dimension is a combination of angular orientation & frequency.
+    intent(in) :: flux_sw  !< The downward shortwave heat fluxes in W m-2. The 4th
+                           !! dimension is a combination of angular orientation & frequency.
 
   real :: t_sfc
   integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
@@ -222,11 +237,13 @@ end subroutine sum_top_quantities
 !> avg_top_quantities determines time average fluxes for later use by the
 !!    slow ice physics and by the ocean.
 subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
-  type(fast_ice_avg_type), intent(inout) :: FIA
-  type(ice_rad_type),      intent(in)    :: Rad
-  type(ice_state_type),    intent(in)    :: IST
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(in)    :: IG
+  type(fast_ice_avg_type), intent(inout) :: FIA !< A type containing averages of fields
+                                                !! (mostly fluxes) over the fast updates
+  type(ice_rad_type),      intent(in)    :: Rad !< A structure with fields related to the absorption,
+                                                !! reflection and transmission of shortwave radiation.
+  type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
 
   real    :: u, v, divid, sign
   real    :: I_avc    ! The inverse of the number of contributions.
@@ -352,12 +369,16 @@ end subroutine avg_top_quantities
 !> total_top_quantities determines the sum across partitions of various fluxes
 !! for later use on a potentially different ice state on the slow side.
 subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
-  type(fast_ice_avg_type),   intent(in)    :: FIA
-  type(total_sfc_flux_type), intent(inout) :: TSF
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(in)    :: IG
+  type(fast_ice_avg_type),   intent(in)    :: FIA !< A type containing averages of fields
+                                                  !! (mostly fluxes) over the fast updates
+  type(total_sfc_flux_type), intent(inout) :: TSF !< A type with fluxes that are averaged across
+                                                  !! the fast updates and integrated across thickness
+                                                  !! categories from the fast ice update
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),       intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-                             intent(in)    :: part_size
+                             intent(in)    :: part_size !< The fractional area coverage of the ice
+                                                  !! thickness categories, nondim, 0-1
 
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
@@ -401,13 +422,19 @@ end subroutine total_top_quantities
 !> find_excess_fluxes determines the difference between the sum across
 !! partitions of various fluxes amd the sum previously found by total_top_quantities.
 subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
-  type(fast_ice_avg_type),   intent(in)    :: FIA
-  type(total_sfc_flux_type), intent(in)    :: TSF
-  type(total_sfc_flux_type), intent(inout) :: XSF
-  type(SIS_hor_grid_type),   intent(inout) :: G
-  type(ice_grid_type),       intent(in)    :: IG
+  type(fast_ice_avg_type),   intent(in)    :: FIA !< A type containing averages of fields
+                                                  !! (mostly fluxes) over the fast updates
+  type(total_sfc_flux_type), intent(in)    :: TSF !< A type with fluxes that are averaged across
+                                                  !! the fast updates and integrated across thickness
+                                                  !! categories from the fast ice update
+  type(total_sfc_flux_type), intent(inout) :: XSF !< A structure of the excess fluxes between the
+                                                  !! atmosphere and the ice or ocean relative to
+                                                  !! those stored in TSF
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),       intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-                             intent(in)    :: part_size
+                             intent(in)    :: part_size !< The fractional area coverage of the ice
+                                                  !! thickness categories, nondim, 0-1
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
@@ -560,13 +587,13 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                                     Time_step, CS, G, IG )
 
   type(atmos_ice_boundary_type), intent(in) :: Atmos_boundary !< A type containing atmospheric boundary
-                                                        !< forcing fields that are used to drive the ice
+                                                        !! forcing fields that are used to drive the ice
   type(ice_state_type),      intent(inout) :: IST       !< A type describing the state of the sea ice
   type(simple_OSS_type),     intent(in)    :: sOSS      !< A type describing the ocean surface state
   type(ice_rad_type),        intent(inout) :: Rad       !< A type containing fields related to shortwave
-                                                        !< radiation in the ice, including the skin temperature
+                                                        !! radiation in the ice, including the skin temperature
   type(fast_ice_avg_type),   intent(inout) :: FIA       !< A type that is used to accumulate averages of
-                                                        !< fields (mostly fluxes) over the fast updates
+                                                        !! fields (mostly fluxes) over the fast updates
   type(time_type),           intent(in)    :: Time_step !< The amount of time over which to advance the ice
   type(fast_thermo_CS),      pointer       :: CS        !< The control structure for this module
   type(SIS_hor_grid_type),   intent(inout) :: G         !< The horizontal grid type
@@ -825,10 +852,12 @@ end subroutine do_update_ice_model_fast
 !! the type 'air_sea_deposition'.  These fluxes were not available when
 !! update_ice_model_fast was called and the other fluxes were accumulated.
 subroutine accumulate_deposition_fluxes(ABT, FIA, G, IG)
-  type(atmos_ice_boundary_type), intent(in)    :: ABT
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(SIS_hor_grid_type),       intent(in)    :: G
-  type(ice_grid_type),           intent(in)    :: IG
+  type(atmos_ice_boundary_type), intent(in)    :: ABT !< A type containing atmospheric boundary
+                                                      !! forcing fields that are used to drive the ice
+  type(fast_ice_avg_type),       intent(inout) :: FIA !< A type containing averages of fields
+                                                      !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
 
   call coupler_type_increment_data( ABT%fluxes, FIA%tr_flux, only_flux_type='air_sea_deposition')
 
@@ -845,12 +874,12 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   type(ice_state_type),      intent(inout) :: IST        !< A type describing the state of the sea ice
   type(simple_OSS_type),     intent(in)    :: sOSS       !< A type describing the ocean surface state
   type(ice_rad_type),        intent(inout) :: Rad        !< A type containing fields related to
-                                                         !< shortwave radiation in the ice
+                                                         !! shortwave radiation in the ice
   type(fast_ice_avg_type),   intent(inout) :: FIA        !< A type containing averages of fields
-                                                         !< (mostly fluxes) over the fast updates
+                                                         !! (mostly fluxes) over the fast updates
   type(total_sfc_flux_type), intent(in)    :: TSF        !< A type with fluxes that are averaged across
-                                                         !< the fast updates and integrated across thickness
-                                                         !< categories from the fast ice update
+                                                         !! the fast updates and integrated across thickness
+                                                         !! categories from the fast ice update
   type(SIS_optics_CS),       intent(in)    :: optics_CSp !< The control structure for the sea ice optics module
   type(time_type),           intent(in)    :: Time_step  !< The amount of time over which to advance the ice
   type(fast_thermo_CS),      pointer       :: CS         !< The control structure for this module
@@ -1188,12 +1217,12 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, IG)
   character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_state_type),      intent(in) :: IST   !< A type describing the state of the sea ice
   type(ice_rad_type),        intent(in) :: Rad   !< A type containing fields related to
-                                                 !< shortwave radiation in the ice
+                                                 !! shortwave radiation in the ice
   type(fast_ice_avg_type),   intent(in) :: FIA   !< A type containing averages of fields
-                                                 !< (mostly fluxes) over the fast updates
+                                                 !! (mostly fluxes) over the fast updates
   type(total_sfc_flux_type), intent(in) :: TSF   !< A type with fluxes that are averaged across
-                                                 !< the fast updates and integrated across thickness
-                                                 !< categories from the fast ice update
+                                                 !! the fast updates and integrated across thickness
+                                                 !! categories from the fast ice update
   type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
   type(ice_grid_type),       intent(in)    :: IG !< The ice vertical grid type
 
@@ -1237,9 +1266,10 @@ end subroutine flux_redo_chksum
 
 !> Convert negative evaporation over ice (i.e. frost formation) into snow.
 subroutine convert_frost_to_snow(FIA, G, IG)
-  type(fast_ice_avg_type),       intent(inout) :: FIA
-  type(SIS_hor_grid_type),       intent(in)    :: G
-  type(ice_grid_type),           intent(in)    :: IG
+  type(fast_ice_avg_type),       intent(inout) :: FIA !< A type containing averages of fields
+                                                      !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1255,12 +1285,15 @@ end subroutine convert_frost_to_snow
 !> SIS_fast_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_fast_thermo module.
 subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
-  type(time_type),     target, intent(in)    :: Time   ! current time
-  type(SIS_hor_grid_type),     intent(in)    :: G      ! The horizontal grid structure
-  type(ice_grid_type),         intent(in)    :: IG     ! The sea-ice grid type
-  type(param_file_type),       intent(in)    :: param_file
-  type(SIS_diag_ctrl), target, intent(inout) :: diag
-  type(fast_thermo_CS),        pointer       :: CS
+  type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
+                                                     !! set with the current model.
+  type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
+  type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
+  type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
+  type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
+  type(fast_thermo_CS),        pointer       :: CS   !< The control structure for the SIS_fast_thermo
+                                                     !! module that is initialized here
+
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1330,7 +1363,8 @@ end subroutine SIS_fast_thermo_init
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_fast_thermo_end deallocates any memory associated with this module.
 subroutine SIS_fast_thermo_end(CS)
-  type(fast_thermo_CS), pointer :: CS
+  type(fast_thermo_CS), pointer :: CS   !< The control structure for the SIS_slow_thermo
+                                        !! module that is deallocated here
 
   call SIS2_ice_thm_end(CS%ice_thm_CSp)
 

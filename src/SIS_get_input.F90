@@ -40,22 +40,26 @@ public Get_SIS_Input
 
 ! This structure is to simplify communication with the calling code.
 
+!> Container for paths and parameter file names.
 type, public :: directories
   character(len=240) :: &
-    restart_input_dir = ' ',& ! The directory to read restart and input files.
-    restart_output_dir = ' ',&! The directory into which to write restart files.
-    output_directory = ' ', & ! The directory to use to write the model output.
-    input_filename  = ' '     ! A string that indicates the input files or how
-                              ! the run segment should be started.
+    restart_input_dir = ' ',& !< The directory to read restart and input files.
+    restart_output_dir = ' ',&!< The directory into which to write restart files.
+    output_directory = ' ', & !< The directory to use to write the model output.
+    input_filename  = ' '     !< A string that indicates the input files or how
+                              !! the run segment should be started.
 end type directories
 
 contains
 
+!> Get_SIS_input reads the SIS namelist entries to see if the run is to be started from
+!! a saved restart file, and get the names of the parameter files, I/O directories.
 subroutine Get_SIS_Input(param_file, dirs, check_params, component)
-  type(param_file_type), optional, intent(out) :: param_file
-  type(directories),     optional, intent(out) :: dirs
-  logical,               optional, intent(in)  :: check_params
-  character(len=*),      optional, intent(in)  :: component
+  type(param_file_type), optional, intent(out) :: param_file !< A structure to parse for run-time parameters
+  type(directories),     optional, intent(out) :: dirs         !< Container for paths and parameter file names.
+  logical,               optional, intent(in)  :: check_params !< If present and False will stop error checking for
+                                                               !! run-time parameters.
+  character(len=*),      optional, intent(in)  :: component    !< An alternate component name, the default is "SIS"
 
 !    See if the run is to be started from saved conditions, and get  !
 !  the names of the I/O directories and initialization file.  This   !

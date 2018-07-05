@@ -39,14 +39,11 @@ use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
 use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operator(-)
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
-! use MOM_tracer_flow_control, only : tracer_flow_control_CS, call_tracer_stocks
-
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS2_ice_thm, only : enthalpy_liquid_freeze, get_SIS2_thermo_coefs, ice_thermo_type
-use SIS_sum_output_type, only : SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
 
 use netcdf
@@ -56,70 +53,89 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public write_ice_statistics, accumulate_bottom_input
-public SIS_sum_output_init, SIS_sum_output_end, SIS_sum_out_CS
+public SIS_sum_output_init, SIS_sum_output_end
 public accumulate_input_1, accumulate_input_2
 
 !-----------------------------------------------------------------------
 
 ! integer, parameter :: NUM_FIELDS = 17
 
-! type, public :: SIS_sum_out_CS ; private
+!> This structure contains the parameters that regulate the summed output.
+type, public :: SIS_sum_out_CS ; private
 
-!   real    :: fresh_water_input  !   The total mass of fresh water added by
-!                                 ! surface fluxes since the last time that
-!   real    :: mass_prev          !   The total sea ice mass the last time that
-!                                 ! write_ice_statistics was called, in kg.
-!   real    :: salt_prev          !   The total amount of salt in the sea ice the last
-!                                 ! time that write_ice_statistics was called, in PSU kg.
-!   real    :: net_salt_input     !   The total salt added by surface fluxes since
-!                                 ! the last time that write_ice_statistics was called,
-!                                 ! in PSU kg.
-!   real    :: heat_prev          !   The total amount of heat in the sea ice the last
-!                                 ! time that write_ice_statistics was called, in Joules.
-!   real    :: net_heat_input     !   The total heat added by surface fluxes since
-!                                 ! the last time that write_ice_statistics was called,
-!                                 ! in Joules.
-!   type(EFP_type) :: &
-!     fresh_water_in_EFP, &       ! These are extended fixed point versions of the
-!     net_salt_in_EFP, &          ! correspondingly named variables above.
-!     net_heat_in_EFP, heat_prev_EFP, salt_prev_EFP, mass_prev_EFP
-!   real    :: dt                 ! The baroclinic dynamics time step, in s.
-!   real    :: timeunit           !   The length of the units for the time
-!                                 ! axis, in s.
-!   type(time_type) :: Start_time ! The start time of the simulation.
-!                                 ! Start_time is set in MOM_initialization.F90
-!   logical :: write_stdout       ! If true, periodically write sea ice statistics
-!                                 ! to stdout to allow the progress to be seen.
-!   logical :: write_stocks       ! If true, write the integrated tracer amounts
-!                                 ! to stdout when the statistics files are written.
-!   integer :: previous_calls = 0 ! The number of times write_ice_statistics has been called.
-!   integer :: prev_n = 0         ! The value of n from the last call.
-! !  integer :: statsfile_nc       ! NetCDF id of the statistics file.
-!   integer :: statsfile_ascii    ! The unit number of the ascii version of the statistics file.
-! !  type(fieldtype), dimension(NUM_FIELDS+MAX_FIELDS_) :: &
-! !             fields             ! fieldtype variables for the output fields.
-!   character(len=200) :: statsfile  ! The name of the statistics file with path.
-! end type SIS_sum_out_CS
+  real    :: mass_prev          !<   The total sea ice mass the last time that
+                                !! write_ice_statistics was called, in kg.
+  real    :: fresh_water_input  !<   The total mass of fresh water added by
+                                !! surface fluxes since the last time that
+  real    :: salt_prev          !<   The total amount of salt in the sea ice the last
+                                !! time that write_ice_statistics was called, in PSU kg.
+  real    :: net_salt_input     !<   The total salt added by surface fluxes since the last
+                                !! time that write_ice_statistics was called, in PSU kg.
+  real    :: heat_prev          !<   The total amount of heat in the sea ice the last
+                                !! time that write_ice_statistics was called, in Joules.
+  real    :: net_heat_input     !<   The total heat added by surface fluxes since the last
+                                !! time that write_ice_statistics was called, in Joules.
+  real, dimension(:,:), allocatable :: &
+    water_in_col, &             !< The water that has been input to the ice and snow in a column since
+                                !! the last time that write_ice_statistics was called, in kg m-2.
+    heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
+                                !! the last time that write_ice_statistics was called, in J m-2.
+    salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
+                                !! the last time that write_ice_statistics was called, in kg m-2.
+    water_col_prev, &           !< The column integrated water that was in the ice and snow the last
+                                !! time that write_ice_statistics was called, in kg m-2.
+    heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
+                                !! time that write_ice_statistics was called, in J m-2.
+    salt_col_prev               !< The column integrated salt that was in the ice and snow the last
+                                !! time that write_ice_statistics was called, in kg m-2.
+
+  type(EFP_type) :: fresh_water_in_EFP !< An extended fixed point version of fresh_water_in
+  type(EFP_type) :: net_salt_in_EFP !< An extended fixed point version of net_salt_in
+  type(EFP_type) :: net_heat_in_EFP !< An extended fixed point version of net_heat_in
+  type(EFP_type) :: heat_prev_EFP !< An extended fixed point version of heat_prev
+  type(EFP_type) :: salt_prev_EFP !< An extended fixed point version of salt_prev
+  type(EFP_type) :: mass_prev_EFP !< An extended fixed point version of mass_prev
+  real    :: dt                 !< The baroclinic dynamics time step, in s.
+  real    :: timeunit           !<   The length of the units for the time axis, in s.
+  type(time_type) :: Start_time !< The start time of the simulation.
+                                !< Start_time is set in SIS_initialization.F90
+  logical :: column_check       !< If true, enable the column by column heat and
+                                !! mass conservation check
+  real    :: imb_tol            !< The tolerance for imbalances to be flagged by
+                                !! column_check, nondim.
+  integer :: maxtrunc           !< The number of truncations per ice statistics
+                                !! save interval at which the run is stopped.
+  logical :: write_stdout       !< If true, periodically write sea ice statistics
+                                !! to stdout to allow the progress to be seen.
+  logical :: write_stocks       !< If true, write the integrated tracer amounts
+                                !! to stdout when the statistics files are written.
+  integer :: previous_calls = 0 !< The number of times write_ice_statistics has been called.
+  integer :: prev_n = 0         !< The value of n from the last call.
+  integer, pointer :: ntrunc => NULL() !< The number of times the velocity has been truncated
+                                !! since the last call to write_ice_statistics.
+! integer :: statsfile_nc       !< NetCDF id of the statistics file.
+  integer :: statsfile_ascii    !< The unit number of the ascii version of the statistics file.
+! type(fieldtype), dimension(NUM_FIELDS+MAX_FIELDS_) :: &
+!            fields             !< fieldtype variables for the output fields.
+  character(len=200) :: statsfile  !< The name of the statistics file with path.
+
+end type SIS_sum_out_CS
 
 contains
 
-subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
-                               ntrunc)
-  type(SIS_hor_grid_type),  intent(in)    :: G
-  type(param_file_type),    intent(in)    :: param_file
-  character(len=*),         intent(in)    :: directory
-  type(time_type),          intent(in)    :: Input_start_time
-  type(SIS_sum_out_CS),     pointer       :: CS
-  integer, target, optional,intent(inout) :: ntrunc
-! Arguments: G - The sea ice model's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (in)      directory - The directory where the statistics file goes.
-!  (in)      Input_start_time - The start time of the simulation.
-!  (in/out)  CS - A pointer that is set to point to the control structure
-!                 for this module
-!  (in/out,opt)  ntrunc - The integer that stores the number of times the velocity
-!                     has been truncated since the last call to write_ice_statistics.
+!> Initialize the SIS_sum_output control structure, allocate memory and store runtime parameters.
+subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, ntrunc)
+  type(SIS_hor_grid_type),  intent(in)    :: G      !< The horizontal grid type
+  type(param_file_type),    intent(in)    :: param_file !< A structure to parse for run-time parameters
+  character(len=*),         intent(in)    :: directory  !<  The directory where the statistics file goes
+  type(time_type),          intent(in)    :: Input_start_time !< The start time of the simulation
+  type(SIS_sum_out_CS),     pointer       :: CS     !< A pointer that is set to point to the control
+                                                    !! structure for this module
+  integer, target, optional,intent(inout) :: ntrunc !< The integer that stores the number of times
+                                                    !! the velocity has been truncated since the
+                                                    !! last call to write_ice_statistics
+
+  ! Local variables
   real :: Rho_0, maxvel
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -191,46 +207,39 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, &
 
 end subroutine SIS_sum_output_init
 
+!> Deallocate memory associated with the SIS_sum_out control structure
 subroutine SIS_sum_output_end(CS)
-  type(SIS_sum_out_CS), pointer :: CS
+  type(SIS_sum_out_CS), pointer :: CS !< The control structure returned by a previous call to
+                                      !! SIS_sum_output_init that is deallocated here
 !   This subroutine deallocates the memory owned by this module.
-! Argument: CS - The control structure returned by a previous call to
-!                SIS_sum_output_init.
 
   if (associated(CS)) then
     deallocate(CS)
   endif
 end subroutine SIS_sum_output_end
 
+!> Write out the sea ice statistics of the total sea-ice mass, heat and salt by
+!! hemisphere and other globally integrated quantities.
 subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, tracer_CSp)
-  type(ice_state_type),    intent(inout) :: IST
-
-  type(time_type),         intent(inout) :: day
-  integer,                 intent(in)    :: n
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(SIS_sum_out_CS),    pointer       :: CS
-  character(len=*), optional, intent(in) :: message
-  logical,          optional, intent(in) :: check_column
-  type(SIS_tracer_flow_control_CS), optional, pointer       :: tracer_CSp
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(time_type),            intent(inout) :: day !< The current model time.
+  integer,                    intent(in)    :: n   !< The time step number of the current execution
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(SIS_sum_out_CS),       pointer       :: CS  !< The control structure returned by a previous
+                                                   !! call to SIS_sum_output_init
+  character(len=*), optional, intent(in) :: message !< A text message to use with this output
+  logical,          optional, intent(in) :: check_column !< If true, check for column-wise heat and
+                                                   !! mass conservation.
+  type(SIS_tracer_flow_control_CS), &
+                    optional, pointer    :: tracer_CSp !< A pointer to the tracer package flow
+                                                   !! control module to enable the writing of
+                                                   !! the passive tracer statistics.
 
 !  This subroutine calculates and writes the total sea-ice mass by
 ! hemisphere, heat, salt, and other globally integrated quantities.
 
-! Arguments: u - Zonal velocity, in m s-1.
-!  (in)      v - Meridional velocity, in m s-1.
-!  (in)      h - Layer thickness, in m.
-!  (in)      tv - A structure containing pointers to any available
-!                 thermodynamic fields, including potential temperature and
-!                 salinity or mixed layer density. Absent fields have NULL ptrs.
-!  (in/out)  day - The current model time.
-!  (in)      n - The time step number of the current execution.
-!  (in)      G - The sea ice model's grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 SIS_sum_output_init.
-!  (in,opt)  message - A text message to use with this output.
-!  (in,opt)  check_column - If true, check for column-wise heat and mass conservation.
-
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
     ice_area, &    ! The area of ice in each cell and hemisphere, in m2.
     ice_extent, &  ! The extent (cells with >10% coverage) of ice in each
@@ -361,10 +370,10 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 
 ! nTr_stocks = 0
 ! if (present(tracer_CSp)) then
-!   call call_tracer_stocks(h, Tr_stocks, G, tracer_CSp, stock_names=Tr_names, stock_units=Tr_units, num_stocks=nTr_stocks,&
-!                              got_min_max=Tr_minmax_got, global_min=Tr_min, global_max=Tr_max, &
-!                              xgmin=Tr_min_x, ygmin=Tr_min_y, zgmin=Tr_min_z,&
-!                              xgmax=Tr_max_x, ygmax=Tr_max_y, zgmax=Tr_max_z)
+!   call call_tracer_stocks(h, Tr_stocks, G, tracer_CSp, stock_names=Tr_names, stock_units=Tr_units, &
+!                           num_stocks=nTr_stocks, got_min_max=Tr_minmax_got, global_min=Tr_min, global_max=Tr_max, &
+!                           xgmin=Tr_min_x, ygmin=Tr_min_y, zgmin=Tr_min_z,&
+!                           xgmax=Tr_max_x, ygmax=Tr_max_y, zgmax=Tr_max_z)
 !   if (nTr_stocks > 0) then
 !     do m=1,nTr_stocks
 !       vars(num_nc_fields+m) = &
@@ -713,24 +722,23 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 end subroutine write_ice_statistics
 
 
+!> Accumulate the net input of fresh water and heat through the bottom of the
+!! sea-ice for conservation checks.
 subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
-!   This subroutine accumulates the net input of fresh water and heat through
-! the bottom of the sea-ice for conservation checks.
-! Arguments: IST - The internal sea ice state type.
-!  (in)      dt - The amount of time over which to average.
-!  (in)      G - The sea ice model's grid structure.
-!  (in)      IG - The sea-ice-specific grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 SIS_sum_output_init.
-  type(SIS_hor_grid_type),    intent(in) :: G
-  type(ice_grid_type),        intent(in) :: IG
-  type(ice_state_type),       intent(in) :: IST
-  type(ocean_sfc_state_type), intent(in) :: OSS
-  type(fast_ice_avg_type),    intent(in) :: FIA
-  type(ice_ocean_flux_type),  intent(in) :: IOF
-  real,                       intent(in) :: dt
-  type(SIS_sum_out_CS),       pointer    :: CS
+  type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
+  type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type), intent(in) :: OSS !< A structure containing the arrays that describe
+                                                !! the ocean's surface state for the ice model.
+  type(fast_ice_avg_type),    intent(in) :: FIA !< A type containing averages of fields
+                                                !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(in) :: IOF !< A structure containing fluxes from the ice to
+                                                !! the ocean that are calculated by the ice model.
+  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
+                                                !! to SIS_sum_output_init.
 
+  ! Local variables
   real :: Flux_SW, enth_units, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
@@ -764,24 +772,21 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
 end subroutine accumulate_bottom_input
 
+!> Accumulate the net input of fresh water and heat through the top of the
+!! sea-ice for conservation checks with the first phase of the updates
 subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
-!   This subroutine accumulates the net input of fresh water and heat through
-! the top of the sea-ice for conservation checks.
+  type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
+  type(fast_ice_avg_type),    intent(in) :: FIA !< A type containing averages of fields
+                                                !! (mostly fluxes) over the fast updates
+  type(ocean_sfc_state_type), intent(in) :: OSS !< A structure containing the arrays that describe
+                                                !! the ocean's surface state for the ice model.
+  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
+  type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
+                                                !! to SIS_sum_output_init.
 
-! Arguments: IST - The internal sea ice state type.
-!  (in)      dt - The amount of time over which to average.
-!  (in)      IG - The sea-ice-specific grid structure.
-!  (in)      G - The sea ice model's grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 SIS_sum_output_init.
-  type(ice_state_type),    intent(in) :: IST
-  type(fast_ice_avg_type), intent(in) :: FIA
-  type(ocean_sfc_state_type), intent(in) :: OSS
-  real,                    intent(in) :: dt
-  type(SIS_hor_grid_type), intent(in) :: G
-  type(ice_grid_type),     intent(in) :: IG
-  type(SIS_sum_out_CS),    pointer    :: CS
-
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
     FW_in, &   ! The net fresh water input, integrated over a timestep in kg.
     salt_in, & ! The total salt added by surface fluxes, integrated
@@ -826,29 +831,26 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
 
 end subroutine accumulate_input_1
 
+!> Accumulate the net input of fresh water and heat through the top of the
+!! sea-ice for conservation checks, with a second phase of the updates
 subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
-!   This subroutine accumulates the net input of fresh water and heat through
-! the top of the sea-ice for conservation checks.
-
-! Arguments: IST - The internal sea ice state type.
-!  (in)      part_size - The fractional ice concentration within a cell in each
-!                      thickness category, nondimensional, 0-1.
-!  (in)      dt - The amount of time over which to average.
-!  (in)      G - The sea ice model's grid structure.
-!  (in)      IG - The sea-ice-specific grid structure.
-!  (in)      CS - The control structure returned by a previous call to
-!                 SIS_sum_output_init.
-  type(SIS_hor_grid_type), intent(inout) :: G
-  type(ice_grid_type),     intent(inout) :: IG
-  type(ice_state_type),    intent(inout) :: IST
-  type(fast_ice_avg_type),    intent(in) :: FIA
-  type(ice_ocean_flux_type),  intent(in) :: IOF
-  type(ocean_sfc_state_type), intent(in) :: OSS
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
+  type(fast_ice_avg_type),    intent(in) :: FIA !< A type containing averages of fields
+                                                !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type),  intent(in) :: IOF !< A structure containing fluxes from the ice to
+                                                !! the ocean that are calculated by the ice model.
+  type(ocean_sfc_state_type), intent(in) :: OSS !< A structure containing the arrays that describe
+                                                !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), &
-                              intent(in) :: part_size
-  real,                       intent(in) :: dt
-  type(SIS_sum_out_CS),       pointer    :: CS
+                              intent(in) :: part_size !< The fractional ice concentration within a
+                                                !! cell in each thickness category, nondimensional, 0-1.
+  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
+                                                !! to SIS_sum_output_init.
 
+  ! Local variables
   real :: area_pt, Flux_SW, pen_frac
   real :: enth_units, LI
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, b, nb
