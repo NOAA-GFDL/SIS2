@@ -53,7 +53,7 @@ type ice_data_type !  ice_public_type
   logical  :: fast_ice_pe = .false. !< If true, this is a fast ice PE
   logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
                                     !! and domain decomposiion
-  integer  :: xtype          !< An integer specifying the type for the exchange 
+  integer  :: xtype          !< An integer specifying the type for the exchange
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
   integer, pointer, dimension(:)   :: pelist   =>NULL() !< Used for flux-exchange.
