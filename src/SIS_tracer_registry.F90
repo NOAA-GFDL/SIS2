@@ -1,23 +1,8 @@
+!>  This module contains the SIS_tracer_registry_type and subroutines that handle the registration
+!! of tracers and related subroutines.
 module SIS_tracer_registry
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
@@ -56,6 +41,7 @@ public SIS_tracer_chksum, add_SIS_tracer_diagnostics, add_SIS_tracer_OBC_values
 public update_SIS_tracer_halos, set_massless_SIS_tracers, check_SIS_tracer_bounds
 public SIS_tracer_registry_init, SIS_tracer_registry_end
 
+!> A type that describes a SIS tracer field
 type, public :: SIS_tracer_type
   real, dimension(:,:,:,:), &
     pointer :: t => NULL()   !< The array containing the tracer concentration, with dimensions
@@ -98,10 +84,12 @@ type, public :: SIS_tracer_type
   logical :: is_passive  = .false. !< True if this ice tracer is passive
 end type SIS_tracer_type
 
+!> A type that can be used to create arrays of pointers
 type, public :: p3d
   real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3-d array
 end type p3d
 
+!> The SIS tracer registry
 type, public :: SIS_tracer_registry_type
   integer :: ntr = 0         !< The number of registered tracers.
   type(SIS_tracer_type) :: Tr_snow(MAX_FIELDS_) !< The array of registered snow tracers.

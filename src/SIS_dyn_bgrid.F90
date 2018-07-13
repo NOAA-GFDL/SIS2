@@ -1,23 +1,7 @@
+!> Update sea-ice dynamics using elastic-viscous-plastic rheology with a B-grid discretization
 module SIS_dyn_bgrid
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
@@ -74,9 +58,11 @@ type, public :: SIS_B_dyn_CS ; private
   type(time_type), pointer :: Time => NULL() !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                              !! timing of diagnostic output.
+  !>@{ Diagnostic IDs
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_stren = -1, id_ui = -1, id_vi = -1
+  !!@}
 end type SIS_B_dyn_CS
 
 contains

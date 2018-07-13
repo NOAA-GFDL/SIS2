@@ -1,23 +1,7 @@
+!> The sea ice continuity solver
 module SIS_continuity
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
@@ -26,20 +10,6 @@ module SIS_continuity
 !*    This program contains the subroutine that advects layer          *
 !*  thickness.  The scheme here uses a Piecewise-Parabolic method with *
 !*  a positive definite limiter.                                       *
-!*                                                                     *
-!*  Macros written all in capital letters are defined in MOM_memory.h. *
-!*                                                                     *
-!*     A small fragment of the grid is shown below:                    *
-!*                                                                     *
-!*    j+1  x ^ x ^ x   At x:  q                                        *
-!*    j+1  > o > o >   At ^:  v, vh                                    *
-!*    j    x ^ x ^ x   At >:  u, uh                                    *
-!*    j    > o > o >   At o:  h, hin                                   *
-!*    j-1  x ^ x ^ x                                                   *
-!*        i-1  i  i+1  At x & ^:                                       *
-!*           i  i+1    At > & o:                                       *
-!*                                                                     *
-!*  The boundaries always run through q grid points (x).               *
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
@@ -59,7 +29,8 @@ implicit none ; private
 
 public ice_continuity, SIS_continuity_init, SIS_continuity_end
 
-integer :: id_clock_update, id_clock_correct
+integer :: id_clock_update  !< A CPU time clock ID
+integer :: id_clock_correct !< A CPU time clock ID
 
 !> The control structure with parameters regulating the continuity solver
 type, public :: SIS_continuity_CS ; private
@@ -80,8 +51,11 @@ type, public :: SIS_continuity_CS ; private
                              !! numbers.
 end type SIS_continuity_CS
 
+!> This type is used to specify the active loop bounds
 type :: loop_bounds_type ; private
+  !>@{ The active index range
   integer :: ish, ieh, jsh, jeh
+  !!@}
 end type loop_bounds_type
 
 contains

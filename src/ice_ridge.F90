@@ -1,27 +1,8 @@
+!> A partially implmented ice ridging parameterizations
+!! that does not yet work with an arbitrary number of vertical layers in the ice
 module ice_ridging_mod
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!                                                                              !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
@@ -37,9 +18,10 @@ implicit none ; private
 
 public :: ice_ridging, ridge_rate, ice_ridging_init
 
-real, parameter :: hlim_unlim = 1.e8   ! arbitrary huge number used in ice_ridging
-real    :: s2o_frac       = 0.5        ! fraction of snow dumped into ocean during ridging
-logical :: rdg_lipscomb = .true.
+real, parameter :: hlim_unlim = 1.e8   !< Arbitrary huge number used in ice_ridging
+real    :: s2o_frac       = 0.5        !< Fraction of snow dumped into ocean during ridging
+logical :: rdg_lipscomb = .true.       !< If true, use the Lipscomb ridging scheme
+                                       !! TODO: These parameters belong in a control structure
 
 contains
 

@@ -1,27 +1,7 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! This module contains convenient utilities for use by the SIS2 sea ice model. !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Contains convenient utilities for use by the SIS2 sea ice model. !
 module SIS_utils
+
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_coms,           only : g_sum=>reproducing_sum
 use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
@@ -36,6 +16,7 @@ implicit none ; private
 
 public :: get_avg, post_avg, ice_line, is_NaN, g_sum, ice_grid_chksum
 
+!> Make a category averaged diagnostic available for output
 interface post_avg
   module procedure post_avg_3d, post_avg_4d
 end interface

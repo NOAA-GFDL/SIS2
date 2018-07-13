@@ -1,22 +1,7 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+!> This is the central module for the SIS2 sea ice model.
+module ice_model_mod
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   SIS2 is a SEA ICE MODEL for coupling through the GFDL exchange grid. SIS2  !
@@ -36,7 +21,6 @@
 ! contributions from many people at NOAA/GFDL, including Alistair Adcroft and  !
 ! Niki Zadeh.                                                                  !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_model_mod
 
 use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
@@ -147,10 +131,13 @@ public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
 
+!>@{ CPU time clock IDs
 integer :: iceClock
 integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
+!!@}
 
-integer, parameter :: REDIST=2, DIRECT=3
+integer, parameter :: REDIST=2 !< Redistribute for exchange
+integer, parameter :: DIRECT=3 !< Use direct exchange
 
 contains
 

@@ -1,22 +1,10 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+!> Handles the main updates of the ice states at the slower time-scales of the couplng or the
+!! interactions with the ocean, including the ice mass balance and related thermodynamics and
+!! salinity changes, and thermodynamic coupling with the ocean.  The radiative heating and
+!! diffusive temperature changes due to coupling with the atmosphere are handled elsewhere.
+module SIS_slow_thermo
+
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   SIS2 is a SEA ICE MODEL for coupling through the GFDL exchange grid. SIS2  !
@@ -31,7 +19,6 @@
 ! thermodynamic coupling with the ocean.  The radiative heating and diffusive  !
 ! temperature changes due to coupling with the atmosphere are handled elsewhere.!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_slow_thermo
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -90,77 +77,78 @@ implicit none ; private
 public :: slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
 
+!> The control structure for the SIS slow thermodynamics module
 type slow_thermo_CS ; private
-  logical :: specified_ice  ! If true, the sea ice is specified and there is
-                            ! no need for ice dynamics.
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
-                         ! that is used to calculate the ocean salt flux.
-  real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
-                         ! salinity of the water from which it formed, nondim.
+  logical :: specified_ice  !< If true, the sea ice is specified and there is
+                            !! no need for ice dynamics.
+  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity, in g/kg
+                            !! that is used to calculate the ocean salt flux.
+  real :: ice_rel_salin     !< The initial bulk salinity of sea-ice relative to the
+                            !! salinity of the water from which it formed, nondim.
 
-  logical :: filling_frazil ! If true, apply frazil to fill as many categories
-                            ! as possible to fill in a uniform (minimum) amount
-                            ! of frazil in all the thinnest categories.
-                            ! Otherwise the frazil is always assigned to a
-                            ! single category with part size > 0.01.
-  real    :: fraz_fill_time ! A timescale with which the filling frazil causes
-                            ! the thinest cells to attain similar thicknesses,
-                            ! or a negative number to apply the frazil flux
-                            ! uniformly, in s.
+  logical :: filling_frazil !< If true, apply frazil to fill as many categories
+                            !! as possible to fill in a uniform (minimum) amount
+                            !! of frazil in all the thinnest categories.
+                            !! Otherwise the frazil is always assigned to a
+                            !! single category with part size > 0.01.
+  real    :: fraz_fill_time !< A timescale with which the filling frazil causes
+                            !! the thinest cells to attain similar thicknesses,
+                            !! or a negative number to apply the frazil flux
+                            !! uniformly, in s.
 
-  logical :: do_ridging     !   If true, apply a ridging scheme to the convergent
-                            ! ice.  The original SIS2 implementation is based on
-                            ! work by Torge Martin.  Otherwise, ice is compressed
-                            ! proportionately if the concentration exceeds 1.
+  logical :: do_ridging     !<   If true, apply a ridging scheme to the convergent
+                            !! ice.  The original SIS2 implementation is based on
+                            !! work by Torge Martin.  Otherwise, ice is compressed
+                            !! proportionately if the concentration exceeds 1.
 
-  logical :: do_ice_restore ! If true, restore the sea-ice toward climatology
-                            ! by applying a restorative heat flux.
-  real    :: ice_restore_timescale ! The time scale for restoring ice when
-                            ! do_ice_restore is true, in days.
+  logical :: do_ice_restore !< If true, restore the sea-ice toward climatology
+                            !! by applying a restorative heat flux.
+  real    :: ice_restore_timescale !< The time scale for restoring ice when
+                            !! do_ice_restore is true, in days.
 
-  logical :: do_ice_limit   ! Limit the sea ice thickness to max_ice_limit.
-  real    :: max_ice_limit  ! The maximum sea ice thickness, in m, when
-                            ! do_ice_limit is true.
+  logical :: do_ice_limit   !< Limit the sea ice thickness to max_ice_limit.
+  real    :: max_ice_limit  !< The maximum sea ice thickness, in m, when do_ice_limit is true.
 
-  logical :: nudge_sea_ice = .false. ! If true, nudge sea ice concentrations towards observations.
-  real    :: nudge_sea_ice_rate = 0.0 ! The rate of cooling of ice-free water that
-                              ! should be ice  covered in order to constrained the
-                              ! ice concentration to track observations.  A suggested
-                              ! value is of order 10000 W m-2.
-  real    :: nudge_stab_fac   ! A factor that determines whether the buoyancy
-                              ! flux associated with the sea ice nudging of
-                              ! warm water includes a freshwater flux so as to
-                              ! be destabilizing on net (<1), stabilizing (>1),
-                              ! or neutral (=1).  The default is 1.
-  real    :: nudge_conc_tol   ! The tolerance for mismatch in the sea ice concentations
-                              ! before nudging begins to be applied.
+  logical :: nudge_sea_ice = .false. !< If true, nudge sea ice concentrations towards observations.
+  real    :: nudge_sea_ice_rate = 0.0 !< The rate of cooling of ice-free water that should be ice
+                            !! covered in order to constrained the ice concentration to track
+                            !! observations.  A suggested value is of order 10000 W m-2.
+  real    :: nudge_stab_fac !< A factor that determines whether the buoyancy flux associated with
+                            !! the sea ice nudging of warm water includes a freshwater flux so as to
+                            !! be destabilizing on net (<1), stabilizing (>1), or neutral (=1).
+                            !!  The default is 1.
+  real    :: nudge_conc_tol !< The tolerance for mismatch in the sea ice concentations
+                            !! before nudging begins to be applied.
 
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
+  logical :: debug          !< If true, write verbose checksums for debugging purposes.
+  logical :: column_check   !< If true, enable the heat check column by column.
+  real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check, nondim.
+  logical :: bounds_check   !< If true, check for sensible values of thicknesses temperatures, fluxes, etc.
 
-  integer :: n_calls = 0  ! The number of times update_ice_model_slow_down
-                          ! has been called.
+  integer :: n_calls = 0    !< The number of times update_ice_model_slow_down has been called.
 
-  type(time_type), pointer :: Time => NULL() ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag => NULL() ! A structure that is used to
-                                   ! regulate the timing of diagnostic output.
+  type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
+                                   !! regulate the timing of diagnostic output.
 
-  ! These are pointers to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
-
+                            !< A pointers to the control structures for a subsidiary module
   type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
+                            !< A pointers to the control structures for a subsidiary module
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
+                            !< A pointers to the control structures for a subsidiary module
   type(SIS_tracer_flow_control_CS), pointer :: tracer_flow_CSp => NULL()
+                            !< A pointers to the control structures for a subsidiary module
 
+  !>@{ Diagnostic IDs
   integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1, id_net_melt=-1, id_CMOR_melt=-1
   integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
+  !!@}
 end type slow_thermo_CS
 
+!>@{ CPU time clock IDs
 integer :: iceClock5, iceClock6, iceClock7
+!!@}
 
 contains
 

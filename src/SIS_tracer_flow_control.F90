@@ -1,23 +1,7 @@
+!> Contains subroutines into which calls to the tracer specific functions should be called.
 module SIS_tracer_flow_control
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2.  See LICNESE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
@@ -85,9 +69,11 @@ implicit none ; private
 public SIS_call_tracer_register, SIS_tracer_flow_control_init
 public SIS_call_tracer_column_fns, SIS_call_tracer_stocks, SIS_tracer_flow_control_end
 
+!> The control structure for orchestrating calls to the tracer packages
 type, public :: SIS_tracer_flow_control_CS ; private
-    logical :: use_ice_age = .false.
+    logical :: use_ice_age = .false.  !< If true, use the ice age tracer packages.
     type(ice_age_tracer_CS), pointer :: ice_age_tracer_CSp => NULL()
+                                      !< The control structure for the ice age tracer packages.
 end type SIS_tracer_flow_control_CS
 
 contains

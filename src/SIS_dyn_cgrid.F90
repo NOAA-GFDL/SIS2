@@ -1,23 +1,7 @@
+!> Update sea-ice dynamics using elastic-viscous-plastic rheology with a C-grid discretization
 module SIS_dyn_cgrid
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
@@ -124,7 +108,8 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: max_writes       !< The maximum number of times any PE can write out
                               !! a column's worth of accelerations during a run.
 
-  logical :: FirstCall = .true.
+  logical :: FirstCall = .true. !< If true, this module has not been called before
+  !>@{ Diagnostic IDs
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_stren = -1, id_stren0 = -1
@@ -142,6 +127,7 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: id_sigi_hifreq = -1, id_sigii_hifreq = -1
   integer :: id_stren_hifreq = -1, id_ci_hifreq = -1
   integer :: id_siu = -1, id_siv = -1, id_sispeed = -1 ! SIMIP diagnostics
+  !!@}
 end type SIS_C_dyn_CS
 
 contains
