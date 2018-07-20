@@ -112,6 +112,7 @@ type ice_data_type !  ice_public_type
     runoff => NULL(), &   !< Liquid runoff into the ocean, in kg m-2.
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
                           !! the ocean, in kg m-2.
+    stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean, in Pa.
     ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
     area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
     mass_berg => NULL(),  &  !< mass of icebergs in kg/m^2
@@ -203,6 +204,10 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%SST_C(isc:iec, jsc:jec)) ; Ice%SST_C(:,:) = 0.0
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+
+  if (.false.) then  ! Add a flag controlling stress_mag later.
+    allocate(Ice%stress_mag(isc:iec, jsc:jec)) ; Ice%stress_mag(:,:) = 0.0
+  endif
 
   if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
     allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0
@@ -332,6 +337,7 @@ subroutine dealloc_Ice_arrays(Ice)
   if (associated(Ice%calving)) deallocate(Ice%calving)
   if (associated(Ice%runoff_hflx)) deallocate(Ice%runoff_hflx)
   if (associated(Ice%calving_hflx)) deallocate(Ice%calving_hflx)
+  if (associated(Ice%stress_mag)) deallocate(Ice%stress_mag)
 
   if (associated(Ice%flux_salt)) deallocate(Ice%flux_salt)
   if (associated(Ice%flux_sw_vis_dir)) deallocate(Ice%flux_sw_vis_dir)
@@ -405,6 +411,9 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
     call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
     call chksum(Ice%calving, trim(mesg)//" Ice%calving")
     call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+  endif
+  if (.false.) then  ! Add a flag controlling stress_mag later.
+    call chksum(Ice%stress_mag, trim(mesg)//" Ice%stress_mag")
   endif
 
   if (slow_fields .and. associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
