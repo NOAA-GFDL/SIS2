@@ -1,30 +1,7 @@
+!> Convenient wrappers to the FMS diag_manager interfaces with additional diagnostic capabilies.
 module SIS_diag_mediator
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
 
-!********+*********+*********+*********+*********+*********+*********+**
-!*                                                                     *
-!*    The subroutines here provide convenient wrappers to the fms      *
-!*  diag_manager interfaces with additional diagnostic capabilies.     *
-!*                                                                     *
-!********+*********+*********+*********+*********+*********+*********+**
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -50,26 +27,27 @@ public SIS_diag_mediator_init, SIS_diag_mediator_end, set_SIS_diag_mediator_grid
 public SIS_diag_mediator_close_registration, get_SIS_diag_time_end
 public diag_axis_init, register_static_field
 
+!> Make a diagnostic available for averaging or output.
 interface post_SIS_data
   module procedure post_data_2d, post_data_3d
 end interface post_SIS_data
 
 !> 2D/3D axes type to contain 1D axes handles and pointers to masks
 type, public :: axesType
-  character(len=15) :: id ! This is the id string for this particular combination of handles
-  integer :: rank ! The number of dimensions in the list of axes
-  integer, dimension(:), allocatable :: handles ! Handles to 1D axes
+  character(len=15) :: id   !< The id string for this particular combination of handles.
+  integer           :: rank !< Number of dimensions in the list of axes.
+  integer, dimension(:), allocatable :: handles !< Handles to 1D axes.
   type(SIS_diag_ctrl), pointer :: diag_cs => null() !< A structure that is used to regulate diagnostic output
 end type axesType
 
 !> This type is used to represent a diagnostic at the diag_mediator level.
 type, private :: diag_type
-  logical :: in_use
-  integer :: fms_diag_id         ! underlying FMS diag id
-  character(len=24) :: name
-  real, pointer, dimension(:,:)   :: mask2d => null()
-  real, pointer, dimension(:,:)   :: mask2d_comp => null()
-  real, pointer, dimension(:,:,:) :: mask3d => null()
+  logical :: in_use              !< This diagnostic is in use
+  integer :: fms_diag_id         !< underlying FMS diag id
+  character(len=24) :: name      !< The diagnostic name
+  real, pointer, dimension(:,:)   :: mask2d => null()      !< A 2-d mask on the data domain for this diagnostic
+  real, pointer, dimension(:,:)   :: mask2d_comp => null() !< A 2-d mask on the computational domain for this diagnostic
+  real, pointer, dimension(:,:,:) :: mask3d => null()      !< A 3-d mask for this diagnostic
 end type diag_type
 
 !>   The SIS_diag_ctrl data type contains times to regulate diagnostics along with masks and
@@ -78,48 +56,57 @@ type, public :: SIS_diag_ctrl
   integer :: doc_unit = -1 !< The unit number of a diagnostic documentation file.
                            !! This file is open if doc_unit is > 0.
 
-! The following fields are used for the output of the data.
-! These give the computational-domain sizes, and are relative to a start value
-! of 1 in memory for the tracer-point arrays.
-  integer :: is, ie, js, je
-! These give the memory-domain sizes, and can be start at any value on each PE.
-  integer :: isd, ied, jsd, jed
-  real :: time_int              !< The time interval in s for any fields
-                                !! that are offered for averaging.
-  type(time_type) :: time_end   !< The end time of the valid
-                                !! interval for any offered field.
+  ! The following fields are used for the output of the data.
+  ! These give the computational-domain sizes, and are relative to a start value
+  ! of 1 in memory for the tracer-point arrays.
+  integer :: is  !< The start i-index of cell centers within the computational domain
+  integer :: ie  !< The end i-index of cell centers within the computational domain
+  integer :: js  !< The start j-index of cell centers within the computational domain
+  integer :: je  !< The end j-index of cell centers within the computational domain
+  ! These give the memory-domain sizes, and can be start at any value on each PE.
+  integer :: isd !< The start i-index of cell centers within the data domain
+  integer :: ied !< The end i-index of cell centers within the data domain
+  integer :: jsd !< The start j-index of cell centers within the data domain
+  integer :: jed !< The end j-index of cell centers within the data domain
+  real :: time_int              !< The time interval in s for any fields that are offered for averaging.
+  type(time_type) :: time_end   !< The end time of the valid interval for any offered field.
   logical :: ave_enabled = .false. !< .true. if averaging is enabled.
 
-  ! The following are axis types defined for output.
+  !>@{ The following are 3D and 2D axis groups defined for output.  The names indicate
+  !! the horizontal locations (B, T, Cu, or Cv), vertical locations (L, i, or 1) and
+  !! thickness categories (c, c0, or 1).
   type(axesType) :: axesBL, axesTL, axesCuL, axesCvL
   type(axesType) :: axesBi, axesTi, axesCui, axesCvi
   type(axesType) :: axesBc, axesTc, axesCuc, axesCvc
   type(axesType) :: axesBc0, axesTc0, axesCuc0, axesCvc0
   type(axesType) :: axesB1, axesT1, axesCu1, axesCv1
-  type(axesType) :: axeszi, axeszL
+  !!@}
+  type(axesType) :: axesZi !< A 1-D z-space axis at interfaces
+  type(axesType) :: axesZL !< A 1-D z-space axis at layer centers
+
   ! Mask arrays for diagnostics
-  real, dimension(:,:),   pointer :: mask2dT   => null()
-  real, dimension(:,:),   pointer :: mask2dBu  => null()
-  real, dimension(:,:),   pointer :: mask2dCu  => null()
-  real, dimension(:,:),   pointer :: mask2dCv  => null()
-  real, dimension(:,:,:), pointer :: mask3dTL  => null()
-  real, dimension(:,:,:), pointer :: mask3dBuL => null()
-  real, dimension(:,:,:), pointer :: mask3dCuL => null()
-  real, dimension(:,:,:), pointer :: mask3dCvL => null()
-  real, dimension(:,:,:), pointer :: mask3dTi  => null()
-  real, dimension(:,:,:), pointer :: mask3dBui => null()
-  real, dimension(:,:,:), pointer :: mask3dCui => null()
-  real, dimension(:,:,:), pointer :: mask3dCvi => null()
-  real, dimension(:,:,:), pointer :: mask3dTC  => null()
-  real, dimension(:,:,:), pointer :: mask3dBuC => null()
-  real, dimension(:,:,:), pointer :: mask3dCuC => null()
-  real, dimension(:,:,:), pointer :: mask3dCvC => null()
-  ! Computational domain mask arrays for diagnostics.
+  real, dimension(:,:),   pointer :: mask2dT   => null() !< 2D mask array for cell-center points
+  real, dimension(:,:),   pointer :: mask2dBu  => null() !< 2D mask array for cell-corners
+  real, dimension(:,:),   pointer :: mask2dCu  => null() !< 2D mask array for east-faces
+  real, dimension(:,:),   pointer :: mask2dCv  => null() !< 2D mask array for north-faces
+  real, dimension(:,:,:), pointer :: mask3dTL  => null() !< 3D mask array for layer cell-centers
+  real, dimension(:,:,:), pointer :: mask3dBuL => null() !< 3D mask array for layer cell-corners
+  real, dimension(:,:,:), pointer :: mask3dCuL => null() !< 3D mask array for layer east-faces
+  real, dimension(:,:,:), pointer :: mask3dCvL => null() !< 3D mask array for layer north-faces
+  real, dimension(:,:,:), pointer :: mask3dTi  => null() !< 3D mask array for interface cell-centers
+  real, dimension(:,:,:), pointer :: mask3dBui => null() !< 3D mask array for interface cell-corners
+  real, dimension(:,:,:), pointer :: mask3dCui => null() !< 3D mask array for interface east-faces
+  real, dimension(:,:,:), pointer :: mask3dCvi => null() !< 3D mask array for interface north-faces
+  real, dimension(:,:,:), pointer :: mask3dTC  => null() !< 3D mask array for category cell-centers
+  real, dimension(:,:,:), pointer :: mask3dBuC => null() !< 3D mask array for category cell-corners
+  real, dimension(:,:,:), pointer :: mask3dCuC => null() !< 3D mask array for category east-faces
+  real, dimension(:,:,:), pointer :: mask3dCvC => null() !< 3D mask array for category north-faces
+  !> Computational domain mask arrays for diagnostics.
   real, dimension(:,:),   pointer :: mask2dT_comp => null()
 
 #define DIAG_ALLOC_CHUNK_SIZE 15
-  type(diag_type), dimension(:), allocatable :: diags
-  integer :: next_free_diag_id
+  type(diag_type), dimension(:), allocatable :: diags !< The array of diagnostics
+  integer :: next_free_diag_id !< The next unused diagnostic ID
 
   !> default missing value to be sent to ALL diagnostics registerations
   real :: missing_value = -1.0e34

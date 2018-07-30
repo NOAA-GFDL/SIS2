@@ -26,18 +26,20 @@
 !                                         Mike Winton (Michael.Winton@noaa.gov)!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+!> A module for specifying certain sea-ice properties
 module ice_thm_mod
 
 implicit none ; private
 
 public :: get_thermo_coefs
 
-! salinities from S(z) = 0.5*3.2*(1.0-cos(3.1416*z**(0.407/(z+0.573))))
+!>@{ salinities from S(z) = 0.5*3.2*(1.0-cos(3.1416*z**(0.407/(z+0.573))))
 ! z=[1 3 5 7]/8 ; ref: Hunke et al: CICE V. 4.0, 2008, p. 26
 real, parameter :: SI1   = 0.65      ! salinity of sea ice top layer
 real, parameter :: SI2   = 2.35      ! salinity of sea ice second layer
 real, parameter :: SI3   = 3.03      ! salinity of sea ice third layer
 real, parameter :: SI4   = 3.19      ! salinity of sea ice bottom layer
+!!@}
 
 contains
 

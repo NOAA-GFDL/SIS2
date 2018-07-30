@@ -1,3 +1,5 @@
+!> A Delta-Eddington treatment of shortwave radiation by Briegleb and Light, adopted from CICE
+module ice_shortwave_dEdd
 !=======================================================================
 !BOP
 !
@@ -40,7 +42,7 @@
 !
 ! !INTERFACE:
 !
-      module ice_shortwave_dEdd
+      !mdule ice_shortwave_dEdd
 !
 ! !USES:
 !
@@ -49,54 +51,51 @@
       implicit none
       save
 
-      integer, parameter :: char_len  = 80, &
-                            char_len_long  = 256, &
-                            log_kind  = kind(.true.), &
-                            int_kind  = selected_int_kind(6), &
-                            real_kind = selected_real_kind(6), &
-                            dbl_kind  = selected_real_kind(13), &
-                            r16_kind  = selected_real_kind(26)
+      integer, parameter :: char_len  = 80, &                   !< The length of common character strings
+                            char_len_long  = 256, &             !< The length of long character strings
+                            int_kind  = selected_int_kind(6), & !< Specification for the precision of integers
+                            dbl_kind  = selected_real_kind(13)  !< Specification for the precision of doubles
 
       integer (kind=int_kind), parameter :: &
-        ncat      =   5       , & ! number of categories
-        nilyr     =   4       , & ! number of ice layers per category
-        nslyr     =   1       !, & ! number of snow layers per category
-
-      real (kind=dbl_kind), parameter :: &           ! currently used only
-         awtvdr = 0.00318_dbl_kind, &! visible, direct  ! for history and
-         awtidr = 0.00182_dbl_kind, &! near IR, direct  ! diagnostics
-         awtvdf = 0.63282_dbl_kind, &! visible, diffuse
-         awtidf = 0.36218_dbl_kind   ! near IR, diffuse
+        ncat      =   5, & !< number of categories
+        nilyr     =   4, & !< number of ice layers per category
+        nslyr     =   1    !< number of snow layers per category
 
       real (kind=dbl_kind), parameter :: &
-         Timelt    = 0.0_dbl_kind     ,&! melting temperature, ice top surface  (C)
-         rhos      = 330.0_dbl_kind   !,&! density of snow (kg/m^3)
+         awtvdr = 0.00318_dbl_kind, & !< visible, direct band weight for history and diagnostics
+         awtidr = 0.00182_dbl_kind, & !< near IR, direct band weight for history and diagnostics
+         awtvdf = 0.63282_dbl_kind, & !< visible, diffuse band weight for history and diagnostics
+         awtidf = 0.36218_dbl_kind    !< near IR, diffuse band weight for history and diagnostics
+
+      real (kind=dbl_kind), parameter :: &
+         Timelt    = 0.0_dbl_kind,& !<  melting temperature, ice top surface  (C)
+         rhos      = 330.0_dbl_kind !< density of snow (kg/m^3)
 
 
       real (kind=dbl_kind), parameter :: &
-        c0   = 0.0_dbl_kind, &
-        c1   = 1.0_dbl_kind, &
-        c1p5 = 1.5_dbl_kind, &
-        c2   = 2.0_dbl_kind, &
-        c3   = 3.0_dbl_kind, &
-        c4   = 4.0_dbl_kind, &
-        c10  = 10.0_dbl_kind, &
-        p01  = 0.01_dbl_kind, &
-        p5   = 0.5_dbl_kind, &
-        p75  = 0.75_dbl_kind, &
-        eps11  = 1.0e-11_dbl_kind, &
-        eps13  = 1.0e-13_dbl_kind, &
-        eps16  = 1.0e-16_dbl_kind, &
-        puny   = eps11!, &
+        c0   = 0.0_dbl_kind, & !< A dbl_kind version of 0.0
+        c1   = 1.0_dbl_kind, & !< A dbl_kind version of 1.0
+        c1p5 = 1.5_dbl_kind, & !< A dbl_kind version of 1.5
+        c2   = 2.0_dbl_kind, & !< A dbl_kind version of 2.0
+        c3   = 3.0_dbl_kind, & !< A dbl_kind version of 3.0
+        c4   = 4.0_dbl_kind, & !< A dbl_kind version of 4.0
+        c10  = 10.0_dbl_kind, & !< A dbl_kind version of 10.0
+        p01  = 0.01_dbl_kind, & !< A dbl_kind version of 0.01
+        p5   = 0.5_dbl_kind, &  !< A dbl_kind version of 0.5
+        p75  = 0.75_dbl_kind, & !< A dbl_kind version of 0.75
+        eps11  = 1.0e-11_dbl_kind, & !< A dbl_kind version of 1.0e-11
+        eps13  = 1.0e-13_dbl_kind, & !< A dbl_kind version of 1.0e-13
+        eps16  = 1.0e-16_dbl_kind, & !< A dbl_kind version of 1.0e-16
+        puny   = eps11               !< A very small value.
 
       real (kind=dbl_kind) :: &
-         exp_min= exp(-c10)              ! minimum exponential value
+         exp_min= exp(-c10)    !< The minimum exponential value
 
       ! melt pond tuning parameters, set in namelist
       real (kind=dbl_kind) :: &
-         R_ice , & ! sea ice tuning parameter; +1 > 1sig increase in albedo
-         R_pnd , & ! ponded ice tuning parameter; +1 > 1sig increase in albedo
-         R_snw     ! snow tuning parameter; +1 > ~.01 change in broadband albedo
+         R_ice, & !< sea ice tuning parameter; +1 > 1sig increase in albedo
+         R_pnd, & !< ponded ice tuning parameter; +1 > 1sig increase in albedo
+         R_snw    !< snow tuning parameter; +1 > ~.01 change in broadband albedo
 
 
 
@@ -111,21 +110,23 @@
 !
 ! !INTERFACE:
 !
-      subroutine shortwave_dEdd0  (nx_block, ny_block,    &
-                                  icells,   indxi,       &
-                                  indxj,    coszen,      &
-                                  aice,     vice,        &
-                                  vsno,     fs,          &
-                                  rhosnw,   rsnw,        &
-                                  fp,       hp,          &
-                                  swvdr,    swvdf,       &
-                                  swidr,    swidf,       &
-                                  alvdr,    alvdf,       &
-                                  alidr,    alidf,       &
-                                  fswsfc,   fswint,      &
-                                  fswthru,  Sswabs,      &
-                                  Iswabs,   albice,      &
-                                  albsno,   albpnd)
+
+!  Driver for Delta-Eddington shortwave
+subroutine shortwave_dEdd0( nx_block, ny_block,   &
+                            icells,   indxi,      &
+                            indxj,    coszen,     &
+                            aice,     vice,       &
+                            vsno,     fs,         &
+                            rhosnw,   rsnw,       &
+                            fp,       hp,         &
+                            swvdr,    swvdf,      &
+                            swidr,    swidf,      &
+                            alvdr,    alvdf,      &
+                            alidr,    alidf,      &
+                            fswsfc,   fswint,     &
+                            fswthru,  Sswabs,     &
+                            Iswabs,   albice,     &
+                            albsno,   albpnd)
 !
 ! !DESCRIPTION:
 !
@@ -166,61 +167,69 @@
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-      integer (kind=int_kind), &
-         intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icells                ! number of ice-covered grid cells
+      integer (kind=int_kind), intent(in) :: nx_block    !< x-block dimension
+      integer (kind=int_kind), intent(in) :: ny_block    !< y-block dimension
+      integer (kind=int_kind), intent(in) :: icells      !< number of ice-covered grid cells
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), &
-         intent(in) :: &
-         indxi   , & ! compressed indices for ice-covered cells
-         indxj
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: indxi       !< compressed i-index for ice-covered cells
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: indxj       !< compressed j-index for ice-covered cells
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         coszen  , & ! cosine of solar zenith angle
-         aice    , & ! concentration of ice
-         vice    , & ! volume of ice
-         vsno    , & ! volume of snow
-         fs          ! horizontal coverage of snow
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        coszen      !< cosine of solar zenith angle
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        aice        !< concentration of ice
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        vice        !< volume of ice
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        vsno        !< volume of snow
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        fs          !< horizontal coverage of snow
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), &
-         intent(in) :: &
-         rhosnw  , & ! density in snow layer (kg/m3)
-         rsnw        ! grain radius in snow layer (m)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
+        rhosnw      !< density in snow layer (kg/m3)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
+        rsnw        !< grain radius in snow layer (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         fp      , & ! pond fractional coverage (0 to 1)
-         hp      , & ! pond depth (m)
-         swvdr   , & ! sw down, visible, direct  (W/m^2)
-         swvdf   , & ! sw down, visible, diffuse (W/m^2)
-         swidr   , & ! sw down, near IR, direct  (W/m^2)
-         swidf       ! sw down, near IR, diffuse (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        fp          !< pond fractional coverage (0 to 1)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        hp          !< pond depth (m)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swvdr       !< sw down, visible, direct  (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swvdf       !< sw down, visible, diffuse (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swidr       !< sw down, near IR, direct  (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swidf       !< sw down, near IR, diffuse (W/m^2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(out) :: &
-         alvdr   , & ! visible, direct, albedo (fraction)
-         alvdf   , & ! visible, diffuse, albedo (fraction)
-         alidr   , & ! near-ir, direct, albedo (fraction)
-         alidf   , & ! near-ir, diffuse, albedo (fraction)
-         fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
-         fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-         fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        alvdr       !< visible, direct, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        alvdf       !< visible, diffuse, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        alidr       !< near-ir, direct, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        alidf       !< near-ir, diffuse, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        fswint      !< SW interior absorption (below surface, above ocean,W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        fswthru     !< SW through snow/bare ice/ponded ice into ocean (W m-2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), &
-         intent(out) :: &
-         Sswabs      ! SW absorbed in snow layer (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
+        Sswabs      !< SW absorbed in snow layer (W m-2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), &
-         intent(out) :: &
-         Iswabs      ! SW absorbed in ice layer (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), intent(out) :: &
+        Iswabs      !< SW absorbed in ice layer (W m-2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(out) :: &
-         albice  , & ! bare ice albedo, for history
-         albsno  , & ! snow albedo, for history
-         albpnd      ! pond albedo, for history
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
+        albice      !< bare ice albedo, for history
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
+        albsno      !< snow albedo, for history
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
+        albpnd      !< pond albedo, for history
 !
 !EOP
 !
@@ -245,8 +254,8 @@
          icells_DE    ! number of cells in Delta-Eddington calculation
 
       integer (kind=int_kind), dimension (nx_block*ny_block) :: &
-         indxi_DE , & ! compressed indices for Delta-Eddington cells
-         indxj_DE
+         indxi_DE , & !< compressed i-index for Delta-Eddington cells
+         indxj_DE     !< compressed j-index for Delta-Eddington cells
 
       real (kind=dbl_kind) :: &
          hpmin    , & ! minimum allowed melt pond depth
@@ -259,7 +268,7 @@
       ! for printing points
       integer (kind=int_kind) :: &
          n            ! point number for prints
-      logical (kind=log_kind) :: &
+      logical :: &
          dbug         ! true/false flag
 
       real (kind=dbl_kind) :: &
@@ -465,7 +474,7 @@
       enddo
 
 
-      end subroutine shortwave_dEdd0
+end subroutine shortwave_dEdd0
 
 !=======================================================================
 !BOP
@@ -474,8 +483,10 @@
 !
 ! !INTERFACE:
 !
-      subroutine compute_dEdd0                              &
-            (nx_block,ny_block,                            &
+
+!>  Evaluate Delta-Edd inherent optical properties and calculate the multiple
+!! scattering solution
+subroutine compute_dEdd0(nx_block, ny_block, &
              icells_DE, indxi_DE, indxj_DE, fnidr, coszen, &
              swvdr,     swvdf,    swidr,    swidf, srftyp, &
              hs,        rhosnw,   rsnw,     hi,    hp,     &
@@ -501,61 +512,69 @@
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-      integer (kind=int_kind), &
-         intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icells_DE             ! number of sea ice grid cells for surface type
+      integer (kind=int_kind), intent(in) :: &
+        nx_block    !< x-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        ny_block    !< y-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        icells_DE   !< number of sea ice grid cells for surface type
 
-      integer (kind=int_kind), dimension(nx_block*ny_block), &
-         intent(in) :: &
-         indxi_DE, & ! compressed indices for sea ice cells for surface type
-         indxj_DE
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxi_DE    !< compressed i-index for sea ice cells for surface type
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxj_DE    !< compressed j-index for sea ice cells for surface type
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         fnidr   , & ! fraction of direct to total down flux in nir
-         coszen  , & ! cosine solar zenith angle
-         swvdr   , & ! shortwave down at surface, visible, direct  (W/m^2)
-         swvdf   , & ! shortwave down at surface, visible, diffuse (W/m^2)
-         swidr   , & ! shortwave down at surface, near IR, direct  (W/m^2)
-         swidf       ! shortwave down at surface, near IR, diffuse (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        fnidr       !< fraction of direct to total down flux in nir
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        coszen      !< cosine solar zenith angle
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swvdr       !< shortwave down at surface, visible, direct  (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swvdf       !< shortwave down at surface, visible, diffuse (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swidr       !< shortwave down at surface, near IR, direct  (W/m^2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        swidf       !< shortwave down at surface, near IR, diffuse (W/m^2)
 
-      integer (kind=int_kind), dimension(nx_block,ny_block), &
-         intent(in) :: &
-         srftyp      ! surface type over ice: (0=air, 1=snow, 2=pond)
+      integer (kind=int_kind), dimension(nx_block,ny_block), intent(in) :: &
+        srftyp      !< surface type over ice: (0=air, 1=snow, 2=pond)
 
-      real (kind=dbl_kind), dimension(nx_block,ny_block), &
-         intent(in) :: &
-         hs          ! snow thickness (m)
+      real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
+        hs          !< snow thickness (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), &
-         intent(in) :: &
-         rhosnw  , & ! snow density in snow layer (kg/m3)
-         rsnw        ! snow grain radius in snow layer (m)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
+        rhosnw      !< snow density in snow layer (kg/m3)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
+        rsnw        !< snow grain radius in snow layer (m)
 
-      real (kind=dbl_kind), dimension(nx_block,ny_block), &
-         intent(in) :: &
-         hi      , & ! ice thickness (m)
-         hp      , & ! pond depth (m)
-         fi          ! snow/bare ice fractional coverage (0 to 1)
+      real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
+        hi          !< ice thickness (m)
+      real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
+        hp          !< pond depth (m)
+      real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
+        fi          !< snow/bare ice fractional coverage (0 to 1)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(inout) :: &
-         alvdr   , & ! visible, direct, albedo (fraction)
-         alvdf   , & ! visible, diffuse, albedo (fraction)
-         alidr   , & ! near-ir, direct, albedo (fraction)
-         alidf   , & ! near-ir, diffuse, albedo (fraction)
-         fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
-         fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-         fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        alvdr       !< visible, direct, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        alvdf       !< visible, diffuse, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        alidr       !< near-ir, direct, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        alidf       !< near-ir, diffuse, albedo (fraction)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        fswint      !< SW interior absorption (below surface, above ocean,W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
+        fswthru     !< SW through snow/bare ice/ponded ice into ocean (W m-2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), &
-         intent(inout) :: &
-         Sswabs      ! SW absorbed in snow layer (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(inout) :: &
+        Sswabs      !< SW absorbed in snow layer (W m-2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), &
-         intent(inout) :: &
-         Iswabs      ! SW absorbed in ice layer (W m-2)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), intent(inout) :: &
+        Iswabs      !< SW absorbed in ice layer (W m-2)
 !
 !EOP
 !-----------------------------------------------------------------------
@@ -1581,7 +1600,7 @@
 !
 !      endif                       ! heat_capacity
 
-      end subroutine compute_dEdd0
+end subroutine compute_dEdd0
 
 !=======================================================================
 !BOP
@@ -1589,9 +1608,10 @@
 ! !IROUTINE: solution_dEdd0 - evaluate solution for Delta-Edddington solar
 !
 ! !INTERFACE:
-!
-      subroutine solution_dEdd0                                 &
-            (nx_block, ny_block,                               &
+
+!> Given input vertical profiles of optical properties, evaluate the
+!! monochromatic Delta-Eddington solution
+subroutine solution_dEdd0(nx_block, ny_block, &
              icells_DE,  indxi_DE,  indxj_DE,  coszen, srftyp, &
              tau,        w0,        g,         albodr, albodf, &
              trndir,     trntdr,    trndif,    rupdir, rupdif, &
@@ -1611,49 +1631,54 @@
 !
 ! !INPUT/OUTPUT PARAMETERS:
 
-      integer (kind=int_kind), &
-         intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icells_DE             ! number of sea ice grid cells for surface type
+      integer (kind=int_kind), intent(in) :: &
+        nx_block    !< x-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        ny_block    !< y-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        icells_DE   !< number of sea ice grid cells for surface type
 
-      integer (kind=int_kind), dimension(nx_block*ny_block), &
-         intent(in) :: &
-         indxi_DE, & ! compressed indices for sea ice cells for surface type
-         indxj_DE
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxi_DE    !< compressed i-index for sea ice cells for surface type
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxj_DE    !< compressed j-index for sea ice cells for surface type
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         coszen      ! cosine solar zenith angle
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        coszen      !< cosine solar zenith angle
 
-      integer (kind=int_kind), dimension(nx_block,ny_block), &
-         intent(in) :: &
-         srftyp      ! surface type over ice: (0=air, 1=snow, 2=pond)
+      integer (kind=int_kind), dimension(nx_block,ny_block), intent(in) :: &
+        srftyp      !< surface type over ice: (0=air, 1=snow, 2=pond)
 
       integer (kind=int_kind), parameter :: &
-         klev    = nslyr + nilyr + 1 , &  ! number of radiation layers - 1
-         klevp   = klev  + 1              ! number of radiation interfaces - 1
+        klev    = nslyr + nilyr + 1 , &  !< number of radiation layers - 1
+        klevp   = klev  + 1              !< number of radiation interfaces - 1
 
-      real (kind=dbl_kind), dimension(0:klev,icells_DE), &
-         intent(in) :: &
-         tau     , & ! layer extinction optical depth
-         w0      , & ! layer single scattering albedo
-         g           ! layer asymmetry parameter
+      real (kind=dbl_kind), dimension(0:klev,icells_DE), intent(in) :: &
+        tau         !< layer extinction optical depth
+      real (kind=dbl_kind), dimension(0:klev,icells_DE), intent(in) :: &
+        w0          !< layer single scattering albedo
+      real (kind=dbl_kind), dimension(0:klev,icells_DE), intent(in) :: &
+        g           !< layer asymmetry parameter
 
-      real (kind=dbl_kind), dimension(icells_DE), &
-         intent(in) :: &
-         albodr  , & ! ocean albedo to direct rad
-         albodf      ! ocean albedo to diffuse rad
+      real (kind=dbl_kind), dimension(icells_DE),  intent(in) :: &
+        albodr      !< ocean albedo to direct rad
+      real (kind=dbl_kind), dimension(icells_DE),  intent(in) :: &
+        albodf      !< ocean albedo to diffuse rad
 
       ! following arrays are defined at model interfaces; 0 is the top of the
       ! layer above the sea ice; klevp is the sea ice/ocean interface.
-      real (kind=dbl_kind), dimension (0:klevp,icells_DE), &
-         intent(out) :: &
-         trndir  , & ! solar beam down transmission from top
-         trntdr  , & ! total transmission to direct beam for layers above
-         trndif  , & ! diffuse transmission to diffuse beam for layers above
-         rupdir  , & ! reflectivity to direct radiation for layers below
-         rupdif  , & ! reflectivity to diffuse radiation for layers below
-         rdndif      ! reflectivity to diffuse radiation for layers above
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        trndir      !< solar beam down transmission from top
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        trntdr      !< total transmission to direct beam for layers above
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        trndif      !< diffuse transmission to diffuse beam for layers above
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        rupdir      !< reflectivity to direct radiation for layers below
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        rupdif      !< reflectivity to diffuse radiation for layers below
+      real (kind=dbl_kind), dimension (0:klevp,icells_DE), intent(out) :: &
+        rdndif      !< reflectivity to diffuse radiation for layers above
 !
 !EOP
 !-----------------------------------------------------------------------
@@ -2135,7 +2160,7 @@
         enddo       ! ij
       enddo       ! k
 
-      end subroutine solution_dEdd0
+end subroutine solution_dEdd0
 
 !=======================================================================
 !BOP
@@ -2143,14 +2168,15 @@
 ! !IROUTINE: shortwave_dEdd0_set_snow - routine for Delta-Eddington shortwave
 !            that sets snow density and snow grain radius.
 !
-! !INTERFACE:
-!
-      subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
+
+!> Routine for Delta-Eddington shortwave that sets snow density and snow grain radius.
+subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
                                          icells,             &
                                          indxi,    indxj,    &
                                          aice,     vsno,     &
                                          Tsfc,     fs,       &
                                          rhosnw,   rsnw)
+
 !
 ! !DESCRIPTION:
 !
@@ -2164,30 +2190,32 @@
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-      integer (kind=int_kind), &
-         intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icells                ! number of ice-covered grid cells
+      integer (kind=int_kind), intent(in) :: &
+        nx_block    !< x-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        ny_block    !< y-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        icells      !< number of ice-covered grid cells
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), &
-         intent(in) :: &
-         indxi   , & ! compressed indices for ice-covered cells
-         indxj
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
+        indxi       !< compressed i-index for ice-covered cells
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
+        indxj       !< compressed j-index for ice-covered cells
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         aice   , & ! concentration of ice
-         vsno   , & ! volume of snow
-         Tsfc       ! surface temperature
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        aice       !< concentration of ice
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        vsno       !< volume of snow
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        Tsfc       !< surface temperature
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(out) :: &
-         fs         ! horizontal coverage of snow
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        fs         !< horizontal coverage of snow
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), &
-         intent(out) :: &
-         rhosnw , & ! density in snow layer (kg/m3)
-         rsnw       ! grain radius in snow layer (micro-meters)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
+        rhosnw     !< density in snow layer (kg/m3)
+      real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
+        rsnw       !< grain radius in snow layer (micro-meters)
 !
 !EOP
 !
@@ -2265,7 +2293,7 @@
          endif         ! aice(i,j) > puny
       enddo          ! ij
 
-      end subroutine shortwave_dEdd0_set_snow
+end subroutine shortwave_dEdd0_set_snow
 
 !=======================================================================
 !BOP
@@ -2274,8 +2302,9 @@
 !            that sets pond fraction and depth.
 !
 ! !INTERFACE:
-!
-      subroutine shortwave_dEdd0_set_pond(nx_block, ny_block, &
+
+!> Routine for Delta-Eddington shortwave that sets pond fraction and depth.
+subroutine shortwave_dEdd0_set_pond(nx_block, ny_block, &
                                          icells,             &
                                          indxi,    indxj,    &
                                          aice,     Tsfc,     &
@@ -2294,26 +2323,29 @@
 !
 ! !INPUT/OUTPUT PARAMETERS:
 !
-      integer (kind=int_kind), &
-         intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icells                ! number of ice-covered grid cells
+      integer (kind=int_kind), intent(in) :: &
+        nx_block    !< x-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        ny_block    !< y-block dimension
+      integer (kind=int_kind), intent(in) :: &
+        icells      !< number of ice-covered grid cells
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), &
-         intent(in) :: &
-         indxi   , & ! compressed indices for ice-covered cells
-         indxj
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
+        indxi       !< compressed i-index for ice-covered cells
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
+        indxj       !< compressed j-index for ice-covered cells
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(in) :: &
-         aice   , & ! concentration of ice
-         Tsfc   , & ! surface temperature
-         fs         ! horizontal coverage of snow
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        aice       !< concentration of ice
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        Tsfc       !< surface temperature
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+        fs         !< horizontal coverage of snow
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), &
-         intent(out) :: &
-         fp     , & ! pond fractional coverage (0 to 1)
-         hp         ! pond depth (m)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        fp         !< pond fractional coverage (0 to 1)
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
+        hp         !< pond depth (m)
 
 !
 !EOP
@@ -2359,21 +2391,20 @@
          endif
       enddo          ! ij
 
-      end subroutine shortwave_dEdd0_set_pond
+end subroutine shortwave_dEdd0_set_pond
 
-      subroutine shortwave_dEdd0_set_params(R_ice_in,R_snw_in,R_pnd_in)
+!> Set parameters for the delta-Eddington module
+subroutine shortwave_dEdd0_set_params(R_ice_in,R_snw_in,R_pnd_in)
         real (kind=dbl_kind), intent(in) :: R_ice_in,R_snw_in,R_pnd_in
 
         R_ice = R_ice_in
         R_snw = R_snw_in
         R_pnd = R_pnd_in
 
-      end subroutine shortwave_dEdd0_set_params
+end subroutine shortwave_dEdd0_set_params
 
 
 ! End Delta-Eddington shortwave method
 !=======================================================================
 
-      end module ice_shortwave_dEdd
-
-!=======================================================================
+end module ice_shortwave_dEdd

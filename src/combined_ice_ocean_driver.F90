@@ -1,23 +1,8 @@
+!> Provides a common interface for jointly stepping SIS2 and MOM6, and will
+!! evolve as a platform for tightly integrating the ocean and sea ice models.
 module combined_ice_ocean_driver
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of MOM and SIS2.                                *
-!*                                                                     *
-!* MOM is free software; you can redistribute it and/or modify it and  *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* MOM is distributed in the hope that it will be useful, but WITHOUT  *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 !-----------------------------------------------------------------------
 !
@@ -48,8 +33,9 @@ implicit none ; private
 
 public :: update_slow_ice_and_ocean, ice_ocean_driver_init, ice_ocean_driver_end
 
+!> The control structure for the combined ice-ocean driver
 type, public :: ice_ocean_driver_type ; private
-  logical :: CS_is_initialized = .false.
+  logical :: CS_is_initialized = .false. !< If true, this module has been initialized
 end type ice_ocean_driver_type
 
 contains

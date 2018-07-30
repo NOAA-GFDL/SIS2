@@ -1,24 +1,7 @@
+!> Routines that perform various error checking and debugging functions for SIS2
 module SIS_debugging
 
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+! This file is a part of SIS2.  See LICENSE.md for the lisense file.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   This module contains subroutines that perform various error checking and   !
@@ -52,36 +35,43 @@ public :: SIS_debugging_init
 public :: hchksum, Bchksum, is_NaN, chksum
 public :: hchksum_pair, Bchksum_pair, uvchksum
 
+!> do checksums on a pair of fields
 interface hchksum_pair
   module procedure hchksum_pair_3d, hchksum_pair_2d
 end interface hchksum_pair
 
+!> do checksums on a pair of fields at corner points
 interface Bchksum_pair
   module procedure Bchksum_pair_3d, Bchksum_pair_2d
 end interface Bchksum_pair
 
+!> do checksums on the components of a vector
 interface uvchksum
   module procedure uvchksum_3d, uvchksum_2d
   module procedure uvchksum_3d_dG, uvchksum_2d_dG
 end interface uvchksum
 
+!> Check the duplicate points of the components of a C-grid vector
 interface check_redundant_C
   module procedure check_redundant_vC3d, check_redundant_vC2d
 end interface check_redundant_C
+!> Check the duplicate points of the components of a B-grid vector or scalar
 interface check_redundant_B
   module procedure check_redundant_vB3d, check_redundant_vB2d
   module procedure check_redundant_sB3d, check_redundant_sB2d
 end interface check_redundant_B
+!> Check the duplicate points of the components of an A-grid vector or scalar
 interface check_redundant_T
   module procedure check_redundant_sT3d, check_redundant_sT2d
   module procedure check_redundant_vT3d, check_redundant_vT2d
 end interface check_redundant_T
 
-integer :: max_redundant_prints = 100
-integer :: redundant_prints(3) = 0
-logical :: debug = .false.
-logical :: debug_chksums = .true.
-logical :: debug_redundant = .true.
+integer :: max_redundant_prints = 100 !< The maximum number of error messages to print
+integer :: redundant_prints(3) = 0  !< The maximum number of error messages to print
+logical :: debug = .false.          !< If true, write out verbose debugging data.
+logical :: debug_chksums = .true.   !< If true, checksums are performed on arrays in the various vec_chksum routines.
+logical :: debug_redundant = .true. !< If true, debug redundant data points during calls to the
+                                    !! various vec_chksum routines.
 
 contains
 

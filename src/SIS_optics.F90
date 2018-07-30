@@ -1,4 +1,7 @@
+!> Specifies the sea-ice optical properties
 module SIS_optics
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 ! for calling delta-Eddington shortwave from ice_optics
 use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond
@@ -14,9 +17,12 @@ implicit none ; private
 public :: ice_optics_SIS2, SIS_optics_init, SIS_optics_end, bright_ice_temp
 public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
-! These parameters facilitate the use of 4-D arrays for shortwave radiation and
+! parameters facilitate the use of 4-D arrays for shortwave radiation and
 ! albedos within SIS2.
-integer, parameter :: VIS_DIR=1, VIS_DIF=2, NIR_DIR=3, NIR_DIF=4
+integer, parameter :: VIS_DIR=1 !< Indicates the visible direct band
+integer, parameter :: VIS_DIF=2 !< Indicates the visible diffuse band
+integer, parameter :: NIR_DIR=3 !< Indicates the near-infrared direct band
+integer, parameter :: NIR_DIF=4 !< Indicates the near-infrared diffuse band
 
 !> This type contains the parameters regulating sea-ice optics.
 type, public :: SIS_optics_CS ; private

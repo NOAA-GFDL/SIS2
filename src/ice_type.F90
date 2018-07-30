@@ -1,7 +1,4 @@
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! ice_type_mod - maintains the sea ice data, reads/writes restarts, reads the  !
-!                namelist and initializes diagnostics. - Mike Winton           !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> maintains the sea ice data, reads/writes restarts, reads the namelist and initializes diagnostics.
 module ice_type_mod
 
 use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe, mpp_chksum
@@ -51,12 +48,12 @@ type ice_data_type !  ice_public_type
                              !! on slow ice PEs.
   type(time_type) :: Time    !< The sea-ice model's clock, that
                              !! set with the current model time.
-  logical  :: pe     !< If true, there is ice on this PE.
+  logical  :: pe             !< If true, there is ice on this PE.
   logical  :: slow_ice_pe = .false. !< If true, this is a slow ice PE
   logical  :: fast_ice_pe = .false. !< If true, this is a fast ice PE
   logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
                                     !! and domain decomposiion
-  integer  :: xtype
+  integer  :: xtype          !< An integer specifying the type for the exchange
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
   integer, pointer, dimension(:)   :: pelist   =>NULL() !< Used for flux-exchange.
@@ -131,12 +128,13 @@ type ice_data_type !  ice_public_type
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from
              ! h_ice outside the ice module.
-  integer, dimension(3)    :: axes
+  integer, dimension(3)    :: axes  !< The sea ice surface field axes.
   type(coupler_3d_bc_type) :: ocean_fields !< array of fields used for additional tracers
                                            !! whose surface state is shared with the atmosphere.
   type(coupler_2d_bc_type) :: ocean_fluxes !< array of fluxes from the ice to the ocean used
                                            !! for additional tracers
-  type(coupler_3d_bc_type) :: ocean_fluxes_top   ! ###THIS IS ARCHAIC AND COULD BE DELETED!
+  type(coupler_3d_bc_type) :: ocean_fluxes_top  !< An ARCHAIC element that should eventually be deleted.
+                               ! ###THIS IS ARCHAIC AND COULD BE DELETED!
   integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two
                           !! wind stress components. Valid entries include AGRID, BGRID_NE,
                           !! CGRID_NE, BGRID_SW, and CGRID_SW, corresponding to the community-
@@ -147,10 +145,15 @@ type ice_data_type !  ice_public_type
 
   ! The following are actually private to SIS2, and are not used elsewhere by other FMS modules.
   type(icebergs),    pointer :: icebergs => NULL()
+          !< A pointer to the icebergs control structure
   type(SIS_fast_CS), pointer :: fCS => NULL()
+          !< A pointer to the SIS fast ice update control structure
   type(SIS_slow_CS), pointer :: sCS => NULL()
+          !< A pointer to the SIS slow ice update control structure
   type(restart_file_type), pointer :: Ice_restart => NULL()
+          !< A pointer to the slow ice restart control structure
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
+          !< A pointer to the fast ice restart control structure
 end type ice_data_type !  ice_public_type
 
 contains
