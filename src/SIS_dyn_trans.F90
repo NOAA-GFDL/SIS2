@@ -88,7 +88,7 @@ implicit none ; private
 
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
-public :: SIS_dyn_trans_read_alt_restarts
+public :: SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 public :: post_ocean_sfc_diagnostics, post_ice_state_diagnostics
 
@@ -192,8 +192,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   enddo ; enddo
 
   if (CS%berg_windstress_bug) then
-    !  This code reproduces a long-standing bug, in that the old ice-ocean
-    !   stresses are being passed in place of the wind stresses on the icebergs.
+    ! This code reproduces a long-standing bug, in that the old ice-ocean
+    ! stresses are being passed in place of the wind stresses on the icebergs.
     do j=jsc,jec ; do i=isc,iec
       windstr_x(i,j) = IOF%flux_u_ocn(i,j)
       windstr_y(i,j) = IOF%flux_v_ocn(i,j)
@@ -662,7 +662,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call mpp_clock_end(iceClock8)
 
   enddo ! nds=1,ndyn_steps
-  call finish_ocean_top_stresses(IOF, G%HI)
+  call finish_ocean_top_stresses(IOF, G)
 
   ! Add snow mass dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
@@ -977,24 +977,112 @@ end subroutine post_ocean_sfc_diagnostics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Finish setting the ice-ocean stresses by dividing the running sums of the
 !! stresses by the number of times they have been augmented.
-subroutine finish_ocean_top_stresses(IOF, HI)
-  type(hor_index_type),      intent(in)    :: HI  !< The horizontal index type describing the domain
+subroutine finish_ocean_top_stresses(IOF, G)
   type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),   intent(in)    :: G   !< The horizontal grid type
 
-  real :: I_count
+  real :: taux2, tauy2  ! squared wind stresses (Pa^2)
+  real :: I_count ! The number of times IOF has been incremented.
+
   integer :: i, j, isc, iec, jsc, jec
-  isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (IOF%stress_count > 1) then
     I_count = 1.0 / IOF%stress_count
-    do j=jsc,jec ; do i=isc,iec
-      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) * I_count
-      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) * I_count
-    enddo ; enddo
+    if (IOF%flux_uv_stagger == AGRID) then
+      do j=jsc,jec ; do i=isc,iec
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) * I_count
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) * I_count
+      enddo ; enddo
+    elseif (IOF%flux_uv_stagger == BGRID_NE) then
+      do J=jsc-1,jec ; do I=isc-1,iec
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) * I_count
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) * I_count
+      enddo ; enddo
+    elseif (IOF%flux_uv_stagger == CGRID_NE) then
+      do j=jsc,jec ; do I=isc-1,iec
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) * I_count
+      enddo ; enddo
+      do J=jsc-1,jec ; do i=isc,iec
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) * I_count
+      enddo ; enddo
+    else
+      call SIS_error(FATAL, "finish_ocean_top_stresses: Unrecognized flux_uv_stagger.")
+    endif
+  endif
+
+  if (allocated(IOF%stress_mag)) then
+    ! if (IOF%simple_mag) then
+    ! Determine the magnitude of the time and area mean stresses.
+    call stresses_to_stress_mag(G, IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_uv_stagger, IOF%stress_mag)
+    ! elseif (IOF%stress_count > 1) then
+    !   ! Find the time mean magnitude of the stresses on the ocean.
+    !   do j=jsc,jec ; do i=isc,iec
+    !     IOF%stress_mag(i,j) = IOF%stress_mag(i,j) * I_count
+    !   enddo ; enddo
+    ! endif
   endif
 
 end subroutine finish_ocean_top_stresses
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Translate the ice-ocean stresses with various staggering options into the
+!! magnitude of the stresses averaged to tracer points.  The stresses must already
+!! be set at all (symmetric) edge points unless stagger is AGRID.
+subroutine stresses_to_stress_mag(G, str_x, str_y, stagger, stress_mag)
+  type(SIS_hor_grid_type),   intent(in)    :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)), &
+                             intent(in)    :: str_x !< The x-direction ice to ocean stress, in Pa.
+  real, dimension(SZI_(G),SZJ_(G)), &
+                             intent(in)    :: str_y !< The y-direction ice to ocean stress, in Pa.
+  integer,                   intent(in)    :: stagger !< The staggering relative to the tracer points of the
+                                                  !! two wind stress components. Valid entries include AGRID,
+                                                  !! BGRID_NE, and CGRID_NE, following the Arakawa
+                                                  !! grid-staggering  notation.  BGRID_SW and CGRID_SW are
+                                                  !! possibilties that have not been implemented yet.
+  real, dimension(SZI_(G),SZJ_(G)), &
+                             intent(inout) :: stress_mag !< The magnitude of the stress at tracer points, in Pa.
+
+  ! Local variables
+  real :: taux2, tauy2  ! squared wind stress components (Pa^2)
+  integer :: i, j, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  if (stagger == AGRID) then
+    do j=jsc,jec ; do i=isc,iec
+      stress_mag(i,j) = sqrt(str_x(i,j)**2 + str_y(i,j)**2)
+    enddo ; enddo
+  elseif (stagger == BGRID_NE) then
+    do j=jsc,jec ; do i=isc,iec
+      if (((G%mask2dBu(I,J) + G%mask2dBu(I-1,J-1)) + &
+           (G%mask2dBu(I,J-1) + G%mask2dBu(I-1,J))) > 0) then
+        stress_mag(i,j) = sqrt( &
+          ((G%mask2dBu(I,J)*(str_x(I,J)**2 + str_y(I,J)**2) + &
+            G%mask2dBu(I-1,J-1)*(str_x(I-1,J-1)**2 + str_y(I-1,J-1)**2)) + &
+           (G%mask2dBu(I,J-1)*(str_x(I,J-1)**2 + str_y(I,J-1)**2) + &
+            G%mask2dBu(I-1,J)*(str_x(I-1,J)**2 + str_y(I-1,J)**2)) ) / &
+          ((G%mask2dBu(I,J) + G%mask2dBu(I-1,J-1)) + (G%mask2dBu(I,J-1) + G%mask2dBu(I-1,J))) )
+      else
+        stress_mag(i,j) = 0.0
+      endif
+    enddo ; enddo
+  elseif (stagger == CGRID_NE) then
+    do j=jsc,jec ; do i=isc,iec
+      taux2 = 0.0 ; tauy2 = 0.0
+      if ((G%mask2dCu(I-1,j) + G%mask2dCu(I,j)) > 0) &
+        taux2 = (G%mask2dCu(I-1,j)*str_x(I-1,j)**2 + &
+                 G%mask2dCu(I,j)*str_x(I,j)**2) / (G%mask2dCu(I-1,j) + G%mask2dCu(I,j))
+      if ((G%mask2dCv(i,J-1) + G%mask2dCv(i,J)) > 0) &
+        tauy2 = (G%mask2dCv(i,J-1)*str_y(i,J-1)**2 + &
+                 G%mask2dCv(i,J)*str_y(i,J)**2) / (G%mask2dCv(i,J-1) + G%mask2dCv(i,J))
+      stress_mag(i,j) = sqrt(taux2 + tauy2)
+    enddo ; enddo
+  else
+    call SIS_error(FATAL, "stresses_to_stress_mag: Unrecognized stagger.")
+  endif
+
+end subroutine stresses_to_stress_mag
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Calculate the stresses on the ocean integrated  across all the thickness categories with
@@ -1029,12 +1117,8 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Bgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,                &
-!$OMP                               part_size,windstr_x_water,windstr_y_water, &
-!$OMP                               str_ice_oce_x,str_ice_oce_y)               &
-!$OMP                       private(ps_vel)
   if (IOF%flux_uv_stagger == AGRID) then
-!$OMP do
+    !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
@@ -1055,54 +1139,54 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == BGRID_NE) then
-!$OMP do
-    do j=jsc,jec
-      do i=isc,iec
+    !$OMP parallel do default(shared) private(ps_vel)
+    do J=jsc-1,jec
+      do I=isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + windstr_x_water(I,J) * ps_vel
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + windstr_y_water(I,J) * ps_vel
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + windstr_x_water(I,J) * ps_vel
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + windstr_y_water(I,J) * ps_vel
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + str_ice_oce_x(I,J) * ps_vel
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + str_ice_oce_y(I,J) * ps_vel
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + str_ice_oce_x(I,J) * ps_vel
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + str_ice_oce_y(I,J) * ps_vel
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
-!$OMP do
+    !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
-      do i=isc,iec
+      do I=isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * &
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
                 0.5 * (windstr_x_water(I,J) + windstr_x_water(I,J-1))
+      enddo
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+        ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
+            0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
+      endif ; enddo ; enddo
+    enddo
+    !$OMP parallel do default(shared) private(ps_vel)
+    do J=jsc-1,jec
+      do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * &
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
                 0.5 * (windstr_y_water(I,J) + windstr_y_water(I-1,J))
       enddo
-      do k=1,ncat ; do i=isc,iec
-        if (G%mask2dCu(I,j)>0.5) then
-          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * &
-              0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
-        endif
-        if (G%mask2dCv(i,J)>0.5) then
-          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * &
-                  0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
-        endif
-      enddo ; enddo
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+        ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
+                0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
+      endif ; enddo ; enddo
     enddo
   else
-!$OMP single
     call SIS_error(FATAL, "set_ocean_top_stress_Bgrid: Unrecognized flux_uv_stagger.")
-!$OMP end single
   endif
-!$OMP end parallel
   IOF%stress_count = IOF%stress_count + 1
 
 end subroutine set_ocean_top_stress_Bgrid
@@ -1139,77 +1223,75 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,G,IOF,    &
-!$OMP                               part_size,windstr_x_water,windstr_y_water, &
-!$OMP                               str_ice_oce_x,str_ice_oce_y)               &
-!$OMP                       private(ps_vel)
+
   if (IOF%flux_uv_stagger == AGRID) then
-!$OMP do
+    !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
         IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_x_water(I,j) + windstr_x_water(I-1,j))
         IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
-                            (windstr_y_water(I,j) + windstr_y_water(i,J-1))
+                            (windstr_y_water(i,J) + windstr_y_water(i,J-1))
       enddo
+      !### SIMPLIFY THIS TO USE THAT sum(part_size(i,j,1:ncat)) = 1.0-part_size(i,j,0) ?
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
         IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j))
         IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * &
-                            (str_ice_oce_y(I,j) + str_ice_oce_y(i,J-1))
+                            (str_ice_oce_y(i,J) + str_ice_oce_y(i,J-1))
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == BGRID_NE) then
-!$OMP do
-    do j=jsc,jec
-      do i=isc,iec
+    !$OMP parallel do default(shared) private(ps_vel)
+    do J=jsc-1,jec
+      do I=isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        ! Consider deleting the masks here?
+        !### Consider deleting the masks here?  They probably do not change answers.
         IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_x_water(I,j) + windstr_x_water(I,j+1))
         IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
-                (windstr_y_water(I,j) + windstr_y_water(i+1,J))
+                (windstr_y_water(i,J) + windstr_y_water(i+1,J))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dBu(I,J)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * &
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I,j+1))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
-                            (str_ice_oce_y(I,j) + str_ice_oce_y(i+1,J))
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * 0.5 * &
+                            (str_ice_oce_y(i,J) + str_ice_oce_y(i+1,J))
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
-!$OMP do
+    !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
-      do i=isc,iec
+      do I=Isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * windstr_x_water(I,j)
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
+      enddo
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+        ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
+      endif ; enddo ; enddo
+    enddo
+    !$OMP parallel do default(shared) private(ps_vel)
+    do J=jsc-1,jec
+      do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * windstr_y_water(i,J)
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
       enddo
-      do k=1,ncat ; do i=isc,iec
-        if (G%mask2dCu(I,j)>0.5) then
-          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-          IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * str_ice_oce_x(I,j)
-        endif
-        if (G%mask2dCv(i,J)>0.5) then
-          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-          IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * str_ice_oce_y(I,j)
-        endif
-      enddo ; enddo
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+        ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
+      endif ; enddo ; enddo
     enddo
   else
-!$OMP single
     call SIS_error(FATAL, "set_ocean_top_stress_Cgrid: Unrecognized flux_uv_stagger.")
-!$OMP end single
   endif
-!$OMP end parallel
 
   IOF%stress_count = IOF%stress_count + 1
 
