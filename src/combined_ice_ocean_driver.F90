@@ -242,6 +242,7 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
   if (ASSOCIATED(IOB%fprec)) IOB%fprec(:,:) = Ice%fprec(:,:)
   if (ASSOCIATED(IOB%runoff)) IOB%runoff(:,:) = Ice%runoff(:,:)
   if (ASSOCIATED(IOB%calving)) IOB%calving(:,:) = Ice%calving
+  if (ASSOCIATED(IOB%stress_mag)) IOB%stress_mag(:,:) = Ice%stress_mag(:,:)
   if (ASSOCIATED(IOB%ustar_berg)) IOB%ustar_berg(:,:) = Ice%ustar_berg(:,:)
   if (ASSOCIATED(IOB%area_berg)) IOB%area_berg(:,:) = Ice%area_berg(:,:)
   if (ASSOCIATED(IOB%mass_berg)) IOB%mass_berg(:,:) = Ice%mass_berg(:,:)
@@ -271,7 +272,9 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
   call data_override('OCN', 'calving_hflx', IOB%calving_hflx  , Time)
   call data_override('OCN', 'p',         IOB%p        , Time)
   call data_override('OCN', 'mi',        IOB%mi       , Time)
-  !Are these if statements needed, or does data_override routine check if variable is assosiated?
+  if (ASSOCIATED(IOB%stress_mag) ) &
+    call data_override('OCN', 'stress_mag', IOB%stress_mag, Time )
+  !Are these if statements needed, or does data_override routine check if variable is associated?
   if (ASSOCIATED(IOB%ustar_berg)) &
     call data_override('OCN', 'ustar_berg', IOB%ustar_berg, Time)
   if (ASSOCIATED(IOB%area_berg) ) &
