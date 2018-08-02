@@ -205,15 +205,15 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0
   allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
 
-  if (.false.) then  ! Add a flag controlling stress_mag later.
+  if (Ice%sCS%pass_stress_mag) then
     allocate(Ice%stress_mag(isc:iec, jsc:jec)) ; Ice%stress_mag(:,:) = 0.0
   endif
 
-  if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
+  if (Ice%sCS%pass_iceberg_area_to_ocean) then
     allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0
     allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0
     allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0
-  endif ; endif
+  endif
 
   if (present(gas_fluxes)) &
     call coupler_type_spawn(gas_fluxes, Ice%ocean_fluxes, (/isc,isc,iec,iec/), &
@@ -221,21 +221,21 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
 
   ! These are used by the ocean model, and need to be in the slow PE restarts.
   if (associated(Ice_restart)) then
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,       domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,       domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,       domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,       domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt,    domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,      domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,        domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,        domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,       domain=domain)
-    idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,      domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_u',      Ice%flux_u,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_v',      Ice%flux_v,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_t',      Ice%flux_t,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_q',      Ice%flux_q,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_salt',   Ice%flux_salt, domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'flux_lw',     Ice%flux_lw,   domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'lprec',       Ice%lprec,     domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'fprec',       Ice%fprec,     domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'runoff',      Ice%runoff,    domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'calving',     Ice%calving,   domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', Ice%runoff_hflx, &
                                  domain=domain, mandatory=.false.)
     idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx',Ice%calving_hflx, &
                                  domain=domain, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,       domain=domain)
+    idr = register_restart_field(Ice_restart, restart_file, 'p_surf',      Ice%p_surf,    domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir, &
                                         domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif, &
@@ -244,6 +244,17 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                         domain=domain)
     idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif, &
                                         domain=domain)
+    if (Ice%sCS%pass_stress_mag) &
+      idr = register_restart_field(Ice_restart, restart_file, 'stress_mag', Ice%stress_mag, &
+                                   domain=domain, mandatory=.false.)
+    if (Ice%sCS%pass_iceberg_area_to_ocean) then
+      idr = register_restart_field(Ice_restart, restart_file, 'ustar_berg', Ice%ustar_berg, &
+                                   domain=domain, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'area_berg', Ice%area_berg, &
+                                   domain=domain, mandatory=.false.)
+      idr = register_restart_field(Ice_restart, restart_file, 'mass_berg', Ice%mass_berg, &
+                                   domain=domain, mandatory=.false.)
+    endif
   endif
 end subroutine ice_type_slow_reg_restarts
 
@@ -411,9 +422,9 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
     call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
     call chksum(Ice%calving, trim(mesg)//" Ice%calving")
     call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
-  endif
-  if (.false.) then  ! Add a flag controlling stress_mag later.
-    call chksum(Ice%stress_mag, trim(mesg)//" Ice%stress_mag")
+    if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_stress_mag) then
+      call chksum(Ice%stress_mag, trim(mesg)//" Ice%stress_mag")
+    endif ; endif
   endif
 
   if (slow_fields .and. associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then

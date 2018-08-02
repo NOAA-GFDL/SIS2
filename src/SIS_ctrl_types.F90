@@ -104,6 +104,8 @@ type SIS_slow_CS
 
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
+  logical :: pass_stress_mag !< If true, calculate the time-mean magnitude of the
+                            !! ice-ocean stresses and pass it to the ocean.
   logical :: do_icebergs    !< If true, use the Lagrangian iceberg code, which
                             !! modifies the calving field among other things.
   logical :: pass_iceberg_area_to_ocean !< If true, iceberg area is passed through coupler

@@ -115,7 +115,7 @@ use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
-use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts
+use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
@@ -720,6 +720,13 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     endif
     Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + G%G_Earth*Ice%mi(i2,j2)
   enddo ; enddo
+  if (associated(Ice%stress_mag) .and. allocated(IOF%stress_mag)) then
+    i_off = LBOUND(Ice%stress_mag,1) - G%isc ; j_off = LBOUND(Ice%stress_mag,2) - G%jsc
+    !$OMP parallel do default(shared) private(i2,j2)
+    do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+      Ice%stress_mag(i2,j2) = IOF%stress_mag(i,j)
+    enddo ; enddo
+  endif
 
 ! This extra block is required with the Verona and earlier versions of the coupler.
   i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
@@ -1720,6 +1727,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   real, allocatable, dimension(:,:) :: &
     h_ice_input, dummy  ! Temporary arrays.
+  real, allocatable, dimension(:,:) :: &
+    str_x, str_y, stress_mag ! Temporary stress arrays
 
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
@@ -1756,6 +1765,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: nudge_sea_ice
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
+  logical :: pass_stress_mag
   logical :: do_ridging
   logical :: specified_ice
   logical :: Cgrid_dyn
@@ -1964,6 +1974,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "APPLY_SLP_TO_OCEAN", slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to \n"//&
                  "the ocean.", default=.false.)
+  call get_param(param_file, mdl, "PASS_STRESS_MAG_TO_OCEAN", pass_stress_mag, &
+                 "If true, provide the time and area weighted mean magnitude \n"//&
+                 "of the stresses on the ocean to the ocean.", default=.false.)
   call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
@@ -2066,6 +2079,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     Ice%sCS%do_icebergs = do_icebergs
     Ice%sCS%pass_iceberg_area_to_ocean = pass_iceberg_area_to_ocean
+    Ice%sCS%pass_stress_mag = pass_stress_mag
     Ice%sCS%specified_ice = specified_ice
     Ice%sCS%Cgrid_dyn = Cgrid_dyn
     Ice%sCS%redo_fast_update = redo_fast_update
@@ -2125,7 +2139,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call alloc_simple_OSS(Ice%sCS%sOSS, sHI, gas_fields_ocn)
 
-    call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_iceberg_fields=Ice%sCS%do_icebergs)
+    call alloc_ice_ocean_flux(Ice%sCS%IOF, sHI, do_stress_mag=Ice%sCS%pass_stress_mag, &
+                              do_iceberg_fields=Ice%sCS%do_icebergs)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
     call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes, gas_fluxes)
@@ -2492,6 +2507,30 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call pass_vector(sIST%u_ice_C, sIST%v_ice_C, sGD, stagger=CGRID_NE)
       else
         call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
+      endif
+
+      if (Ice%sCS%pass_stress_mag .and. .not.query_initialized(Ice%Ice_restart, 'stress_mag')) then
+        ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
+        ! in the Ice type, which will have been read from the restart files.
+        allocate(str_x(sG%isd:sG%ied,sG%jsd:sG%jed)) ; str_x(:,:) = 0.0
+        allocate(str_y(sG%isd:sG%ied,sG%jsd:sG%jed)) ; str_y(:,:) = 0.0
+        allocate(stress_mag(sG%isd:sG%ied,sG%jsd:sG%jed)) ; stress_mag(:,:) = 0.0
+
+        i_off = LBOUND(Ice%stress_mag,1) - sG%isc ; j_off = LBOUND(Ice%stress_mag,2) - sG%jsc
+        do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec ; i2 = i+i_off ; j2 = j+j_off ! Correct for indexing differences.
+          str_x(i,j) = Ice%flux_u(i2,j2) ; str_y(i,j) = Ice%flux_v(i2,j2)
+        enddo ; enddo
+        ! This serves to fill in the symmetric-edge stress points
+        if ((Ice%flux_uv_stagger == BGRID_NE) .or. (Ice%flux_uv_stagger == CGRID_NE)) &
+          call pass_vector(str_x, str_y, sG%Domain_aux, stagger=Ice%flux_uv_stagger) ! Breaks gnu:, halo=1)
+
+        call stresses_to_stress_mag(sG, str_x, str_y, Ice%flux_uv_stagger, stress_mag)
+
+        do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec ; i2 = i+i_off ; j2 = j+j_off ! Correct for indexing differences.
+          Ice%stress_mag(i2,j2) = stress_mag(i,j)
+        enddo ; enddo
+
+        deallocate(str_x, str_y, stress_mag)
       endif
 
       if (fast_ice_PE .and. .not.split_restart_files) then
