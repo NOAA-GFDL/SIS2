@@ -1,8 +1,11 @@
+!> sets up sea-ice specific grid information, including the category thicknesses and
+!! vertical structure of the ice.
+module ice_grid
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_grid - sets up sea-ice specific grid information, including the          !
 !   category thicknesses and vertical structure of the ice. -Robert Hallberg   !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_grid
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
@@ -15,31 +18,26 @@ include 'netcdf.inc'
 
 public :: set_ice_grid, ice_grid_end
 
+!> Contains sea-ice specific grid elements, including information about the category descriptions
+!! and the vertical layers in the snow and ice.
 type, public :: ice_grid_type
-  ! This type contains sea-ice specific grid elements, including information
-  ! about the category descriptions and the vertical layers in the snow and ice.
-  integer :: CatIce     ! The number of sea ice categories.
-  integer :: NkIce      ! The number of vertical partitions within the
-                        ! sea ice.
-  integer :: NkSnow     ! The number of vertical partitions within the
-                        ! snow atop the sea ice.
-  real :: H_to_kg_m2    ! A constant that translates thicknesses from the
-                        ! internal units of thickness to kg m-2.
-  real :: kg_m2_to_H    ! A constant that translates thicknesses from kg m-2 to
-                        ! the internal units of thickness.
-  real :: H_subroundoff !   A thickness that is so small that it can be added to
-                        ! any physically meaningful positive thickness without
-                        ! changing it at the bit level, in thickness units.
-  real :: ocean_part_min ! The minimum value for the fractional open-ocean
-                         ! area.  This can be 0, but for some purposes it
-                         ! may be useful to set this to a miniscule value
-                         ! (like 1e-40) that will be lost to roundoff
-                         ! during any sums so that the open ocean fluxes
-                         ! can be used in interpolation across categories.
+  integer :: CatIce     !< The number of sea ice categories.
+  integer :: NkIce      !< The number of vertical partitions within the sea ice.
+  integer :: NkSnow     !< The number of vertical partitions within the snow atop the sea ice.
+  real :: H_to_kg_m2    !< A constant that translates thicknesses from the
+                        !! internal units of thickness to kg m-2.
+  real :: kg_m2_to_H    !< A constant that translates thicknesses from kg m-2 to
+                        !! the internal units of thickness.
+  real :: H_subroundoff !<   A thickness that is so small that it can be added to
+                        !! any physically meaningful positive thickness without
+                        !! changing it at the bit level, in thickness units.
+  real :: ocean_part_min !< The minimum value for the fractional open-ocean area.  This can be 0,
+                        !! but for some purposes it may be useful to set this to a miniscule value
+                        !! (like 1e-40) that will be lost to roundoff during any sums so that the
+                        !! open ocean fluxes can be used in interpolation across categories.
   real, allocatable, dimension(:) :: &
-    cat_thick_lim, &  ! The lower thickness limits for each ice category, in m.
-    mH_cat_bound  ! The lower mass-per-unit area limits for each ice category,
-                  ! in units of H (often kg m-2).
+    cat_thick_lim, &  !< The lower thickness limits for each ice category, in m.
+    mH_cat_bound      !< The lower mass-per-unit area limits for each ice category, in units of H (often kg m-2).
 
 end type ice_grid_type
 

@@ -1,22 +1,8 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+!> Handles the rapid thermodynamic interactions between the ice and the atmosphere, including
+!! heating and the accumulation of fluxes, but not changes to the ice or snow mass.
+module SIS_fast_thermo
+
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   SIS2 is a SEA ICE MODEL for coupling through the GFDL exchange grid. SIS2  !
@@ -29,7 +15,6 @@
 ! and the atmosphere, including heating and the accumulation of fluxes, but    !
 ! not changes to the ice or snow mass.                                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_fast_thermo
 
 use SIS_diag_mediator, only : SIS_diag_ctrl
 ! ! use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
@@ -71,35 +56,36 @@ public :: accumulate_deposition_fluxes, convert_frost_to_snow
 public :: fast_thermo_CS, avg_top_quantities, total_top_quantities, infill_array
 public :: redo_update_ice_model_fast, find_excess_fluxes
 
+!> The control structure for the SIS fast thermodynamics module
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
-  real, pointer, dimension(:,:,:) :: enth_prev => NULL()
-  real, pointer, dimension(:,:,:) :: heat_in => NULL()
+  real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy in J, used with
+                                     !! column_check when evaluating the enthalpy conservation
+                                     !! with the fast thermodynamics code
+  real, pointer, dimension(:,:,:) :: heat_in => NULL() !< The heat input in J,  used with
+                                     !! column_check when evaluating the enthalpy conservation
+                                     !! with the fast thermodynamics code
 
-  logical :: debug_fast   ! If true, write verbose checksums of code that is
-                          ! executed on fast ice PEs for debugging purposes.
-  logical :: debug_slow   ! If true, write verbose checksums of code that is
-                          ! executed on slow ice PEs for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
+  logical :: debug_fast   !< If true, write verbose checksums of code that is
+                          !! executed on fast ice PEs for debugging purposes.
+  logical :: debug_slow   !< If true, write verbose checksums of code that is
+                          !! executed on slow ice PEs for debugging purposes.
+  logical :: column_check !< If true, enable the heat check column by column.
+  real    :: imb_tol      !< The tolerance for imbalances to be flagged by
+                          !! column_check, nondim.
+  logical :: bounds_check !< If true, check for sensible values of thicknesses
+                          !! temperatures, fluxes, etc.
 
-  integer :: n_fast = 0   ! The number of times update_ice_model_fast
-                          ! has been called.
-  logical :: Reorder_0C_heatflux ! If true, rearrange the calculation
-                          ! of the heat fluxes projected back to 0C to work
-                          ! on each contribution separately, so that they
-                          ! can be indentically replicated if there is
-                          ! a single fast timestep per coupled timestep and
-                          ! REDO_FAST_ICE_UPDATE=True
-  integer :: max_tskin_itt  ! The maximum number of iterations of the skin
-                          ! temperature and optical properties during
-                          ! redo_update_ice_model_fast.
+  integer :: n_fast = 0   !< The number of times update_ice_model_fast has been called.
+  logical :: Reorder_0C_heatflux !< If true, rearrange the calculation of the heat fluxes projected
+                          !! back to 0C to work on each contribution separately, so that they can
+                          !! be indentically replicated if there is a single fast timestep per
+                          !!  coupled timestep and REDO_FAST_ICE_UPDATE=True
+  integer :: max_tskin_itt !< The maximum number of iterations of the skin temperature and
+                          !! optical properties during redo_update_ice_model_fast.
 
-  ! These are pointers to the control structures for subsidiary modules.
+  !> A pointer to the control structures for subsidiary modules.
   type(SIS2_ice_thm_CS), pointer  :: ice_thm_CSp => NULL()
 end type fast_thermo_CS
 

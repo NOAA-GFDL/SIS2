@@ -1,10 +1,13 @@
+!> Contains the types that are used for exchanging information  with the atmosphere, land and ocean
+!! components via the FMS coupler.
+module ice_boundary_types
+
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 ! ice_exchange_types contains the types that are used for exchanging information
 !   with the atmosphere, land and ocean components via the FMS coupler.  These
 !   types should be altered only in close coordination with the entire FMS
 !   develoment effort.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module ice_boundary_types
 
 use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
 use fms_mod,           only : stdout
@@ -21,6 +24,7 @@ public :: lnd_ice_bnd_type_chksum
 !   The following three types are for data exchange with the FMS coupler
 ! they are defined here but declared in coupler_main and allocated in flux_init.
 
+!> A type for exchange between the ocean and the sea ice
 type ocean_ice_boundary_type
   real, dimension(:,:), pointer :: &
     u      => NULL(), &  !< The x-direction ocean velocity at a position
@@ -33,12 +37,13 @@ type ocean_ice_boundary_type
     sea_level => NULL()  !< The sea level after adjustment for any surface
                          !! pressure that the ocean allows to be expressed, in m.
   real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
-  integer   :: stagger = BGRID_NE
+  integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and isused by coupler
-  type(coupler_2d_bc_type) :: fields ! An array of fields used for additional tracers
+  type(coupler_2d_bc_type) :: fields !< An array of fields used for additional tracers
 end type ocean_ice_boundary_type
 
+!> A type for exchange between the atmosphere and the sea ice
 type atmos_ice_boundary_type
   real, dimension(:,:,:), pointer :: &
     u_flux  => NULL(), & !< The true-eastward stresses (momentum fluxes) from the atmosphere
@@ -83,13 +88,14 @@ type atmos_ice_boundary_type
     coszen  => NULL(), & !< The cosine of the solar zenith angle averged over the
                          !! next radiation timestep (not the one that was used to
                          !! calculate the sw_flux fields), nondim and <=1.
-    p       => NULL(), & !< The atmospheric surface pressure, in Pa, often ~1e5 Pa.
-    data    => NULL()
+    p       => NULL()    !< The atmospheric surface pressure, in Pa, often ~1e5 Pa.
+!    data    => NULL() ! This can probably be removed.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and isused by coupler
   type(coupler_3d_bc_type)  :: fluxes !< An array of fluxes used for additional tracers
 end type atmos_ice_boundary_type
 
+!> A type for exchange between the land and the sea ice
 type land_ice_boundary_type
   real, dimension(:,:),   pointer :: &
     runoff  =>NULL(), &  !< The liquid runoff into the ocean, in kg m-2.

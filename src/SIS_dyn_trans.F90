@@ -1,22 +1,8 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
+!> Handles the main updates of the ice states at the slower time-scales of the couplng or
+!! the interactions with the ocean due to ice dynamics and lateral transport.
+module SIS_dyn_trans
+
+! This file is part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   SIS2 is a SEA ICE MODEL for coupling through the GFDL exchange grid. SIS2  !
@@ -29,7 +15,6 @@
 ! scales of the couplng or the interactions with the ocean due to ice dynamics !
 ! and lateral transport.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-module SIS_dyn_trans
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -92,45 +77,47 @@ public :: SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
 public :: post_ocean_sfc_diagnostics, post_ice_state_diagnostics
 
+!> The control structure for the SIS_dyn_trans module
 type dyn_trans_CS ; private
-  logical :: Cgrid_dyn ! If true use a C-grid discretization of the
-                       ! sea-ice dynamics.
-  logical :: specified_ice  ! If true, the sea ice is specified and there is
-                            ! no need for ice dynamics.
-  real    :: dt_ice_dyn   ! The time step used for the slow ice dynamics, including
-                          ! stepping the continuity equation and interactions
-                          ! between the ice mass field and velocities, in s. If
-                          ! 0 or negative, the coupling time step will be used.
-  logical :: do_ridging   !   If true, apply a ridging scheme to the convergent
-                          ! ice.  The original SIS2 implementation is based on
-                          ! work by Torge Martin.  Otherwise, ice is compressed
-                          ! proportionately if the concentration exceeds 1.
-  logical :: berg_windstress_bug  ! If true, use older code that applied an old
-                          ! ice-ocean stress to the icebergs in place of the
-                          ! current air-ice stress.  This option is here for
-                          ! backward compatibility, but should be avoided.
+  logical :: Cgrid_dyn !< If true use a C-grid discretization of the
+                       !! sea-ice dynamics.
+  logical :: specified_ice  !< If true, the sea ice is specified and there is
+                            !! no need for ice dynamics.
+  real    :: dt_ice_dyn   !< The time step used for the slow ice dynamics, including
+                          !! stepping the continuity equation and interactions
+                          !! between the ice mass field and velocities, in s. If
+                          !! 0 or negative, the coupling time step will be used.
+  logical :: do_ridging   !<   If true, apply a ridging scheme to the convergent
+                          !! ice.  The original SIS2 implementation is based on
+                          !! work by Torge Martin.  Otherwise, ice is compressed
+                          !! proportionately if the concentration exceeds 1.
+  logical :: berg_windstress_bug  !< If true, use older code that applied an old
+                          !! ice-ocean stress to the icebergs in place of the
+                          !! current air-ice stress.  This option is here for
+                          !! backward compatibility, but should be avoided.
 
-  logical :: debug        ! If true, write verbose checksums for debugging purposes.
-  logical :: column_check ! If true, enable the heat check column by column.
-  real    :: imb_tol      ! The tolerance for imbalances to be flagged by
-                          ! column_check, nondim.
-  logical :: bounds_check ! If true, check for sensible values of thicknesses
-                          ! temperatures, fluxes, etc.
-  logical :: verbose      ! A flag to control the printing of an ice-diagnostic
-                          ! message.  When true, this will slow the model down.
+  logical :: debug        !< If true, write verbose checksums for debugging purposes.
+  logical :: column_check !< If true, enable the heat check column by column.
+  real    :: imb_tol      !< The tolerance for imbalances to be flagged by
+                          !! column_check, nondim.
+  logical :: bounds_check !< If true, check for sensible values of thicknesses
+                          !! temperatures, fluxes, etc.
+  logical :: verbose      !< A flag to control the printing of an ice-diagnostic
+                          !! message.  When true, this will slow the model down.
 
-  integer :: ntrunc = 0   ! The number of times the velocity has been truncated
-                          ! since the last call to write_ice_statistics.
+  integer :: ntrunc = 0   !< The number of times the velocity has been truncated
+                          !! since the last call to write_ice_statistics.
 
-  integer :: n_calls = 0  ! The number of times SIS_dynamics_trans has been called.
-  type(time_type) :: ice_stats_interval ! The interval between writes of the
-                          ! globally summed ice statistics and conservation checks.
-  type(time_type) :: write_ice_stats_time ! The next time to write out the ice statistics.
+  integer :: n_calls = 0  !< The number of times SIS_dynamics_trans has been called.
+  type(time_type) :: ice_stats_interval !< The interval between writes of the
+                          !< globally summed ice statistics and conservation checks.
+  type(time_type) :: write_ice_stats_time !< The next time to write out the ice statistics.
 
-  type(time_type), pointer :: Time => NULL() ! A pointer to the ocean model's clock.
-  type(SIS_diag_ctrl), pointer :: diag => NULL() ! A structure that is used to regulate the
+  type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    ! timing of diagnostic output.
 
+  !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1, id_xprt=-1, id_mib=-1, id_mi=-1
 
   ! These are the diagnostic ids for describing the ice state.
@@ -142,15 +129,22 @@ type dyn_trans_CS ; private
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
   integer :: id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
+  !!@}
 
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
+      !< Pointer to the control structure for the B-grid dynamics module
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
+      !< Pointer to the control structure for the C-grid dynamics module
   type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
+      !< Pointer to the control structure for the ice transport module
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
-  logical :: module_is_initialized = .false.
+     !< Pointer to the control structure for the summed diagnostics module
+  logical :: module_is_initialized = .false. !< If true, this module has been initialized.
 end type dyn_trans_CS
 
+!>@{ CPU time clock IDs
 integer :: iceClock4, iceClock8, iceClock9, iceClocka, iceClockb, iceClockc
+!!@}
 
 contains
 

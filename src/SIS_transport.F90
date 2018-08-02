@@ -1,28 +1,7 @@
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!   This module does the transport and redistribution between thickness        !
-! categories for the SIS2 sea ice model.                                       !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Does the transport and redistribution between thickness categories for the SIS2 sea ice model.
 module SIS_transport
+
+! This file is a part of SIS2.  See LICENSE.md for the licnese.
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
@@ -52,37 +31,38 @@ implicit none ; private
 public :: SIS_transport_init, ice_transport, SIS_transport_end
 public :: adjust_ice_categories
 
-!> The SIS_transport_CS contains parameters for doing advective and
-!! parameterized advection.
+!> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
 
-  logical :: SLAB_ICE = .false. ! should we do old style GFDL slab ice?
-  real :: Rho_ice = 905.0     ! The nominal density of sea ice, in kg m-3.
-  real :: Rho_snow = 330.0    ! The nominal density of snow on sea ice, in
-                              ! kg m-3.
-  real :: Roll_factor         ! A factor by which the propensity of small
-                              ! amounts of thick sea-ice to become thinner by
-                              ! rolling is increased, or 0 to disable rolling.
-                              ! Sensible values are 0 or larger than 1.
+  logical :: SLAB_ICE = .false. !< If true, do old style GFDL slab ice?
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  real :: Rho_snow = 330.0    !< The nominal density of snow on sea ice, in kg m-3.
+  real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
+                              !! to become thinner by rolling is increased, or 0 to disable rolling.
+                              !! Sensible values are 0 or larger than 1.
 
-  logical :: readjust_categories  ! If true, readjust the distribution into
-                              ! ice thickness categories after advection.
-  logical :: specified_ice    ! If true, the sea ice is specified and there is
-                              ! no need for ice dynamics.
-  logical :: check_conservation ! If true, write out verbose diagnostics of conservation.
-  logical :: bounds_check     ! If true, check for sensible values of thicknesses,
-                              ! temperatures, salinities, tracers, etc.
-  integer :: adv_sub_steps    ! The number of advective iterations for each slow
-                              ! time step.
+  logical :: readjust_categories !< If true, readjust the distribution into
+                              !! ice thickness categories after advection.
+  logical :: specified_ice    !< If true, the sea ice is specified and there is
+                              !! no need for ice dynamics.
+  logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
+  logical :: bounds_check     !< If true, check for sensible values of thicknesses,
+                              !! temperatures, salinities, tracers, etc.
+  integer :: adv_sub_steps    !< The number of advective iterations for each slow time step.
   type(time_type), pointer :: Time !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
                               !! timing of diagnostic output.
-  logical :: do_ridging       ! If true, the ridging scheme is enabled.
+  logical :: do_ridging       !< If true, the ridging scheme is enabled.
   type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
+          !< The control structure for the SIS continuity module
   type(SIS_tracer_advect_CS), pointer :: SIS_tr_adv_CSp => NULL()
+          !< The control structure for the SIS tracer advection module
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
+          !< The control structure for the SIS thickness advection module
 
+  !>@{ Diagnsotic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1
+  !!@}
 end type SIS_transport_CS
 
 contains

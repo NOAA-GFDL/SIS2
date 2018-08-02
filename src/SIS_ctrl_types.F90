@@ -1,8 +1,5 @@
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! SIS_types contains a number of common SIS types, along with subroutines to   !
-!   perform various tasks on these types, including allocation, deallocation,  !
-!   registration for restarts, and checksums.                                  !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Contains a number of common SIS types, along with subroutines to perform various tasks on these
+!! types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_ctrl_types
 
 ! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe

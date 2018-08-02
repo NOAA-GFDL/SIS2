@@ -1,33 +1,8 @@
+!> Reads the SIS2 namelist input, which indicates which directories to use for certain types of
+!! input and output, and where to look for the full parsable input file(s).
 module SIS_get_input
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
 
-!********+*********+*********+*********+*********+*********+*********+**
-!*                                                                     *
-!*  By Robert Hallberg, July 2013                                      *
-!*                                                                     *
-!*    The subroutine in this file reads the MOM6 namelist input, which *
-!*  indicates which directories to use for certain types of input and  *
-!*  output, and where to look for the full parsable input file(s).     *
-!*                                                                     *
-!********+*********+*********+*********+*********+*********+*********+**
+! This file is a part of SIS2. See LICENSE.md for the license.
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : open_param_file, param_file_type, read_param

@@ -1,56 +1,7 @@
+!> Routines that conservatively advect sea ice tracer concentrations
 module SIS_tracer_advect
-!***********************************************************************
-!*                   GNU General Public License                        *
-!* This file is a part of SIS2.                                        *
-!*                                                                     *
-!* SIS2 is free software; you can redistribute it and/or modify it and *
-!* are expected to follow the terms of the GNU General Public License  *
-!* as published by the Free Software Foundation; either version 2 of   *
-!* the License, or (at your option) any later version.                 *
-!*                                                                     *
-!* SIS2 is distributed in the hope that it will be useful, but WITHOUT *
-!* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  *
-!* or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public    *
-!* License for more details.                                           *
-!*                                                                     *
-!* For the full text of the GNU General Public License,                *
-!* write to: Free Software Foundation, Inc.,                           *
-!*           675 Mass Ave, Cambridge, MA 02139, USA.                   *
-!* or see:   http://www.gnu.org/licenses/gpl.html                      *
-!***********************************************************************
 
-!********+*********+*********+*********+*********+*********+*********+**
-!*                                                                     *
-!*  By Robert Hallberg, 1996 - 2012, adapted for SIS2 in 2014-2016.    *
-!*                                                                     *
-!*    This program contains the subroutines that advect tracers        *
-!*  horizontally (i.e. along layers).  This code was modified from the *
-!*  corresponding MOM6 / GOLD code to work with the snow and ice       *
-!*  tracers of SIS2.                                                   *
-!*                                                                     *
-!*    advect_SIS_tracers advects tracer concentrations using the       *
-!*  modified flux advection scheme from Easter (Mon. Wea. Rev., 1993)  *
-!*  with tracer distributions that are piecewise constant,             *
-!*  piecewise linear (given by the monotonic scheme proposed by        *
-!*  Lin et al. (Mon. Wea. Rev., 1994)), or the montonic piecewise      *
-!*  parabolic method, as described in Carpenter et al. (MWR, 1990).    *
-!*  This detects the mass of ice or snow in a grid cell and thickness  *
-!*  category at the previous instance when the tracer concentration    *
-!*  was changed is consistent with the mass fluxes and the new masses. *
-!*                                                                     *
-!*     A small fragment of the grid is shown below:                    *
-!*                                                                     *
-!*    j+1  x ^ x ^ x   At x:  q                                        *
-!*    j+1  > o > o >   At ^:  v, vh                                    *
-!*    j    x ^ x ^ x   At >:  u, uh                                    *
-!*    j    > o > o >   At o:  tr, h                                    *
-!*    j-1  x ^ x ^ x                                                   *
-!*        i-1  i  i+1  At x & ^:                                       *
-!*           i  i+1    At > & o:                                       *
-!*                                                                     *
-!*  The boundaries always run through q grid points (x).               *
-!*                                                                     *
-!********+*********+*********+*********+*********+*********+*********+**
+!* This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
 use MOM_cpu_clock, only : CLOCK_MODULE, CLOCK_ROUTINE
@@ -82,8 +33,13 @@ type, public :: SIS_tracer_advect_CS ; private
   logical :: usePCM         !< If true, use PCM tracer advection instead of PLM.
 end type SIS_tracer_advect_CS
 
-logical :: first_call = .true.
+! This is outside of the control structure do avoid unnecessary double logging
+! and reinitialization of clock IDs. ### Perhaps this should be reconsidered.
+logical :: first_call = .true. !< If true, this module has not been called before.
+
+!>@{ CPU time clock IDs
 integer :: id_clock_advect, id_clock_pass, id_clock_sync
+!!@}
 
 contains
 
@@ -1854,4 +1810,32 @@ subroutine SIS_tracer_advect_end(CS)
 
 end subroutine SIS_tracer_advect_end
 
+!*  By Robert Hallberg, 1996 - 2012, adapted for SIS2 in 2014-2016.    *
+!*                                                                     *
+!*    This program contains the subroutines that advect tracers        *
+!*  horizontally (i.e. along layers).  This code was modified from the *
+!*  corresponding MOM6 / GOLD code to work with the snow and ice       *
+!*  tracers of SIS2.                                                   *
+!*                                                                     *
+!*    advect_SIS_tracers advects tracer concentrations using the       *
+!*  modified flux advection scheme from Easter (Mon. Wea. Rev., 1993)  *
+!*  with tracer distributions that are piecewise constant,             *
+!*  piecewise linear (given by the monotonic scheme proposed by        *
+!*  Lin et al. (Mon. Wea. Rev., 1994)), or the montonic piecewise      *
+!*  parabolic method, as described in Carpenter et al. (MWR, 1990).    *
+!*  This detects the mass of ice or snow in a grid cell and thickness  *
+!*  category at the previous instance when the tracer concentration    *
+!*  was changed is consistent with the mass fluxes and the new masses. *
+!*                                                                     *
+!*     A small fragment of the grid is shown below:                    *
+!*                                                                     *
+!*    j+1  x ^ x ^ x   At x:  q                                        *
+!*    j+1  > o > o >   At ^:  v, vh                                    *
+!*    j    x ^ x ^ x   At >:  u, uh                                    *
+!*    j    > o > o >   At o:  tr, h                                    *
+!*    j-1  x ^ x ^ x                                                   *
+!*        i-1  i  i+1  At x & ^:                                       *
+!*           i  i+1    At > & o:                                       *
+!*                                                                     *
+!*  The boundaries always run through q grid points (x).               *
 end module SIS_tracer_advect

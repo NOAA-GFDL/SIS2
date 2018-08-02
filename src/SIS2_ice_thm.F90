@@ -1,103 +1,7 @@
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!                                                                              !
-!                       N-LAYER VERTICAL THERMODYNAMICS                        !
-!                                                                              !
-! References:                                                                  !
-!   Hallberg, R., and M. Winton, 2016:  The SIS2.0 sea-ice model, in prep.     !
-!                                                                              !
-!   Winton, M., 2011:  A conservative non-iterative n-layer sea ice            !
-!     temperature solver, in prep.                                             !
-!                                                                              !
-!                                                                              !
-!         ->+---------+ <- ts - diagnostic surface temperature ( <= 0C )       !
-!        /  |         |                                                        !
-!      hs   |  snow   | <- tsn   One snow layer with heat capacity             !
-!        \  |         |                                                        !
-!         =>+---------+                                                        !
-!        /  |         |                                                        !
-!       /   |         | <- t1    N salty ice layers with heat capacity         !
-!      /    |         |                                                        !
-!     /     |         | <- t2                                                  !
-!   hi      |...ice...|                                                        !
-!     \     |         | <- tN-1                                                !
-!      \    |         |                                                        !
-!       \   |         | <- tN                                                  !
-!        \  |         |                                                        !
-!         ->+---------+ <- base of ice fixed at seawater freezing temp.        !
-!                                                                              !
-!                                       Bob Hallberg (Robert.Hallberg@noaa.gov)!
-!                                       Mike Winton  (Michael.Winton@noaa.gov) !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! Enhancement for melt ponds cohabiting ice top with snow layer:               !
-!                                                                              !
-!    ->+--------+ <- ts==0C when pond (net heat here -> pond freeze/melt)      !
-!   /  |        |--------|<-+                                                  !
-! hs   |  snow  |  pond  |   hp - layer has no heat capacity; "surface" energy !
-!      |        |        |  .     balance takes place at ice/snow top          !
-!   \  |        |        |  .                                                  !
-!    =>+--------+--------|<-+                                                  !
-!   /  |                 |                                                     !
-! hi   |    ...ice...    |                   do_pond = true activates scheme   !
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!
-!             SIS2 "getting-started" melt pond scheme
-!
-! This melt pond scheme adds a single layer melt pond to each ice thickness
-! category.  The layer does not have heat capacity.  It is assumed to be at
-! freshwater freezing temperature and well mixed.  All pond surface fluxes
-! are communicated directly to its bottom where surface energy balance is
-! calculated.  The pond layer is advected and redistributed between ice
-! thickness categories similarly to the snow and ice layers.  As is the case
-! with snow, pond cannot exist without an ice layer below.  Basic descriptions
-! of pond sources and sinks, and pond fraction for radiation treatments follow:
-!
-! Source water:  Surface melting of snow and ice are the source of pond water.
-! The runoff scheme keys on the total ice covered area.  This is the only
-! interaction between category variables in the scheme.  The scheme uses r, the
-! fraction of melt (r)etained given by the CICE5 scheme (p. 42):
-! r = r_min + (r_max-r_min)*ice_area.  The controlling namelist
-! parameters for r_min and r_max are pond_r_min and pond_r_max.
-!
-! Freezing sink:  The surface energy budget continues to be performed at the
-! top of the snow or ice when pond is present but the interface is fixed at
-! freezing temperature and the residual between the fluxes on either side of the
-! interface is made up with melt or freezing.  Freezing in this calculation is a
-! sink of pond water.
-!
-! Freeboard sink:  if the pond and snow are sufficiently massive to push the top
-! of the sea ice below sea level, pond is dumped into the ocean until the ice
-! top is brought back to sea level, or the pond is completely depleted.  This
-! adjustment follows the CICE5 Hunke "level ice" pond scheme.
-!
-! Porous-ice sink:  No through-ice drainage occurs until the ice average
-! temperature exceeds a specified value.  The namelist parameter for this is
-! pond_porous_temp.  Once this limit is exceeded the pond drains to a minimum
-! value intended to represent coverage by ponds at sea level.  This scheme is
-! a placeholder for the mushy-layer thermodynamics to be implemented later.
-!
-! Pond fraction for radiation:  In the snow-free case we assume that pond
-! fraction ranges between a specified minimum, where surface cavities below
-! sea level are filled with pond water, and a specified maximum value.
-! The pond depth and pond fraction are considered to be proportional as was
-! found at the SHEBA site and incorporated into the Bailey melt pond
-! parameterization.  This means that the pond fraction is proportional to
-! the square root of the pond volume.  The pond volume has a maximum
-! determined by the non-negative freeboard requirement.  This pond volume
-! is associated with the maximum pond fraction, so less pond water is needed
-! to cover thinner ice.
-!
-! New namelist parameters: do_pond, pond_r_max, pond_r_min, pond_porous_temp,
-! pond_frac_max, pond_frac_min
-!
-! New diagnostics: hp, fp, pond_source, pond_sink_freeboard, pond_sink_porous,
-! pond_sink_tot <only hp implemented so far; add pond transport diagnostics?>
-!
-! M. Winton (6/16)
-!
-
+!> Routines to do SIS2 ice thermodynamic calcualtions
 module SIS2_ice_thm
+
+! This file is part of SIS2. See LICENSE.md for the license.
 
 use ice_thm_mod, only : get_thermo_coefs
 use MOM_EOS, only : EOS_type, EOS_init, EOS_end
@@ -145,38 +49,42 @@ type, public :: ice_thermo_type ; private
                             !! common and consistent thermodynamics between the ice and ocean.
 end type ice_thermo_type
 
+
+!> The control structure for the SIS2 ice thermodynamics
 type, public :: SIS2_ice_thm_CS ; private
   ! properties of ice, snow, and seawater (NCAR CSM values)
-  real :: KS   ! conductivity of snow, often 0.31 W/(mK)
-  real :: KI   ! conductivity of ice, often 2.03 W/(mK)
+  real :: KS   !< Thermal conductivity of snow, often 0.31 W/(mK)
+  real :: KI   !<  Thermalconductivity of ice, often 2.03 W/(mK)
 
-  real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
-  real :: temp_range_est  ! An estimate of the range of snow and ice temperatures
-                          ! that is used to evaluate whether an explicit
-                          ! diffusive form of the heat fluxes or an inversion
-                          ! based on the layer heat budget is more likely to
-                          ! be the most accurate.
+  real :: temp_ice_freeze !< The freezing temperature of the top ice layer, in C.
+  real :: temp_range_est  !< An estimate of the range of snow and ice temperatures
+                          !! that is used to evaluate whether an explicit
+                          !! diffusive form of the heat fluxes or an inversion
+                          !! based on the layer heat budget is more likely to
+                          !! be the most accurate.
 
-  real :: h_lo_lim        ! hi/hs lower limit for temp. calc.
-  real :: frazil_temp_offset = 0.5 ! An offset between the temperature with
-                          ! which frazil ice forms and the freezing point of
-                          ! each sublayer of the ice.  This functionality could
-                          ! later be accounted for using liq_lim instead.
+  real :: h_lo_lim        !< hi/hs lower limit for temp. calc.
+  real :: frazil_temp_offset = 0.5 !< An offset between the temperature with
+                          !! which frazil ice forms and the freezing point of
+                          !! each sublayer of the ice.  This functionality could
+                          !! later be accounted for using liq_lim instead.
 
+  real :: liq_lim = .99   !< A limit on the liquid fraction of sea-ice before it can no longer
+                          !! be considered sea-ice, as it will simply contract due to the rising
+                          !! ice shards, nonodim.
   ! In the ice temperature calculation we place a limit to below (salinity
   ! dependent) freezing point on the prognosed temperatures.  For ice_resize
   ! it is better to make a slightly more restrictive limit that requires the
   ! temperature to be such that the brine content is less than "liq_lim" of
   ! the total mass.  That is T_f/T < liq_lim implying T<T_f/liq_lim
-  real :: liq_lim = .99
 
-  logical :: do_pond = .false. ! activate melt pond scheme - mw/new
+  logical :: do_pond = .false. !< If true, activate melt pond scheme
   ! mw/new - these melt pond control data are temporarily placed here
-  real :: tdrain = -0.8 ! if average ice temp. > tdrain, drain pond
-  real :: r_min_pond = 0.15 ! pond retention of meltwater
-  real :: r_max_pond = 0.9  ! see CICE5 doc
-  real :: max_pond_frac = 0.5  ! pond water beyond this is dumped
-  real :: min_pond_frac = 0.2  ! ponds below sea level don't drain
+  real :: tdrain = -0.8 !< If average ice temp. > tdrain, drain pond
+  real :: r_min_pond = 0.15 !< Pond retention of meltwater
+  real :: r_max_pond = 0.9  !< See CICE5 doc
+  real :: max_pond_frac = 0.5  !< Pond water beyond this is dumped
+  real :: min_pond_frac = 0.2  !< Ponds below sea level don't drain
   ! mw/new - end of melt pond control data
 end type SIS2_ice_thm_CS
 
@@ -2322,4 +2230,102 @@ subroutine ice_thermo_end(ITV)
 
 end subroutine ice_thermo_end
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!                                                                              !
+!                       N-LAYER VERTICAL THERMODYNAMICS                        !
+!                                                                              !
+! References:                                                                  !
+!   Hallberg, R., and M. Winton, 2016:  The SIS2.0 sea-ice model, in prep.     !
+!                                                                              !
+!   Winton, M., 2011:  A conservative non-iterative n-layer sea ice            !
+!     temperature solver, in prep.                                             !
+!                                                                              !
+!                                                                              !
+!         ->+---------+ <- ts - diagnostic surface temperature ( <= 0C )       !
+!        /  |         |                                                        !
+!      hs   |  snow   | <- tsn   One snow layer with heat capacity             !
+!        \  |         |                                                        !
+!         =>+---------+                                                        !
+!        /  |         |                                                        !
+!       /   |         | <- t1    N salty ice layers with heat capacity         !
+!      /    |         |                                                        !
+!     /     |         | <- t2                                                  !
+!   hi      |...ice...|                                                        !
+!     \     |         | <- tN-1                                                !
+!      \    |         |                                                        !
+!       \   |         | <- tN                                                  !
+!        \  |         |                                                        !
+!         ->+---------+ <- base of ice fixed at seawater freezing temp.        !
+!                                                                              !
+!                                       Bob Hallberg (Robert.Hallberg@noaa.gov)!
+!                                       Mike Winton  (Michael.Winton@noaa.gov) !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+! Enhancement for melt ponds cohabiting ice top with snow layer:               !
+!                                                                              !
+!    ->+--------+ <- ts==0C when pond (net heat here -> pond freeze/melt)      !
+!   /  |        |--------|<-+                                                  !
+! hs   |  snow  |  pond  |   hp - layer has no heat capacity; "surface" energy !
+!      |        |        |  .     balance takes place at ice/snow top          !
+!   \  |        |        |  .                                                  !
+!    =>+--------+--------|<-+                                                  !
+!   /  |                 |                                                     !
+! hi   |    ...ice...    |                   do_pond = true activates scheme   !
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!
+!             SIS2 "getting-started" melt pond scheme
+!
+! This melt pond scheme adds a single layer melt pond to each ice thickness
+! category.  The layer does not have heat capacity.  It is assumed to be at
+! freshwater freezing temperature and well mixed.  All pond surface fluxes
+! are communicated directly to its bottom where surface energy balance is
+! calculated.  The pond layer is advected and redistributed between ice
+! thickness categories similarly to the snow and ice layers.  As is the case
+! with snow, pond cannot exist without an ice layer below.  Basic descriptions
+! of pond sources and sinks, and pond fraction for radiation treatments follow:
+!
+! Source water:  Surface melting of snow and ice are the source of pond water.
+! The runoff scheme keys on the total ice covered area.  This is the only
+! interaction between category variables in the scheme.  The scheme uses r, the
+! fraction of melt (r)etained given by the CICE5 scheme (p. 42):
+! r = r_min + (r_max-r_min)*ice_area.  The controlling namelist
+! parameters for r_min and r_max are pond_r_min and pond_r_max.
+!
+! Freezing sink:  The surface energy budget continues to be performed at the
+! top of the snow or ice when pond is present but the interface is fixed at
+! freezing temperature and the residual between the fluxes on either side of the
+! interface is made up with melt or freezing.  Freezing in this calculation is a
+! sink of pond water.
+!
+! Freeboard sink:  if the pond and snow are sufficiently massive to push the top
+! of the sea ice below sea level, pond is dumped into the ocean until the ice
+! top is brought back to sea level, or the pond is completely depleted.  This
+! adjustment follows the CICE5 Hunke "level ice" pond scheme.
+!
+! Porous-ice sink:  No through-ice drainage occurs until the ice average
+! temperature exceeds a specified value.  The namelist parameter for this is
+! pond_porous_temp.  Once this limit is exceeded the pond drains to a minimum
+! value intended to represent coverage by ponds at sea level.  This scheme is
+! a placeholder for the mushy-layer thermodynamics to be implemented later.
+!
+! Pond fraction for radiation:  In the snow-free case we assume that pond
+! fraction ranges between a specified minimum, where surface cavities below
+! sea level are filled with pond water, and a specified maximum value.
+! The pond depth and pond fraction are considered to be proportional as was
+! found at the SHEBA site and incorporated into the Bailey melt pond
+! parameterization.  This means that the pond fraction is proportional to
+! the square root of the pond volume.  The pond volume has a maximum
+! determined by the non-negative freeboard requirement.  This pond volume
+! is associated with the maximum pond fraction, so less pond water is needed
+! to cover thinner ice.
+!
+! New namelist parameters: do_pond, pond_r_max, pond_r_min, pond_porous_temp,
+! pond_frac_max, pond_frac_min
+!
+! New diagnostics: hp, fp, pond_source, pond_sink_freeboard, pond_sink_porous,
+! pond_sink_tot <only hp implemented so far; add pond transport diagnostics?>
+!
+! M. Winton (6/16)
+!
 end module SIS2_ice_thm
