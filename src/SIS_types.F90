@@ -298,10 +298,9 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u  , & ! The downward flux of zonal and meridional
-    flux_v  , & ! momentum on an A-grid in Pa.
-    flux_sh , & ! The upward sensible heat flux at the ice top
-                ! in W m-2.
+    flux_u  , & ! The downward flux of zonal momentum on an A-grid in Pa.
+    flux_v  , & ! The downward flux of meridional momentum on an A-grid in Pa.
+    flux_sh , & ! The upward sensible heat flux at the ice top in W m-2.
     evap    , & ! The upward evaporative moisture flux at
                 ! top of the ice, in kg m-2 s-1.
     flux_lw , & ! The downward flux of longwave radiation at
@@ -321,8 +320,7 @@ type total_sfc_flux_type
   integer :: copy_calls = 0  ! The number of times this structure has been
                 ! copied from the fast ice to the slow ice.
   type (coupler_2d_bc_type) :: &
-    tr_flux         ! A structure of additional tracer fluxes at the top
-                    ! of the sea-ice
+    tr_flux     ! A structure of additional tracer fluxes at the top of the sea-ice
 end type total_sfc_flux_type
 
 
@@ -382,40 +380,31 @@ end type ice_rad_type
 type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
-    flux_sh_ocn_top , & ! The upward sensible heat flux from the ocean
-                        ! to the ice or atmosphere, in W m-2.
-    evap_ocn_top , &    ! The upward evaporative moisture flux at
-                        ! the ocean surface, in kg m-2 s-1.
-    flux_lw_ocn_top, &  ! The downward flux of longwave radiation at
-                        ! the ocean surface, in W m-2.
-    flux_lh_ocn_top, &  ! The upward flux of latent heat at the
-                        ! ocean surface, in W m-2.
-    lprec_ocn_top, &    ! The downward flux of liquid precipitation at
-                        ! the ocean surface, in kg m-2 s-1.
-    fprec_ocn_top, &    ! The downward flux of frozen precipitation at
-                        ! the ocean surface, in kg m-2 s-1.
-    flux_u_ocn, &       ! The flux of x-momentum into the ocean, in Pa,
-                        ! at locations determined by flux_uv_stagger,
-                        ! but allocated as though on an A-grid.
-    flux_v_ocn, &       ! The flux of y-momentum into the ocean, in Pa,
-                        ! at locations determined by flux_uv_stagger,
-                        ! but allocated as though on an A-grid.
-    melt_nudge, &       ! A downward fresh water flux into the ocean that
-                        ! acts to nudge the ocean surface salinity to
-                        ! facilitate the retention of sea ice, in kg m-2 s-1.
-    flux_salt           ! The flux of salt out of the ocean in kg m-2.
+    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere, in W m-2.
+    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface, in kg m-2 s-1.
+    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface, in W m-2.
+    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface, in W m-2.
+    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface, in kg m-2 s-1.
+    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface, in kg m-2 s-1.
+    flux_u_ocn, &      !< The flux of x-momentum into the ocean, in Pa at locations given by flux_uv_stagger.
+              ! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
+    flux_v_ocn, &      !< The flux of y-momentum into the ocean, in Pa at locations given by flux_uv_stagger.
+              ! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
+    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean, in Pa.
+    melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
+                       !! surface salinity to facilitate the retention of sea ice, in kg m-2 s-1.
+    flux_salt          !< The flux of salt out of the ocean in kg m-2.
   real, allocatable, dimension(:,:,:) :: &
-    flux_sw_ocn      ! The downward flux of shortwave radiation at ocean
-                     ! surface in W m-2.  The third dimension combines
-                     ! angular orientation (direct or diffuse) and frequency
-                     ! (visible or near-IR) bands, with the integer parameters
-                     ! from this module helping to distinguish them.
+    flux_sw_ocn        !< The downward flux of shortwave radiation at ocean surface in W m-2.
+                       !! The third dimension combines angular orientation (direct or diffuse) and
+                       !! frequency (visible or near-IR) bands, with the integer parameters from this
+                       !! module helping to distinguish them.
 
   !Iceberg fields
   real, pointer, dimension(:,:)   :: &
-    ustar_berg =>NULL(), &  ! ustar contribution below icebergs in m/s
-    area_berg =>NULL(),  &  ! fraction of grid cell covered by icebergs in m2/m2
-    mass_berg =>NULL()      ! mass of icebergs in km/m^2
+    ustar_berg =>NULL(), &  !< ustar contribution below icebergs in m/s
+    area_berg =>NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
+    mass_berg =>NULL()      !< mass of icebergs in km/m^2
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &
@@ -423,37 +412,30 @@ type ice_ocean_flux_type
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
     ! that add mass to the ice are generally negative.
-    Enth_Mass_in_atm , & ! The enthalpy introduced to the ice by water
-                         ! fluxes from the atmosphere, in J m-2.
-    Enth_Mass_out_atm, & ! Negative of the enthalpy extracted from the
-                         ! ice by water fluxes to the atmosphere, in J m-2.
-    Enth_Mass_in_ocn , & ! The enthalpy introduced to the ice by water
-                         ! fluxes from the ocean, in J m-2.
-    Enth_Mass_out_ocn    ! Negative of the enthalpy extracted from the
-                         ! ice by water fluxes to the ocean, in J m-2.
+    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere, in J m-2.
+    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to the atmosphere, in J m-2.
+    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean, in J m-2.
+    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to the ocean, in J m-2.
 
-  integer :: stress_count ! The number of times that the stresses from the ice
-                        ! to the ocean have been incremented.
-  integer :: flux_uv_stagger = -999 ! The staggering relative to the tracer points
-                    ! points of the two wind stress components. Valid entries
-                    ! include AGRID, BGRID_NE, CGRID_NE, BGRID_SW, and CGRID_SW,
-                    ! corresponding to the community-standard Arakawa notation.
-                    ! (These are named integers taken from mpp_parameter_mod.)
-                    ! Following SIS, this is BGRID_NE by default when the sea
-                    ! ice is initialized, but here it is set to -999 so that a
-                    ! global max across ice and non-ice processors can be used
-                    ! to determine its value.
-  logical :: slp2ocean  ! If true, apply sea level pressure to ocean surface.
+  integer :: stress_count !< The number of times that the stresses from the ice to the ocean have been incremented.
+  integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two wind
+                        !! stress components. Valid entries include AGRID, BGRID_NE, CGRID_NE,
+                        !! BGRID_SW, and CGRID_SW, following the Arakawa grid-staggering notation.
+                        ! (These are named integers taken from mpp_parameter_mod.)
+                        ! Following SIS, this is BGRID_NE by default when the sea ice is initialized,
+                        ! but flux_uv_stagger is set to -999 here so that a global max across ice and
+                        ! non-ice processors can be used to determine its value.
+  logical :: slp2ocean  !< If true, apply sea level pressure to ocean surface.
 
   type (coupler_2d_bc_type) :: &
-    tr_flux_ocn_top ! A structure of additional tracer fluxes at the top
-                    ! of the ocean
+    tr_flux_ocn_top !< A structure of additional tracer fluxes at the top of the ocean
 
-  ! diagnostic IDs for ice-to-ocean fluxes.
+  !>@{ diagnostic IDs for ice-to-ocean fluxes.
   integer :: id_saltf=-1
   ! The following are diagnostic IDs for iceberg-related fields.  These are only
   ! used if the iceberg code is activated.
   integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
+  !!@}
 end type ice_ocean_flux_type
 
 contains
@@ -893,17 +875,20 @@ end subroutine alloc_ice_rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
-subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
+subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
   type(ice_ocean_flux_type), pointer    :: IOF !< A structure containing fluxes from the ice to
                                                !! the ocean that are calculated by the ice model.
   type(hor_index_type),      intent(in) :: HI  !< The horizontal index type describing the domain
+  logical,         optional, intent(in) :: do_stress_mag !< If true, allocate memory to use for
+                                               !! the magnitude of the ice-ocean stress.
   logical,         optional, intent(in) :: do_iceberg_fields !< If true, allocate fields related
                                                !! to exchanges with icebergs
 
   integer :: CatIce
-  logical :: alloc_bergs
+  logical :: alloc_bergs, alloc_stress_mag
 
   alloc_bergs = .false. ; if (present(do_iceberg_fields)) alloc_bergs = do_iceberg_fields
+  alloc_stress_mag = .false. ; if (present(do_stress_mag)) alloc_stress_mag = do_stress_mag
 
   if (.not.associated(IOF)) allocate(IOF)
 
@@ -918,6 +903,9 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_iceberg_fields)
   allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0
   allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0
   allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0
+  if (alloc_stress_mag) then
+    allocate(IOF%stress_mag(SZI_(HI), SZJ_(HI)))  ;  IOF%stress_mag(:,:) = 0.0
+  endif
 
   allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0
   allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0
@@ -2164,6 +2152,7 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_sw_ocn)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
+  if (allocated(IOF%stress_mag)) deallocate(IOF%stress_mag)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
   deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
@@ -2194,6 +2183,8 @@ subroutine IOF_chksum(mesg, IOF, G)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
   call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
   call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI)
+  if (allocated(IOF%stress_mag)) &
+    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI)
 
   call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
   call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
