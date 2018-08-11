@@ -171,8 +171,10 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
       integer (kind=int_kind), intent(in) :: ny_block    !< y-block dimension
       integer (kind=int_kind), intent(in) :: icells      !< number of ice-covered grid cells
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: indxi       !< compressed i-index for ice-covered cells
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: indxj       !< compressed j-index for ice-covered cells
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxi       !< compressed i-index for ice-covered cells
+      integer (kind=int_kind), dimension(nx_block*ny_block), intent(in) :: &
+        indxj       !< compressed j-index for ice-covered cells
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
         coszen      !< cosine of solar zenith angle
