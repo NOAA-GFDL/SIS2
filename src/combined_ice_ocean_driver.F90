@@ -16,8 +16,11 @@ module combined_ice_ocean_driver
 
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_error_handler, only : callTree_enter, callTree_leave
-! use MOM_file_parser, only : get_param, log_version, close_param_file, param_file_type
-use MOM_time_manager, only : time_type, get_time !, set_time, operator(>)
+use MOM_file_parser, only : param_file_type, open_param_file, close_param_file
+use MOM_file_parser, only : read_param, get_param, log_param, log_version
+use MOM_io, only : file_exists, close_file, slasher, ensembler
+use MOM_io, only : open_namelist_file, check_nml_error
+use MOM_time_manager, only : time_type, get_time, time_type_to_real !, set_time, operator(>)
 use ice_model_mod,   only : ice_data_type, ice_model_end
 use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
 use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_init
@@ -36,6 +39,10 @@ public :: update_slow_ice_and_ocean, ice_ocean_driver_init, ice_ocean_driver_end
 !> The control structure for the combined ice-ocean driver
 type, public :: ice_ocean_driver_type ; private
   logical :: CS_is_initialized = .false. !< If true, this module has been initialized
+  logical :: single_MOM_call  !< If true, advance the state of MOM with a single
+                              !! step including both dynamics and thermodynamics.
+                              !! If false, the two phases are advanced with
+                              !! separate calls. The default is true.
 end type ice_ocean_driver_type
 
 contains
@@ -53,13 +60,22 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   type(time_type),             intent(in)    :: Time_init !< The start time for the coupled model's calendar.
   type(time_type),             intent(in)    :: Time_in   !< The time at which to initialize the coupled model.
 
+  ! Local variables
+  integer, parameter :: npf = 5 ! Maximum number of parameter files
+  character(len=240) :: &
+    output_directory = ' ', &      ! Directory to use to write the model output.
+    parameter_filename(npf) = ' '  ! List of files containing parameters.
+  character(len=240) :: output_dir ! A directory for logging output.
+  ! This include declares and sets the variable "version".
+# include "version_variable.h"
+  character(len=40)  :: mdl = "ice_ocean_driver_init"  ! This module's name.
 !     real :: Time_unit   ! The time unit in seconds for ENERGYSAVEDAYS.
-!   ! This include declares and sets the variable "version".
-!   #include "version_variable.h"
-!     character(len=40)  :: mdl = "ice_ocean_driver_init"  ! This module's name.
 !     character(len=48)  :: stagger
 !     integer :: secs, days
-!  type(param_file_type) :: param_file !< A structure to parse for run-time parameters
+  type(param_file_type) :: param_file !< A structure to parse for run-time parameters
+  integer :: unit, io, ierr, valid_param_files
+
+  namelist /ice_ocean_driver_nml/ output_directory, parameter_filename
 
   call callTree_enter("ice_ocean_driver_init(), combined_ice_ocean_driver.F90")
   if (associated(CS)) then
@@ -69,33 +85,44 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   endif
   allocate(CS)
 
-!     OS%is_ocean_pe = Ocean_sfc%is_ocean_pe
-!     if (.not.OS%is_ocean_pe) return
+  ! Read the relevant input parameters.
+  if (file_exists('input.nml')) then
+    unit = open_namelist_file(file='input.nml')
+  else
+    call MOM_error(FATAL, 'Required namelist file input.nml does not exist.')
+  endif
 
-!     ! Read all relevant parameters and write them to the model log.
-!     call log_version(param_file, mdl, version, "")
-!     call get_param(param_file, mdl, "RESTART_CONTROL", OS%Restart_control, &
-!                    "An integer whose bits encode which restart files are \n"//&
-!                    "written. Add 2 (bit 1) for a time-stamped file, and odd \n"//&
-!                    "(bit 0) for a non-time-stamped file.  A restart file \n"//&
-!                    "will be saved at the end of the run segment for any \n"//&
-!                    "non-negative value.", default=1)
-!     call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
-!                    "The time unit for ENERGYSAVEDAYS.", &
-!                    units="s", default=86400.0)
+  ierr=1 ; do while (ierr /= 0)
+    read(unit, nml=ice_ocean_driver_nml, iostat=io, end=10)
+    ierr = check_nml_error(io, 'ice_ocean_driver_nml')
+  enddo
+10 call close_file(unit)
 
-!     call get_param(param_file, mdl, "OCEAN_SURFACE_STAGGER", stagger, &
-!                    "A case-insensitive character string to indicate the \n"//&
-!                    "staggering of the surface velocity field that is \n"//&
-!                    "returned to the coupler.  Valid values include \n"//&
-!                    "'A', 'B', or 'C'.", default="C")
-!     if (uppercase(stagger(1:1)) == 'A') then ; Ocean_sfc%stagger = AGRID
-!     elseif (uppercase(stagger(1:1)) == 'B') then ; Ocean_sfc%stagger = BGRID_NE
-!     elseif (uppercase(stagger(1:1)) == 'C') then ; Ocean_sfc%stagger = CGRID_NE
-!     else ; call MOM_error(FATAL,"ice_ocean_driver_init: OCEAN_SURFACE_STAGGER = "// &
-!                           trim(stagger)//" is invalid.") ; endif
+  output_dir = trim(slasher(ensembler(output_directory)))
+  valid_param_files = 0
+  do io=1,npf ; if (len_trim(trim(parameter_filename(io))) > 0) then
+    call open_param_file(trim(parameter_filename(io)), param_file, &
+                         component="Ice_Ocean_driver", doc_file_dir=output_dir)
+    valid_param_files = valid_param_files + 1
+  endif ; enddo
+  if (valid_param_files == 0) call MOM_error(FATAL, "There must be at least "//&
+       "1 valid entry in input_filename in ice_ocean_driver_nml in input.nml.")
 
-!     call close_param_file(param_file)
+  ! Read all relevant parameters and write them to the model log.
+  call log_version(param_file, mdl, version, "")
+
+  call get_param(param_file, mdl, "SINGLE_MOM_CALL", CS%single_MOM_call, &
+                 "If true, advance the state of MOM with a single step \n"//&
+                 "including both dynamics and thermodynamics.  If false, \n"//&
+                 "the two phases are advanced with separate calls.", default=.true.)
+
+!  OS%is_ocean_pe = Ocean_sfc%is_ocean_pe
+!  if (.not.OS%is_ocean_pe) return
+
+!  call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
+!                 "The time unit for ENERGYSAVEDAYS.", units="s", default=86400.0)
+
+  call close_param_file(param_file)
   CS%CS_is_initialized = .true.
 
   call callTree_leave("ice_ocean_driver_init(")
@@ -133,8 +160,7 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
   integer :: secs, days
 
   call callTree_enter("update_ice_and_ocean(), combined_ice_ocean_driver.F90")
-  call get_time(coupling_time_step, secs, days)
-  time_step = 86400.0*real(days) + real(secs)
+  time_step = time_type_to_real(coupling_time_step)
 
 !  if (time_start_update /= CS%Time) then
 !    call MOM_error(WARNING, "update_ice_and_ocean: internal clock does not "//&
@@ -169,8 +195,17 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
   call direct_flux_ice_to_IOB( time_start_update, Ice, Ice_ocean_boundary )
 !    call mpp_clock_end(fluxIceOceanClock)
 
-  call update_ocean_model( Ice_ocean_boundary, Ocn, Ocean_sfc, &
-                           time_start_update, coupling_time_step )
+  if (CS%single_MOM_call) then
+    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, &
+                            time_start_update, coupling_time_step )
+  else
+    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
+                            coupling_time_step,  update_dyn=.true., update_thermo=.false., &
+                            start_cycle=.true., end_cycle=.false., cycle_length=time_step)
+    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
+                            coupling_time_step,  update_dyn=.false., update_thermo=.true., &
+                            start_cycle=.false., end_cycle=.true., cycle_length=time_step)
+  endif
 
   call callTree_leave("update_ice_and_ocean()")
 end subroutine update_slow_ice_and_ocean
@@ -292,7 +327,7 @@ subroutine ice_ocean_driver_end(CS, Ice, Ocean_sfc, Ocn, Time)
   type(ocean_public_type), intent(inout) :: Ocean_sfc !< The publicly visible ocean surface state type
   type(time_type),         intent(in)    :: Time !< The model time, used for writing restarts
 
-  call ice_model_end (Ice)
+  call ice_model_end(Ice)
 
   call ocean_model_end(Ocean_sfc, Ocn, Time)
 
