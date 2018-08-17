@@ -44,7 +44,7 @@ use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
-use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
+use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type

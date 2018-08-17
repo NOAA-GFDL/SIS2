@@ -29,7 +29,7 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 ! use MOM_obsolete_params, only : obsolete_logical
 ! use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real
-use MOM_time_manager, only : set_date, set_time, operator(+), operator(-)
+use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use coupler_types_mod, only : coupler_3d_bc_type, coupler_type_spawn

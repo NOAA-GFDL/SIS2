@@ -22,7 +22,7 @@ use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_io, only : open_file
 use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
-use MOM_time_manager, only : time_type, get_time, set_time, operator(>), operator(-)
+use MOM_time_manager, only : time_type, get_time, operator(>), operator(-)
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type

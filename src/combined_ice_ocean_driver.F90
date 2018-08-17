@@ -20,7 +20,7 @@ use MOM_file_parser, only : param_file_type, open_param_file, close_param_file
 use MOM_file_parser, only : read_param, get_param, log_param, log_version
 use MOM_io, only : file_exists, close_file, slasher, ensembler
 use MOM_io, only : open_namelist_file, check_nml_error
-use MOM_time_manager, only : time_type, get_time, time_type_to_real !, set_time, operator(>)
+use MOM_time_manager, only : time_type, time_type_to_real !, operator(>)
 use ice_model_mod,   only : ice_data_type, ice_model_end
 use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
 use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_init
@@ -71,7 +71,6 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   character(len=40)  :: mdl = "ice_ocean_driver_init"  ! This module's name.
 !     real :: Time_unit   ! The time unit in seconds for ENERGYSAVEDAYS.
 !     character(len=48)  :: stagger
-!     integer :: secs, days
   type(param_file_type) :: param_file !< A structure to parse for run-time parameters
   integer :: unit, io, ierr, valid_param_files
 
@@ -157,7 +156,6 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
                                                                !! the ocean and ice
 
   real :: time_step         ! The time step of a call to step_MOM in seconds.
-  integer :: secs, days
 
   call callTree_enter("update_ice_and_ocean(), combined_ice_ocean_driver.F90")
   time_step = time_type_to_real(coupling_time_step)
