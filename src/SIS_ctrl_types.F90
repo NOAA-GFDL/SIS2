@@ -6,7 +6,6 @@ module SIS_ctrl_types
 ! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
 use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH
 ! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod,only: coupler_type_initialized, coupler_type_set_diags
 
@@ -21,10 +20,11 @@ use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use SIS_types, only : total_sfc_flux_type
 use SIS_optics, only : SIS_optics_CS
 
-use MOM_coms, only : PE_here
+use MOM_coms,          only : PE_here
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
-use MOM_file_parser, only : param_file_type
-use MOM_hor_index,   only : hor_index_type
+use MOM_file_parser,   only : param_file_type
+use MOM_hor_index,     only : hor_index_type
+use MOM_time_manager,  only : time_type, time_type_to_real
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_sum_output, only : SIS_sum_out_CS

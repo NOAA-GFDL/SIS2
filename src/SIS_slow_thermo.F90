@@ -42,8 +42,8 @@ use fms_mod, only : clock_flag_default
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
-use time_manager_mod, only : time_type, time_type_to_real! , get_date, get_time
-! use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
+use MOM_time_manager, only : time_type, time_type_to_real
+! use MOM_time_manager, only : operator(+), operator(-)
 ! use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use data_override_mod, only : data_override
 

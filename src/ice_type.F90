@@ -7,7 +7,6 @@ use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
 use fms_mod,          only: open_namelist_file, check_nml_error, close_file, stdout
 use fms_io_mod,       only: save_restart, restore_state, query_initialized
 use fms_io_mod,       only: register_restart_field, restart_file_type
-use time_manager_mod, only: time_type, time_type_to_real
 use coupler_types_mod,only: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod,only: coupler_type_spawn, coupler_type_write_chksums
 
@@ -16,11 +15,12 @@ use ice_grid, only : ice_grid_type
 
 use SIS2_ice_thm, only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-use ice_bergs, only: icebergs, icebergs_stock_pe, icebergs_save_restart
+use ice_bergs, only : icebergs, icebergs_stock_pe, icebergs_save_restart
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
-use MOM_file_parser, only : param_file_type
-use MOM_hor_index,   only : hor_index_type
+use MOM_file_parser,   only : param_file_type
+use MOM_hor_index,     only : hor_index_type
+use MOM_time_manager,  only : time_type, time_type_to_real
 use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field

@@ -6,26 +6,26 @@ module SIS_types
 use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
-use time_manager_mod, only : time_type, time_type_to_real
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
 use coupler_types_mod, only : coupler_type_register_restarts
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use ice_grid,          only : ice_grid_type
 
 use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
 use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
 
-use MOM_coms, only : PE_here, max_across_PEs
-use MOM_domains, only : MOM_domain_type, pass_vector, BGRID_NE, CGRID_NE, clone_MOM_domain
+use MOM_coms,          only : PE_here, max_across_PEs
+use MOM_domains,       only : MOM_domain_type, pass_vector, BGRID_NE, CGRID_NE, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
-use MOM_file_parser, only : param_file_type
-use MOM_hor_index,   only : hor_index_type
+use MOM_file_parser,   only : param_file_type
+use MOM_hor_index,     only : hor_index_type
+use MOM_time_manager,  only : time_type, time_type_to_real
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_debugging,   only : chksum, Bchksum, hchksum, uvchksum
-use SIS_debugging,   only : check_redundant_B, check_redundant_C
+use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
+use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 
 implicit none ; private
