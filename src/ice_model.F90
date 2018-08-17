@@ -43,7 +43,7 @@ use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_obsolete_params, only : obsolete_logical
 use MOM_string_functions, only : uppercase
-use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
+use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
@@ -1891,7 +1891,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "fields like albedos are updated.  Currently this is only \n"//&
                  "used to initialize albedos when there is no restart file.", &
                  units="s", default=time_type_to_real(Time_step_slow))
-  dt_Rad = real_to_time_type(dt_Rad_real)
+  dt_Rad = real_to_time(dt_Rad_real)
   call get_param(param_file, mdl, "ICE_KMELT", kmelt, &
                  "A constant giving the proportionality of the ocean/ice \n"//&
                  "base heat flux to the tempature difference, given by \n"//&

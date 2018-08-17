@@ -306,7 +306,6 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
   real :: max_age         ! Maximum age at a grid point
   real, dimension(SZI_(G),SZJ_(G)) :: vertsum_mi, vertsum_mi_old
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: tr_avg
-  integer :: secs, days   ! Integer components of the time type.
   integer :: i, j, k, m, tr
   integer :: isc, iec, jsc, jec
 
