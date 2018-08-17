@@ -25,12 +25,12 @@ use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_domains,      only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,    only : hor_index_type
 use MOM_io,           only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use MOM_time_manager, only : time_type, real_to_time_type, operator(+), operator(-)
+use MOM_time_manager, only : set_date, get_time, get_date
 use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
 use mpp_domains_mod,  only : domain2D
-use time_manager_mod, only : time_type, set_time, operator(+), operator(-)
-use time_manager_mod, only : set_date, get_time, get_date
 
 implicit none ; private
 
@@ -660,7 +660,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
       (CS%id_ci_hifreq > 0) .or. (CS%id_stren_hifreq > 0)) then
     do_hifreq_output = query_SIS_averaging_enabled(CS%diag, time_int_in, time_end_in)
     if (do_hifreq_output) &
-      time_it_start = time_end_in - set_time(int(floor(dt_slow+0.5)))
+      time_it_start = time_end_in - real_to_time_type(dt_slow)
   endif
 
   Tdamp = CS%Tdamp
@@ -1145,7 +1145,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
     if (do_hifreq_output) then
-      time_step_end = time_it_start + set_time(int(floor(n*dt+0.5)))
+      time_step_end = time_it_start + real_to_time_type(n*dt)
       call enable_SIS_averaging(dt, time_step_end, CS%diag)
       if (CS%id_ui_hifreq > 0) call post_SIS_data(CS%id_ui_hifreq, ui, CS%diag)
       if (CS%id_vi_hifreq > 0) call post_SIS_data(CS%id_vi_hifreq, vi, CS%diag)

@@ -16,7 +16,7 @@ use SIS_utils, only             : post_avg
 use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
 use MOM_restart, only           : query_initialized, MOM_restart_CS
 use MOM_io, only                : vardesc, var_desc, query_vardesc, file_exists
-use MOM_time_manager, only      : time_type, get_time
+use MOM_time_manager, only      : time_type, time_type_to_real
 use MOM_sponge, only            : set_up_sponge_field, sponge_CS
 use MOM_error_handler, only     : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only     : SIS_mesg=>MOM_mesg
@@ -319,8 +319,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
 
   min_age = 0.0
 
-  call get_time(CS%Time, secs, days)
-  year = (86400.0*days + real(secs)) * Isecs_per_year
+  year = time_type_to_real(CS%Time) * Isecs_per_year
 
   do tr=1,CS%ntr
     ! Increment the age of the ice if it exists

@@ -42,8 +42,8 @@ use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
 
-use time_manager_mod, only : time_type, time_type_to_real, get_date, get_time
-use time_manager_mod, only : set_date, set_time, operator(+), operator(-)
+use MOM_time_manager, only : time_type, time_type_to_real, real_to_time_type
+use MOM_time_manager, only : get_date, get_time, set_date, set_time, operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
@@ -349,7 +349,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   do nds=1,ndyn_steps
 
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time_type((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
     ice_cover(:,:) = 0.0
@@ -602,7 +602,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
     call mpp_clock_end(iceClock4)
 
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - set_time(int((ndyn_steps-nds)*dt_slow_dyn)), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time_type((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
     !
     ! Do ice transport ... all ocean fluxes have been calculated by now.
     !
@@ -701,7 +701,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
   endif
 
-  if (CS%Time + set_time(int(floor(0.5*dt_slow+0.5))) > CS%write_ice_stats_time) then
+  if (CS%Time + real_to_time_type(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
         tracer_CSp = tracer_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
