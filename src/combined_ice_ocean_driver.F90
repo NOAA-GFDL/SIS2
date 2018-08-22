@@ -9,28 +9,24 @@ module combined_ice_ocean_driver
 ! This module provides a common interface for jointly stepping SIS2 and
 ! MOM6, and will evolve as a platform for tightly integrating the ocean
 ! and sea ice models.
-!
-! <CONTACT EMAIL="Robert.Hallberg@noaa.gov"> Robert Hallberg
-! </CONTACT>
-!
 
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
 use MOM_error_handler, only : callTree_enter, callTree_leave
-use MOM_file_parser, only : param_file_type, open_param_file, close_param_file
-use MOM_file_parser, only : read_param, get_param, log_param, log_version
-use MOM_io, only : file_exists, close_file, slasher, ensembler
-use MOM_io, only : open_namelist_file, check_nml_error
-use MOM_time_manager, only : time_type, time_type_to_real !, operator(>)
+use MOM_file_parser,   only : param_file_type, open_param_file, close_param_file
+use MOM_file_parser,   only : read_param, get_param, log_param, log_version
+use MOM_io,            only : file_exists, close_file, slasher, ensembler
+use MOM_io,            only : open_namelist_file, check_nml_error
+use MOM_time_manager,  only : time_type, time_type_to_real !, operator(>)
+
 use ice_model_mod,   only : ice_data_type, ice_model_end
 use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
-use ocean_model_mod, only : update_ocean_model,  ocean_model_end! , ocean_model_init
+use ocean_model_mod, only : update_ocean_model, ocean_model_end
 use ocean_model_mod, only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 
-use coupler_types_mod, only: coupler_type_send_data, coupler_type_data_override
-use coupler_types_mod, only: coupler_type_copy_data
+use coupler_types_mod, only : coupler_type_send_data, coupler_type_data_override
+use coupler_types_mod, only : coupler_type_copy_data
 use data_override_mod, only : data_override
-use diag_manager_mod, only : send_data
-use mpp_domains_mod,  only : domain2D, mpp_get_layout, mpp_get_compute_domain
+use mpp_domains_mod,   only : domain2D, mpp_get_layout, mpp_get_compute_domain
 
 implicit none ; private
 
@@ -48,13 +44,7 @@ end type ice_ocean_driver_type
 contains
 
 !=======================================================================
-! <SUBROUTINE NAME="ice_ocean_driver_init">
-!
-! <DESCRIPTION>
-! Initialize the coupling between the slow-ice and ocean models.
-! </DESCRIPTION>
-!
-!>   This subroutine initializes the combined ice ocean coupling control type.
+!>  This subroutine initializes the combined ice ocean coupling control type.
 subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   type(ice_ocean_driver_type), pointer       :: CS        !< The control structure for combined ice-ocean driver
   type(time_type),             intent(in)    :: Time_init !< The start time for the coupled model's calendar.
@@ -126,16 +116,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
 
   call callTree_leave("ice_ocean_driver_init(")
 end subroutine ice_ocean_driver_init
-! </SUBROUTINE> NAME="ice_ocean_driver_init"
 
-
-!=======================================================================
-! <SUBROUTINE NAME="update_slow_ice_and_ocean">
-!
-! <DESCRIPTION>
-! Advance the slow portions of the sea-ice and the ocean in tandem.
-! </DESCRIPTION>
-!
 
 !>   The subroutine update_slow_ice_and_ocean uses the forcing already stored in
 !! the ice_data_type to advance both the sea-ice (and icebergs) and ocean states
@@ -197,17 +178,21 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
     call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, &
                             time_start_update, coupling_time_step )
   else
-    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
-                            coupling_time_step,  update_dyn=.true., update_thermo=.false., &
-                            start_cycle=.true., end_cycle=.false., cycle_length=time_step)
-    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
-                            coupling_time_step,  update_dyn=.false., update_thermo=.true., &
-                            start_cycle=.false., end_cycle=.true., cycle_length=time_step)
+    !### This is here as a temporary measure to avoid using newer arguments
+    !### to update_ocean_model.
+    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, &
+                            time_start_update, coupling_time_step )
+!### This pair of calls works properly with MOM6 in place of the single call above.
+!    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
+!                            coupling_time_step,  update_dyn=.true., update_thermo=.false., &
+!                            start_cycle=.true., end_cycle=.false., cycle_length=time_step)
+!    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
+!                            coupling_time_step,  update_dyn=.false., update_thermo=.true., &
+!                            start_cycle=.false., end_cycle=.true., cycle_length=time_step)
   endif
 
   call callTree_leave("update_ice_and_ocean()")
 end subroutine update_slow_ice_and_ocean
-! </SUBROUTINE> NAME="update_slow_ice_and_ocean"
 
 !> same_domain returns true if two domains use the same list of PEs and have
 !! the same size computational domains.
@@ -309,12 +294,6 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
 end subroutine direct_flux_ice_to_IOB
 
 !=======================================================================
-! <SUBROUTINE NAME="ice_ocean_driver_end">
-!
-! <DESCRIPTION>
-! Close down the sea-ice and ocean models
-! </DESCRIPTION>
-!
 !>   The subroutine ice_ocean_driver_end terminates the model run, saving
 !! the ocean and slow ice states in restart files and deallocating any data
 !! associated with the ocean and slow ice.
@@ -332,6 +311,5 @@ subroutine ice_ocean_driver_end(CS, Ice, Ocean_sfc, Ocn, Time)
   if (associated(CS)) deallocate(CS)
 
 end subroutine ice_ocean_driver_end
-! </SUBROUTINE> NAME="ice_ocean_driver_end"
 
 end module combined_ice_ocean_driver
