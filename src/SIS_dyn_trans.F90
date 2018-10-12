@@ -844,8 +844,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (CS%id_sithick>0) call post_avg(CS%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (CS%id_sivol>0) call post_avg(CS%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
+  if (CS%id_sivol>0) call post_data(CS%id_sivol, mass_ice(isc:iec,jsc:jec)/Rho_ice, diag)
   if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (CS%id_sitimefrac>0) then
