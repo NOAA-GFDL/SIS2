@@ -60,8 +60,8 @@ type, public :: SIS_transport_CS ; private
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
           !< The control structure for the SIS thickness advection module
 
-  !>@{ Diagnsotic IDs
-  integer :: id_ix_trans = -1, id_iy_trans = -1
+  !>@{ Diagnostic IDs
+  integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt=-1
   !!@}
 end type SIS_transport_CS
 
@@ -128,9 +128,11 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     mca0_ice, mca0_snow,& ! The initial mass of snow and ice per unit total
                           ! area in a cell, in units of H (often kg m-2).
     mca_pond, mca0_pond   ! As for ice and snow above but for melt ponds, in H.
+  real :: yr_dt           ! Tne number of timesteps in a year.
   real :: h_in_m          ! The ice thickness in m.
   real :: hca_in_m        ! The ice thickness averaged over the whole cell in m.
-  real, dimension(SZI_(G),SZJ_(G)) :: opnwtr
+  real, dimension(SZI_(G),SZJ_(G)) :: mass_pre_trans  ! The pre-transport frozen water in kg m-2.
+  real, dimension(SZI_(G),SZJ_(G)) :: trans_conv      ! The convergence of frozen water transport in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
 
@@ -170,6 +172,17 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "Start of SIS_transport")
 
+  if (CS%id_xprt>0) then
+    !$OMP parallel do default(shared)
+    do j=jsc,jec
+      do i=isc,iec ; mass_pre_trans(i,j) = 0.0 ; enddo
+      do k=1,ncat ; do i=isc,iec
+        mass_pre_trans(i,j) = mass_pre_trans(i,j) + part_sz(i,j,k) * &
+                              IG%H_to_kg_m2 * (mH_snow(i,j,k) + mH_ice(i,j,k))
+      enddo ; enddo
+    enddo
+  endif
+
   ! Make sure that ice is in the right thickness category before advection.
 !  call adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS) !Niki: add ridging?
 
@@ -184,9 +197,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   !   Determine the whole-cell averaged mass of snow and ice.
   mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0 ; mca_pond(:,:,:) = 0.0
   ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IG,mH_ice,mca_ice,part_sz, &
-!$OMP                                  mca_snow,mH_snow,mca_pond,mH_pond,ice_cover, &
-!$OMP                                  mHi_avg,nCat)
+  !$OMP parallel do default(shared)
   do j=jsc,jec
     do k=1,nCat ; do i=isc,iec
       if (mH_ice(i,j,k)>0.0) then
@@ -429,6 +440,21 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     endif
   endif
 
+  if (CS%id_xprt>0) then
+    yr_dt = 8.64e4 * 365.0 / dt_slow
+    trans_conv(:,:) = 0.0
+    !$OMP parallel do default(shared)
+    do j=jsc,jec
+      do k=1,ncat ; do i=isc,iec
+        trans_conv(i,j) = trans_conv(i,j) + part_sz(i,j,k) * &
+                              IG%H_to_kg_m2 * (mH_snow(i,j,k) + mH_ice(i,j,k))
+      enddo ; enddo
+      do i=isc,iec
+        trans_conv(i,j) = (trans_conv(i,j) - mass_pre_trans(i,j)) * yr_dt
+      enddo
+    enddo
+    call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
+  endif
   if (CS%id_ix_trans>0) call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
 
@@ -865,16 +891,8 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
                                                           !! stop advection, in the same units as tr
   real,                              intent(in   ) :: dt_slow !< The time covered by this call, in s.
   type(SIS_transport_CS),            pointer       :: CS  !< The control structure for this module
-! Arguments: uc - The zonal ice velocity, in m s-1.
-!  (in)      vc - The meridional ice velocity, in m s-1.
-!  (inout)   trc - A tracer concentration times thickness, in m kg kg-1 or
-!                  other units.
-!  (in)      stop_lim - ?
-!  (in)      dt_slow - The amount of time over which the ice dynamics are to be
-!                      advanced, in s.
-!  (in)      G - The ocean's grid structure.
-!  (in/out)  CS - A pointer to the control structure for this module.
 
+  ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: uflx
   real, dimension(SZI_(G),SZJB_(G)) :: vflx
   real :: avg, dif
@@ -1119,6 +1137,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
                'y-direction ice transport', 'kg/s', missing_value=missing, &
                interp_method='none')
+  CS%id_xprt = register_diag_field('ice_model','XPRT', diag%axesT1, Time, &
+               'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
 
 end subroutine SIS_transport_init
 
