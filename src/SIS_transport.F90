@@ -35,7 +35,8 @@ public :: adjust_ice_categories
 type, public :: SIS_transport_CS ; private
 
   logical :: SLAB_ICE = .false. !< If true, do old style GFDL slab ice?
-  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3, used here only in rolling.
+  !### Rho_snow is unused in this module.
   real :: Rho_snow = 330.0    !< The nominal density of snow on sea ice, in kg m-3.
   real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
@@ -61,8 +62,10 @@ type, public :: SIS_transport_CS ; private
           !< The control structure for the SIS thickness advection module
 
   !>@{ Diagnostic IDs
-  integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt=-1
+  integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
+  ! integer :: id_rdgo=-1, id_rdgv=-1 ! These do not exist yet
   !!@}
+
 end type SIS_transport_CS
 
 contains
@@ -71,7 +74,7 @@ contains
 !> ice_transport - does ice transport and thickness class redistribution
 subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
                          dt_slow, G, IG, CS, rdg_hice, snow2ocn, &
-                         rdg_rate, rdg_open, rdg_vosh)
+                         rdg_rate)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
@@ -96,9 +99,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: rdg_hice !< The thickness of ridged ice, in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: snow2ocn !< snow volume [m] dumped into ocean during ridging
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: rdg_rate !< The ice ridging rate in s-1.
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: rdg_open !< formation rate of open water due to ridging
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: rdg_vosh !< rate of ice volume shifted from level to ridged ice
+  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
 
   ! Local variables
   real, dimension(:,:,:,:), &
@@ -128,6 +129,10 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     mca0_ice, mca0_snow,& ! The initial mass of snow and ice per unit total
                           ! area in a cell, in units of H (often kg m-2).
     mca_pond, mca0_pond   ! As for ice and snow above but for melt ponds, in H.
+!### These will be needed when the ice ridging is properly implemented.
+!  real, dimension(SZI_(G),SZJ_(G)) :: &
+!    rdg_open, & ! formation rate of open water due to ridging
+!    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
   real :: yr_dt           ! Tne number of timesteps in a year.
   real :: h_in_m          ! The ice thickness in m.
   real :: hca_in_m        ! The ice thickness averaged over the whole cell in m.
@@ -272,8 +277,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
     call continuity(uc, vc, mca0_pond, mca_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
 
-    call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
 
+
+    call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
     call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
     call advect_SIS_tracers(mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, &
@@ -457,6 +463,17 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   endif
   if (CS%id_ix_trans>0) call post_SIS_data(CS%id_ix_trans, uf, CS%diag)
   if (CS%id_iy_trans>0) call post_SIS_data(CS%id_iy_trans, vf, CS%diag)
+  if (CS%do_ridging) then
+    if (CS%id_rdgr>0 .and. present(rdg_rate)) &
+      call post_SIS_data(CS%id_rdgr, rdg_rate, CS%diag)
+!    if (CS%id_rdgo>0) call post_SIS_data(CS%id_rdgo, rdg_open, diag)
+!    if (CS%id_rdgv>0) then
+!      do j=jsc,jec ; do i=isc,iec
+!        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
+!      enddo ; enddo
+!      call post_SIS_data(CS%id_rdgv, tmp2d, diag)
+!    endif
+  endif
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "At end of SIS_transport")
@@ -1137,8 +1154,15 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
                'y-direction ice transport', 'kg/s', missing_value=missing, &
                interp_method='none')
-  CS%id_xprt = register_diag_field('ice_model','XPRT', diag%axesT1, Time, &
+  CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
+  CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
+               'ice ridging rate', '1/sec', missing_value=missing)
+!### THESE DIAGNOSTICS DO NOT EXIST YET.
+!  CS%id_rdgo    = register_diag_field('ice_model','RDG_OPEN' ,diag%axesT1, Time, &
+!               'rate of opening due to ridging', '1/s', missing_value=missing)
+!  CS%id_rdgv    = register_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
+!               'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
 
 end subroutine SIS_transport_init
 

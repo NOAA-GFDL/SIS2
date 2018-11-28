@@ -124,7 +124,6 @@ type dyn_trans_CS ; private
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_ext=-1 ! id_hp mw/new
   integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
-  integer :: id_rdgr=-1 ! These do not exist yet: id_rdgf=-1, id_rdgo=-1, id_rdgv=-1
 
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
@@ -301,13 +300,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
-  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-    rdg_frac    ! fraction of ridged ice per category
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    rdg_open, & ! formation rate of open water due to ridging
-    rdg_vosh, & ! rate of ice mass shifted from level to ridged ice
 !!   rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
-    rdg_rate, & ! Niki: Where should this come from?
+    rdg_rate, & ! A ridging rate in s-1, this will be calculated from the strain rates in the dynamics.
     snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
 
@@ -584,8 +579,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
                          IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, G, IG, &
-                         CS%SIS_transport_CSp, IST%rdg_mice, snow2ocn, rdg_rate, &
-                         rdg_open, rdg_vosh)
+                         CS%SIS_transport_CSp, IST%rdg_mice, snow2ocn) !###, rdg_rate=rdg_rate)
     else
       ! B-grid transport
       ! Convert the velocities to C-grid points for transport.
@@ -599,7 +593,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
                          uc, vc, IST%TrReg, dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
-                         IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
+                         IST%rdg_mice, snow2ocn, rdg_rate=rdg_rate)
     endif
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
@@ -631,8 +625,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
 
-  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag, &
-                                  rdg_rate=rdg_rate)
+  call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
 
   call disable_SIS_averaging(CS%diag)
 
@@ -661,8 +654,7 @@ end subroutine SIS_dynamics_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Offer diagnostics of the slowly evolving sea ice state.
-subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, diag, &
-                                      rdg_rate)
+subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, diag)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -676,8 +668,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
-  real, dimension(SZI_(G),SZJ_(G)), &
-                    optional, intent(in)    :: rdg_rate !< The ice ridging rate in s-1.
 
   ! Local variables
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow, tmp2d
@@ -685,6 +675,9 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
     temp_ice    ! A diagnostic array with the ice temperature in degC.
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     temp_snow   ! A diagnostic array with the snow temperature in degC.
+  ! ### This diagnostic does not exist yet.
+  ! real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+  !   rdg_frac    ! fraction of ridged ice per category
   real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true.
@@ -849,8 +842,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
   !     in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
 !     if (CS%id_rdgf>0) then
-! !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,rdg_frac,IG) &
-! !$OMP                          private(tmp3)
+!       !$OMP parallel do default(shared) private(tmp3)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !         tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
 !         if (tmp3*IG%H_to_kg_m2 > Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
@@ -861,16 +853,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
 !       enddo ; enddo ; enddo
 !       call post_data(CS%id_rdgf, rdg_frac(isc:iec,jsc:jec), diag)
 !     endif
-
-    if (CS%id_rdgr>0 .and. present(rdg_rate)) &
-      call post_data(CS%id_rdgr, rdg_rate(isc:iec,jsc:jec), diag)
-!    if (CS%id_rdgo>0) call post_data(CS%id_rdgo, rdg_open(isc:iec,jsc:jec), diag)
-!    if (CS%id_rdgv>0) then
-!      do j=jsc,jec ; do i=isc,iec
-!        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
-!      enddo ; enddo
-!      call post_data(CS%id_rdgv, tmp2d, diag)
-!    endif
   endif
 
 end subroutine post_ice_state_diagnostics
@@ -1466,15 +1448,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                'ice + snow + bergs mass', 'kg/m^2', missing_value=missing)
   CS%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
                'heat needed to melt ice', 'J/m^2', missing_value=missing)
-  CS%id_rdgr    = register_diag_field('ice_model','RDG_RATE' ,diag%axesT1, Time, &
-               'ice ridging rate', '1/sec', missing_value=missing)
 !### THESE DIAGNOSTICS DO NOT EXIST YET.
 !  CS%id_rdgf    = register_diag_field('ice_model','RDG_FRAC' ,diag%axesT1, Time, &
 !               'ridged ice fraction', '0-1', missing_value=missing)
-!  CS%id_rdgo    = register_diag_field('ice_model','RDG_OPEN' ,diag%axesT1, Time, &
-!               'opening due to ridging', '1/s', missing_value=missing)
-!  CS%id_rdgv    = register_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
-!               'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
 !### THIS DIAGNOSTIC IS MISSING.
 !  CS%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &
 !            'surface air temperature', 'C', missing_value=missing)
