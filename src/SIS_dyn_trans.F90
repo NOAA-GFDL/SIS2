@@ -259,7 +259,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
                                                    !! auxiliary ice tracer packages
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    ms_sum, mi_sum, &   ! Masses of snow and ice per unit total area, in kg m-2.
+    mi_sum, &           ! Masses of ice per unit total area, in kg m-2.
+    misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area, in kg m-2.
     ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
     ice_cover, &        ! The fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
@@ -340,13 +341,19 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     call mpp_clock_begin(iceClock4)
 
     ! Convert the 3-d ice state into the simplified 2-d ice state.
-    ms_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
+    misp_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
     !$OMP parallel do default(shared)
     do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
-      ms_sum(i,j) = ms_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_snow(i,j,k)) * IST%part_size(i,j,k)
+      misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
+                      (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
       mi_sum(i,j) = mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
       ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
+    do j=jsd,jed ; do i=isd,ied
+      !### This can be merged in above, but it would change answers.
+      misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
+      ice_free(i,j) = IST%part_size(i,j,0)
+    enddo ; enddo
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
     max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
@@ -369,7 +376,6 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
       endif
 
-      ice_free(i,j) = IST%part_size(i,j,0)
       if (ice_free(i,j) <= FIA%ice_free(i,j)) then
         WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
         WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
@@ -439,7 +445,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       if (CS%debug) then
         call IST_chksum("Before SIS_C_dynamics", IST, G, IG)
         call hchksum(IST%part_size(:,:,0), "ps(0) before SIS_C_dynamics", G%HI)
-        call hchksum(ms_sum, "ms_sum before SIS_C_dynamics", G%HI)
+        call hchksum(misp_sum, "misp_sum before SIS_C_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
@@ -450,15 +456,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
-      call SIS_C_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
+      call SIS_C_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                         OSS%u_ocn_C, OSS%v_ocn_C, &
                         WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, &
                         dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
-      if (CS%debug) then
-        call IST_chksum("After ice_dynamics", IST, G, IG)
-      endif
+      if (CS%debug) call IST_chksum("After ice_dynamics", IST, G, IG)
 
       call mpp_clock_begin(iceClockb)
       call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
@@ -518,7 +522,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       if (CS%debug) then
         call IST_chksum("Before ice_dynamics", IST, G, IG)
         call hchksum(IST%part_size(:,:,0), "ps(0) before ice_dynamics", G%HI)
-        call hchksum(ms_sum, "ms_sum before ice_dynamics", G%HI)
+        call hchksum(misp_sum, "misp_sum before ice_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before ice_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
         call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G)
@@ -527,15 +531,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call SIS_B_dynamics(1.0-IST%part_size(:,:,0), ms_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
+      call SIS_B_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                         OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                         str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
                         rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
-      if (CS%debug) then
-        call IST_chksum("After ice_dynamics", IST, G, IG)
-      endif
+      if (CS%debug) call IST_chksum("After ice_dynamics", IST, G, IG)
 
       call mpp_clock_begin(iceClockb)
       call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
@@ -577,20 +579,17 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
     !
     call mpp_clock_begin(iceClock8)
 
-    if (CS%debug) then
-      call IST_chksum("Before ice_transport", IST, G, IG)
-    endif
+    if (CS%debug) call IST_chksum("Before ice_transport", IST, G, IG)
 
     if (CS%Cgrid_dyn) then
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, &
-                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp,&
-                         IST%rdg_mice, snow2ocn, rdg_rate, &
+                         IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, G, IG, &
+                         CS%SIS_transport_CSp, IST%rdg_mice, snow2ocn, rdg_rate, &
                          rdg_open, rdg_vosh)
     else
       ! B-grid transport
       ! Convert the velocities to C-grid points for transport.
-      uc(:,:) = 0.0; vc(:,:) = 0.0
+      uc(:,:) = 0.0 ; vc(:,:) = 0.0
       do j=jsc,jec ; do I=isc-1,iec
         uc(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
       enddo ; enddo
@@ -599,8 +598,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       enddo ; enddo
 
       call ice_transport(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, &
-                         uc, vc, IST%TrReg, &
-                         dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
+                         uc, vc, IST%TrReg, dt_slow_dyn, G, IG, CS%SIS_transport_CSp, &
                          IST%rdg_mice, snow2ocn, rdg_rate, rdg_open, rdg_vosh)
     endif
     if (CS%column_check) &
@@ -647,13 +645,9 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
   call mpp_clock_end(iceClock9)
 
-  if (CS%debug) then
-    call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-  endif
+  if (CS%debug) call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
 
-  if (CS%bounds_check) then
-    call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
-  endif
+  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &

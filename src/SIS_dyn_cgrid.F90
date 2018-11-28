@@ -454,12 +454,13 @@ end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dynamics takes a single dynamics timestep with EVP subcycles
-subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
+subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                           fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
 
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci  !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: msnow !< Mass per unit ocean area of snow (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mis   !< Mass per unit ocean area of sea ice,
+                                                            !! snow and melt pond water (kg m-2)
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mice  !< Mass per unit ocean area of sea ice (kg m-2)
   real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui    !< Zonal ice velocity in m s-1
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity in m s-1
@@ -488,7 +489,6 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    mis, &      ! Total snow and ice mass per unit area, in kg m-2.
     pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
     ci_proj, &  ! The projected ice concentration, nondim.
     zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
@@ -681,7 +681,7 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   m_neglect2 = m_neglect**2 ; m_neglect4 = m_neglect**4
 !$OMP parallel default(none) shared(isc,iec,jsc,jec,G,CS,dt_slow,ui_min_trunc,u_IC,ui,   &
 !$OMP                               ui_max_trunc,vi_min_trunc,vi_max_trunc,v_IC,vi,mice, &
-!$OMP                               msnow,ci,dt,Tdamp,I_2EC,mis,ci_proj,pres_mice,       &
+!$OMP                               mis,ci,dt,Tdamp,I_2EC,ci_proj,pres_mice,       &
 !$OMP                               dx2B,dy2B,dx_dyB,dy_dxB,dx2T,dy2T,dx_dyT,dy_dxT,     &
 !$OMP                               mi_ratio_A_q,m_neglect4,m_neglect2,mi_u,mi_v,q,      &
 !$OMP                               m_neglect,azon,bzon,czon,dzon,f2dt_u,I1_f2dt2_u,PFu, &
@@ -710,8 +710,6 @@ subroutine SIS_C_dynamics(ci, msnow, mice, ui, vi, uo, vo, &
   endif
 !$OMP do
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    ! Store the total snow and ice mass.
-    mis(i,j) = mice(i,j) + msnow(i,j)
     ci_proj(i,j) = ci(i,j)
 
     ! Precompute pres_mice and the minimum value of del_sh for stability.

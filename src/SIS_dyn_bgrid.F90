@@ -266,12 +266,13 @@ end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dynamics takes a single dynamics timestep with EVP subcycles
-subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
+subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: msnow !< Mass per unit ocean area of snow (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: misp  !< Mass per unit ocean area of sea ice,
+                                                             !! snow and melt pond water (kg m-2)
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: mice  !< Mass per unit ocean area of sea ice (kg m-2)
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui    !< Zonal ice velocity in m s-1
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity in m s-1
@@ -298,7 +299,6 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   real                             :: zeta, eta              ! bulk/shear viscosities
   real, dimension(SZI_(G),SZJ_(G)) :: strn11, strn12, strn22 ! strain tensor
 
-  real, dimension(SZI_(G),SZJ_(G))   :: mit                 ! mass on t-points
   real, dimension(SZIB_(G),SZJB_(G)) :: miv                 ! mass on v-points
   real, dimension(SZIB_(G),SZJB_(G)) :: civ                 ! conc. on v-points
   real, dimension(SZI_(G),SZJ_(G))   :: diag_val            ! A temporary diagnostic array
@@ -381,8 +381,7 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
   !TOM> check where ice is present
   do j=jsc,jec ; do i=isc,iec
-    ice_present(i,j) = ( (G%mask2dT(i,j)>0.5) .and. &
-          (mice(i,j) + msnow(i,j) > CS%MIV_MIN) )
+    ice_present(i,j) = ( (G%mask2dT(i,j)>0.5) .and. (misp(i,j) > CS%MIV_MIN) )
   enddo ; enddo
 
   ! sea level slope force
@@ -394,11 +393,8 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
-  do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    mit(i,j) = mice(i,j) + msnow(i,j)
-  enddo ; enddo
   do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
-    miv(I,J) = 0.25*( (mit(i+1,j+1) + mit(i,j)) + (mit(i+1,j) + mit(i,j+1)) )
+    miv(I,J) = 0.25*( (misp(i+1,j+1) + misp(i,j)) + (misp(i+1,j) + misp(i,j+1)) )
     civ(I,J) = 0.25*( (ci(i+1,j+1) + ci(i,j)) + (ci(i+1,j) + ci(i,j+1)) )
   else
     miv(I,J) = 0.0 ; civ(I,J) = 0.0
@@ -501,8 +497,7 @@ subroutine SIS_B_dynamics(ci, msnow, mice, ui, vi, uo, vo,       &
 
     ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
-      if( (G%mask2dT(i,j)>0.5) .and. &
-          ((mice(i,j)+msnow(i,j)) > CS%MIV_MIN) ) then
+      if( (G%mask2dT(i,j)>0.5) .and. (misp(i,j) > CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
         CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
