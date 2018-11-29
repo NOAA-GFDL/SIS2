@@ -17,8 +17,9 @@ use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 use SIS_tracer_advect, only : advect_scalar
-use SIS_continuity, only :  SIS_continuity_init, SIS_continuity_end
-use SIS_continuity, only :  continuity=>ice_continuity, SIS_continuity_CS
+use SIS_continuity, only : SIS_continuity_init, SIS_continuity_end
+use SIS_continuity, only : continuity=>ice_continuity, SIS_continuity_CS
+use SIS_continuity, only : summed_continuity, proportionate_continuity
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -36,14 +37,15 @@ type, public :: SIS_transport_CS ; private
 
   logical :: SLAB_ICE = .false. !< If true, do old style GFDL slab ice?
   real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3, used here only in rolling.
-  !### Rho_snow is unused in this module.
-  real :: Rho_snow = 330.0    !< The nominal density of snow on sea ice, in kg m-3.
   real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
                               !! Sensible values are 0 or larger than 1.
 
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
+  logical :: merged_cont      !< If true, update the continuity equations for the ice, snow,
+                              !! and melt pond water together with proportionate fluxes.
+                              !! Otherwise the three media are updated separately.
   logical :: specified_ice    !< If true, the sea ice is specified and there is
                               !! no need for ice dynamics.
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
@@ -115,13 +117,20 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
     uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
+    uh_tot, &  ! Total zonal fluxes in H m2 s-1.
     uf         ! Total zonal fluxes in kg s-1.
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
     vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
     vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G)) :: &
+    vh_tot, &  ! Total meridional fluxes in H m2 s-1.
     vf         ! Total meridional fluxes in kg s-1.
+  real, dimension(SZI_(G),SZJ_(G)) :: &
+    mca_tot, & ! The total mass per unit total area of snow and ice summed across thickness
+               ! categories in a cell, in units of H (often kg m-2).
+    mca0_tot   ! The initial total mass per unit total area of snow and ice summed across
+               ! thickness categories in a cell, in units of H (often kg m-2).
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a
                           ! cell, in units of H (often kg m-2).  "mca" stands
@@ -273,11 +282,24 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
       mca0_snow(i,j,k) = mca_snow(i,j,k)
       mca0_pond(i,j,k) = mca_pond(i,j,k)
     enddo ; enddo ; enddo
-    call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%continuity_CSp)
-    call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
-    call continuity(uc, vc, mca0_pond, mca_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
 
+    if (CS%merged_cont) then
+      do j=jsd,jed ; do i=isd,ied ; mca_tot(i,j) = 0.0 ; enddo ; enddo
+      do k=1,nCat ; do j=jsd,jed ; do i=isd,ied
+        mca_tot(i,j) = mca_tot(i,j) + (mca_ice(i,j,k) + (mca_snow(i,j,k) + mca_pond(i,j,k)))
+      enddo ; enddo ; enddo
+      do j=jsd,jed ; do i=isd,ied ; mca0_tot(i,j) = mca_tot(i,j) ; enddo ; enddo
+      call summed_continuity(uc, vc, mca_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp)
 
+      call proportionate_continuity(mca0_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp, &
+                                    h1=mca_ice,  uh1=uh_ice,  vh1=vh_ice, &
+                                    h2=mca_snow, uh2=uh_snow, vh2=vh_snow, &
+                                    h3=mca_pond, uh3=uh_pond, vh3=vh_pond)
+    else
+      call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_pond, mca_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
+    endif
 
     call advect_scalar(mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
     call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, &
@@ -1097,6 +1119,10 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness \n"//&
                  "categories after advection.", default=.true.)
+  call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
+                 "If true, update the continuity equations for the ice, snow, \n"//&
+                 "and melt pond water together with proportionate fluxes. \n"//&
+                 "Otherwise the media are updated separately.", default=.false.)
 
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)
@@ -1105,9 +1131,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-  call get_param(param_file, mdl, "RHO_SNOW", CS%Rho_snow, &
-                 "The nominal density of snow as used by SIS.", &
-                 units="kg m-3", default=330.0)
 
   call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
                  "A factor by which the propensity of small amounts of \n"//&
