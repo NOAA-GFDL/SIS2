@@ -27,7 +27,8 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public ice_continuity, summed_continuity, SIS_continuity_init, SIS_continuity_end
+public ice_continuity, SIS_continuity_init, SIS_continuity_end
+public summed_continuity, proportionate_continuity
 
 integer :: id_clock_update  !< A CPU time clock ID
 integer :: id_clock_correct !< A CPU time clock ID
@@ -418,6 +419,282 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
 
 end subroutine summed_continuity
 
+!> proportionate_continuity time steps the category thickness changes due to advection,
+!! using input total mass fluxes with the fluxes proprotionate to the relative upwind
+!! thicknesses.
+subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
+                                    h1, uh1, vh1, h2, uh2, vh2, h3, uh3, vh3)
+  type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: h_tot_in !< Initial total ice and snow mass per unit
+                                                          !! cell area in H.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces, in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces, in H m2 s-1.
+  real,                           intent(in)    :: dt  !< Time increment in s.
+  type(SIS_continuity_CS),        pointer       :: CS  !< The control structure returned by a
+                                                       !! previous call to SIS_continuity_init.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(inout) :: h1  !< Updated mass of medium 1 (often ice) by category, in H.
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: uh1 !< Zonal mass flux of medium 1 by category, H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: vh1 !< Meridional mass flux of medium 1 by category, H m2 s-1.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(inout) :: h2  !< Updated mass of medium 2 (often snow) by category, in H.
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: uh2 !< Zonal mass flux of medium 2 by category, H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: vh2 !< Meridional mass flux of medium 2 by category, H m2 s-1.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(inout) :: h3  !< Updated mass of medium 3 (pond water?) by category, in H.
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: uh3 !< Zonal mass flux of medium 3 by category, H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category, H m2 s-1.
+
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! Total thicknesses in H.
+  real, dimension(SZI_(G),SZJ_(G)) :: I_htot ! The Adcroft reciprocal of the total thicknesses in H-1.
+  type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
+  real    :: h_up
+  integer :: is, ie, js, je, nCat, stensil
+  integer :: i, j, k
+
+  logical :: x_first
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nCat = IG%CatIce
+
+  if (.not.associated(CS)) call SIS_error(FATAL, &
+         "SIS_continuity: Module must be initialized before it is used.")
+  x_first = (MOD(G%first_direction,2) == 0)
+
+  do j=js,je ; do i=is,ie ; if (h_tot_in(i,j) < 0.0) then
+    call SIS_error(FATAL, 'Negative thickness input to ice_continuity().')
+  endif ; enddo ; enddo
+
+  !$OMP parallel do default(shared)
+  do j=js-1,je+1 ; do i=is-1,ie+1
+    I_htot(i,j) = 0.0 ; if (h_tot_in(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot_in(i,j)
+  enddo ; enddo
+
+  if (CS%use_upwind2d) then
+    ! Both directions are updated based on the original thicknesses.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
+
+    if (present(h1)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
+      call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * &
+             ((uh1(I,j,k) - uh1(I-1,j,k)) + (vh1(i,J,k) - vh1(i,J-1,k))))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h2)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
+      call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * &
+             ((uh2(I,j,k) - uh2(I-1,j,k)) + (vh2(i,J,k) - vh2(i,J-1,k))))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h3)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
+      call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * &
+             ((uh3(I,j,k) - uh3(I-1,j,k)) + (vh3(i,J,k) - vh3(i,J-1,k))))
+      enddo ; enddo ; enddo
+    endif
+
+  elseif (x_first) then
+    ! First, advect zonally.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-1 ; LB%jeh = G%jec+1
+    if (present(h1)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h2)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h3)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      h_tot(i,j) = h_tot_in(i,j) - dt* G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
+      if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in u-pass of proportionate_continuity().')
+      I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
+    enddo ; enddo
+
+    !  Now advect meridionally, using the updated thicknesses to determine the fluxes.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    if (present(h1)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+    if (present(h2)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+    if (present(h3)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      h_tot(i,j) = h_tot(i,j) - dt* G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
+      if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in v-pass of proportionate_continuity().')
+      ! I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
+    enddo ; enddo
+
+  else  ! .not. x_first
+    ! First, advect meridionally, so set the loop bounds accordingly.
+    LB%ish = G%isc-1 ; LB%ieh = G%iec+1 ; LB%jsh = G%jsc ; LB%jeh = G%jec
+
+    if (present(h1)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+    if (present(h2)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+    if (present(h3)) then
+      call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
+     !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      h_tot(i,j) = h_tot(i,j) - dt* G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
+      if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in v-pass of proportionate_continuity().')
+      I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
+    enddo ; enddo
+
+
+    ! Now advect zonally, using the updated thicknesses to determine the fluxes.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    if (present(h1)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h2)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h3)) then
+      call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      h_tot(i,j) = h_tot_in(i,j) - dt* G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
+      if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in u-pass of proportionate_continuity().')
+      ! I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
+    enddo ; enddo
+
+  endif  ! End of x_first block.
+
+end subroutine proportionate_continuity
+
+!> Calculate zonal fluxes by category that are proportionate to the relative masses in the upwind cell.
+subroutine zonal_proportionate_fluxes(uh_tot, I_htot, h, uh, G, IG, LB)
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces, in H m2 s-1.
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
+                                                          !! cell area in H-1.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                           intent(inout) :: h   !< Mass per unit cell area by category, in H.
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
+                           intent(out)   :: uh  !< Category mass flux through zonal faces = u*h*dy, H m2 s-1.
+  type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
+
+  ! Local variables
+  integer :: i, j, k, ish, ieh, jsh, jeh, nCat
+
+  ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nCat = IG%CatIce
+  !$OMP parallel do default(shared)
+  do j=jsh,jeh ; do k=1,nCat ; do I=ish-1,ieh
+    if (uh_tot(I,j) < 0.0) then ; uh(I,j,k) = (h(i+1,j,k) * I_htot(i+1,j)) * uh_tot(I,j)
+    elseif (uh_tot(I,j) > 0.0) then ; uh(I,j,k) = (h(i,j,k) * I_htot(i,j)) * uh_tot(I,j)
+    else ; uh(i,j,k) = 0.0 ; endif
+  enddo ; enddo ; enddo
+
+end subroutine zonal_proportionate_fluxes
+
+!> Calculate meridional mass fluxes by category that are proportionate to the relative masses in the upwind cell.
+subroutine merid_proportionate_fluxes(vh_tot, I_htot, h, vh, G, IG, LB)
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces, in H m2 s-1.
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
+                                                          !! cell area in H-1.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                           intent(inout) :: h   !< Mass per unit cell area by category, in H.
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
+                           intent(out)   :: vh  !< Category mass flux through meridional faces = v*h*dx, H m2 s-1.
+  type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
+
+  ! Local variables
+  integer :: i, j, k, ish, ieh, jsh, jeh, nCat
+
+  ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nCat = IG%CatIce
+  !$OMP parallel do default(shared)
+  do J=jsh-1,jeh ; do k=1,nCat ; do i=ish,ieh
+    if (vh_tot(i,J) < 0.0) then ; vh(i,J,k) = (h(i,J+1,k) * I_htot(i,J+1)) * vh_tot(i,J)
+    elseif (vh_tot(i,J) > 0.0) then ; vh(i,J,k) = (h(i,j,k) * I_htot(i,j)) * vh_tot(i,J)
+    else ; vh(i,j,k) = 0.0 ; endif
+  enddo ; enddo ; enddo
+
+end subroutine merid_proportionate_fluxes
 
 !> Calculates the mass or volume fluxes through the zonal
 !! faces, and other related quantities.
@@ -646,7 +923,7 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
         vh(i,J,k) = vhtot(i) * (h_in(i,j+1,k) * I_htot(i,j+1))
       endif
     enddo ; enddo ; endif
-    
+
     if (present(vh_tot)) then ; do i=ish,ieh
       vh_tot(i,J) = vhtot(i)
     enddo ; endif
