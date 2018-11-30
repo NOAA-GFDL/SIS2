@@ -2475,6 +2475,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       do k=1,CatIce
         sIST%mH_snow(:,:,k) = sIST%mH_snow(:,:,k) * H_rescale_snow * sG%mask2dT(:,:)
         sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
+        sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
       enddo
 
       if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
