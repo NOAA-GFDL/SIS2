@@ -156,11 +156,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
   if (CS%slab_ice) then
-    call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, CS)
-    call pass_var(IST%mH_ice(:,:,2), G%Domain)
-    do j=G%jsd,G%jed ; do i=G%isd,G%ied
-      IST%part_size(i,j,1) = 0.0 ; if (IST%mH_ice(i,j,1) > 0.0) IST%part_size(i,j,1) = 1.0
-    enddo ; enddo
+    call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, CS, IST%part_size(:,:,1))
     return
   endif
 
@@ -891,17 +887,21 @@ end subroutine compress_ice
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> Advect the ice tracers using a very old slab-ice algorithm dating back to the Manabe model.
-subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
+!> Advect an ice tracer or the thickness using a very old slab-ice algorithm
+!! dating back to the Manabe model.
+subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS, part_sz)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity in m s-1
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity in m s-1
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to
-                                                          !! advect, in m kg kg-1 or other units
+                                                          !! advect, in m kg kg-1 or other units, or the
+                                                          !! total ice mass in m or kg m-2.
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr
   real,                              intent(in   ) :: dt_slow !< The time covered by this call, in s.
   type(SIS_transport_CS),            pointer       :: CS  !< The control structure for this module
+  real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
+                                                          !! whether trc (which may be mass) exceeds 0.
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: uflx
@@ -911,14 +911,12 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
   integer :: l, i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-
-  if (CS%adv_sub_steps==0) return;
-  dt_adv = dt_slow/CS%adv_sub_steps
-
+  if (CS%adv_sub_steps==0) return
+  dt_adv = dt_slow / CS%adv_sub_steps
 
   do l=1,CS%adv_sub_steps
     do j=jsc,jec ; do I=isc-1,iec
-      avg = ( trc(i,j) + trc(i+1,j) )/2
+      avg = 0.5*( trc(i,j) + trc(i+1,j) )
       dif = trc(i+1,j) - trc(i,j)
       if( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
         uflx(I,j) = 0.0
@@ -930,7 +928,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
     enddo ; enddo
 
     do J=jsc-1,jec ; do i=isc,iec
-      avg = ( trc(i,j) + trc(i,j+1) )/2
+      avg = 0.5*( trc(i,j) + trc(i,j+1) )
       dif = trc(i,j+1) - trc(i,j)
       if( avg > stop_lim .and. vc(i,J) * dif > 0.0) then
         vflx(i,J) = 0.0
@@ -948,6 +946,10 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS)
 
     call pass_var(trc, G%Domain)
   enddo
+
+  if (present(part_sz)) then ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
+    part_sz(i,j) = 0.0 ; if (trc(i,j) > 0.0) part_sz(i,j) = 1.0
+  enddo ; enddo ; endif
 
 end subroutine slab_ice_advect
 
