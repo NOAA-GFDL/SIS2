@@ -169,16 +169,13 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   nCat = IG%CatIce
 
+  call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
+
   if (CS%slab_ice) then
-    call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
     call slab_ice_advect(uc, vc, mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, CS)
     call pass_var(mH_ice(:,:,2), G%Domain)
     do j=G%jsd,G%jed ; do i=G%isd,G%ied
-      if (mH_ice(i,j,1) > 0.0) then
-        part_sz(i,j,1) = 1.0
-      else
-        part_sz(i,j,1) = 0.0
-      endif
+      part_sz(i,j,1) = 0.0 ; if (mH_ice(i,j,1) > 0.0) part_sz(i,j,1) = 1.0
     enddo ; enddo
     return
   endif
@@ -200,12 +197,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   ! Make sure that ice is in the right thickness category before advection.
 !  call adjust_ice_categories(mH_ice, mH_snow, part_sz, TrReg, G, CS) !Niki: add ridging?
 
-  call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-
   if (CS%check_conservation) then ! mw/new - need to update this for pond ?
     call get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice(1), tot_snow(1))
-    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(1), &
-                            enth_snow(1))
+    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(1), enth_snow(1))
   endif
 
   !   Determine the whole-cell averaged mass of snow and ice.
@@ -215,9 +209,9 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   do j=jsc,jec
     do k=1,nCat ; do i=isc,iec
       if (mH_ice(i,j,k)>0.0) then
-        mca_ice(i,j,k) = part_sz(i,j,k)*mH_ice(i,j,k)
-        mca_snow(i,j,k) = part_sz(i,j,k)*mH_snow(i,j,k)
-        mca_pond(i,j,k) = part_sz(i,j,k)*mH_pond(i,j,k)
+        mca_ice(i,j,k) = part_sz(i,j,k) * mH_ice(i,j,k)
+        mca_snow(i,j,k) = part_sz(i,j,k) * mH_snow(i,j,k)
+        mca_pond(i,j,k) = part_sz(i,j,k) * mH_pond(i,j,k)
         ice_cover(i,j) = ice_cover(i,j) + part_sz(i,j,k)
         mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
       else
@@ -227,9 +221,7 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
         if (part_sz(i,j,k)*mH_pond(i,j,k) > 0.0) then
           call SIS_error(FATAL, "Input to SIS_transport, non-zero pond mass rests atop no ice.")
         endif
-        part_sz(i,j,k) = 0.0 ; mca_ice(i,j,k) = 0.0
-        mca_snow(i,j,k) = 0.0
-        mca_pond(i,j,k) = 0.0
+        mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; mca_pond(i,j,k) = 0.0
       endif
     enddo ; enddo
     do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
@@ -259,7 +251,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
   ! Do the transport via the continuity equations and tracer conservation
   ! equations for mH_ice and tracers, inverting for the fractional size of
   ! each partition.
-  call pass_var(part_sz, G%Domain) ! cannot be combined with updates below
   call update_SIS_tracer_halos(TrReg, G, complete=.false.)
   call pass_var(mca_ice,  G%Domain, complete=.false.)
   call pass_var(mca_snow, G%Domain, complete=.false.)
@@ -431,16 +422,14 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
     part_sz(i,j,0) = max(1.0 - ice_cover(i,j), IG%ocean_part_min)
   enddo ; enddo
 
-  call pass_var(part_sz, G%Domain) ! cannot be combined with the two updates below
+  call pass_var(part_sz, G%Domain) ! cannot be combined with the three updates below
   call pass_var(mH_pond, G%Domain, complete=.false.)
   call pass_var(mH_snow, G%Domain, complete=.false.)
   call pass_var(mH_ice, G%Domain, complete=.true.)
 
   if (CS%check_conservation) then
     call get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice(2), tot_snow(2))
-
-    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(2), &
-                            enth_snow(2))
+    call get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, G, IG, enth_ice(2), enth_snow(2))
 
     if (is_root_pe()) then
       I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
@@ -453,7 +442,6 @@ subroutine ice_transport(part_sz, mH_ice, mH_snow, mH_pond, uc, vc, TrReg, &
       write(*,'("  Total Snow mass: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
         EFP_to_real(tot_snow(2)), EFP_real_diff(tot_snow(2),tot_snow(1)), &
         EFP_real_diff(tot_snow(2),tot_snow(1)) * I_tot_snow
-
 
       I_tot_ice  = abs(EFP_to_real(enth_ice(1)))
       if (I_tot_ice > 0.0) I_tot_ice = 1.0 / I_tot_ice    ! Adcroft's rule inverse.
@@ -1013,7 +1001,7 @@ subroutine get_total_amounts(mH_ice, mH_snow, part_sz, G, IG, tot_ice, tot_snow)
 
 end subroutine get_total_amounts
 
-!> get_total_amounts determines the globally integrated enthalpy of snow and ice
+!> get_total_enthalpy determines the globally integrated enthalpy of snow and ice
 subroutine get_total_enthalpy(mH_ice, mH_snow, part_sz, TrReg, &
                               G, IG, enth_ice, enth_snow)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
