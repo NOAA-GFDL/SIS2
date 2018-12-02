@@ -195,45 +195,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   endif
 
   !  Determine the whole-cell averaged mass of snow and ice.
-  CAS%m_ice(:,:,:) = 0.0 ; CAS%m_snow(:,:,:) = 0.0 ; CAS%m_pond(:,:,:) = 0.0 ; CAS%mH_ice(:,:,:) = 0.0
-  ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
-  !$OMP parallel do default(shared)
-  do j=jsc,jec
-    do k=1,nCat ; do i=isc,iec
-      if (IST%mH_ice(i,j,k)>0.0) then
-        CAS%m_ice(i,j,k)  = IST%part_size(i,j,k) * IST%mH_ice(i,j,k)
-        CAS%m_snow(i,j,k) = IST%part_size(i,j,k) * IST%mH_snow(i,j,k)
-        CAS%m_pond(i,j,k) = IST%part_size(i,j,k) * IST%mH_pond(i,j,k)
-        CAS%mH_ice(i,j,k) = IST%mH_ice(i,j,k)
-        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-        mHi_avg(i,j) = mHi_avg(i,j) + CAS%m_ice(i,j,k)
-      else
-        if (IST%part_size(i,j,k)*IST%mH_snow(i,j,k) > 0.0) then
-          call SIS_error(FATAL, "Input to SIS_transport, non-zero snow mass rests atop no ice.")
-        endif
-        if (IST%part_size(i,j,k)*IST%mH_pond(i,j,k) > 0.0) then
-          call SIS_error(FATAL, "Input to SIS_transport, non-zero pond mass rests atop no ice.")
-        endif
-        CAS%m_ice(i,j,k) = 0.0 ; CAS%m_snow(i,j,k) = 0.0 ; CAS%m_pond(i,j,k) = 0.0
-      endif
-    enddo ; enddo
-    do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
-      mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
-    endif ; enddo
-
-    !   Handle massless categories.
-    do k=1,nCat ; do i=isc,iec
-      if (CAS%m_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
-        if (mHi_avg(i,j) <= IG%mH_cat_bound(k)) then
-          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k)
-        elseif (mHi_avg(i,j) >= IG%mH_cat_bound(k+1)) then
-          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k+1)
-        else
-          CAS%mH_ice(i,j,k) = mHi_avg(i,j)
-        endif
-      endif
-    enddo ; enddo
-  enddo
+  call ice_state_to_cell_ave_state(IST, G, IG, CAS)
 
   call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
   call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
@@ -478,11 +440,70 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 
 end subroutine ice_transport
 
+
+!>  Determine the whole-cell averaged mass of snow and ice by thickness category based
+!! on the information in the ice state type.
+subroutine ice_state_to_cell_ave_state(IST, G, IG, CAS)
+  type(ice_state_type),          intent(in)    :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
+  type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
+
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
+  integer :: i, j, k, isc, iec, jsc, jec, nCat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
+
+  CAS%m_ice(:,:,:) = 0.0 ; CAS%m_snow(:,:,:) = 0.0 ; CAS%m_pond(:,:,:) = 0.0 ; CAS%mH_ice(:,:,:) = 0.0
+  ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
+  !$OMP parallel do default(shared)
+  do j=jsc,jec
+    do k=1,nCat ; do i=isc,iec
+      if (IST%mH_ice(i,j,k)>0.0) then
+        CAS%m_ice(i,j,k)  = IST%part_size(i,j,k) * IST%mH_ice(i,j,k)
+        CAS%m_snow(i,j,k) = IST%part_size(i,j,k) * IST%mH_snow(i,j,k)
+        CAS%m_pond(i,j,k) = IST%part_size(i,j,k) * IST%mH_pond(i,j,k)
+        CAS%mH_ice(i,j,k) = IST%mH_ice(i,j,k)
+        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+        mHi_avg(i,j) = mHi_avg(i,j) + CAS%m_ice(i,j,k)
+      else
+        if (IST%part_size(i,j,k)*IST%mH_snow(i,j,k) > 0.0) then
+          call SIS_error(FATAL, "Input to SIS_transport, non-zero snow mass rests atop no ice.")
+        endif
+        if (IST%part_size(i,j,k)*IST%mH_pond(i,j,k) > 0.0) then
+          call SIS_error(FATAL, "Input to SIS_transport, non-zero pond mass rests atop no ice.")
+        endif
+        CAS%m_ice(i,j,k) = 0.0 ; CAS%m_snow(i,j,k) = 0.0 ; CAS%m_pond(i,j,k) = 0.0
+      endif
+    enddo ; enddo
+    do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
+      mHi_avg(i,j) = mHi_avg(i,j) / ice_cover(i,j)
+    endif ; enddo
+
+    !   Handle massless categories.
+    do k=1,nCat ; do i=isc,iec
+      if (CAS%m_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
+        if (mHi_avg(i,j) <= IG%mH_cat_bound(k)) then
+          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k)
+        elseif (mHi_avg(i,j) >= IG%mH_cat_bound(k+1)) then
+          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k+1)
+        else
+          CAS%mH_ice(i,j,k) = mHi_avg(i,j)
+        endif
+      endif
+    enddo ; enddo
+  enddo
+
+end subroutine ice_state_to_cell_ave_state
+
+
 !> adjust_ice_categories moves mass between thickness categories if it is thinner or
 !! thicker than the bounding limits of each category.
 subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: mH_ice  !< The mass per unit area of the ice
                                                 !! in each category in H (often kg m-2).
