@@ -8,12 +8,14 @@ use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_hor_index,   only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use SIS_continuity, only : SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only : continuity=>ice_continuity, SIS_continuity_CS
 use SIS_continuity, only : summed_continuity, proportionate_continuity
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
+use SIS_diag_mediator, only : safe_alloc_alloc
 use SIS_hor_grid, only : SIS_hor_grid_type
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
@@ -29,8 +31,8 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_transport_init, ice_transport, SIS_transport_end
-public :: adjust_ice_categories
+public :: SIS_transport_init, ice_transport, SIS_transport_end, adjust_ice_categories
+public :: alloc_cell_average_state_type, dealloc_cell_average_state_type
 
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
@@ -63,12 +65,32 @@ type, public :: SIS_transport_CS ; private
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
           !< The control structure for the SIS thickness advection module
 
+  type(cell_average_state_type), pointer :: CAS => NULL()
+          !< A structure with ocean-cell averaged masses.
+
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
   ! integer :: id_rdgo=-1, id_rdgv=-1 ! These do not exist yet
   !!@}
 
 end type SIS_transport_CS
+
+!> This structure contains a variation of the ice model state where the variables are in
+!! mass per unit ocean cell area (not per unit ice area).  These are useful for conservative
+!! advection, but not so useful for diagnosing ice thickness.
+type, public :: cell_average_state_type ; private
+  real, allocatable, dimension(:,:,:) :: m_ice  !< The mass of ice in each thickness category
+                                                !! per unit total area in a cell, in H.
+  real, allocatable, dimension(:,:,:) :: m_snow !< The mass of ice in each thickness category
+                                                !! per unit total area in a cell, in H.
+  real, allocatable, dimension(:,:,:) :: m_pond !< The mass of melt pond water in each thickness
+                                                !! category per unit total area in a cell, in H.
+  real, allocatable, dimension(:,:,:) :: mH_ice !< The mass of ice in each thickness category
+                                                !! per unit of ice area in a cell, in H.  The
+                                                !! ratio of m_ice / mH_ice gives the fractional
+                                                !! ice coverage of each category.  Massless cells
+                                                !! still are given plausible values of mH_ice.
+end type cell_average_state_type
 
 contains
 
@@ -116,27 +138,24 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     mca0_tot   ! The initial total mass per unit total area of snow and ice summed across
                ! thickness categories in a cell, in units of H (often kg m-2).
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    mca_ice, mca_snow, &  ! The mass of snow and ice per unit total area in a
-                          ! cell, in units of H (often kg m-2).  "mca" stands
-                          ! for "mass cell averaged"
-    mca0_ice, mca0_snow,& ! The initial mass of snow and ice per unit total
-                          ! area in a cell, in units of H (often kg m-2).
-    mca_pond, mca0_pond   ! As for ice and snow above but for melt ponds, in H.
+    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
+    mca0_snow, & ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
+    mca0_pond    ! The initial mass of melt pond water per unit ocean area
+                 ! in a cell, in H (often kg m-2).
 !### These will be needed when the ice ridging is properly implemented.
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
   real :: yr_dt           ! Tne number of timesteps in a year.
-  real :: h_in_m          ! The ice thickness in m.
-  real :: hca_in_m        ! The ice thickness averaged over the whole cell in m.
+  real :: mass_neglect    ! A negligible mass per unit area, in H.
   real, dimension(SZI_(G),SZJ_(G)) :: mass_pre_trans  ! The pre-transport frozen water in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv      ! The convergence of frozen water transport in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
-
-  real :: I_mca_ice
+  type(cell_average_state_type), pointer :: CAS => NULL()
 
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
+  real :: I_mca_ice
   real :: I_tot_ice, I_tot_snow
 
   real :: dt_adv
@@ -144,7 +163,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL, nCat
   integer :: iTransportSubcycles ! For transport sub-cycling
 
-  real :: mass_neglect
 
   ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
   mass_neglect = IG%kg_m2_to_H*1.0e-60
@@ -160,6 +178,9 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     return
   endif
 
+  if (.not.associated(CS%CAS)) call alloc_cell_average_state_type(CS%CAS, G%HI, IG)
+  CAS => CS%CAS
+
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "Start of SIS_transport")
 
@@ -173,18 +194,19 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     call get_total_enthalpy(IST, G, IG, enth_ice(1), enth_snow(1))
   endif
 
-  !   Determine the whole-cell averaged mass of snow and ice.
-  mca_ice(:,:,:) = 0.0 ; mca_snow(:,:,:) = 0.0 ; mca_pond(:,:,:) = 0.0
+  !  Determine the whole-cell averaged mass of snow and ice.
+  CAS%m_ice(:,:,:) = 0.0 ; CAS%m_snow(:,:,:) = 0.0 ; CAS%m_pond(:,:,:) = 0.0 ; CAS%mH_ice(:,:,:) = 0.0
   ice_cover(:,:) = 0.0 ; mHi_avg(:,:) = 0.0
   !$OMP parallel do default(shared)
   do j=jsc,jec
     do k=1,nCat ; do i=isc,iec
       if (IST%mH_ice(i,j,k)>0.0) then
-        mca_ice(i,j,k) = IST%part_size(i,j,k) * IST%mH_ice(i,j,k)
-        mca_snow(i,j,k) = IST%part_size(i,j,k) * IST%mH_snow(i,j,k)
-        mca_pond(i,j,k) = IST%part_size(i,j,k) * IST%mH_pond(i,j,k)
+        CAS%m_ice(i,j,k)  = IST%part_size(i,j,k) * IST%mH_ice(i,j,k)
+        CAS%m_snow(i,j,k) = IST%part_size(i,j,k) * IST%mH_snow(i,j,k)
+        CAS%m_pond(i,j,k) = IST%part_size(i,j,k) * IST%mH_pond(i,j,k)
+        CAS%mH_ice(i,j,k) = IST%mH_ice(i,j,k)
         ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-        mHi_avg(i,j) = mHi_avg(i,j) + mca_ice(i,j,k)
+        mHi_avg(i,j) = mHi_avg(i,j) + CAS%m_ice(i,j,k)
       else
         if (IST%part_size(i,j,k)*IST%mH_snow(i,j,k) > 0.0) then
           call SIS_error(FATAL, "Input to SIS_transport, non-zero snow mass rests atop no ice.")
@@ -192,7 +214,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
         if (IST%part_size(i,j,k)*IST%mH_pond(i,j,k) > 0.0) then
           call SIS_error(FATAL, "Input to SIS_transport, non-zero pond mass rests atop no ice.")
         endif
-        mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; mca_pond(i,j,k) = 0.0
+        CAS%m_ice(i,j,k) = 0.0 ; CAS%m_snow(i,j,k) = 0.0 ; CAS%m_pond(i,j,k) = 0.0
       endif
     enddo ; enddo
     do i=isc,iec ; if (ice_cover(i,j) > 0.0) then
@@ -201,20 +223,20 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 
     !   Handle massless categories.
     do k=1,nCat ; do i=isc,iec
-      if (mca_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
+      if (CAS%m_ice(i,j,k)<=0.0 .and. (G%mask2dT(i,j) > 0.0)) then
         if (mHi_avg(i,j) <= IG%mH_cat_bound(k)) then
-          IST%mH_ice(i,j,k) = IG%mH_cat_bound(k)
+          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k)
         elseif (mHi_avg(i,j) >= IG%mH_cat_bound(k+1)) then
-          IST%mH_ice(i,j,k) = IG%mH_cat_bound(k+1)
+          CAS%mH_ice(i,j,k) = IG%mH_cat_bound(k+1)
         else
-          IST%mH_ice(i,j,k) = mHi_avg(i,j)
+          CAS%mH_ice(i,j,k) = mHi_avg(i,j)
         endif
       endif
     enddo ; enddo
   enddo
 
-  call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-  call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+  call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
+  call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
@@ -223,50 +245,50 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   ! equations for IST%mH_ice and tracers, inverting for the fractional size of
   ! each partition.
   call update_SIS_tracer_halos(TrReg, G, complete=.false.)
-  call pass_var(mca_ice,  G%Domain, complete=.false.)
-  call pass_var(mca_snow, G%Domain, complete=.false.)
-  call pass_var(mca_pond, G%Domain, complete=.false.)
-  call pass_var(IST%mH_ice, G%Domain, complete=.true.)
+  call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
+  call pass_var(CAS%m_snow, G%Domain, complete=.false.)
+  call pass_var(CAS%m_pond, G%Domain, complete=.false.)
+  call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
 
 
   dt_adv = dt_slow / real(CS%adv_sub_steps)
   do iTransportSubcycles = 1, CS%adv_sub_steps
     if (iTransportSubcycles>1) then ! Do not need to update on first iteration
       call update_SIS_tracer_halos(TrReg, G, complete=.false.)
-      call pass_var(mca_ice,  G%Domain, complete=.false.)
-      call pass_var(mca_snow, G%Domain, complete=.false.)
-      call pass_var(mca_pond, G%Domain, complete=.false.)
-      call pass_var(IST%mH_ice, G%Domain, complete=.true.)
+      call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
+      call pass_var(CAS%m_snow, G%Domain, complete=.false.)
+      call pass_var(CAS%m_pond, G%Domain, complete=.false.)
+      call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
     endif
 
     do k=1,nCat ; do j=jsd,jed ; do i=isd,ied
-      mca0_ice(i,j,k) = mca_ice(i,j,k)
-      mca0_snow(i,j,k) = mca_snow(i,j,k)
-      mca0_pond(i,j,k) = mca_pond(i,j,k)
+      mca0_ice(i,j,k) = CAS%m_ice(i,j,k)
+      mca0_snow(i,j,k) = CAS%m_snow(i,j,k)
+      mca0_pond(i,j,k) = CAS%m_pond(i,j,k)
     enddo ; enddo ; enddo
 
     if (CS%merged_cont) then
       do j=jsd,jed ; do i=isd,ied ; mca_tot(i,j) = 0.0 ; enddo ; enddo
       do k=1,nCat ; do j=jsd,jed ; do i=isd,ied
-        mca_tot(i,j) = mca_tot(i,j) + (mca_ice(i,j,k) + (mca_snow(i,j,k) + mca_pond(i,j,k)))
+        mca_tot(i,j) = mca_tot(i,j) + (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
       enddo ; enddo ; enddo
       do j=jsd,jed ; do i=isd,ied ; mca0_tot(i,j) = mca_tot(i,j) ; enddo ; enddo
       call summed_continuity(uc, vc, mca_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp)
 
       call proportionate_continuity(mca0_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp, &
-                                    h1=mca_ice,  uh1=uh_ice,  vh1=vh_ice, &
-                                    h2=mca_snow, uh2=uh_snow, vh2=vh_snow, &
-                                    h3=mca_pond, uh3=uh_pond, vh3=vh_pond)
+                                    h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
+                                    h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
+                                    h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
-      call continuity(uc, vc, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_pond, mca_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
     endif
 
-    call advect_scalar(IST%mH_ice, mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
-    call advect_SIS_tracers(mca0_ice, mca_ice, uh_ice, vh_ice, dt_adv, G, IG, &
+    call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
+    call advect_SIS_tracers(mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
-    call advect_SIS_tracers(mca0_snow, mca_snow, uh_snow, vh_snow, dt_adv, G, IG, &
+    call advect_SIS_tracers(mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
 
     if (CS%bounds_check) then
@@ -275,46 +297,47 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     endif
   enddo ! iTransportSubcycles
 
-  ! Add code to make sure that IST%mH_ice(i,j,1) > IG%mH_cat_bound(1).
+  ! Add code to make sure that CAS%mH_ice(i,j,1) > IG%mH_cat_bound(1).
   do j=jsc,jec ; do i=isc,iec
-    if ((mca_ice(i,j,1) > 0.0) .and. (IST%mH_ice(i,j,1) < IG%mH_cat_bound(1))) then
-      IST%mH_ice(i,j,1) = IG%mH_cat_bound(1)
+    if ((CAS%m_ice(i,j,1) > 0.0) .and. (CAS%mH_ice(i,j,1) < IG%mH_cat_bound(1))) then
+      CAS%mH_ice(i,j,1) = IG%mH_cat_bound(1)
     endif
   enddo ; enddo
 
-  ! Convert mca_ice and mca_snow back to IST%part_size and IST%mH_snow.
+  ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
   ice_cover(:,:) = 0.0
   !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
-    if (mca_ice(i,j,k) > 0.0) then
-      if (CS%roll_factor * (IST%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
-          (mca_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
+    if (CAS%m_ice(i,j,k) > 0.0) then
+      if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
+          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
         ! This ice is thicker than it is wide even if all the ice in a grid
         ! cell is collected into a single cube, so it will roll.  Any snow on
         ! top will simply be redistributed into a thinner layer, although it
         ! should probably be dumped into the ocean.  Rolling makes the ice
         ! thinner so that it melts faster, but it should never be made thinner
         ! than IG%mH_cat_bound(1).
-        IST%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
-             sqrt((mca_ice(i,j,k)*G%areaT(i,j)) / &
-                  (CS%roll_factor * IST%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
+        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
+             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
+                  (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
       endif
 
-      ! Make sure that IST%mH_ice(i,j,k) > IG%mH_cat_bound(1).
-      if (IST%mH_ice(i,j,k) < IG%mH_cat_bound(1)) IST%mH_ice(i,j,k) = IG%mH_cat_bound(1)
+      ! Make sure that CAS%mH_ice(i,j,k) > IG%mH_cat_bound(1).
+      if (CAS%mH_ice(i,j,k) < IG%mH_cat_bound(1)) CAS%mH_ice(i,j,k) = IG%mH_cat_bound(1)
 
-      IST%part_size(i,j,k) = mca_ice(i,j,k) / IST%mH_ice(i,j,k)
-      IST%mH_snow(i,j,k) = IST%mH_ice(i,j,k) * (mca_snow(i,j,k) / mca_ice(i,j,k))
-      IST%mH_pond(i,j,k) = IST%mH_ice(i,j,k) * (mca_pond(i,j,k) / mca_ice(i,j,k))
+      IST%part_size(i,j,k) = CAS%m_ice(i,j,k) / CAS%mH_ice(i,j,k)
+      IST%mH_snow(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_snow(i,j,k) / CAS%m_ice(i,j,k))
+      IST%mH_pond(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_pond(i,j,k) / CAS%m_ice(i,j,k))
+      IST%mH_ice(i,j,k) = CAS%mH_ice(i,j,k)
       ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
     else
       IST%part_size(i,j,k) = 0.0 ; IST%mH_ice(i,j,k) = 0.0
-      if (mca_snow(i,j,k) > mass_neglect) &
+      if (CAS%m_snow(i,j,k) > mass_neglect) &
         call SIS_error(FATAL, &
-          "Positive mca_snow values should not exist without ice.")
-      if (mca_pond(i,j,k) > mass_neglect ) &
+          "Positive CAS%m_snow values should not exist without ice.")
+      if (CAS%m_pond(i,j,k) > mass_neglect ) &
         call SIS_error(FATAL, &
-          "Something needs to be done with positive mca_pond values without ice.")
+          "Something needs to be done with positive CAS%m_pond values without ice.")
       IST%mH_snow(i,j,k) = 0.0 ; IST%mH_pond(i,j,k) = 0.0
     endif
   enddo ; enddo ; enddo
@@ -325,7 +348,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   ! Compress the ice where the fractional coverage exceeds 1, starting with
   ! ridging scheme.  A more complete ridging scheme would also compress
   ! thicker ice and allow the fractional ice coverage to drop below 1.
-  call compress_ice(IST%part_size, mca_ice, mca_snow, mca_pond, &
+  call compress_ice(IST%part_size, CAS%m_ice, CAS%m_snow, CAS%m_pond, &
                     IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS)
 
   if (CS%bounds_check) &
@@ -338,14 +361,14 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
       call check_SIS_tracer_bounds(TrReg, G, IG, "After adjust_ice_categories")
   endif
 
-  ! Recalculating mca_ice and mca_snow for consistency when handling tracer
+  ! Recalculating CAS%m_ice and CAS%m_snow for consistency when handling tracer
   ! concentrations in massless categories.
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-    mca_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
-    mca_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
+    CAS%m_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
+    CAS%m_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
   enddo ; enddo ; enddo
-  call set_massless_SIS_tracers(mca_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-  call set_massless_SIS_tracers(mca_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+  call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
+  call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
@@ -1149,6 +1172,34 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
 !               'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
 
 end subroutine SIS_transport_init
+
+!> Allocate a cell_average_state_type and its elements
+subroutine alloc_cell_average_state_type(CAS, HI, IG)
+  type(cell_average_state_type), pointer    :: CAS !< A structure with ocean-cell averaged masses
+                                                   !! that is being allocated here.
+  type(hor_index_type),          intent(in) :: HI  !< The horizontal index type describing the domain
+  type(ice_grid_type),           intent(in) :: IG  !< The sea-ice specific grid type
+
+  integer :: isd, ied, jsd, jed, nCat
+  isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nCat = IG%CatIce
+
+  if (.not.associated(CAS)) allocate(CAS)
+  call safe_alloc_alloc(CAS%m_ice, isd, ied, jsd, jed, ncat)
+  call safe_alloc_alloc(CAS%m_snow, isd, ied, jsd, jed, ncat)
+  call safe_alloc_alloc(CAS%m_pond, isd, ied, jsd, jed, ncat)
+  call safe_alloc_alloc(CAS%mH_ice, isd, ied, jsd, jed, ncat)
+
+end subroutine alloc_cell_average_state_type
+
+!> Allocate a cell_average_state_type and its elements
+subroutine dealloc_cell_average_state_type(CAS)
+  type(cell_average_state_type), pointer    :: CAS !< A structure with ocean-cell averaged masses
+                                                   !! that is being allocated here.
+  if (.not.associated(CAS)) return
+  deallocate(CAS%m_ice, CAS%m_snow, CAS%m_pond, CAS%mH_ice)
+  deallocate(CAS)
+
+end subroutine dealloc_cell_average_state_type
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_end deallocates the memory associated with this module.
