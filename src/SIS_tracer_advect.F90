@@ -46,7 +46,7 @@ contains
 !> advect_SIS_tracers manages the advection of either the snow or ice tracers
 subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, snow_tr ) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(in)    :: h_prev !< Category thickness times fractional
                                                       !! coverage before advection, in m or kg m-2.
@@ -101,7 +101,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
   type(SIS_tracer_type), dimension(ntr), &
                                intent(inout) :: Tr    !< The tracer concentrations being advected
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(in)    :: h_prev !< Category thickness times fractional
                                                       !! coverage before advection, in m or kg m-2.
@@ -351,7 +351,7 @@ end subroutine advect_tracer
 !> advect_scalar does advection of a single scalar tracer field.
 subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -600,7 +600,7 @@ end subroutine advect_scalar
 subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                            is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -746,7 +746,7 @@ end subroutine advect_scalar_x
 subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
                                intent(inout) :: Tr    !< The tracers being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1075,7 +1075,7 @@ end subroutine kernel_PPMH3_Tr_x
 subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: scalar !< The tracer concentration to advect
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1229,7 +1229,7 @@ end subroutine advect_scalar_y
 subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
                            intent(inout) :: Tr  !< The tracers being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1578,7 +1578,7 @@ end subroutine kernel_PPMH3_Tr_y
 !> Advect tracers laterally within their categories using 2-d upwind advection.
 subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
-  type(ice_grid_type),         intent(inout) :: IG    !< The sea-ice specific grid type
+  type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
                                intent(inout) :: Tr    !< The tracer concentrations being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1660,7 +1660,7 @@ end subroutine advect_upwind_2d
 subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
                                   TrReg, snow_tr, j, is, ie)
   type(SIS_hor_grid_type),    intent(in)    :: G   !< The horizontal grid type
-  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZCAT_(IG)), &
                               intent(in)    :: vol_start !< The category volume before advection, in kg or m3.
   real, dimension(SZI_(G),SZCAT_(IG)),&
