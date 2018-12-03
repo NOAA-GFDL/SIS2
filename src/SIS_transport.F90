@@ -174,7 +174,8 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
   if (CS%slab_ice) then
-    call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, CS, IST%part_size(:,:,1))
+    call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, &
+                         IST%part_size(:,:,1), nsteps=CS%adv_sub_steps)
     return
   endif
 
@@ -203,24 +204,15 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
 
-  call update_SIS_tracer_halos(TrReg, G, complete=.false.)
-  call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
-  call pass_var(CAS%m_snow, G%Domain, complete=.false.)
-  call pass_var(CAS%m_pond, G%Domain, complete=.false.)
-  call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
-
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
-
   dt_adv = dt_slow / real(CS%adv_sub_steps)
   do iTransportSubcycles = 1, CS%adv_sub_steps
-    if (iTransportSubcycles>1) then ! Do not need to update on first iteration
-      call update_SIS_tracer_halos(TrReg, G, complete=.false.)
-      call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
-      call pass_var(CAS%m_snow, G%Domain, complete=.false.)
-      call pass_var(CAS%m_pond, G%Domain, complete=.false.)
-      call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
-    endif
+    call update_SIS_tracer_halos(TrReg, G, complete=.false.)
+    call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
+    call pass_var(CAS%m_snow, G%Domain, complete=.false.)
+    call pass_var(CAS%m_pond, G%Domain, complete=.false.)
+    call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
 
     do k=1,nCat ; do j=jsd,jed ; do i=isd,ied
       mca0_ice(i,j,k) = CAS%m_ice(i,j,k)
@@ -258,13 +250,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     endif
   enddo ! iTransportSubcycles
 
-  ! Add code to make sure that CAS%mH_ice(i,j,1) > IG%mH_cat_bound(1).
-  do j=jsc,jec ; do i=isc,iec
-    if ((CAS%m_ice(i,j,1) > 0.0) .and. (CAS%mH_ice(i,j,1) < IG%mH_cat_bound(1))) then
-      CAS%mH_ice(i,j,1) = IG%mH_cat_bound(1)
-    endif
-  enddo ; enddo
-
   !  Convert the ocean-cell averaged properties back into the ice_state_type.
   call cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
 
@@ -281,11 +266,11 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   ! Recalculating m_ice and m_snow for consistency when handling tracer
   ! concentrations in massless categories.
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-    CAS%m_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
-    CAS%m_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
+    mca0_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
+    mca0_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
   enddo ; enddo ; enddo
-  call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-  call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+  call set_massless_SIS_tracers(mca0_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
+  call set_massless_SIS_tracers(mca0_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
@@ -469,6 +454,12 @@ subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
   mass_neglect = IG%kg_m2_to_H*1.0e-60
+
+  ! Ensure that CAS%mH_ice(i,j,1) >= IG%mH_cat_bound(1).
+  do j=jsc,jec ; do i=isc,iec
+    if ((CAS%m_ice(i,j,1) > 0.0) .and. (CAS%mH_ice(i,j,1) < IG%mH_cat_bound(1))) &
+      CAS%mH_ice(i,j,1) = IG%mH_cat_bound(1)
+  enddo ; enddo
 
   ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
   ice_cover(:,:) = 0.0
@@ -938,7 +929,7 @@ end subroutine compress_ice
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Advect an ice tracer or the thickness using a very old slab-ice algorithm
 !! dating back to the Manabe model.
-subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS, part_sz)
+subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity in m s-1
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity in m s-1
@@ -948,28 +939,29 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS, part_sz)
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr
   real,                              intent(in   ) :: dt_slow !< The time covered by this call, in s.
-  type(SIS_transport_CS),            pointer       :: CS  !< The control structure for this module
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
                                                           !! whether trc (which may be mass) exceeds 0.
+  integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: uflx
   real, dimension(SZI_(G),SZJB_(G)) :: vflx
   real :: avg, dif
   real :: dt_adv
-  integer :: l, i, j, isc, iec, jsc, jec
+  integer :: i, j, n, isc, iec, jsc, jec, n_substeps
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  if (CS%adv_sub_steps==0) return
-  dt_adv = dt_slow / CS%adv_sub_steps
+  n_substeps = 1 ; if (present(nsteps)) n_substeps = nsteps
+  if (n_substeps==0) return
+  dt_adv = dt_slow / n_substeps
 
-  do l=1,CS%adv_sub_steps
+  do n=1,n_substeps
     do j=jsc,jec ; do I=isc-1,iec
       avg = 0.5*( trc(i,j) + trc(i+1,j) )
       dif = trc(i+1,j) - trc(i,j)
-      if( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
+      if ( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
         uflx(I,j) = 0.0
-      else if( uc(i,j) > 0.0 ) then
+      elseif ( uc(i,j) > 0.0 ) then
         uflx(I,j) = uc(I,j) * trc(i,j) * G%dy_Cu(I,j)
       else
         uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dy_Cu(I,j)
@@ -979,9 +971,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, CS, part_sz)
     do J=jsc-1,jec ; do i=isc,iec
       avg = 0.5*( trc(i,j) + trc(i,j+1) )
       dif = trc(i,j+1) - trc(i,j)
-      if( avg > stop_lim .and. vc(i,J) * dif > 0.0) then
+      if (avg > stop_lim .and. vc(i,J) * dif > 0.0) then
         vflx(i,J) = 0.0
-      else if( vc(i,J) > 0.0 ) then
+      elseif ( vc(i,J) > 0.0 ) then
         vflx(i,J) = vc(i,J) * trc(i,j) * G%dx_Cv(i,J)
       else
         vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dx_Cv(i,J)
