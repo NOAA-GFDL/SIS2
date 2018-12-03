@@ -2477,6 +2477,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
         sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
       enddo
+      ! Since we masked out the part_size on land we should set 
+      ! part_size(:,:,0) = 1. on land to satisfy the summation check
+      do j=jsc,jec ; do i=isc,iec
+        if (sG%mask2dT(i,j) < 0.5) sIST%part_size(i,j,0) = 1.      
+      enddo ; enddo
 
       if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
         sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
