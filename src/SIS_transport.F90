@@ -33,6 +33,7 @@ implicit none ; private
 
 public :: SIS_transport_init, ice_transport, SIS_transport_end, adjust_ice_categories
 public :: alloc_cell_average_state_type, dealloc_cell_average_state_type
+public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
 
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
@@ -151,7 +152,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   real, dimension(SZI_(G),SZJ_(G)) :: mass_pre_trans  ! The pre-transport frozen water in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv      ! The convergence of frozen water transport in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
-  real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness in kg m-2.
   type(cell_average_state_type), pointer :: CAS => NULL()
 
   type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
@@ -203,15 +203,14 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
 
-  ! Do the transport via the continuity equations and tracer conservation
-  ! equations for IST%mH_ice and tracers, inverting for the fractional size of
-  ! each partition.
   call update_SIS_tracer_halos(TrReg, G, complete=.false.)
   call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
   call pass_var(CAS%m_snow, G%Domain, complete=.false.)
   call pass_var(CAS%m_pond, G%Domain, complete=.false.)
   call pass_var(CAS%mH_ice, G%Domain, complete=.true.)
 
+  ! Do the transport via the continuity equations and tracer conservation equations
+  ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
 
   dt_adv = dt_slow / real(CS%adv_sub_steps)
   do iTransportSubcycles = 1, CS%adv_sub_steps
@@ -266,52 +265,8 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
     endif
   enddo ; enddo
 
-  ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
-  ice_cover(:,:) = 0.0
-  !$OMP parallel do default(shared)
-  do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
-    if (CAS%m_ice(i,j,k) > 0.0) then
-      if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
-          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
-        ! This ice is thicker than it is wide even if all the ice in a grid
-        ! cell is collected into a single cube, so it will roll.  Any snow on
-        ! top will simply be redistributed into a thinner layer, although it
-        ! should probably be dumped into the ocean.  Rolling makes the ice
-        ! thinner so that it melts faster, but it should never be made thinner
-        ! than IG%mH_cat_bound(1).
-        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
-             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
-                  (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
-      endif
-
-      ! Make sure that CAS%mH_ice(i,j,k) > IG%mH_cat_bound(1).
-      if (CAS%mH_ice(i,j,k) < IG%mH_cat_bound(1)) CAS%mH_ice(i,j,k) = IG%mH_cat_bound(1)
-
-      IST%part_size(i,j,k) = CAS%m_ice(i,j,k) / CAS%mH_ice(i,j,k)
-      IST%mH_snow(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_snow(i,j,k) / CAS%m_ice(i,j,k))
-      IST%mH_pond(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_pond(i,j,k) / CAS%m_ice(i,j,k))
-      IST%mH_ice(i,j,k) = CAS%mH_ice(i,j,k)
-      ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-    else
-      IST%part_size(i,j,k) = 0.0 ; IST%mH_ice(i,j,k) = 0.0
-      if (CAS%m_snow(i,j,k) > mass_neglect) &
-        call SIS_error(FATAL, &
-          "Positive CAS%m_snow values should not exist without ice.")
-      if (CAS%m_pond(i,j,k) > mass_neglect ) &
-        call SIS_error(FATAL, &
-          "Something needs to be done with positive CAS%m_pond values without ice.")
-      IST%mH_snow(i,j,k) = 0.0 ; IST%mH_pond(i,j,k) = 0.0
-    endif
-  enddo ; enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec
-    IST%part_size(i,j,0) = 1.0-ice_cover(i,j)
-  enddo ; enddo
-
-  ! Compress the ice where the fractional coverage exceeds 1, starting with
-  ! ridging scheme.  A more complete ridging scheme would also compress
-  ! thicker ice and allow the fractional ice coverage to drop below 1.
-  call compress_ice(IST%part_size, CAS%m_ice, CAS%m_snow, CAS%m_pond, &
-                    IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS)
+  !  Convert the ocean-cell averaged properties back into the ice_state_type.
+  call cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
@@ -323,7 +278,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
       call check_SIS_tracer_bounds(TrReg, G, IG, "After adjust_ice_categories")
   endif
 
-  ! Recalculating CAS%m_ice and CAS%m_snow for consistency when handling tracer
+  ! Recalculating m_ice and m_snow for consistency when handling tracer
   ! concentrations in massless categories.
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
     CAS%m_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
@@ -498,6 +453,71 @@ subroutine ice_state_to_cell_ave_state(IST, G, IG, CAS)
 
 end subroutine ice_state_to_cell_ave_state
 
+!> Convert the ocean-cell averaged properties back into the ice_state_type.
+subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
+  type(cell_average_state_type),  intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
+  type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),            intent(in)    :: IG  !< The sea-ice specific grid type
+  type(SIS_transport_CS),         pointer       :: CS  !< A pointer to the control structure for this module
+  type(ice_state_type),           intent(inout) :: IST !< A type describing the state of the sea ice
+  type(SIS_tracer_registry_type), pointer       :: TrReg !< The registry of SIS ice and snow tracers.
+
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real :: mass_neglect    ! A negligible mass per unit area, in H.
+  integer :: i, j, k, isc, iec, jsc, jec, nCat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
+  mass_neglect = IG%kg_m2_to_H*1.0e-60
+
+  ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
+  ice_cover(:,:) = 0.0
+  !$OMP parallel do default(shared)
+  do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
+    if (CAS%m_ice(i,j,k) > 0.0) then
+      if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
+          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
+        ! This ice is thicker than it is wide even if all the ice in a grid
+        ! cell is collected into a single cube, so it will roll.  Any snow on
+        ! top will simply be redistributed into a thinner layer, although it
+        ! should probably be dumped into the ocean.  Rolling makes the ice
+        ! thinner so that it melts faster, but it should never be made thinner
+        ! than IG%mH_cat_bound(1).
+        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
+             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
+                  (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
+      endif
+
+      ! Make sure that CAS%mH_ice(i,j,k) > IG%mH_cat_bound(1).
+      if (CAS%mH_ice(i,j,k) < IG%mH_cat_bound(1)) CAS%mH_ice(i,j,k) = IG%mH_cat_bound(1)
+
+      IST%part_size(i,j,k) = CAS%m_ice(i,j,k) / CAS%mH_ice(i,j,k)
+      IST%mH_snow(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_snow(i,j,k) / CAS%m_ice(i,j,k))
+      IST%mH_pond(i,j,k) = CAS%mH_ice(i,j,k) * (CAS%m_pond(i,j,k) / CAS%m_ice(i,j,k))
+      IST%mH_ice(i,j,k) = CAS%mH_ice(i,j,k)
+      ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+    else
+      IST%part_size(i,j,k) = 0.0 ; IST%mH_ice(i,j,k) = 0.0
+      if (CAS%m_snow(i,j,k) > mass_neglect) &
+        call SIS_error(FATAL, &
+          "Positive CAS%m_snow values should not exist without ice.")
+      if (CAS%m_pond(i,j,k) > mass_neglect ) &
+        call SIS_error(FATAL, &
+          "Something needs to be done with positive CAS%m_pond values without ice.")
+      IST%mH_snow(i,j,k) = 0.0 ; IST%mH_pond(i,j,k) = 0.0
+    endif
+  enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec
+    IST%part_size(i,j,0) = 1.0-ice_cover(i,j)
+  enddo ; enddo
+
+  ! Compress the ice where the fractional coverage exceeds 1, starting with
+  ! ridging scheme.  A more complete ridging scheme would also compress
+  ! thicker ice and allow the fractional ice coverage to drop below 1.
+  call compress_ice(IST%part_size, CAS%m_ice, CAS%m_snow, CAS%m_pond, &
+                    IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS)
+
+end subroutine cell_ave_state_to_ice_state
 
 !> adjust_ice_categories moves mass between thickness categories if it is thinner or
 !! thicker than the bounding limits of each category.
@@ -725,7 +745,7 @@ end subroutine adjust_ice_categories
 subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
                         mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),               intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                                      intent(inout) :: part_sz !< The fractional ice concentration
                                                           !! within a cell in each thickness
