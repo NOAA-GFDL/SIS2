@@ -39,7 +39,7 @@ public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
 
-  logical :: SLAB_ICE = .false. !< If true, do old style GFDL slab ice?
+  logical :: slab_ice = .false. !< If true, do old style GFDL slab ice.
   real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3, used here only in rolling.
   real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
@@ -55,7 +55,6 @@ type, public :: SIS_transport_CS ; private
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
   logical :: bounds_check     !< If true, check for sensible values of thicknesses,
                               !! temperatures, salinities, tracers, etc.
-  integer :: adv_sub_steps    !< The number of advective iterations for each slow time step.
   type(time_type), pointer :: Time !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
                               !! timing of diagnostic output.
@@ -113,7 +112,7 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_transport - does ice transport and thickness class redistribution
-subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_rate)
+subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2ocn, rdg_rate)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
@@ -122,6 +121,8 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vc  !< The meridional ice velocity, in m s-1.
   real,                              intent(in)    :: dt_slow !< The amount of time over which the
                                                           !! ice dynamics are to be advanced, in s.
+  integer,                           intent(in)    :: nsteps  !< The number of advective iterations
+                                                          !! to use within this time step.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: snow2ocn !< snow volume [m] dumped into ocean during ridging
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
@@ -186,7 +187,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 
   if (CS%slab_ice) then
     call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, &
-                         IST%part_size(:,:,1), nsteps=CS%adv_sub_steps)
+                         IST%part_size(:,:,1), nsteps=nsteps)
     return
   endif
 
@@ -215,8 +216,8 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
-  dt_adv = dt_slow / real(CS%adv_sub_steps)
-  do iTransportSubcycles = 1, CS%adv_sub_steps
+  if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
+  do iTransportSubcycles = 1, nsteps
     call update_SIS_tracer_halos(TrReg, G, complete=.false.)
     call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
     call pass_var(CAS%m_snow, G%Domain, complete=.false.)
@@ -1088,18 +1089,11 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
   if ( CS%specified_ice ) then
-    CS%adv_sub_steps = 0
-    call log_param(param_file, mdl, "NSTEPS_ADV", CS%adv_sub_steps, &
-                 "The number of advective iterations for each slow time \n"//&
-                 "step.  With SPECIFIED_ICE this is always 0.")
     CS%slab_ice = .true.
     call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
                  "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
                  "USE_SLAB_ICE is always true.")
   else
-    call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_sub_steps, &
-                 "The number of advective iterations for each slow time \n"//&
-                 "step.", default=1)
     call get_param(param_file, mdl, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
@@ -1113,7 +1107,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "Otherwise the media are updated separately.", default=.false.)
 
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
-  call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.15)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
 
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
@@ -1126,7 +1119,7 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "or 0 to disable rolling.  This can be thought of as the \n"//&
                  "minimum number of ice floes in a grid cell divided by \n"//&
                  "the horizontal floe aspect ratio.  Sensible values are \n"//&
-                 "0 (no rolling) or larger than 1.", units="Nondim",default=1.0)
+                 "0 (no rolling) or larger than 1.", units="Nondim", default=1.0)
 
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow \n"//&

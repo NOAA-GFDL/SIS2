@@ -77,6 +77,7 @@ type dyn_trans_CS ; private
                        !! sea-ice dynamics.
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
+  logical :: slab_ice = .false. !< If true, do old style GFDL slab ice.
   real    :: dt_ice_dyn   !< The time step used for the slow ice dynamics, including
                           !! stepping the continuity equation and interactions
                           !! between the ice mass field and velocities, in s. If
@@ -85,6 +86,7 @@ type dyn_trans_CS ; private
                           !! ice.  The original SIS2 implementation is based on
                           !! work by Torge Martin.  Otherwise, ice is compressed
                           !! proportionately if the concentration exceeds 1.
+  integer :: adv_substeps !< The number of advective iterations for each slow time step.
   logical :: berg_windstress_bug  !< If true, use older code that applied an old
                           !! ice-ocean stress to the icebergs in place of the
                           !! current air-ice stress.  This option is here for
@@ -481,8 +483,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       if (CS%debug) call IST_chksum("Before ice_transport", IST, G, IG)
       call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
-      call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, G, IG, &
-                         CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
+      call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
+                         G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    C Post_transport")! , check_column=.true.)
 
@@ -588,7 +590,7 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
       enddo ; enddo
 
-      call ice_transport(IST, uc, vc, IST%TrReg, dt_slow_dyn, G, IG,&
+      call ice_transport(IST, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
                          CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    B Post_transport")! , check_column=.true.)
@@ -1322,6 +1324,23 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
+
+  if ( CS%specified_ice ) then
+    CS%adv_substeps = 0
+    call log_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
+                 "The number of advective iterations for each slow time \n"//&
+                 "step.  With SPECIFIED_ICE this is always 0.")
+    CS%slab_ice = .true.
+    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "USE_SLAB_ICE is always true.")
+  else
+    call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
+                 "The number of advective iterations for each slow time \n"//&
+                 "step.", default=1)
+    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%SLAB_ICE, &
+                 "If true, use the very old slab-style ice.", default=.false.)
+  endif
 
   call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
