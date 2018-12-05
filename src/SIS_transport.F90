@@ -221,7 +221,7 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
         mca_tot(i,j) = mca_tot(i,j) + (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
       enddo ; enddo ; enddo
       do j=jsd,jed ; do i=isd,ied ; mca0_tot(i,j) = mca_tot(i,j) ; enddo ; enddo
-      call summed_continuity(uc, vc, mca_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp)
+      call summed_continuity(uc, vc, mca0_tot, mca_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp)
 
       call proportionate_continuity(mca0_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &

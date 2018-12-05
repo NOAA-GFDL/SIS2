@@ -206,11 +206,13 @@ end subroutine ice_continuity
 !! thickness categories due to advection, using a monotonically limited, directionally split PPM
 !! scheme or simple upwind 2-d scheme.  It may also update the ice thickness, using fluxes that are
 !! proportional to the total fluxes times the ice mass divided by the total mass in the upwind cell.
-subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
+subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   type(SIS_hor_grid_type),           intent(inout) :: G  !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity, in m s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity, in m s-1.
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: h_in !< Initial total ice and snow mass per
+                                                         !! unit cell area in H (usually m or kg m-2).
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: h  !< Total ice and snow mass per unit cell
                                                          !! area in H (usually m or kg m-2).
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)   :: uh !< Total mass flux through zonal faces
@@ -241,11 +243,11 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
 
   stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
 
-  do j=js,je ; do i=is,ie ; if (h(i,j) < 0.0) then
+  do j=js,je ; do i=is,ie ; if (h_in(i,j) < 0.0) then
     call SIS_error(FATAL, 'Negative mass input to ice_total_continuity().')
   endif ; enddo ; enddo
 
-  if (present(h_ice)) then ; do j=js,je ; do i=is,ie ; if (h_ice(i,j) > h(i,j)) then
+  if (present(h_ice)) then ; do j=js,je ; do i=is,ie ; if (h_ice(i,j) > h_in(i,j)) then
     call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity().')
   endif ; enddo ; enddo ; endif
 
@@ -254,27 +256,27 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
     !$OMP parallel default(shared) private(h_up)
     !$OMP do
     do j=js,je ; do I=is-1,ie
-      if (u(I,j) >= 0.0) then ; h_up = h(i,j)
-      else ; h_up = h(i+1,j) ; endif
+      if (u(I,j) >= 0.0) then ; h_up = h_in(i,j)
+      else ; h_up = h_in(i+1,j) ; endif
       uh(I,j) = G%dy_Cu(I,j) * u(I,j) * h_up
     enddo ; enddo
     !$OMP do
     do J=js-1,je ; do i=is,ie
-      if (v(i,J) >= 0.0) then ; h_up = h(i,j)
-      else ; h_up = h(i,j+1) ; endif
+      if (v(i,J) >= 0.0) then ; h_up = h_in(i,j)
+      else ; h_up = h_in(i,j+1) ; endif
       vh(i,J) = G%dx_Cv(i,J) * v(i,J) * h_up
     enddo ; enddo
     if (present(h_ice)) then
       !$OMP do
       do j=js,je ; do I=is-1,ie
-        if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h(i+1,j))
-        elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h(i,j))
+        if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h_in(i+1,j))
+        elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h_in(i,j))
         else ; uh_ice(I,j) = 0.0 ; endif
       enddo ; enddo
       !$OMP do
       do J=js-1,je ; do i=is,ie
-        if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h(i,j+1))
-        elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h(i,j))
+        if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h_in(i,j+1))
+        elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h_in(i,j))
         else ; vh_ice(i,J) = 0.0 ; endif
       enddo ; enddo
       !$OMP do
@@ -285,7 +287,7 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
     endif
     !$OMP do
     do j=js,je ; do i=is,ie
-      h(i,j) = h(i,j) - dt* G%IareaT(i,j) * &
+      h(i,j) = h_in(i,j) - dt* G%IareaT(i,j) * &
            ((uh(I,j) - uh(I-1,j)) + (vh(i,J) - vh(i,J-1)))
 
       if (h(i,j) < 0.0) then
@@ -297,7 +299,7 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
     ! First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec
     LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=h, uh_tot=uh)
+    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=h_in, uh_tot=uh)
 
     call cpu_clock_begin(id_clock_update)
 
@@ -305,8 +307,8 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
       !$OMP parallel do default(shared)
       do j=js,je
         do I=is-1,ie
-          if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h(i+1,j))
-          elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h(i,j))
+          if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h_in(i+1,j))
+          elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h_in(i,j))
           else ; uh_ice(I,j) = 0.0 ; endif
         enddo
         do i=is,ie
@@ -317,7 +319,7 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h(i,j) - G%IareaT(i,j) * (dt*(uh(I,j) - uh(I-1,j)))
+      h(i,j) = h_in(i,j) - G%IareaT(i,j) * (dt*(uh(I,j) - uh(I-1,j)))
       if (h(i,j) < 0.0) then
         call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_total_continuity().')
@@ -359,14 +361,14 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
     LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil
     LB%jsh = G%jsc ; LB%jeh = G%jec
 
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h, vh_tot=vh)
+    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h_in, vh_tot=vh)
 
     call cpu_clock_begin(id_clock_update)
     if (present(h_ice)) then
       !$OMP parallel do default(shared)
       do J=js-1,je ; do i=is,ie
-        if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h(i,j+1))
-        elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h(i,j))
+        if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h_in(i,j+1))
+        elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h_in(i,j))
         else ; vh_ice(i,J) = 0.0 ; endif
       enddo ; enddo
       !$OMP parallel do default(shared)
@@ -377,7 +379,7 @@ subroutine summed_continuity(u, v, h, uh, vh, dt, G, IG, CS, h_ice)
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h(i,j) - dt*G%IareaT(i,j) * (vh(i,J) - vh(i,J-1))
+      h(i,j) = h_in(i,j) - dt*G%IareaT(i,j) * (vh(i,J) - vh(i,J-1))
       if (h(i,j) < 0.0) then
         call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_total_continuity().')
