@@ -275,8 +275,7 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   ! thinnest category, in what amounts to a minimalist version of a sea-ice
   ! ridging scheme.  A more complete ridging scheme would also compress
   ! thicker ice and allow the fractional ice coverage to drop below 1.
-  call compress_ice(IST%part_size, CAS%m_ice, CAS%m_snow, CAS%m_pond, &
-                    IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS)
+  call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS, CAS)
 
   if (CS%bounds_check) &
     call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
@@ -754,23 +753,13 @@ end subroutine adjust_ice_categories
 !! ice free) of part_sz is 1, but that the part_sz of the ice free category may be negative to make
 !! this so.  In this routine, the mass (volume) is conserved, while the fractional coverage is
 !! solved for, while the new thicknesses are diagnosed.
-subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
-                        mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS)
+subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                                      intent(inout) :: part_sz !< The fractional ice concentration
                                                           !! within a cell in each thickness
                                                           !! category, nondimensional, 0-1.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                     intent(inout) :: mca_ice !< The mass per unit grid-cell area
-                                                          !! of the ice in each category in H (often kg m-2).
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                     intent(inout) :: mca_snow !< The mass per unit grid-cell area
-                                                          !! of the snow atop the ice in each category in H.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                     intent(inout) :: mca_pond !< The mass per unit grid-cell area
-                                                          !! of the melt ponds atop the ice in each category in H.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: mH_ice  !< The mass per unit area of the ice
                                                           !! in each category in H (often kg m-2).
@@ -782,6 +771,7 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
                                                           !! on the ice in each category in H (often kg m-2).
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
+  type(cell_average_state_type), optional, intent(in) :: CAS !< A structure with ocean-cell averaged masses.
 !   This subroutine compresses the ice, starting with the thinnest category, if
 ! the total fractional ice coverage exceeds 1.  It is assumed at the start that
 ! the sum over all categories (including ice free) of part_sz is 1, but that the
@@ -797,14 +787,22 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
   real, dimension(SZI_(G),SZJ_(G)) :: excess_cover
   real :: compression_ratio
   real :: Icompress_here
-  real :: mca_trans, mca_old
-  real :: snow_trans, snow_old
-  real :: pond_trans, pond_old
+  real :: mca_old
 !  real :: Imca_new
   real :: mass_neglect
   real :: part_trans ! The fractional area transfered into a thicker category, nondim.
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
-    mca0_ice, mca0_snow, mca0_pond, trans_ice, trans_snow, trans_pond
+    m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category, in H.
+    m0_snow, & ! The initial mass per unit grid-cell area of snow in each category, in H.
+    m0_pond    ! The initial mass per unit grid-cell pond melt water in each category, in H.
+  real, dimension(SZI_(G),SZCAT_(IG)) :: &
+    trans_ice, trans_snow, trans_pond ! The masses tranferred into the next thicker category, in H.
+  real, dimension(SZI_(G),SZCAT_(IG)) :: mca_ice  ! The mass per unit grid-cell area
+                                                  ! of the ice in each category in H (often kg m-2).
+  real, dimension(SZI_(G),SZCAT_(IG)) :: mca_snow ! The mass per unit grid-cell area
+                                                  ! of the snow atop the ice in each category in H.
+  real, dimension(SZI_(G),SZCAT_(IG)) :: mca_pond ! The mass per unit grid-cell area of the melt
+                                                  ! ponds atop the ice in each category in H.
   logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec, nCat
@@ -818,12 +816,11 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
-!$OMP                                  mca_ice,mca_snow,mca_pond,mH_ice,mH_snow,mH_pond,&
-!$OMP                                  mass_neglect,CS,TrReg,nCat) &
-!$OMP                          private(mca0_ice,do_any,mca0_snow,trans_ice,trans_snow, &
-!$OMP                                  mca0_pond,trans_pond,compression_ratio,Icompress_here, &
-!$OMP                                  mca_old,mca_trans,snow_trans,snow_old, &
-!$OMP                                  pond_trans,pond_old,part_trans)
+!$OMP                                  mH_ice,mH_snow,mH_pond,&
+!$OMP                                  mass_neglect,CS,CAS,TrReg,nCat) &
+!$OMP                          private(m0_ice,do_any,m0_snow,trans_ice,trans_snow, &
+!$OMP                                  m0_pond,trans_pond,compression_ratio,Icompress_here, &
+!$OMP                                  mca_ice,mca_snow,mca_pond,mca_old,part_trans)
   do j=jsc,jec
     do i=isc,iec
       if (part_sz(i,j,0) < 0.0) then
@@ -835,16 +832,26 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
     enddo
 
     if (do_j(j)) then
-      do k=1,nCat ; do i=isc,iec
-        mca0_ice(i,k) = mca_ice(i,j,k)
-        mca0_snow(i,k) = mca_snow(i,j,k)
-        mca0_pond(i,k) = mca_pond(i,j,k)
-      enddo ; enddo
+      if (present(CAS)) then
+        do k=1,nCat ; do i=isc,iec
+          m0_ice(i,k) = CAS%m_ice(i,j,k)
+          m0_snow(i,k) = CAS%m_snow(i,j,k)
+          m0_pond(i,k) = CAS%m_pond(i,j,k)
+          mca_ice(i,k) = m0_ice(i,k) ; mca_snow(i,k) = m0_snow(i,k) ; mca_pond(i,k) = m0_pond(i,k)
+        enddo ; enddo
+      else  ! This is mathematically equivalent ot the code above, but can differ at roundoff.
+        do k=1,nCat ; do i=isc,iec
+          m0_ice(i,k) = part_sz(i,j,k) * mH_ice(i,j,k)
+          m0_snow(i,k) = part_sz(i,j,k) * mH_snow(i,j,k)
+          m0_pond(i,k) = part_sz(i,j,k) * mH_pond(i,j,k)
+          mca_ice(i,k) = m0_ice(i,k) ; mca_snow(i,k) = m0_snow(i,k) ; mca_pond(i,k) = m0_pond(i,k)
+        enddo ; enddo
+      endif
+
       trans_ice(:,:) = 0.0 ; trans_snow(:,:) = 0.0 ; trans_pond(:,:) = 0.0
       do_any = .false.
-
       do k=1,nCat-1 ; do i=isc,iec
-        if ((excess_cover(i,j) > 0.0) .and. (mca_ice(i,j,k) > 0.0)) then
+        if ((excess_cover(i,j) > 0.0) .and. (mca_ice(i,k) > 0.0)) then
           compression_ratio = mH_ice(i,j,k) / IG%mH_cat_bound(k+1)
           if (part_sz(i,j,k)*(1.0-compression_ratio) >= excess_cover(i,j)) then
             ! This category is compacted, but not to the point that it needs to
@@ -860,40 +867,38 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
             ! category after being compacted to thickness IG%mH_cat_bound(k+1).
             excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
 
-            if (mca_ice(i,j,k) > mass_neglect) then
+            if (mca_ice(i,k) > mass_neglect) then
               part_sz(i,j,k+1) = part_sz(i,j,k+1) + part_sz(i,j,k)*compression_ratio
 
-              mca_trans = mca_ice(i,j,k) ; mca_old = mca_ice(i,j,k+1)
-              trans_ice(i,K) = mca_trans ; do_any = .true.
-              mca_ice(i,j,k+1) = mca_ice(i,j,k+1) + mca_trans
+              mca_old = mca_ice(i,k+1)
+              trans_ice(i,K) = mca_ice(i,k) ; do_any = .true.
+              mca_ice(i,k+1) = mca_ice(i,k+1) + mca_ice(i,k)
 
               if (part_sz(i,j,k+1) > 1.0e-60) then ! For 32-bit reals this should be 1.0e-30.
                 ! This is the usual case, and underflow is no problem.
-                mH_ice(i,j,k+1) = mca_ice(i,j,k+1) / part_sz(i,j,k+1)
-              elseif (mca_trans > mca_old) then
+                mH_ice(i,j,k+1) = mca_ice(i,k+1) / part_sz(i,j,k+1)
+              elseif (trans_ice(i,K) > mca_old) then
                 ! Set the ice category's thickness to its lower bound.
-                part_sz(i,j,k+1) = mca_ice(i,j,k+1) / IG%mH_cat_bound(k+1)
+                part_sz(i,j,k+1) = mca_ice(i,k+1) / IG%mH_cat_bound(k+1)
                 mH_ice(i,j,k+1) = IG%mH_cat_bound(k+1)
               else  ! Keep the ice category's thickness at its previous value.
-                part_sz(i,j,k+1) = mca_ice(i,j,k+1) / mH_ice(i,j,k+1)
+                part_sz(i,j,k+1) = mca_ice(i,k+1) / mH_ice(i,j,k+1)
               endif
 
-              if (mca_snow(i,j,k) > 0.0) then
-                snow_trans = mca_snow(i,j,k) ; snow_old = mca_snow(i,j,k+1)
-                trans_snow(i,K) = snow_trans
-                mca_snow(i,j,k+1) = mca_snow(i,j,k+1) + mca_snow(i,j,k)
+              if (mca_snow(i,k) > 0.0) then
+                trans_snow(i,K) = mca_snow(i,k)
+                mca_snow(i,k+1) = mca_snow(i,k+1) + mca_snow(i,k)
               endif
-              mH_snow(i,j,k+1) = mca_snow(i,j,k+1) / part_sz(i,j,k+1)
+              mH_snow(i,j,k+1) = mca_snow(i,k+1) / part_sz(i,j,k+1)
 
-              if (mca_pond(i,j,k) > 0.0) then
-                pond_trans = mca_pond(i,j,k) ; pond_old = mca_pond(i,j,k+1)
-                trans_pond(i,K) = pond_trans
-                mca_pond(i,j,k+1) = mca_pond(i,j,k+1) + mca_pond(i,j,k)
+              if (mca_pond(i,k) > 0.0) then
+                trans_pond(i,K) = mca_pond(i,k)
+                mca_pond(i,k+1) = mca_pond(i,k+1) + mca_pond(i,k)
               endif
-              mH_pond(i,j,k+1) = mca_pond(i,j,k+1) / part_sz(i,j,k+1)
+              mH_pond(i,j,k+1) = mca_pond(i,k+1) / part_sz(i,j,k+1)
             endif
 
-            mca_ice(i,j,k) = 0.0 ; mca_snow(i,j,k) = 0.0 ; mca_pond(i,j,k) = 0.0
+            mca_ice(i,k) = 0.0 ; mca_snow(i,k) = 0.0 ; mca_pond(i,k) = 0.0
             mH_ice(i,j,k) = 0.0 ; mH_snow(i,j,k) = 0.0 ; mH_pond(i,j,k) = 0.0
             part_sz(i,j,k) = 0.0
           endif
@@ -901,22 +906,22 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
       enddo ; enddo
 
       if (do_any) then
-!The following subroutine calls are not thread-safe. There is a pointer in the subroutine
-!(Tr) that could be redirected from underneath a thread when another goes in.
-!$OMP CRITICAL (safepointer)
-        call advect_tracers_thicker(mca0_ice, trans_ice, G, IG, CS%SIS_tr_adv_CSp, &
+        ! The following subroutine calls are not thread-safe. There is a pointer in the subroutine
+        ! (Tr) that could be redirected from underneath a thread when another goes in.
+        !$OMP CRITICAL (safepointer)
+        call advect_tracers_thicker(m0_ice, trans_ice, G, IG, CS%SIS_tr_adv_CSp, &
                                     TrReg, .false., j, isc, iec)
-        call advect_tracers_thicker(mca0_snow, trans_snow, G, IG, CS%SIS_tr_adv_CSp, &
+        call advect_tracers_thicker(m0_snow, trans_snow, G, IG, CS%SIS_tr_adv_CSp, &
                                     TrReg, .true., j, isc, iec)
-!$OMP END CRITICAL (safepointer)
+        !$OMP END CRITICAL (safepointer)
       endif
 
       k=nCat
       do i=isc,iec
         if (excess_cover(i,j) > 0.0) then
-          if (part_sz(i,j,k) <= 1.0 .and. &
-             (excess_cover(i,j) > 2.0*nCat*epsilon(Icompress_here))) then
-             call SIS_error(FATAL, &
+          if ((part_sz(i,j,k) <= 1.0) .and. &
+              (excess_cover(i,j) > 2.0*nCat*epsilon(Icompress_here))) then
+            call SIS_error(FATAL, &
                 "Category CatIce part_sz inconsistent with excess cover.")
           endif
           Icompress_here = part_sz(i,j,k) / (part_sz(i,j,k) - excess_cover(i,j))
@@ -927,24 +932,26 @@ subroutine compress_ice(part_sz, mca_ice, mca_snow, mca_pond, &
           excess_cover(i,j) = 0.0
         endif
       enddo
-    endif
-  enddo
 
-  if (CS%check_conservation) then
-    ! Check for consistency between mca_ice, mH_ice, and part_sz.
-    do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-      if ((mca_ice(i,j,k) == 0.0) .and. (mH_ice(i,j,k)*part_sz(i,j,k) /= 0.0)) then
-        write(mesg,'("Compress mismatch at ",3(i8),": mca, h, part, hxp = zero, ",3(1pe15.6))') &
-           i, j, k, mH_ice(i,j,k), part_sz(i,j,k), mH_ice(i,j,k)*part_sz(i,j,k)
-        call SIS_error(WARNING, mesg, all_print=.true.)
-      endif
-      if (abs(mca_ice(i,j,k) - mH_ice(i,j,k)*part_sz(i,j,k)) > 1e-12*mca_ice(i,j,k)) then
-        write(mesg,'("Compress mismatch at ",3(i8),": mca, h, part, hxp = ",4(1pe15.6))') &
-           i, j, k, mca_ice(i,j,k), mH_ice(i,j,k), part_sz(i,j,k), mH_ice(i,j,k)*part_sz(i,j,k)
-        call SIS_error(WARNING, mesg, all_print=.true.)
-      endif
-    enddo ; enddo ; enddo
-  endif
+    ! if (CS%check_conservation) then
+    !   ! Check for consistency between mca_ice, mH_ice, and part_sz.
+    !   do k=1,nCat ; do i=isc,iec
+    !     if ((mca_ice(i,k) == 0.0) .and. (mH_ice(i,j,k)*part_sz(i,j,k) /= 0.0)) then
+    !       write(mesg,'("Compress mismatch at ",3(i8),": mca, h, part, hxp = zero, ",3(1pe15.6))') &
+    !          i, j, k, mH_ice(i,j,k), part_sz(i,j,k), mH_ice(i,j,k)*part_sz(i,j,k)
+    !       call SIS_error(WARNING, mesg, all_print=.true.)
+    !     endif
+    !     if (abs(mca_ice(i,k) - mH_ice(i,j,k)*part_sz(i,j,k)) > 1e-12*mca_ice(i,k)) then
+    !       write(mesg,'("Compress mismatch at ",3(i8),": mca, h, part, hxp = ",4(1pe15.6))') &
+    !          i, j, k, mca_ice(i,k), mH_ice(i,j,k), part_sz(i,j,k), mH_ice(i,j,k)*part_sz(i,j,k)
+    !       call SIS_error(WARNING, mesg, all_print=.true.)
+    !     endif
+    !   enddo ; enddo
+    ! endif
+
+    endif  ! Any compression occurs in this j-loop.
+  enddo ! j-loop
+
 
 end subroutine compress_ice
 
