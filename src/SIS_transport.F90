@@ -24,7 +24,6 @@ use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_types, only : ice_state_type
-use slab_ice, only : slab_ice_advect
 use ice_grid, only : ice_grid_type
 use ice_ridging_mod, only : ice_ridging
 
@@ -39,7 +38,6 @@ public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
 
-  logical :: slab_ice = .false. !< If true, do old style GFDL slab ice.
   real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3, used here only in rolling.
   real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
@@ -50,8 +48,6 @@ type, public :: SIS_transport_CS ; private
   logical :: merged_cont      !< If true, update the continuity equations for the ice, snow,
                               !! and melt pond water together with proportionate fluxes.
                               !! Otherwise the three media are updated separately.
-  logical :: specified_ice    !< If true, the sea ice is specified and there is
-                              !! no need for ice dynamics.
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
   logical :: bounds_check     !< If true, check for sensible values of thicknesses,
                               !! temperatures, salinities, tracers, etc.
@@ -184,12 +180,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2oc
   nCat = IG%CatIce
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-
-  if (CS%slab_ice) then
-    call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow, G, &
-                         IST%part_size(:,:,1), nsteps=nsteps)
-    return
-  endif
 
   if (.not.associated(CS%CAS)) call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS)
   CAS => CS%CAS
@@ -1085,19 +1075,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
-  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
-                 "If true, the ice is specified and there is no dynamics.", &
-                 default=.false.)
-  if ( CS%specified_ice ) then
-    CS%slab_ice = .true.
-    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
-                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
-                 "USE_SLAB_ICE is always true.")
-  else
-    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%SLAB_ICE, &
-                 "If true, use the very old slab-style ice.", default=.false.)
-  endif
-  call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness \n"//&
                  "categories after advection.", default=.true.)
@@ -1106,13 +1083,9 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "and melt pond water together with proportionate fluxes. \n"//&
                  "Otherwise the media are updated separately.", default=.false.)
 
-  call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
-  call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
-
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
-
   call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
                  "A factor by which the propensity of small amounts of \n"//&
                  "thick sea-ice to become thinner by rolling is increased \n"//&
@@ -1131,8 +1104,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
-  call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
-  call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
   call get_param(param_file, mdl, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
           desc="The horizontal transport scheme for thickness:\n"//&
           "  UPWIND_2D - Non-directionally split upwind\n"//&
@@ -1146,6 +1117,12 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
+
+  call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
+  call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
+  call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
+  call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
+  call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
 
   call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)

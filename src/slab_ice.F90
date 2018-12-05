@@ -92,7 +92,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
 
 end subroutine slab_ice_advect
 
-!> slab_ice_dynamics updates the B-grid ice velocities and ice-ocean stresses as in the
+!> slab_ice_dynamics updates the B-grid or C-grid ice velocities and ice-ocean stresses as in the
 !! very old slab-ice algorithm dating back to the Manabe model.  This code works for either
 !! B-grid or C-grid discretiztions, but the velocity and stress variables must have consistent
 !! array sizes.

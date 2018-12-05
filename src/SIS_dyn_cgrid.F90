@@ -47,7 +47,6 @@ type, public :: SIS_C_dyn_CS ; private
     str_s     !< The shearing stress tensor component (cross term), in Pa m.
 
   ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. !< If true do ancient GFDL slab ice that drifts with the ocean
   real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology (Pa)
   real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
   real :: c0 = 20.0           !< another pressure constant
@@ -69,8 +68,6 @@ type, public :: SIS_C_dyn_CS ; private
   logical :: CFL_check_its    !< If true, check the CFL number for every iteration
                               !! of the rheology solver; otherwise only check the
                               !! final velocities that are used for transport.
-  logical :: specified_ice    !< If true, the sea ice is specified and there is
-                              !! no need for ice dynamics.
   logical :: debug            !< If true, write verbose checksums for debugging purposes.
   logical :: debug_EVP        !< If true, write out verbose debugging data for each of
                               !! the steps within the EVP solver.
@@ -167,26 +164,16 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
-  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
-                 "If true, the ice is specified and there is no dynamics.", &
-                 default=.false.)
-  if ( CS%specified_ice ) then
-    CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
-    call log_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
-                 "The number of iterations in the EVP dynamics for each \n"//&
-                 "slow time step.  With SPECIFIED_ICE this is always 0.")
-  else
-    call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
+  call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", &
                  default=-1.0)
-    CS%evp_sub_steps = -1
-    if (CS%dt_Rheo <= 0.0) &
-      call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
+  CS%evp_sub_steps = -1
+  if (CS%dt_Rheo <= 0.0) &
+    call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations of the rheology and ice \n"//&
                  "momentum equations for each slow ice time step.", default=432)
-  endif
   call get_param(param_file, mdl, "ICE_TDAMP_ELASTIC", CS%Tdamp, &
                  "The damping timescale associated with the elastic terms \n"//&
                  "in the sea-ice dynamics equations (if positive) or the \n"//&
@@ -260,15 +247,6 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug, &
                  debuggingParam=.true.)
-  if ( CS%specified_ice ) then
-    CS%slab_ice = .true.
-    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
-                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
-                 "USE_SLAB_ICE is always true.")
-  else
-    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
-                 "If true, use the very old slab-style ice.", default=.false.)
-  endif
   call get_param(param_file, mdl, "U_TRUNC_FILE", CS%u_trunc_file, &
                  "The absolute path to the file where the accelerations \n"//&
                  "leading to zonal velocity truncations are written. \n"//&
@@ -620,12 +598,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   fxic_d(:,:) = 0.0 ; fyic_d(:,:) = 0.0 ; fxic_t(:,:) = 0.0 ; fyic_t(:,:) = 0.0
   fxic_s(:,:) = 0.0 ; fyic_s(:,:) = 0.0
 
-  if (CS%SLAB_ICE) then
-    ui(:,:) = uo(:,:) ; vi(:,:) = vo(:,:)
-    fxoc(:,:) = fxat(:,:) ; fyoc(:,:) = fyat(:,:)
-    return
-  end if
-
   if ((CS%evp_sub_steps<=0) .and. (CS%dt_Rheo<=0.0)) return
 
   if (CS%FirstCall) then
@@ -665,9 +637,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 
   Tdamp = CS%Tdamp
   if (CS%Tdamp == 0.0) then
-    ! Hunke (2001) chooses a specified multiple (0.36) of dt_slow for Tdamp,
-    ! and shows that stability requires Tdamp > 2*dt.  Here 0.2 is used instead
-    ! for greater stability.
+    ! Hunke (2001) chooses a specified multiple (0.36) of dt_slow for Tdamp, and shows that
+    ! stability requires Tdamp > 2*dt.  Here 0.2 is used instead for greater stability.
     Tdamp = max(0.2*dt_slow, 3.0*dt)
   elseif (CS%Tdamp < 0.0) then
     Tdamp = max(-CS%Tdamp*dt_slow, 3.0*dt)

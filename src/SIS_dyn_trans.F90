@@ -43,23 +43,24 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_dyn_bgrid, only: SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
-use SIS_dyn_bgrid, only: SIS_B_dyn_register_restarts, SIS_B_dyn_end
-use SIS_dyn_cgrid, only: SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
-use SIS_dyn_cgrid, only: SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use SIS_dyn_cgrid, only: SIS_C_dyn_read_alt_restarts
-use SIS_hor_grid, only : SIS_hor_grid_type
+use SIS_dyn_bgrid, only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
+use SIS_dyn_bgrid, only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_cgrid, only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
+use SIS_dyn_cgrid, only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
+use SIS_dyn_cgrid, only : SIS_C_dyn_read_alt_restarts
+use SIS_hor_grid,  only : SIS_hor_grid_type
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS
-use SIS_types, only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_utils, only : get_avg, post_avg, ice_line !, ice_grid_chksum
-use SIS2_ice_thm,  only: get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only: enth_from_TS, Temp_from_En_S
-use ice_bergs,     only: icebergs, icebergs_run, icebergs_init, icebergs_end
-use ice_grid, only : ice_grid_type
+use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check
+use SIS_utils,     only : get_avg, post_avg, ice_line !, ice_grid_chksum
+use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
+use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S
+use slab_ice,      only : slab_ice_advect, slab_ice_dynamics
+use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
+use ice_grid,      only : ice_grid_type
 
 implicit none ; private
 
@@ -450,9 +451,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
       !### Change (1.0-IST%part_size(:,:,0)) to ice_cover in the line below.
-      call SIS_C_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                          OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
+      if (CS%slab_ice) then
+        call slab_ice_dynamics(IST%u_ice_C, IST%v_ice_C, OSS%u_ocn_C, OSS%v_ocn_C, &
+                               WindStr_x_Cu, WindStr_y_Cv, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv)
+      else
+        call SIS_C_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
+                            OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
+                            str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
+      endif
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call IST_chksum("After ice_dynamics", IST, G, IG)
@@ -483,8 +489,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
       if (CS%debug) call IST_chksum("Before ice_transport", IST, G, IG)
       call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
-      call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
-                         G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
+      if (CS%slab_ice) then
+        call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
+                             dt_slow_dyn, G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
+      else
+        call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
+                           G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
+      endif
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    C Post_transport")! , check_column=.true.)
 
@@ -539,10 +550,15 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
 
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call SIS_B_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
-                        OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
-                        str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                        rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
+      if (CS%slab_ice) then
+        call slab_ice_dynamics(IST%u_ice_B, IST%v_ice_B, OSS%u_ocn_B, OSS%v_ocn_B, &
+                               WindStr_x_B, WindStr_y_B, str_x_ice_ocn_B, str_y_ice_ocn_B)
+      else
+        call SIS_B_dynamics(1.0-IST%part_size(:,:,0), misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
+                            OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
+                            str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
+                            rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
+      endif
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call IST_chksum("After ice_dynamics", IST, G, IG)
@@ -590,8 +606,13 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
       enddo ; enddo
 
-      call ice_transport(IST, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
+      if (CS%slab_ice) then
+        call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow_dyn, &
+                             G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
+      else
+        call ice_transport(IST, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
                          CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
+      endif
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    B Post_transport")! , check_column=.true.)
 

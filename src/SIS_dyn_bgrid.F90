@@ -37,7 +37,6 @@ type, public :: SIS_B_dyn_CS ; private
     sig22 => NULL()     !< The yy component of the stress tensor in Pa m (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
-  logical :: SLAB_ICE = .false. !< should we do old style GFDL slab ice?
   real :: p0 = 2.75e4         !< Hibbler rheology pressure constant (Pa)
   real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
   real :: c0 = 20.0           !< another pressure constant
@@ -47,8 +46,6 @@ type, public :: SIS_B_dyn_CS ; private
   real :: MIV_MIN =  1.0      !< min ice mass to do dynamics (kg/m^2)
   real :: Rho_ocean = 1030.0  !< The nominal density of sea water, in kg m-3.
   real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
-  logical :: specified_ice    !< If true, the sea ice is specified and there is
-                              !! no need for ice dynamics.
   logical :: debug            !< If true, write verbose checksums for debugging purposes.
   logical :: debug_redundant  !< If true, debug redundant points
   integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
@@ -97,26 +94,16 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
-  call get_param(param_file, mdl, "SPECIFIED_ICE", CS%specified_ice, &
-                 "If true, the ice is specified and there is no dynamics.", &
-                 default=.false.)
-  if ( CS%specified_ice ) then
-    CS%evp_sub_steps = 0 ; CS%dt_Rheo = -1.0
-    call log_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
-                 "The number of iterations in the EVP dynamics for each \n"//&
-                 "slow time step.  With SPECIFIED_ICE this is always 0.")
-  else
-    call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
+  call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", &
                  default=-1.0)
-    CS%evp_sub_steps = -1
-    if (CS%dt_Rheo <= 0.0) &
-      call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
+  CS%evp_sub_steps = -1
+  if (CS%dt_Rheo <= 0.0) &
+    call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
                  "The number of iterations of the rheology and ice \n"//&
                  "momentum equations for each slow ice time step.", default=432)
-  endif
 
   call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
@@ -146,15 +133,6 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mdl, "DEBUG_REDUNDANT", CS%debug_redundant, &
                  "If true, debug redundant data points.", default=CS%debug, &
                  debuggingParam=.true.)
-  if ( CS%specified_ice ) then
-    CS%slab_ice = .true.
-    call log_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
-                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
-                 "USE_SLAB_ICE is always true.")
-  else
-    call get_param(param_file, mdl, "USE_SLAB_ICE", CS%slab_ice, &
-                 "If true, use the very old slab-style ice.", default=.false.)
-  endif
   call get_param(param_file, mdl, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
                  "An angle by which to rotate the velocities at the air- \n"//&
                  "water boundary in calculating stresses.", units="degrees", &
@@ -351,12 +329,6 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   fxoc(:,:) = 0.0 ; fyoc(:,:) = 0.0 ! zero these for summing later
   fxic(:,:) = 0.0 ; fyic(:,:) = 0.0
   fxco(:,:) = 0.0 ; fyco(:,:) = 0.0
-
-  if (CS%SLAB_ICE) then
-     ui(:,:) = uo(:,:) ; vi(:,:) = vo(:,:)
-     fxoc(:,:) = fxat(:,:) ; fyoc(:,:) = fyat(:,:)
-     return
-  end if
 
   if ((CS%evp_sub_steps<=0) .and. (CS%dt_Rheo<=0.0)) return
 
