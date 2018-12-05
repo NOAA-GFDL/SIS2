@@ -24,6 +24,7 @@ use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_types, only : ice_state_type
+use slab_ice, only : slab_ice_advect
 use ice_grid, only : ice_grid_type
 use ice_ridging_mod, only : ice_ridging
 
@@ -95,13 +96,17 @@ type, public :: cell_average_state_type ; private
   ! The following fields are used for diagnostics.
   real :: dt_sum = 0.0 !< The accumulated time since the fields were populated from an ice state type.
   real, allocatable, dimension(:,:) :: mass0    !< The total mass of ice, snow and melt pond water
-                                                !! when the fiels were populated, in H.
+                                                !! when the fields were populated, in H.
   real, allocatable, dimension(:,:) :: uh_sum   !< The accumulated zonal mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
                                                 !! since the fields were populated, in H m2.
   real, allocatable, dimension(:,:) :: vh_sum   !< The accumulated meridional mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
                                                 !! since the fields were populated, in H m2.
+  type(EFP_type) :: tot_ice                     !< The globally integrated mass of sea ice, in kg.
+  type(EFP_type) :: tot_snow                    !< The globally integrated mass of snow, in kg.
+  type(EFP_type) :: enth_ice                    !< The globally integrated sea ice enthalpy, in J.
+  type(EFP_type) :: enth_snow                   !< The globally integrated snow enthalpy, in J.
 end type cell_average_state_type
 
 contains
@@ -159,12 +164,11 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 !    rdg_open, & ! formation rate of open water due to ridging
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
   real :: yr_dt           ! Tne number of timesteps in a year.
-  real :: mass_neglect    ! A negligible mass per unit area, in H.
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv      ! The convergence of frozen water transport in kg m-2.
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
   type(cell_average_state_type), pointer :: CAS => NULL()
 
-  type(EFP_type) :: tot_ice(2), tot_snow(2), enth_ice(2), enth_snow(2)
+  type(EFP_type) :: tot_ice, tot_snow, enth_ice, enth_snow
   real :: I_mca_ice
   real :: I_tot_ice, I_tot_snow
 
@@ -173,10 +177,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   character(len=200) :: mesg
   integer :: i, j, k, m, bad, isc, iec, jsc, jec, isd, ied, jsd, jed, nL, nCat
   integer :: iTransportSubcycles ! For transport sub-cycling
-
-
-  ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
-  mass_neglect = IG%kg_m2_to_H*1.0e-60
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -200,8 +200,8 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
 !  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%part_size, TrReg, G, CS) !Niki: add ridging?
 
   if (CS%check_conservation) then ! mw/new - need to update this for pond ?
-    call get_total_mass(IST, G, IG, tot_ice(1), tot_snow(1))
-    call get_total_enthalpy(IST, G, IG, enth_ice(1), enth_snow(1))
+    call get_total_mass(IST, G, IG, CAS%tot_ice, CAS%tot_snow, scale=IG%H_to_kg_m2)
+    call get_total_enthalpy(IST, G, IG, CAS%enth_ice, CAS%enth_snow, scale=IG%H_to_kg_m2)
   endif
 
   !  Determine the whole-cell averaged mass of snow and ice.
@@ -336,31 +336,31 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, G, IG, CS, snow2ocn, rdg_r
   call pass_var(IST%mH_ice, G%Domain, complete=.true.)
 
   if (CS%check_conservation) then
-    call get_total_mass(IST, G, IG, tot_ice(2), tot_snow(2))
-    call get_total_enthalpy(IST, G, IG, enth_ice(2), enth_snow(2))
+    call get_total_mass(IST, G, IG, tot_ice, tot_snow, scale=IG%H_to_kg_m2)
+    call get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale=IG%H_to_kg_m2)
 
     if (is_root_pe()) then
-      I_tot_ice  = abs(EFP_to_real(tot_ice(1)))
+      I_tot_ice  = abs(EFP_to_real(CAS%tot_ice))
       if (I_tot_ice > 0.0) I_tot_ice = 1.0 / I_tot_ice    ! Adcroft's rule inverse.
-      I_tot_snow = abs(EFP_to_real(tot_snow(1)))
+      I_tot_snow = abs(EFP_to_real(CAS%tot_snow))
       if (I_tot_snow > 0.0) I_tot_snow = 1.0 / I_tot_snow ! Adcroft's rule inverse.
       write(*,'("  Total Ice mass:  ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
-        EFP_to_real(tot_ice(2)), EFP_real_diff(tot_ice(2),tot_ice(1)), &
-        EFP_real_diff(tot_ice(2),tot_ice(1)) * I_tot_ice
+        EFP_to_real(tot_ice), EFP_real_diff(tot_ice, CAS%tot_ice), &
+        EFP_real_diff(tot_ice, CAS%tot_ice) * I_tot_ice
       write(*,'("  Total Snow mass: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
-        EFP_to_real(tot_snow(2)), EFP_real_diff(tot_snow(2),tot_snow(1)), &
-        EFP_real_diff(tot_snow(2),tot_snow(1)) * I_tot_snow
+        EFP_to_real(tot_snow), EFP_real_diff(tot_snow, CAS%tot_snow), &
+        EFP_real_diff(tot_snow, CAS%tot_snow) * I_tot_snow
 
-      I_tot_ice  = abs(EFP_to_real(enth_ice(1)))
+      I_tot_ice  = abs(EFP_to_real(CAS%enth_ice))
       if (I_tot_ice > 0.0) I_tot_ice = 1.0 / I_tot_ice    ! Adcroft's rule inverse.
-      I_tot_snow = abs(EFP_to_real(enth_snow(1)))
+      I_tot_snow = abs(EFP_to_real(CAS%enth_snow))
       if (I_tot_snow > 0.0) I_tot_snow = 1.0 / I_tot_snow ! Adcroft's rule inverse.
       write(*,'("  Enthalpy Ice:  ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
-        EFP_to_real(enth_ice(2)), EFP_real_diff(enth_ice(2),enth_ice(1)), &
-        EFP_real_diff(enth_ice(2),enth_ice(1)) * I_tot_ice
+        EFP_to_real(enth_ice), EFP_real_diff(enth_ice, CAS%enth_ice), &
+        EFP_real_diff(enth_ice, CAS%enth_ice) * I_tot_ice
       write(*,'("  Enthalpy Snow: ",ES24.16,", Error: ",ES12.5," (",ES8.1,")")') &
-        EFP_to_real(enth_snow(2)), EFP_real_diff(enth_snow(2),enth_snow(1)), &
-        EFP_real_diff(enth_snow(2),enth_snow(1)) * I_tot_snow
+        EFP_to_real(enth_snow), EFP_real_diff(enth_snow, CAS%enth_snow), &
+        EFP_real_diff(enth_snow, CAS%enth_snow) * I_tot_snow
     endif
   endif
 
@@ -955,93 +955,30 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
 
 end subroutine compress_ice
 
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> Advect an ice tracer or the thickness using a very old slab-ice algorithm
-!! dating back to the Manabe model.
-subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
-  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity in m s-1
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity in m s-1
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to
-                                                          !! advect, in m kg kg-1 or other units, or the
-                                                          !! total ice mass in m or kg m-2.
-  real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
-                                                          !! stop advection, in the same units as tr
-  real,                              intent(in   ) :: dt_slow !< The time covered by this call, in s.
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
-                                                          !! whether trc (which may be mass) exceeds 0.
-  integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
-
-  ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G)) :: uflx
-  real, dimension(SZI_(G),SZJB_(G)) :: vflx
-  real :: avg, dif
-  real :: dt_adv
-  integer :: i, j, n, isc, iec, jsc, jec, n_substeps
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  n_substeps = 1 ; if (present(nsteps)) n_substeps = nsteps
-  if (n_substeps==0) return
-  dt_adv = dt_slow / n_substeps
-
-  do n=1,n_substeps
-    do j=jsc,jec ; do I=isc-1,iec
-      avg = 0.5*( trc(i,j) + trc(i+1,j) )
-      dif = trc(i+1,j) - trc(i,j)
-      if ( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
-        uflx(I,j) = 0.0
-      elseif ( uc(i,j) > 0.0 ) then
-        uflx(I,j) = uc(I,j) * trc(i,j) * G%dy_Cu(I,j)
-      else
-        uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dy_Cu(I,j)
-      endif
-    enddo ; enddo
-
-    do J=jsc-1,jec ; do i=isc,iec
-      avg = 0.5*( trc(i,j) + trc(i,j+1) )
-      dif = trc(i,j+1) - trc(i,j)
-      if (avg > stop_lim .and. vc(i,J) * dif > 0.0) then
-        vflx(i,J) = 0.0
-      elseif ( vc(i,J) > 0.0 ) then
-        vflx(i,J) = vc(i,J) * trc(i,j) * G%dx_Cv(i,J)
-      else
-        vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dx_Cv(i,J)
-      endif
-    enddo ; enddo
-
-    do j=jsc,jec ; do i=isc,iec
-      trc(i,j) = trc(i,j) + dt_adv * ((uflx(I-1,j) - uflx(I,j)) + &
-                                      (vflx(i,J-1) - vflx(i,J)) ) * G%IareaT(i,j)
-    enddo ; enddo
-
-    call pass_var(trc, G%Domain)
-  enddo
-
-  if (present(part_sz)) then ; do j=G%jsd,G%jed ; do i=G%isd,G%ied
-    part_sz(i,j) = 0.0 ; if (trc(i,j) > 0.0) part_sz(i,j) = 1.0
-  enddo ; enddo ; endif
-
-end subroutine slab_ice_advect
-
 !> get_total_mass determines the globally integrated mass of snow and ice
-subroutine get_total_mass(IST, G, IG, tot_ice, tot_snow)
+subroutine get_total_mass(IST, G, IG, tot_ice, tot_snow, scale)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: tot_ice  !< The globally integrated total ice, in kg.
   type(EFP_type),          intent(out)   :: tot_snow !< The globally integrated total snow, in kg.
+  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
 
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_mca_ice, sum_mca_snow
+  real :: H_to_units ! A conversion factor from H to the desired output units.
   real :: total
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
+  H_to_units = IG%H_to_kg_m2 ; if (present(scale)) H_to_units = scale
+
   sum_mca_ice(:,:) = 0.0
   sum_mca_snow(:,:) = 0.0
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_mca_ice(i,j) = sum_mca_ice(i,j) + G%areaT(i,j) * (IST%part_size(i,j,k)*IST%mH_ice(i,j,k))
-    sum_mca_snow(i,j) = sum_mca_snow(i,j) + G%areaT(i,j) * (IST%part_size(i,j,k)*IST%mH_snow(i,j,k))
+    sum_mca_ice(i,j) = sum_mca_ice(i,j) + G%areaT(i,j) * &
+                       (IST%part_size(i,j,k) * (H_to_units*IST%mH_ice(i,j,k)))
+    sum_mca_snow(i,j) = sum_mca_snow(i,j) + G%areaT(i,j) * &
+                       (IST%part_size(i,j,k) * (H_to_units*IST%mH_snow(i,j,k)))
   enddo ; enddo ; enddo
 
   total = reproducing_sum(sum_mca_ice, EFP_sum=tot_ice)
@@ -1057,7 +994,7 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of ice and snow in H.
   real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
 
-  real :: H_to_units
+  real :: H_to_units ! A conversion factor from H to the desired output units.
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1072,12 +1009,13 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
 end subroutine get_cell_mass
 
 !> get_total_enthalpy determines the globally integrated enthalpy of snow and ice
-subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow)
+subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: enth_ice !< The globally integrated total ice enthalpy in J.
   type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy in J.
+  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
 
   ! Local variables
   real, dimension(:,:,:,:), &
@@ -1089,9 +1027,12 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow)
                         ! Enth_snow is the enthalpy of the snow atop the ice in each category, in
                         ! enth_units (J or rescaled).
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
+  real :: H_to_units ! A conversion factor from H to the desired output units.
   real :: total, I_Nk
   integer :: i, j, k, m, isc, iec, jsc, jec, nLay
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  H_to_units = IG%H_to_kg_m2 ; if (present(scale)) H_to_units = scale
 
   call get_SIS_tracer_pointer("enth_ice", IST%TrReg, heat_ice, nLay)
   call get_SIS_tracer_pointer("enth_snow", IST%TrReg, heat_snow, nLay)
@@ -1100,11 +1041,11 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow)
   I_Nk = 1.0 / IG%NkIce
   do m=1,IG%NkIce ; do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
-              ((IST%mH_ice(i,j,k)*IST%part_size(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
+              (((H_to_units*IST%mH_ice(i,j,k))*IST%part_size(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
-              (IST%mH_snow(i,j,k)*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
+              ((H_to_units*IST%mH_snow(i,j,k))*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
 
   total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
