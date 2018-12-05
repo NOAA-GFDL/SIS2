@@ -126,6 +126,17 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2oc
 
   ! Local variables
   type(cell_average_state_type), pointer :: CAS => NULL()
+  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)) :: &
+    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
+               ! categories in a cell, before each substep, in units of H (often kg m-2).
+  real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)) :: &
+    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)) :: &
+    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
+  real :: dt_adv
+  integer :: i, j, k, n, isc, iec, jsc, jec, nCat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
 
@@ -139,62 +150,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2oc
 
   !  Determine the whole-cell averaged mass of snow and ice.
   call ice_state_to_cell_ave_state(IST, G, IG, CS, CAS)
-
-  call ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
-
-  call finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
-
-end subroutine ice_transport
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_cat_transport does ice transport of mass and tracers by thickness category
-subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
-  type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
-  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
-  type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: uc  !< The zonal ice velocity, in m s-1.
-  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vc  !< The meridional ice velocity, in m s-1.
-  real,                              intent(in)    :: dt_slow !< The amount of time over which the
-                                                          !! ice dynamics are to be advanced, in s.
-  integer,                           intent(in)    :: nsteps  !< The number of advective iterations
-                                                          !! to use within this time step.
-  type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-
-  ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
-    uh_ice, &  ! Zonal fluxes of ice in H m2 s-1.
-    uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
-    uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
-    vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
-    vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
-    vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
-    mca0_snow, & ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
-    mca0_pond    ! The initial mass of melt pond water per unit ocean area
-                 ! in a cell, in H (often kg m-2).
-  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)) :: &
-    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, in units of H (often kg m-2).
-  real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)) :: &
-    uh_tot     ! Total zonal fluxes in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)) :: &
-    vh_tot     ! Total meridional fluxes in H m2 s-1.
-  real :: dt_adv
-  character(len=200) :: mesg
-  integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
-  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-
-  if (CAS%dt_sum <= 0.0) then
-    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
-
-    if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
-  endif
 
   if (CS%merged_cont) then
     ! mca_tot, uh_tot, and vh_tot will become input variables.
@@ -211,7 +166,73 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
                              dt_adv, G, IG, CS%continuity_CSp)
       call pass_var(mca_tot(:,:,n), G%Domain)
     enddo
+
+    call ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, mca_tot=mca_tot, uh_tot=uh_tot, vh_tot=vh_tot)
+  else
+    call ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc=uc, vc=vc)
   endif
+
+
+  call finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
+
+end subroutine ice_transport
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_cat_transport does ice transport of mass and tracers by thickness category
+subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca_tot, uh_tot, vh_tot)
+  type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
+  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
+  type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
+  real,                              intent(in)    :: dt_slow !< The amount of time over which the
+                                                          !! ice dynamics are to be advanced, in s.
+  integer,                           intent(in)    :: nsteps  !< The number of advective iterations
+                                                          !! to use within this time step.
+  type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
+  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity, in m s-1.
+  real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity, in m s-1.
+  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)), optional, intent(in) :: &
+    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
+               ! categories in a cell, before each substep, in units of H (often kg m-2).
+  real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)), optional, intent(in) :: &
+    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)), optional, intent(in) :: &
+    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
+
+  ! Local variables
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
+    uh_ice, &  ! Zonal fluxes of ice in H m2 s-1.
+    uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
+    uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
+    vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
+    vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
+    vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
+    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
+    mca0_snow, & ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
+    mca0_pond    ! The initial mass of melt pond water per unit ocean area
+                 ! in a cell, in H (often kg m-2).
+  real :: dt_adv
+  logical :: merged_cont
+  character(len=200) :: mesg
+  integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+
+  if (CAS%dt_sum <= 0.0) then
+    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
+    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+
+    if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
+  endif
+
+  merged_cont = (present(mca_tot) .and. present(uh_tot) .and. present(vh_tot))
+  if (merged_cont .and. (present(uc) .or. present(vc))) call SIS_error(WARNING, &
+    "Velocities should not be provided to ice_cat_transport when mass fluxes are provided.")
+  if ((.not. merged_cont) .and. .not.(present(uc) .and. present(vc))) call SIS_error(FATAL, &
+    "Either velocities or masses and mass fluxes must appear in a call to ice_cat_transport.")
 
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
@@ -229,7 +250,7 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
       mca0_pond(i,j,k) = CAS%m_pond(i,j,k)
     enddo ; enddo ; enddo
 
-    if (CS%merged_cont) then
+    if (merged_cont) then
       call proportionate_continuity(mca_tot(:,:,n), uh_tot(:,:,n), vh_tot(:,:,n), &
                                     dt_adv, G, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
