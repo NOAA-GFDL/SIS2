@@ -166,28 +166,25 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
     uh_ice, &  ! Zonal fluxes of ice in H m2 s-1.
     uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
     uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
-  real, dimension(SZIB_(G),SZJ_(G)) :: &
-    uh_tot     ! Total zonal fluxes in H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
     vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
     vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G)) :: &
-    vh_tot     ! Total meridional fluxes in H m2 s-1.
-  real, dimension(SZI_(G),SZJ_(G)) :: &
-    mca_tot, & ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, in units of H (often kg m-2).
-    mca0_tot   ! The initial total mass per unit total area of snow and ice summed across
-               ! thickness categories in a cell, in units of H (often kg m-2).
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
     mca0_snow, & ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
     mca0_pond    ! The initial mass of melt pond water per unit ocean area
                  ! in a cell, in H (often kg m-2).
+  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)) :: &
+    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
+               ! categories in a cell, in units of H (often kg m-2).
+  real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)) :: &
+    uh_tot     ! Total zonal fluxes in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)) :: &
+    vh_tot     ! Total meridional fluxes in H m2 s-1.
   real :: dt_adv
   character(len=200) :: mesg
-  integer :: i, j, k, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
-  integer :: iTransportSubcycles ! For transport sub-cycling
+  integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -199,10 +196,27 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
     if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
   endif
 
+  if (CS%merged_cont) then
+    ! mca_tot, uh_tot, and vh_tot will become input variables.
+    if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
+    mca_tot(:,:,:) = 0.0
+    do j=jsc,jec ; do i=isc,iec ; mca_tot(i,j,1) = 0.0 ; enddo ; enddo
+    do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
+      mca_tot(i,j,1) = mca_tot(i,j,1) + (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
+    enddo ; enddo ; enddo
+    call pass_var(mca_tot(:,:,1), G%Domain)
+
+    do n = 1, nsteps
+      call summed_continuity(uc, vc, mca_tot(:,:,n), mca_tot(:,:,n+1), uh_tot(:,:,n), vh_tot(:,:,n), &
+                             dt_adv, G, IG, CS%continuity_CSp)
+      call pass_var(mca_tot(:,:,n), G%Domain)
+    enddo
+  endif
+
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
   if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
-  do iTransportSubcycles = 1, nsteps
+  do n = 1, nsteps
     call update_SIS_tracer_halos(TrReg, G, complete=.false.)
     call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
     call pass_var(CAS%m_snow, G%Domain, complete=.false.)
@@ -216,14 +230,8 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
     enddo ; enddo ; enddo
 
     if (CS%merged_cont) then
-      do j=jsd,jed ; do i=isd,ied ; mca_tot(i,j) = 0.0 ; enddo ; enddo
-      do k=1,nCat ; do j=jsd,jed ; do i=isd,ied
-        mca_tot(i,j) = mca_tot(i,j) + (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
-      enddo ; enddo ; enddo
-      do j=jsd,jed ; do i=isd,ied ; mca0_tot(i,j) = mca_tot(i,j) ; enddo ; enddo
-      call summed_continuity(uc, vc, mca0_tot, mca_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp)
-
-      call proportionate_continuity(mca0_tot, uh_tot, vh_tot, dt_adv, G, IG, CS%continuity_CSp, &
+      call proportionate_continuity(mca_tot(:,:,n), uh_tot(:,:,n), vh_tot(:,:,n), &
+                                    dt_adv, G, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
@@ -249,10 +257,10 @@ subroutine ice_cat_transport(CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS)
     enddo ; enddo ; enddo ; endif
 
     if (CS%bounds_check) then
-      write(mesg,'(i4)') iTransportSubcycles
+      write(mesg,'(i4)') n
       call check_SIS_tracer_bounds(TrReg, G, IG, "After advect_SIS_tracers "//trim(mesg))
     endif
-  enddo ! iTransportSubcycles
+  enddo
 
 end subroutine ice_cat_transport
 
