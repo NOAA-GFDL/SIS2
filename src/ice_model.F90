@@ -1782,6 +1782,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
                               ! dynamics on the slowly evolving ice state, rather than
                               ! copying over the slow ice state to the fast ice state.
+  logical :: do_mask_restart  ! If true, apply the scaling and masks to mH_snow, mH_ice and part_size
+                              ! after a restart. However this may cause answers to diverge
+                              ! after a restart.Provide a switch to turn this option off.
   logical :: Verona
   logical :: Concurrent
   logical :: read_aux_restart
@@ -1996,6 +1999,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                    "the sea ice that are handled by the fast ice PEs.", &
                    default="ice_model_fast.res.nc")
   endif
+  call get_param(param_file, mdl, "APPLY_MASKS_AFTER_RESTART", do_mask_restart, &
+                 "If true, applies masks to mH_ice,mH_snow and part_size after a restart.",&
+                  default=.true.)
 
   call get_param(param_file, mdl, "MASSLESS_ICE_ENTH", massless_ice_enth, &
                  "The ice enthalpy fill value for massless categories.", &
@@ -2472,16 +2478,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Deal with any ice masses or thicknesses over land, and rescale to
       ! account for differences between the current thickness units and whatever
       ! thickness units were in the input restart file.
-      do k=1,CatIce
-        sIST%mH_snow(:,:,k) = sIST%mH_snow(:,:,k) * H_rescale_snow * sG%mask2dT(:,:)
-        sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
-        sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
-      enddo
-      ! Since we masked out the part_size on land we should set 
-      ! part_size(:,:,0) = 1. on land to satisfy the summation check
-      do j=jsc,jec ; do i=isc,iec
-        if (sG%mask2dT(i,j) < 0.5) sIST%part_size(i,j,0) = 1.      
-      enddo ; enddo
+      ! However, in some model this causes answers to change after a restart
+      ! because these state variables are changed only after a restart and
+      ! not at each timestep. Provide a switch to turn this option off.
+      if(do_mask_restart) then
+        do k=1,CatIce
+          sIST%mH_snow(:,:,k) = sIST%mH_snow(:,:,k) * H_rescale_snow * sG%mask2dT(:,:)
+          sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
+          sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
+        enddo
+        ! Since we masked out the part_size on land we should set
+        ! part_size(:,:,0) = 1. on land to satisfy the summation check
+        do j=jsc,jec ; do i=isc,iec
+          if (sG%mask2dT(i,j) < 0.5) sIST%part_size(i,j,0) = 1.
+        enddo ; enddo
+      endif
 
       if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
         sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
