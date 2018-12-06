@@ -37,6 +37,7 @@ use mpp_domains_mod,  only  : domain2D
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
+use SIS_continuity,    only : SIS_continuity_CS, summed_continuity
 use SIS_debugging,     only : chksum, Bchksum, hchksum
 use SIS_debugging,     only : hchksum_pair, Bchksum_pair, uvchksum
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
@@ -52,7 +53,10 @@ use SIS_hor_grid,  only : SIS_hor_grid_type
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
-use SIS_transport, only : SIS_transport_CS
+use SIS_transport, only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
+use SIS_transport, only : alloc_cell_average_state_type, dealloc_cell_average_state_type
+use SIS_transport, only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
+use SIS_transport, only : ice_cat_transport, finish_ice_transport
 use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_utils,     only : get_avg, post_avg, ice_line !, ice_grid_chksum
@@ -83,6 +87,9 @@ type dyn_trans_CS ; private
                           !! stepping the continuity equation and interactions
                           !! between the ice mass field and velocities, in s. If
                           !! 0 or negative, the coupling time step will be used.
+  logical :: merged_cont  !< If true, update the continuity equations for the ice, snow,
+                          !! and melt pond water together with proportionate fluxes.
+                          !! Otherwise the three media are updated separately.
   logical :: do_ridging   !<   If true, apply a ridging scheme to the convergent
                           !! ice.  The original SIS2 implementation is based on
                           !! work by Torge Martin.  Otherwise, ice is compressed
@@ -127,12 +134,16 @@ type dyn_trans_CS ; private
   integer :: id_siu=-1, id_siv=-1, id_sispeed=-1, id_sitimefrac=-1
   !!@}
 
+  type(cell_average_state_type), pointer :: CAS => NULL()
+          !< A structure with ocean-cell averaged masses.
   type(SIS_B_dyn_CS), pointer     :: SIS_B_dyn_CSp => NULL()
       !< Pointer to the control structure for the B-grid dynamics module
   type(SIS_C_dyn_CS), pointer     :: SIS_C_dyn_CSp => NULL()
       !< Pointer to the control structure for the C-grid dynamics module
   type(SIS_transport_CS), pointer :: SIS_transport_CSp => NULL()
       !< Pointer to the control structure for the ice transport module
+  type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
+      !< The control structure for the SIS continuity module
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
      !< Pointer to the control structure for the summed diagnostics module
   logical :: module_is_initialized = .false. !< If true, this module has been initialized.
@@ -254,6 +265,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp !< The structure for controlling calls to
                                                    !! auxiliary ice tracer packages
 
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     mi_sum, &           ! Masses of ice per unit total area, in kg m-2.
     misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area, in kg m-2.
@@ -264,11 +276,13 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
     WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
-real, dimension(SZIB_(G),SZJB_(G)) :: &
+  real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
-    WindStr_x_ocn_B, WindStr_y_ocn_B, & ! Wind stresses on the ice-free ocean on a B-grid, in Pa.
-    str_x_ice_ocn_B, str_y_ice_ocn_B  ! Ice-ocean stresses on a B-grid, in Pa.
+    WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid, in Pa.
+    WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid, in Pa.
+    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid, in Pa.
+    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid, in Pa.
   real, dimension(SZIB_(G),SZJ_(G))  :: &
     WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
@@ -280,6 +294,15 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
   real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
 
+  integer, parameter :: max_steps = 10
+  real, dimension(SZI_(G),SZJ_(G),max_steps) :: &
+    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
+               ! categories in a cell, before each substep, in units of H (often kg m-2).
+  real, dimension(SZIB_(G),SZJ_(G),max_steps) :: &
+    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G),max_steps) :: &
+    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
+  real :: dt_adv
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
 
@@ -291,14 +314,14 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   integer :: ndyn_steps
   real :: Idt_slow
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, nds
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, nds
   integer :: isd, ied, jsd, jed
   integer :: iyr, imon, iday, ihr, imin, isec
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-!!   rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
+   ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! A ridging rate in s-1, this will be calculated from the strain rates in the dynamics.
     snow2ocn
   real    :: tmp3  ! This is a bad name - make it more descriptive!
@@ -325,6 +348,8 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
   IOF%stress_count = 0
 
   CS%n_calls = CS%n_calls + 1
+
+  call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
 
   do nds=1,ndyn_steps
 
@@ -493,8 +518,38 @@ real, dimension(SZIB_(G),SZJB_(G)) :: &
         call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
                              dt_slow_dyn, G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
       else
-        call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
-                           G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
+        !  Determine the whole-cell averaged mass of snow and ice.
+        call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
+
+        if (CS%merged_cont) then
+          ! mca_tot, uh_tot, and vh_tot will become input variables.
+          if (CS%adv_substeps > 0) dt_adv = dt_slow / real(CS%adv_substeps)
+          mca_tot(:,:,:) = 0.0
+          do j=jsc,jec ; do i=isc,iec ; mca_tot(i,j,1) = 0.0 ; enddo ; enddo
+          do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
+            mca_tot(i,j,1) = mca_tot(i,j,1) + (CS%CAS%m_ice(i,j,k) + (CS%CAS%m_snow(i,j,k) + CS%CAS%m_pond(i,j,k)))
+          enddo ; enddo ; enddo
+          call pass_var(mca_tot(:,:,1), G%Domain)
+
+          do n = 1, CS%adv_substeps
+            call summed_continuity(IST%u_ice_C, IST%v_ice_C, mca_tot(:,:,n), mca_tot(:,:,n+1), &
+                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_slow_dyn, G, IG, CS%continuity_CSp)
+            call pass_var(mca_tot(:,:,n), G%Domain)
+          enddo
+
+          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                                  mca_tot=mca_tot(:,:,1:CS%adv_substeps+1), &
+                                  uh_tot=uh_tot(:,:,1:CS%adv_substeps), vh_tot=vh_tot(:,:,1:CS%adv_substeps))
+        else
+          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                                 uc=IST%u_ice_C, vc=IST%v_ice_C)
+        endif
+
+        call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate)
+
+! The above is equivalent to:
+!        call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
+!                           G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
       endif
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    C Post_transport")! , check_column=.true.)
@@ -1340,6 +1395,10 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
+  call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
+                 "If true, update the continuity equations for the ice, snow, \n"//&
+                 "and melt pond water together with proportionate fluxes. \n"//&
+                 "Otherwise the media are updated separately.", default=.false.)
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
@@ -1401,12 +1460,15 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "If true, write out verbose diagnostics.", default=.false., &
                  debuggingParam=.true.)
 
-  if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
-  else
-    call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
+  if (.not.CS%slab_ice) then
+    if (CS%Cgrid_dyn) then
+      call SIS_C_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
+    else
+      call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
+    endif
+    call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
+                            continuity_CSp=CS%continuity_CSp)
   endif
-  call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp)
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
                            CS%sum_output_CSp, CS%ntrunc)
