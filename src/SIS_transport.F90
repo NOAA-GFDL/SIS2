@@ -76,7 +76,7 @@ end type SIS_transport_CS
 !> This structure contains a variation of the ice model state where the variables are in
 !! mass per unit ocean cell area (not per unit ice area).  These are useful for conservative
 !! advection, but not so useful for diagnosing ice thickness.
-type, public :: cell_average_state_type ; private
+type, public :: cell_average_state_type ! ; private
   real, allocatable, dimension(:,:,:) :: m_ice  !< The mass of ice in each thickness category
                                                 !! per unit total area in a cell, in H.
   real, allocatable, dimension(:,:,:) :: m_snow !< The mass of ice in each thickness category
@@ -1112,7 +1112,7 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, param_file, diag, CS)
+subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
@@ -1120,7 +1120,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_transport_CS),      pointer       :: CS   !< The control structure for this module
                                                      !! that is allocated and populated here
-
+  type(SIS_continuity_CS), optional, pointer :: continuity_CSp !< The control structure for the
+                                                     !!  SIS continuity module
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
 
@@ -1192,6 +1193,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS)
 
   call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+
+  if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp
 
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
