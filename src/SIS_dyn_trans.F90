@@ -311,19 +311,17 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   real :: dt_slow_dyn
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
-  integer :: ndyn_steps
   real :: Idt_slow
-  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat, nds
-  integer :: isd, ied, jsd, jed
-  integer :: iyr, imon, iday, ihr, imin, isec
-
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
   real, dimension(SZI_(G),SZJ_(G)) :: &
    ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! A ridging rate in s-1, this will be calculated from the strain rates in the dynamics.
-    snow2ocn
-  real    :: tmp3  ! This is a bad name - make it more descriptive!
+    snow2ocn    ! Snow dumped into ocean during ridging in kg m-2
+  integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat
+  integer :: isd, ied, jsd, jed
+  integer :: ndyn_steps, nds, nas ! The number of dynamic and advective steps.
+  integer :: iyr, imon, iday, ihr, imin, isec
+
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -369,6 +367,14 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
       ice_free(i,j) = IST%part_size(i,j,0)
     enddo ; enddo
+
+    !  Determine the whole-cell averaged mass of snow and ice.
+    call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
+    if (CS%merged_cont) then
+      mca_tot(:,:,:) = 0.0
+      call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
+      call pass_var(mca_tot(:,:,1), G%Domain)
+    endif
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
     ! This block of code must be executed if ice_cover and ice_free were updated.
@@ -470,8 +476,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
       endif
 
-      call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
+      rdg_rate(:,:) = 0.0
+      call mpp_clock_begin(iceClocka)
       !### Change (1.0-IST%part_size(:,:,0)) to ice_cover in the line below.
       if (CS%slab_ice) then
         call slab_ice_dynamics(IST%u_ice_C, IST%v_ice_C, OSS%u_ocn_C, OSS%v_ocn_C, &
@@ -515,38 +522,22 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
                              dt_slow_dyn, G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
       else
-        !  Determine the whole-cell averaged mass of snow and ice.
-        call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
 
         if (CS%merged_cont) then
-          ! mca_tot, uh_tot, and vh_tot will become input variables.
           if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-          mca_tot(:,:,:) = 0.0
-          call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
-          call pass_var(mca_tot(:,:,1), G%Domain)
-
           do n = 1, CS%adv_substeps
             call summed_continuity(IST%u_ice_C, IST%v_ice_C, mca_tot(:,:,n), mca_tot(:,:,n+1), &
                                    uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
             call pass_var(mca_tot(:,:,n), G%Domain)
           enddo
+          nas = CS%adv_substeps
 
-          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
-                                  mca_tot=mca_tot(:,:,1:CS%adv_substeps+1), &
-                                  uh_tot=uh_tot(:,:,1:CS%adv_substeps), vh_tot=vh_tot(:,:,1:CS%adv_substeps))
         else
           call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
                                  uc=IST%u_ice_C, vc=IST%v_ice_C)
         endif
 
-        call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate)
-
-! The above is equivalent to:
-!        call ice_transport(IST, IST%u_ice_C, IST%v_ice_C, IST%TrReg, dt_slow_dyn, CS%adv_substeps, &
-!                           G, IG, CS%SIS_transport_CSp, snow2ocn) !###, rdg_rate=rdg_rate)
       endif
-      if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                                     message="    C Post_transport")! , check_column=.true.)
 
       call mpp_clock_end(iceClock8)
 
@@ -624,8 +615,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
           ps_vel = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
                 ((IST%part_size(i+1,j+1,0) + IST%part_size(i,j,0)) + &
                  (IST%part_size(i+1,j,0) + IST%part_size(i,j+1,0)) )
-          diagVarBx(I,J) = ps_vel *  WindStr_x_ocn_B(I,J) + (1.0-ps_vel) * WindStr_x_B(I,J)
-          diagVarBy(I,J) = ps_vel * WindStr_y_ocn_B(I,J) +  (1.0-ps_vel) * WindStr_y_B(I,J)
+          diagVarBx(I,J) = ps_vel * WindStr_x_ocn_B(I,J) + (1.0-ps_vel) * WindStr_x_B(I,J)
+          diagVarBy(I,J) = ps_vel * WindStr_y_ocn_B(I,J) + (1.0-ps_vel) * WindStr_y_B(I,J)
         enddo ; enddo
 
         if (CS%id_fax>0) call post_data(CS%id_fax, diagVarBx, CS%diag)
@@ -659,42 +650,42 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow_dyn, &
                              G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
       else
-        !  Determine the whole-cell averaged mass of snow and ice.
-        call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
 
         if (CS%merged_cont) then
-          ! mca_tot, uh_tot, and vh_tot will become input variables.
           if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-          mca_tot(:,:,:) = 0.0
-          call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
-          call pass_var(mca_tot(:,:,1), G%Domain)
-
           do n = 1, CS%adv_substeps
             call summed_continuity(uc, vc, mca_tot(:,:,n), mca_tot(:,:,n+1), &
                                    uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
             call pass_var(mca_tot(:,:,n), G%Domain)
           enddo
+          nas = CS%adv_substeps
 
-          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
-                                 mca_tot=mca_tot(:,:,1:CS%adv_substeps+1), &
-                                 uh_tot=uh_tot(:,:,1:CS%adv_substeps), vh_tot=vh_tot(:,:,1:CS%adv_substeps))
         else
           call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
                                  uc=uc, vc=vc)
         endif
 
-        call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
-
-! The above is equivalent to:
-!        call ice_transport(IST, CS%CAS, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
-!                           CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
       endif
-      if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                                     message="    B Post_transport")! , check_column=.true.)
 
       call mpp_clock_end(iceClock8)
 
     endif ! End of B-grid dynamics
+
+    if (.not.CS%slab_ice) then
+      call mpp_clock_begin(iceClock8)
+      if (CS%merged_cont) then
+        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, nas, G, IG, CS%SIS_transport_CSp, &
+                               mca_tot=mca_tot(:,:,1:nas+1), uh_tot=uh_tot(:,:,1:nas), vh_tot=vh_tot(:,:,1:nas))
+      endif
+
+      call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
+                                snow2ocn=snow2ocn, rdg_rate=rdg_rate)
+
+      call mpp_clock_end(iceClock8)
+    endif
+
+    if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                                                   message="      Post_transport")! , check_column=.true.)
 
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
@@ -778,13 +769,14 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   real :: rho_ice  ! The nominal density of sea ice in kg m-3.
   real :: rho_snow ! The nominal density of snow in kg m-3.
   real :: enth_units, I_enth_units
+  real :: tmp_mca  ! A temporary cell averaged mass, in H.
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
   logical :: spec_thermo_sal
   logical :: do_temp_diags
-  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce ! , nds
+  integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-!  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ;
   NkIce = IG%NkIce
   I_Nk = 1.0 / NkIce
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
@@ -913,8 +905,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
 
   if (CS%id_e2m>0) then
     tmp2d(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,G,tmp2d,I_enth_units, &
-!$OMP                                  spec_thermo_sal,NkIce,I_Nk,S_col,IG)
+    !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*IG%H_to_kg_m2 * &
                        ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
@@ -936,11 +927,11 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
   !     in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
 !     if (CS%id_rdgf>0) then
-!       !$OMP parallel do default(shared) private(tmp3)
+!       !$OMP parallel do default(shared) private(tmp_mca)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-!         tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-!         if (tmp3*IG%H_to_kg_m2 > Rho_Ice*1.e-5) then   ! 1 mm ice thickness x 1% ice concentration
-!           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+!         tmp_mca = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+!         if (tmp_mca > Rho_Ice*1.e-5*IG%kg_m2_to_H) then  ! 1 mm ice thickness x 1% ice concentration
+!           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp_mca
 !         else
 !           rdg_frac(i,j,k) = 0.0
 !         endif
