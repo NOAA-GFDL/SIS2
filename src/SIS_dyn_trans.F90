@@ -305,7 +305,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real :: dt_adv
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
-
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
@@ -521,14 +520,14 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
         if (CS%merged_cont) then
           ! mca_tot, uh_tot, and vh_tot will become input variables.
-          if (CS%adv_substeps > 0) dt_adv = dt_slow / real(CS%adv_substeps)
+          if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
           mca_tot(:,:,:) = 0.0
           call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
           call pass_var(mca_tot(:,:,1), G%Domain)
 
           do n = 1, CS%adv_substeps
             call summed_continuity(IST%u_ice_C, IST%v_ice_C, mca_tot(:,:,n), mca_tot(:,:,n+1), &
-                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_slow_dyn, G, IG, CS%continuity_CSp)
+                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
             call pass_var(mca_tot(:,:,n), G%Domain)
           enddo
 
@@ -660,8 +659,35 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow_dyn, &
                              G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
       else
-        call ice_transport(IST, CS%CAS, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
-                           CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
+        !  Determine the whole-cell averaged mass of snow and ice.
+        call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
+
+        if (CS%merged_cont) then
+          ! mca_tot, uh_tot, and vh_tot will become input variables.
+          if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+          mca_tot(:,:,:) = 0.0
+          call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
+          call pass_var(mca_tot(:,:,1), G%Domain)
+
+          do n = 1, CS%adv_substeps
+            call summed_continuity(uc, vc, mca_tot(:,:,n), mca_tot(:,:,n+1), &
+                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+            call pass_var(mca_tot(:,:,n), G%Domain)
+          enddo
+
+          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                                 mca_tot=mca_tot(:,:,1:CS%adv_substeps+1), &
+                                 uh_tot=uh_tot(:,:,1:CS%adv_substeps), vh_tot=vh_tot(:,:,1:CS%adv_substeps))
+        else
+          call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                                 uc=uc, vc=vc)
+        endif
+
+        call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
+
+! The above is equivalent to:
+!        call ice_transport(IST, CS%CAS, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
+!                           CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
       endif
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    B Post_transport")! , check_column=.true.)
