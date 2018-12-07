@@ -33,7 +33,7 @@ implicit none ; private
 
 public :: SIS_transport_init, ice_transport, SIS_transport_end, adjust_ice_categories
 public :: alloc_cell_average_state_type, dealloc_cell_average_state_type
-public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
+public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state, cell_mass_from_CAS
 public :: ice_cat_transport, finish_ice_transport
 
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
@@ -63,9 +63,6 @@ type, public :: SIS_transport_CS ; private
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
           !< The control structure for the SIS thickness advection module
 
-  type(cell_average_state_type), pointer :: CAS => NULL()
-          !< A structure with ocean-cell averaged masses.
-
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
   ! integer :: id_rdgo=-1, id_rdgv=-1 ! These do not exist yet
@@ -76,7 +73,7 @@ end type SIS_transport_CS
 !> This structure contains a variation of the ice model state where the variables are in
 !! mass per unit ocean cell area (not per unit ice area).  These are useful for conservative
 !! advection, but not so useful for diagnosing ice thickness.
-type, public :: cell_average_state_type ! ; private
+type, public :: cell_average_state_type ; private
   real, allocatable, dimension(:,:,:) :: m_ice  !< The mass of ice in each thickness category
                                                 !! per unit total area in a cell, in H.
   real, allocatable, dimension(:,:,:) :: m_snow !< The mass of ice in each thickness category
@@ -109,8 +106,9 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_transport - does ice transport and thickness class redistribution
-subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2ocn, rdg_rate)
+subroutine ice_transport(IST, CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2ocn, rdg_rate)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
+  type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
@@ -125,7 +123,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2oc
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
 
   ! Local variables
-  type(cell_average_state_type), pointer :: CAS => NULL()
   real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)) :: &
     mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
                ! categories in a cell, before each substep, in units of H (often kg m-2).
@@ -139,9 +136,6 @@ subroutine ice_transport(IST, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2oc
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
 
   call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-
-  if (.not.associated(CS%CAS)) call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS)
-  CAS => CS%CAS
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "Start of SIS_transport")
 
@@ -1052,7 +1046,7 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
 
   real :: H_to_units ! A conversion factor from H to the desired output units.
-  integer :: i, j, k, m, isc, iec, jsc, jec
+  integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   H_to_units = 1.0 ; if (present(scale)) H_to_units = scale
@@ -1064,6 +1058,28 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   enddo ; enddo ; enddo
 
 end subroutine get_cell_mass
+
+subroutine cell_mass_from_CAS(CAS, G, IG, mca, scale)
+  type(cell_average_state_type),    intent(in)  :: CAS !< A structure with ocean-cell averaged masses by
+                                                       !! category and phase of water.
+  type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
+  type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: mca !< The combined mass of ice, snow, and
+                                                       !! melt pond water in each cell in H.
+  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
+
+  real :: H_to_units ! A conversion factor from H to the desired output units.
+  integer :: i, j, k, isc, iec, jsc, jec, nCat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
+
+  H_to_units = 1.0 ; if (present(scale)) H_to_units = scale
+
+  do j=jsc,jec ; do i=isc,iec ; mca(i,j) = 0.0 ; enddo ; enddo
+  do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
+    mca(i,j) = mca(i,j) + H_to_units * (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
+  enddo ; enddo ; enddo
+
+end subroutine cell_mass_from_CAS
 
 !> get_total_enthalpy determines the globally integrated enthalpy of snow and ice
 subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)

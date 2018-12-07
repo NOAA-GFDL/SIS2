@@ -56,7 +56,7 @@ use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
 use SIS_transport, only : alloc_cell_average_state_type, dealloc_cell_average_state_type
 use SIS_transport, only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
-use SIS_transport, only : ice_cat_transport, finish_ice_transport
+use SIS_transport, only : cell_mass_from_CAS, ice_cat_transport, finish_ice_transport
 use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_utils,     only : get_avg, post_avg, ice_line !, ice_grid_chksum
@@ -349,8 +349,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   CS%n_calls = CS%n_calls + 1
 
-  call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
-
   do nds=1,ndyn_steps
 
     call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
@@ -525,10 +523,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
           ! mca_tot, uh_tot, and vh_tot will become input variables.
           if (CS%adv_substeps > 0) dt_adv = dt_slow / real(CS%adv_substeps)
           mca_tot(:,:,:) = 0.0
-          do j=jsc,jec ; do i=isc,iec ; mca_tot(i,j,1) = 0.0 ; enddo ; enddo
-          do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-            mca_tot(i,j,1) = mca_tot(i,j,1) + (CS%CAS%m_ice(i,j,k) + (CS%CAS%m_snow(i,j,k) + CS%CAS%m_pond(i,j,k)))
-          enddo ; enddo ; enddo
+          call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
           call pass_var(mca_tot(:,:,1), G%Domain)
 
           do n = 1, CS%adv_substeps
@@ -665,8 +660,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow_dyn, &
                              G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
       else
-        call ice_transport(IST, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
-                         CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
+        call ice_transport(IST, CS%CAS, uc, vc, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, &
+                           CS%SIS_transport_CSp, snow2ocn, rdg_rate=rdg_rate)
       endif
       if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                                      message="    B Post_transport")! , check_column=.true.)
@@ -1468,6 +1463,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     endif
     call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
                             continuity_CSp=CS%continuity_CSp)
+
+    call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
+
   endif
 
   call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
@@ -1607,6 +1605,7 @@ subroutine SIS_dyn_trans_end(CS)
     call SIS_B_dyn_end(CS%SIS_B_dyn_CSp)
   endif
   call SIS_transport_end(CS%SIS_transport_CSp)
+  call dealloc_cell_average_state_type(CS%CAS)
 
   deallocate(CS)
 
