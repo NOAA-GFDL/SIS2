@@ -31,7 +31,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_transport_init, ice_transport, SIS_transport_end, adjust_ice_categories
+public :: SIS_transport_init, SIS_transport_end, adjust_ice_categories
 public :: alloc_cell_average_state_type, dealloc_cell_average_state_type
 public :: cell_ave_state_to_ice_state, ice_state_to_cell_ave_state, cell_mass_from_CAS
 public :: ice_cat_transport, finish_ice_transport
@@ -46,9 +46,6 @@ type, public :: SIS_transport_CS ; private
 
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
-  logical :: merged_cont      !< If true, update the continuity equations for the ice, snow,
-                              !! and melt pond water together with proportionate fluxes.
-                              !! Otherwise the three media are updated separately.
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
   logical :: bounds_check     !< If true, check for sensible values of thicknesses,
                               !! temperatures, salinities, tracers, etc.
@@ -103,73 +100,6 @@ type, public :: cell_average_state_type ; private
 end type cell_average_state_type
 
 contains
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_transport - does ice transport and thickness class redistribution
-subroutine ice_transport(IST, CAS, uc, vc, TrReg, dt_slow, nsteps, G, IG, CS, snow2ocn, rdg_rate)
-  type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
-  type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
-  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
-  type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: uc  !< The zonal ice velocity, in m s-1.
-  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vc  !< The meridional ice velocity, in m s-1.
-  real,                              intent(in)    :: dt_slow !< The amount of time over which the
-                                                          !! ice dynamics are to be advanced, in s.
-  integer,                           intent(in)    :: nsteps  !< The number of advective iterations
-                                                          !! to use within this time step.
-  type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: snow2ocn !< snow volume [m] dumped into ocean during ridging
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
-
-  ! Local variables
-  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)) :: &
-    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, before each substep, in units of H (often kg m-2).
-  real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)) :: &
-    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)) :: &
-    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
-  real :: dt_adv
-  integer :: i, j, k, n, isc, iec, jsc, jec, nCat
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
-
-  call pass_vector(uc, vc, G%Domain, stagger=CGRID_NE)
-
-  if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "Start of SIS_transport")
-
-  ! Make sure that ice is in the right thickness category before advection.
-!  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, TrReg, G, CS)
-
-  !  Determine the whole-cell averaged mass of snow and ice.
-  call ice_state_to_cell_ave_state(IST, G, IG, CS, CAS)
-
-  if (CS%merged_cont) then
-    ! mca_tot, uh_tot, and vh_tot will become input variables.
-    if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
-    mca_tot(:,:,:) = 0.0
-    do j=jsc,jec ; do i=isc,iec ; mca_tot(i,j,1) = 0.0 ; enddo ; enddo
-    do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-      mca_tot(i,j,1) = mca_tot(i,j,1) + (CAS%m_ice(i,j,k) + (CAS%m_snow(i,j,k) + CAS%m_pond(i,j,k)))
-    enddo ; enddo ; enddo
-    call pass_var(mca_tot(:,:,1), G%Domain)
-
-    do n = 1, nsteps
-      call summed_continuity(uc, vc, mca_tot(:,:,n), mca_tot(:,:,n+1), uh_tot(:,:,n), vh_tot(:,:,n), &
-                             dt_adv, G, IG, CS%continuity_CSp)
-      call pass_var(mca_tot(:,:,n), G%Domain)
-    enddo
-
-    call ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, mca_tot=mca_tot, uh_tot=uh_tot, vh_tot=vh_tot)
-  else
-    call ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc=uc, vc=vc)
-  endif
-
-
-  call finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
-
-end subroutine ice_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_cat_transport does ice transport of mass and tracers by thickness category
@@ -1162,11 +1092,6 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness \n"//&
                  "categories after advection.", default=.true.)
-  call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
-                 "If true, update the continuity equations for the ice, snow, \n"//&
-                 "and melt pond water together with proportionate fluxes. \n"//&
-                 "Otherwise the media are updated separately.", default=.false.)
-
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0)
