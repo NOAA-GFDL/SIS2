@@ -288,7 +288,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: snow2ocn !< snow volume [m] dumped into ocean during ridging
+  real, dimension(SZI_(G),SZJ_(G)), &
+                           optional, intent(inout) :: snow2ocn !< Snow dumped into ocean during ridging in kg m-2
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
 
   ! Local variables
