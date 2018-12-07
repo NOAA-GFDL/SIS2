@@ -42,7 +42,7 @@ use SIS_debugging,     only : chksum, Bchksum, hchksum
 use SIS_debugging,     only : hchksum_pair, Bchksum_pair, uvchksum
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
+use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl, safe_alloc_alloc
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_dyn_bgrid, only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid, only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
@@ -52,7 +52,7 @@ use SIS_dyn_cgrid, only : SIS_C_dyn_read_alt_restarts
 use SIS_hor_grid,  only : SIS_hor_grid_type
 use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
-use SIS_transport, only : ice_transport, SIS_transport_init, SIS_transport_end
+use SIS_transport, only : SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
 use SIS_transport, only : alloc_cell_average_state_type, dealloc_cell_average_state_type
 use SIS_transport, only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
@@ -109,6 +109,9 @@ type dyn_trans_CS ; private
   logical :: verbose      !< A flag to control the printing of an ice-diagnostic
                           !! message.  When true, this will slow the model down.
 
+  integer :: max_nts      !< The maximum number of transport steps that can be stored
+                          !! before they are carried out.
+  integer :: nts = 0      !< The number of accumulated transport steps since the last update.
   integer :: ntrunc = 0   !< The number of times the velocity has been truncated
                           !! since the last call to write_ice_statistics.
 
@@ -119,7 +122,14 @@ type dyn_trans_CS ; private
 
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
-                                   ! timing of diagnostic output.
+                                   !! timing of diagnostic output.
+  real, allocatable, dimension(:,:,:) :: mca_step !< The total mass per unit total area of snow
+                          !! and ice summed across thickness categories in a cell, before each
+                          !! transportation substep, in units of H (often kg m-2).
+  real, allocatable, dimension(:,:,:) :: uh_step !< The total zonal mass fluxes during each
+                          !! transportation substep in H m2 s-1.
+  real, allocatable, dimension(:,:,:) :: vh_step !< The total meridional mass fluxes during each
+                          !! transportation substep in H m2 s-1.
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1, id_mib=-1, id_mi=-1
@@ -294,31 +304,23 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
   real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
 
-  integer, parameter :: max_steps = 10
-  real, dimension(SZI_(G),SZJ_(G),max_steps) :: &
-    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, before each substep, in units of H (often kg m-2).
-  real, dimension(SZIB_(G),SZJ_(G),max_steps) :: &
-    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G),max_steps) :: &
-    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
-  real :: dt_adv
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
-  real :: dt_slow_dyn
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
-  real :: Idt_slow
+  real :: dt_slow_dyn  ! The slow dynamics timestep in s.
+  real :: dt_adv       ! The advective timestep in s.
+  real :: Idt_slow     ! The inverse of dt_slow_dyn, in s-1.
   real, dimension(SZI_(G),SZJ_(G)) :: &
    ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! A ridging rate in s-1, this will be calculated from the strain rates in the dynamics.
     snow2ocn    ! Snow dumped into ocean during ridging in kg m-2
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
-  integer :: ndyn_steps, nds, nas ! The number of dynamic and advective steps.
+  integer :: ndyn_steps, nds ! The number of dynamicsteps.
   integer :: iyr, imon, iday, ihr, imin, isec
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -369,11 +371,13 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     enddo ; enddo
 
     !  Determine the whole-cell averaged mass of snow and ice.
-    call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
-    if (CS%merged_cont) then
-      mca_tot(:,:,:) = 0.0
-      call cell_mass_from_CAS(CS%CAS, G, IG, mca_tot(:,:,1))
-      call pass_var(mca_tot(:,:,1), G%Domain)
+    if (.not.CS%merged_cont) CS%nts = 0
+    if ((CS%nts == 0) .and. (.not.CS%slab_ice)) &
+      call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
+    if (CS%merged_cont .and. (CS%nts == 0)) then
+      CS%mca_step(:,:,:) = 0.0
+      call cell_mass_from_CAS(CS%CAS, G, IG, CS%mca_step(:,:,1))
+      call pass_var(CS%mca_step(:,:,1), G%Domain)
     endif
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
@@ -524,14 +528,15 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       else
 
         if (CS%merged_cont) then
+          if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
+            "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
           if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-          do n = 1, CS%adv_substeps
-            call summed_continuity(IST%u_ice_C, IST%v_ice_C, mca_tot(:,:,n), mca_tot(:,:,n+1), &
-                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-            call pass_var(mca_tot(:,:,n), G%Domain)
+          do n = CS%nts+1, CS%nts+CS%adv_substeps
+            call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+                                   CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+            call pass_var(CS%mca_step(:,:,n), G%Domain)
           enddo
-          nas = CS%adv_substeps
-
+          CS%nts = CS%nts + CS%adv_substeps
         else
           call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
                                  uc=IST%u_ice_C, vc=IST%v_ice_C)
@@ -652,14 +657,15 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       else
 
         if (CS%merged_cont) then
+          if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
+            "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
           if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-          do n = 1, CS%adv_substeps
-            call summed_continuity(uc, vc, mca_tot(:,:,n), mca_tot(:,:,n+1), &
-                                   uh_tot(:,:,n), vh_tot(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-            call pass_var(mca_tot(:,:,n), G%Domain)
+          do n = CS%nts+1, CS%nts+CS%adv_substeps
+            call summed_continuity(uc, vc, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+                                   CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+            call pass_var(CS%mca_step(:,:,n), G%Domain)
           enddo
-          nas = CS%adv_substeps
-
+          CS%nts = CS%nts + CS%adv_substeps
         else
           call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
                                  uc=uc, vc=vc)
@@ -673,19 +679,24 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
     if (.not.CS%slab_ice) then
       call mpp_clock_begin(iceClock8)
-      if (CS%merged_cont) then
-        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, nas, G, IG, CS%SIS_transport_CSp, &
-                               mca_tot=mca_tot(:,:,1:nas+1), uh_tot=uh_tot(:,:,1:nas), vh_tot=vh_tot(:,:,1:nas))
+      if (CS%merged_cont .and. ((CS%nts + CS%adv_substeps > CS%max_nts) .or. (nds==ndyn_steps))) then
+        n = CS%nts
+        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
+                               CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,1:n+1), &
+                               uh_tot=CS%uh_step(:,:,1:n), vh_tot=CS%vh_step(:,:,1:n))
+        CS%nts = 0
       endif
 
-      call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
-                                snow2ocn=snow2ocn, rdg_rate=rdg_rate)
+      if (CS%nts==0) &
+        call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
+                                  snow2ocn=snow2ocn, rdg_rate=rdg_rate)
 
       call mpp_clock_end(iceClock8)
     endif
 
-    if (CS%column_check) call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                                   message="      Post_transport")! , check_column=.true.)
+    if (CS%column_check .and. (CS%nts==0)) &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                                message="      Post_transport")! , check_column=.true.)
 
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
@@ -1409,8 +1420,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  units="seconds", default=-1.0)
   call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
                  "If true, update the continuity equations for the ice, snow, \n"//&
-                 "and melt pond water together with proportionate fluxes. \n"//&
-                 "Otherwise the media are updated separately.", default=.false.)
+                 "and melt pond water together summed across categories, with \n"//&
+                 "proportionate fluxes for each part. Otherwise the media are \n"//&
+                 "updated separately.", default=.false.)
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
@@ -1433,6 +1445,10 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     call get_param(param_file, mdl, "USE_SLAB_ICE", CS%SLAB_ICE, &
                  "If true, use the very old slab-style ice.", default=.false.)
   endif
+
+  call get_param(param_file, mdl, "MAX_TRACER_SUBSTEPS", CS%max_nts, &
+                 "The maximum number of ice tracer transport steps that \n"//&
+                 "can be stored before they are carried out.", default=CS%adv_substeps)
 
   call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
@@ -1482,6 +1498,12 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                             continuity_CSp=CS%continuity_CSp)
 
     call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
+
+    if (CS%merged_cont) then
+      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, max(CS%max_nts+1,1))
+      call safe_alloc_alloc(CS%uh_step, G%isdB, G%IedB, G%jsd, G%jed, max(CS%max_nts,1))
+      call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, max(CS%max_nts,1))
+    endif
 
   endif
 
