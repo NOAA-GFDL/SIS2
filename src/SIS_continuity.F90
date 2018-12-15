@@ -716,7 +716,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
                  optional, intent(out)   :: uh  !< Category volume flux through zonal faces = u*h*dy, H m2 s-1.
   real, dimension(SZI_(G),SZJ_(G)), &
                  optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes, in H.
-  real, dimension(SZI_(G),SZJB_(G)), &
+  real, dimension(SZIB_(G),SZJ_(G)), &
                  optional, intent(out)   :: uh_tot !< Total mass flux through zonal faces = u*htot*dy, H m2 s-1.
 !   This subroutine calculates the mass or volume fluxes through the zonal
 ! faces, and other related quantities.
