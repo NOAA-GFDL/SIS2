@@ -56,7 +56,7 @@ use SIS_transport, only : SIS_transport_init, SIS_transport_end
 use SIS_transport, only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
 use SIS_transport, only : alloc_cell_average_state_type, dealloc_cell_average_state_type
 use SIS_transport, only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
-use SIS_transport, only : cell_mass_from_CAS, ice_cat_transport, finish_ice_transport
+use SIS_transport, only : ice_cat_transport, finish_ice_transport
 use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_utils,     only : get_avg, post_avg, ice_line !, ice_grid_chksum
@@ -371,13 +371,10 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     enddo ; enddo
 
     !  Determine the whole-cell averaged mass of snow and ice.
-    if (.not.CS%merged_cont) CS%nts = 0
     if ((CS%nts == 0) .and. (.not.CS%slab_ice)) &
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
     if (CS%merged_cont .and. (CS%nts == 0)) then
-      CS%mca_step(:,:,:) = 0.0
-      call cell_mass_from_CAS(CS%CAS, G, IG, CS%mca_step(:,:,1))
-      call pass_var(CS%mca_step(:,:,1), G%Domain)
+      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,1) = misp_sum(i,j) ; enddo ; enddo
     endif
 
     ! Correct the wind stresses for changes in the fractional ice-coverage.
