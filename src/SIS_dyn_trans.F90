@@ -758,7 +758,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   ! Sum the concentration weighted mass for diagnostics.
-  if (CS%id_mi>0 .or. CS%id_mib>0) then
+  if (CS%id_mi>0 .or. CS%id_mib>0 .or. CS%id_sivol>0 .or. CS%id_simass>0 .or. CS%id_sisnmass>0) then
     mass_ice(:,:) = 0.0
     mass_snow(:,:) = 0.0
     mass(:,:) = 0.0
@@ -772,6 +772,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
     if (CS%id_simass>0) call post_data(CS%id_simass, mass_ice(isc:iec,jsc:jec), diag)
     if (CS%id_sisnmass>0) call post_data(CS%id_sisnmass, mass_snow(isc:iec,jsc:jec), diag)
     if (CS%id_mi>0) call post_data(CS%id_mi, mass(isc:iec,jsc:jec), diag)
+    if (CS%id_sivol>0) call post_data(CS%id_sivol, mass_ice(isc:iec,jsc:jec)/Rho_ice, diag)
 
     if (CS%id_mib>0) then
       if (associated(IOF%mass_berg)) then
@@ -844,7 +845,6 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
   if (CS%id_sithick>0) call post_avg(CS%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
-  if (CS%id_sivol>0) call post_data(CS%id_sivol, mass_ice(isc:iec,jsc:jec)/Rho_ice, diag)
   if (CS%id_tsn>0) call post_avg(CS%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (CS%id_sitimefrac>0) then
