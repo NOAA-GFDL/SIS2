@@ -95,36 +95,36 @@ type ice_data_type !  ice_public_type
     flux_u => NULL(), &   !< The flux of x-momentum into the ocean [Pa].
     flux_v => NULL(), &   !< The flux of y-momentum into the ocean [Pa].
     flux_t => NULL(), &   !< The flux of sensible heat out of the ocean, in W m-2.
-    flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean, in kg m-2 s-1.
+    flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean [kg m-2 s-1].
     flux_lw => NULL(), &  !< The longwave flux out of the ocean, in W m-2.
     flux_sw_vis_dir => NULL(), & !< The direct visible shortwave heat flux into the ocean in W m-2.
     flux_sw_vis_dif => NULL(), & !< The diffuse visible shortwave heat flux into the ocean in W m-2.
     flux_sw_nir_dir => NULL(), & !< The direct near-infrared heat flux into the ocean in W m-2.
     flux_sw_nir_dif => NULL(), & !< The diffuse near-infrared heat flux into the ocean in W m-2.
     flux_lh => NULL(), &  !< The latent heat flux out of the ocean, in W m-2.
-    lprec => NULL(), &    !< The liquid precipitation flux into the ocean, in kg m-2.
-    fprec => NULL(), &    !< The frozen precipitation flux into the ocean, in kg m-2.
+    lprec => NULL(), &    !< The liquid precipitation flux into the ocean [kg m-2].
+    fprec => NULL(), &    !< The frozen precipitation flux into the ocean [kg m-2].
     p_surf => NULL(), &   !< The pressure at the ocean surface [Pa].  This may
                           !! or may not include atmospheric pressure.
-    runoff => NULL(), &   !< Liquid runoff into the ocean, in kg m-2.
+    runoff => NULL(), &   !< Liquid runoff into the ocean [kg m-2].
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
-                          !! the ocean, in kg m-2.
+                          !! the ocean [kg m-2].
     stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean [Pa].
     ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
-    area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
-    mass_berg => NULL(),  &  !< mass of icebergs in kg/m^2
+    area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in [m2 m-2]
+    mass_berg => NULL(),  &  !< mass of icebergs in [kg m-2]
     runoff_hflx => NULL(), &  !< The heat flux associated with runoff, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean in kg m-2.
+    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
 
   real, pointer, dimension(:,:) :: &
     area => NULL() , &    !< The area of ocean cells, in m2.  Land cells have
                           !! a value of 0, so this could also be used as a mask.
-    mi   => NULL()        !< The total ice+snow mass, in kg m-2.
+    mi   => NULL()        !< The total ice+snow mass [kg m-2].
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from

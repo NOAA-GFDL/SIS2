@@ -291,10 +291,10 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
   type(ice_age_tracer_CS), pointer    :: CS  !< The control structure returned by a
                                              !! previous call to register_ideal_age_tracer.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi  !< Mass of ice in a given category [kg m-2] at the
                                              !! end of the timestep
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi_old  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi_old  !< Mass of ice in a given category [kg m-2] at the
                                              !! beginning of the timestep
 
   ! Local variables
@@ -386,7 +386,7 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
   type(sis_hor_grid_type),        intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                  intent(in)  :: mi  !< Mass of ice in a given category in kg m-2, used for summing
+                                  intent(in)  :: mi  !< Mass of ice in a given category [kg m-2], used for summing
   type(ice_age_tracer_CS),        pointer     :: CS  !< The control structure returned by a
                                                      !! previous call to register_ideal_age_tracer.
   character(len=*), dimension(:), intent(out) :: names !< The names of the summed tracer stocks.

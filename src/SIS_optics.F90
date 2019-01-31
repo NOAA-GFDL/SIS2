@@ -159,7 +159,7 @@ end subroutine SIS_optics_init
 !> ice_optics_SIS2 sets albedo, penetrating solar, and ice/snow transmissivity
 subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
                     abs_snow, abs_ice_lay, abs_ocn, abs_int, CS, ITV, coszen_in)
-  real, intent(in   ) :: mp  !< pond mass (kg/m2)
+  real, intent(in   ) :: mp  !< pond mass [kg m-2]
   real, intent(in   ) :: hs  !< snow thickness (m-snow)
   real, intent(in   ) :: hi  !< ice thickness (m-ice)
   real, intent(in   ) :: ts  !< surface temperature [degC].
@@ -185,9 +185,9 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
                           ! is still present at the top of each ice layer (ND).
   real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
-  real :: rho_ice         ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow        ! The nominal density of snow in kg m-3.
-  real :: rho_water       ! The nominal density of sea water in kg m-3.
+  real :: rho_ice         ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow        ! The nominal density of snow [kg m-3].
+  real :: rho_water       ! The nominal density of sea water [kg m-3].
   real :: pen             ! The fraction of the shortwave flux that will pass
                           ! below the surface (frac 1-pen absorbed at the surface)
   real :: sal_ice_top(1)  ! A specified surface salinity of ice.
@@ -225,7 +225,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
     hprad      ! pond depth (m) for radiation code - may be diagnosed
 
   real (kind=dbl_kind), dimension (1,1,1) :: &
-    rhosnw , & ! density in snow layer (kg/m3)
+    rhosnw , & ! density in snow layer [kg m-3]
     rsnw       ! grain radius in snow layer (micro-meters)
 
   real (kind=dbl_kind), dimension (1,1,18) :: &

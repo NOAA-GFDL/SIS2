@@ -28,9 +28,9 @@ type, public :: ice_thermo_type ; private
                             !! pockets within the ice, in J/(kg K).  Cp_brine
                             !! should be set equal to Cp_Water, but for
                             !! algorithmic convenience can be set equal to Cp_ice.
-  real :: rho_ice           !< The nominal density of ice in kg m-3.
-  real :: rho_snow          !< The nominal density of snow in kg m-3.
-  real :: rho_water         !< The nominal density of water in kg m-3.
+  real :: rho_ice           !< The nominal density of ice [kg m-3].
+  real :: rho_snow          !< The nominal density of snow [kg m-3].
+  real :: rho_water         !< The nominal density of water [kg m-3].
   real :: LI                !< The latent heat of fusion, in J kg-1.
   real :: Lat_Vapor         !< The latent heat of vaporization, in J kg-1.
   real :: dTf_dS            !< The derivative of the freezing point with salinity,
@@ -157,9 +157,9 @@ end subroutine SIS2_ice_thm_init
 subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
-  real, intent(in   ) :: m_pond  !< pond mass per unit area (kg m-2)
-  real, intent(in   ) :: m_snow  !< snow mass per unit area (H, usually kg m-2)
-  real, intent(in   ) :: m_ice   !< ice mass per unit area (H, usually kg m-2)
+  real, intent(in   ) :: m_pond  !< pond mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_snow  !< snow mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_ice   !< ice mass per unit area [H ~> kg m-2]
   real, dimension(0:NkIce) , &
         intent(inout) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice, in enth_unit (J kg-1).
@@ -174,8 +174,8 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real, intent(  out) :: tsurf !< surface temperature [degC]
   real, intent(in   ) :: dtt   !< timestep (sec)
   integer, intent(in   ) :: NkIce !< The number of ice layers.
-  real, intent(inout) :: tmelt !< accumulated top melting energy  (J/m^2)
-  real, intent(inout) :: bmelt !< accumulated bottom melting energy (J/m^2)
+  real, intent(inout) :: tmelt !< accumulated top melting energy  [J m-2]
+  real, intent(inout) :: bmelt !< accumulated bottom melting energy [J m-2]
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2 ice thermodynamics control structure
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   logical, optional, intent(in) :: check_conserve !< If true, check for local heat conservation.
@@ -194,10 +194,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                                          ! enthalpy [degC].
   real, dimension(0:NkIce) :: temp_new   ! The updated temperatures [degC].
   real, dimension(NkIce) :: tfi  ! The ice freezing temperatures [degC].
-  real :: mL_ice   ! The mass-per-unit-area of each ice layer in kg m-2 (not H).
-  real :: mL_snow  ! The mass-per-unit-area of each snow layer in kg m-2 (not H).
+  real :: mL_ice   ! The mass-per-unit-area of each ice layer [kg m-2] (not H).
+  real :: mL_snow  ! The mass-per-unit-area of each snow layer [kg m-2] (not H).
   real :: e_extra
-  real, dimension(0:NkIce) :: m_lay     ! Masses of all layers in kg m-2.
+  real, dimension(0:NkIce) :: m_lay     ! Masses of all layers [kg m-2].
   real :: enth_fp  ! The enthalpy at the freezing point (solid for fresh ice).
   real :: kk        ! The conductive thermal coupling coefficient between adjacent
                     ! ice sublayers [W m-2 degC-1].
@@ -233,8 +233,8 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                        ! acting as a solid, and all extra heat goes into
                        ! melting, in enth_units.
   real :: enth_prev
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [J kg-1 degC-1].
@@ -538,9 +538,9 @@ end subroutine ice_temp_SIS2
 subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
                           sol, tfw, tsurf, dtt, NkIce, CS, ITV)
 
-  real, intent(in   ) :: m_pond  !< pond mass per unit area (kg m-2)
-  real, intent(in   ) :: m_snow  !< snow mass per unit area (H, usually kg m-2)
-  real, intent(in   ) :: m_ice   !< ice mass per unit area (H, usually kg m-2)
+  real, intent(in   ) :: m_pond  !< pond mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_snow  !< snow mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_ice   !< ice mass per unit area [H ~> kg m-2]
   real, dimension(0:NkIce) , &
         intent(in   ) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice, in enth_unit (J kg-1).
@@ -565,9 +565,9 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real, dimension(0:NkIce) :: temp_IC    ! The temperatures of the snow and ice based on the initial
                                          ! enthalpy [degC].
   real, dimension(NkIce) :: tfi  ! The ice freezing temperatures [degC].
-  real :: mL_ice    ! The mass-per-unit-area of each ice layer in kg m-2 (not H).
-  real :: mL_snow   ! The mass-per-unit-area of each snow layer in kg m-2 (not H).
-  real, dimension(0:NkIce) :: m_lay     ! Masses of all layers in kg m-2.
+  real :: mL_ice    ! The mass-per-unit-area of each ice layer [kg m-2] (not H).
+  real :: mL_snow   ! The mass-per-unit-area of each snow layer [kg m-2] (not H).
+  real, dimension(0:NkIce) :: m_lay     ! Masses of all layers [kg m-2].
   real :: kk        ! The conductive thermal coupling coefficient between adjacent
                     ! ice sublayers [W m-2 degC-1].
   real :: k10       ! The conductive thermal coupling coefficient between the
@@ -587,8 +587,8 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
   real :: hsnow_eff  ! The effective thickness of the snow layer, in m.
   real :: hL_ice_eff ! The effective thickness of each ice sub-layer, in m.
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [J kg-1 degC-1].
@@ -859,9 +859,9 @@ end function laytemp_SIS2
 !> update_lay_enth does an implicit calculation of new layer enthalpy
 subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                            dfbot_dT, dtt, hf_err_rat, ITV, extra_heat, temp_new, temp_max)
-  real, intent(in) :: m_lay    !< This layers mass of ice in kg/m2
+  real, intent(in) :: m_lay    !< This layers mass of ice [kg m-2]
   real, intent(in) :: sice     !< ice salinity in g/kg
-  real, intent(inout) :: enth  !< ice enthalpy in enth_units (proportional to J kg-1).
+  real, intent(inout) :: enth  !< ice enthalpy in enth_units [Enth ~> J kg-1].
   real, intent(inout) :: ftop  !< Downward heat flux atop the layer at T = 0 degC, or
                                !! the prescribed heat flux if dftop_dT = 0 [W m-2].
   real, intent(in) :: ht_body  !< Body forcing to layer in W/m2
@@ -883,7 +883,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: max_enth ! The maximum new layer enthalpy [degC].
   real :: fb       ! The negative of the dependence of layer heating on
                    ! temperature [W m-2 degC-1]. fb > 0.
-  real :: extra_enth ! Excess enthalpy above the melt point, in kg enth_units.
+  real :: extra_enth ! Excess enthalpy above the melt point [kg Enth ~> J].
   real :: enth_in  ! The initial enthalpy, in enth_units.
   real :: enth_fp  ! The enthalpy at the freezing point, in enth_units.
   real :: AA, BB, CC ! Temporary variables used to solve a quadratic equation.
@@ -909,7 +909,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                    ! [J kg-1 degC-1].
   real :: Cp_water ! The heat capacity of liquid water in the ice model,
                    ! but not in the brine pockets [J kg-1 degC-1].
-  real :: LI       ! The latent heat of fusion, in J kg-1.
+  real :: LI       ! The latent heat of fusion [J kg-1].
   real :: enth_unit    ! A conversion factor for enthalpy from Joules kg-1.
 !  real :: Enth_liq_0   ! The enthalpy of liquid water at 0C.
   integer :: itt
@@ -1113,8 +1113,8 @@ end subroutine update_lay_enth
 !! and writes messages about any offending columns.
 subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
                       bmelt, tmelt, t_sfc)
-  real, intent(in) :: ms !< The mass of snow in kg m-2
-  real, intent(in) :: mi !< The mass of ice in kg m-2
+  real, intent(in) :: ms !< The mass of snow [kg m-2]
+  real, intent(in) :: mi !< The mass of ice [kg m-2]
   real, dimension(0:NkIce), &
         intent(in) :: enthalpy !< The ice enthalpy, in enthalpy units (often J/kg)
   real, dimension(NkIce), intent(in) :: s_ice !< The ice bulk salinity in g/kg
@@ -1172,9 +1172,9 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   ! mw/new - melt pond - added first two arguments & rain
   real, intent(in   ) :: a_ice       !< area of ice (1-open_water_frac) for pond retention
-  real, intent(inout) :: m_pond      !< melt pond mass (kg/m2)
+  real, intent(inout) :: m_pond      !< melt pond mass [kg m-2]
   real, dimension(0:NkIce), &
-        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer in kg m-2.
+        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [kg m-2].
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer in enth_units
                                      !! (which might be J/kg).
@@ -1182,25 +1182,25 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
         intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics (g/kg)
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       !< Conserved ice bulk salinity by layer (g/kg)
-  real, intent(in   ) :: snow        !< new snow (kg/m^2-snow)
-  real, intent(in   ) :: rain        !< rain for pond source (kg/m^2-rain) - not yet active
-  real, intent(in   ) :: evap        !< ice evaporation/sublimation (kg/m^2)
-  real, intent(in   ) :: tmlt        !< top melting energy (J/m^2)
-  real, intent(in   ) :: bmlt        !< bottom melting energy (J/m^2)
+  real, intent(in   ) :: snow        !< new snow [kg m-2]
+  real, intent(in   ) :: rain        !< rain for pond source [kg m-2] - not yet active
+  real, intent(in   ) :: evap        !< ice evaporation/sublimation [kg m-2]
+  real, intent(in   ) :: tmlt        !< top melting energy [J m-2]
+  real, intent(in   ) :: bmlt        !< bottom melting energy [J m-2]
   integer, intent(in) :: NkIce       !< The number of ice layers.
   integer, intent(in) :: npassive    !< Number of passive tracers
   real, dimension(0:NkIce+1,npassive), &
         intent(inout) :: TrLay       !< Passive tracer slice
-  real, intent(  out) :: heat_to_ocn !< energy left after ice all melted (J/m^2)
-  real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean (kg/m^2)
-  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean (kg/m^2)
-  real, intent(  out) :: evap_from_ocn!< evaporation flux from ocean (kg/m^2)
+  real, intent(  out) :: heat_to_ocn !< energy left after ice all melted [J m-2]
+  real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean [kg m-2]
+  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
+  real, intent(  out) :: evap_from_ocn!< evaporation flux from ocean [kg m-2]
   real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice
   real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice, in g m-2.
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
-  real, intent(  out) :: ablation      !< The mass loss from bottom melt, in kg m-2.
+  real, intent(  out) :: ablation      !< The mass loss from bottom melt [kg m-2].
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
                                        !! by evaporation / sublimation.
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
@@ -1209,7 +1209,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                                        !! by freezing, in J m-2.
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
-  real :: mtot_ice    ! The summed ice mass in kg m-2.
+  real :: mtot_ice    ! The summed ice mass [kg m-2].
   real :: enth_freeze ! The enthalpy of newly formed congelation ice, in enth_unit.
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy, in units of enth_unit.
@@ -1217,18 +1217,18 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                               ! freezing water, usually enough to account for
                               ! the latent heat of fusion in a small fraction of
                               ! the water, in Enth_unit kg-1 (perhaps J kg-1).
-  real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
-  real :: M_melt              ! The ice mass lost to melting, in kg m-2.
-  real :: evap_left           ! The remaining evaporation, in kg m-2.
-  real :: evap_here           ! The evaporation from the current layer, in kg m-2.
-  real :: m_submerged         ! The submerged mass of ice, in kg m-2.
+  real :: m_freeze            ! The newly formed ice from freezing [kg m-2].
+  real :: M_melt              ! The ice mass lost to melting [kg m-2].
+  real :: evap_left           ! The remaining evaporation [kg m-2].
+  real :: evap_here           ! The evaporation from the current layer [kg m-2].
+  real :: m_submerged         ! The submerged mass of ice [kg m-2].
   real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: enth_unit   ! A conversion factor for enthalpy from Joules kg-1.
   real :: LI          ! The latent heat of fusion, in J kg-1.
   real :: Lat_vapor   ! The latent heat of vaporization, in J kg-1.
-  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
-  real :: rho_water   ! The nominal density of seawater in kg m-3.
+  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
+  real :: rho_water   ! The nominal density of seawater [kg m-3].
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   real :: pond_rate, h2o_to_pond, h2o_from_pond, tavg, mp_min, mp_max ! mw/new
   integer :: k, tr
@@ -1486,7 +1486,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
                            frazil, tfw, NkIce, h2o_ocn_to_ice, &
                            salt_to_ice, ITV, CS, enthalpy_freeze)
   real, dimension(0:NkIce), &
-        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer in kg m-2.
+        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [kg m-2].
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer in enth_units
                                      !! (which might be J/kg).
@@ -1500,7 +1500,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   real, intent(in   ) :: frazil      !< frazil in energy units
   real, intent(in   ) :: tfw         !< seawater freezing temperature [degC]
   integer, intent(in) :: NkIce       !< The number of ice layers.
-  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean (kg/m^2)
+  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
   real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice, in g m-2.
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -1512,19 +1512,19 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   real :: frazil_per_layer    ! The frazil heat sink from each of the sublayers of
                               ! of the ice, in units of enth_unit.
   real :: t_frazil    ! The temperature which with the frazil-ice is created [degC].
-  real :: m_frazil    ! The newly-formed mass per unit area of frazil ice, in kg m-2.
+  real :: m_frazil    ! The newly-formed mass per unit area of frazil ice [kg m-2].
   real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when
                               ! freezing water, usually enough to account for
                               ! the latent heat of fusion in a small fraction of
                               ! the water, in Enth_unit kg-1 (perhaps J kg-1).
-  real :: m_freeze            ! The newly formed ice from freezing, in kg m-2.
+  real :: m_freeze            ! The newly formed ice from freezing [kg m-2].
   real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
   real :: enthM_freezing      ! The enthalpy gain due to the mass gain by
                               ! freezing, in enth_unit kg m-2 (often J m-2).
   real :: enth_unit           ! The units for enthalpy (often J kg-1).
   real :: LI          ! The latent heat of fusion, in J kg-1.
   ! These variables are used only for debugging.
-  real :: mtot_ice    ! The summed ice mass in kg m-2.
+  real :: mtot_ice    ! The summed ice mass [kg m-2].
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   integer :: k, tr
   logical :: debug = .false.
@@ -1596,8 +1596,8 @@ end subroutine add_frazil_SIS2
 
 !> Adjust the mass of the various ice layers to give the prescribed relative thicknesses.
 subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
-  real, dimension(0:NkIce),   intent(inout) :: m_lay !< The ice mass by layer, in kg m-2.
-  real,                       intent(out)   :: mtot_ice !< The summed ice mass in kg m-2.
+  real, dimension(0:NkIce),   intent(inout) :: m_lay !< The ice mass by layer [kg m-2].
+  real,                       intent(out)   :: mtot_ice !< The summed ice mass [kg m-2].
   real, dimension(0:NkIce+1), intent(inout) :: Enthalpy !< Snow, ice, and ocean enthalpy by layer in enth_units.
   real, dimension(NkIce+1),   intent(inout) :: Salin  !< Conserved ice bulk salinity by layer (g/kg)
   integer,                    intent(in)    :: NkIce  !< The number of ice layers.
@@ -2015,23 +2015,23 @@ end function dTemp_dEnth_TS
 !> Temp_from_En_S returns the sea ice temperature for ice of a given enthalpy
 !! and salinity.
 function Temp_from_En_S(En, S, ITV) result(Temp)
-  real, intent(in)  :: En !< The ice enthalpy, in enthalpy units (often J/kg)
+  real, intent(in)  :: En !< The ice enthalpy, in enthalpy units [Enth ~> J/kg]
   real, intent(in)  :: S  !< The ice bulk salinity in g/kg
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: Temp  !< Temperature [degC].
 
-  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities, in kg K J-1.
+  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities [kg degC J-1].
   real :: BB
   real :: I_enth_unit
   real :: T_fr  ! The freezing temperature [degC].
   real :: Cp_Ice, Cp_Water, LI, Mu_TS
-  real :: En_J  ! Enthalpy with 0 offset [J].
+  real :: En_J  ! Enthalpy with 0 offset [J kg-1].
   real :: T_guess  ! The latest best guess at Temp [degC].
   real :: T_deriv  ! The value of Temp at which to evaluate dT_dEn [degC].
   real :: T_next   ! The tentative next value for T_guess [degC].
   real :: T_max, T_min ! Bracketing temperatures [degC].
-  real :: En_Tg    ! The enthalpy at T_guess, in J kg-1.
-  real :: En_Tmin, En_Tmax ! The enthalpies at T_max and T_min, in J kg-1.
+  real :: En_Tg    ! The enthalpy at T_guess [J kg-1].
+  real :: En_Tmin, En_Tmax ! The enthalpies at T_max and T_min [J kg-1].
   real :: dT_dEn   ! The partial derivative of temperature with enthalpy [degC kg J-1].
   real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
 
@@ -2185,9 +2185,9 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   real,    optional, intent(out) :: Cp_Brine  !< The heat capacity of liquid water in brine pockets
                     !! within the sea-ice [J kg-1 degC-1].  Cp_Brine and Cp_Water should be equal,
                     !! but for computational convenience Cp_Brine has  often been set equal to Cp_Ice instead.
-  real,    optional, intent(out) :: rho_ice   !< A nominal density of ice in kg m-3.
-  real,    optional, intent(out) :: rho_snow  !< A nominal density of snow in kg m-3.
-  real,    optional, intent(out) :: rho_water !< A nominal density of water in kg m-3.
+  real,    optional, intent(out) :: rho_ice   !< A nominal density of ice [kg m-3].
+  real,    optional, intent(out) :: rho_snow  !< A nominal density of snow [kg m-3].
+  real,    optional, intent(out) :: rho_water !< A nominal density of water [kg m-3].
   real,    optional, intent(out) :: Latent_fusion !< The latent heat of fusion, in J kg-1.
   real,    optional, intent(out) :: Latent_vapor !< The latent heat of vaporization, in J kg-1.
   type(EOS_type), &

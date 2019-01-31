@@ -56,7 +56,7 @@ type atmos_ice_boundary_type
     t_flux  => NULL(), & !< The net sensible heat flux flux from the ocean or ice into the
                          !! atmosphere at the surface, in W m-2.
     q_flux  => NULL(), & !< The flux of moisture from the ice or ocean to the
-                         !! atmosphere due to evaporation or sublimation, in kg m-2 s-1.
+                         !! atmosphere due to evaporation or sublimation [kg m-2 s-1].
     lw_flux => NULL(), & !< The net flux of longwave radiation from the atmosphere into the
                          !! ice or ocean, in W m-2.
     !! sw_flux_tot_down => NULL(), & !< The total downward flux of shortwave radiation
@@ -71,12 +71,12 @@ type atmos_ice_boundary_type
     sw_down_nir_dif => NULL(), & !< into the ice or ocean, in W m-2.
 
     lprec   => NULL(), & !< The liquid precipitation from the atmosphere onto the
-                         !! atmosphere or ice in each thickness category, in kg m-2 s-1.
+                         !! atmosphere or ice in each thickness category [kg m-2 s-1].
                          !! Rain falling on snow is currently assumed to pass or drain
                          !! directly through the ice into the ocean; this should be
                          !! revisited!
     fprec   => NULL(), & !< The frozen precipitation (snowfall) from the atmosphere
-                         !! to the ice or ocean, in kg m-2 s-1.  Currently in SIS2
+                         !! to the ice or ocean [kg m-2 s-1].  Currently in SIS2
                          !! all frozen precipitation, including snow, sleet, hail
                          !! and graupel, are all treated as snow.
     dhdt    => NULL(), & !< The derivative of the upward sensible heat flux with the
@@ -98,11 +98,10 @@ end type atmos_ice_boundary_type
 !> A type for exchange between the land and the sea ice
 type land_ice_boundary_type
   real, dimension(:,:),   pointer :: &
-    runoff  =>NULL(), &  !< The liquid runoff into the ocean, in kg m-2.
+    runoff  =>NULL(), &  !< The liquid runoff into the ocean [kg m-2].
     calving =>NULL(), &  !< The frozen runoff into each cell, that is offered
                          !! first to the icebergs (if any), where it might be
-                         !! used or modified before being passed to the ocean,
-                         !! in kg m-2.
+                         !! used or modified before being passed to the ocean [kg m-2].
     runoff_hflx  =>NULL(), & !< The heat flux associated with the temperature of
                          !! of the liquid runoff, relative to liquid water
                          !! at 0 degC, in W m-2.

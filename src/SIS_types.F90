@@ -172,11 +172,11 @@ type fast_ice_avg_type
     flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [Pa].
     flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [Pa].
     flux_sh_top , & !< The upward sensible heat flux at the ice top in W m-2.
-    evap_top    , & !< The upward evaporative moisture flux at top of the ice, in kg m-2 s-1.
+    evap_top    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
     flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice, in W m-2.
     flux_lh_top , & !< The upward flux of latent heat at the top of the ice, in W m-2.
-    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice, in kg m-2 s-1.
-    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice, in kg m-2 s-1.
+    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [kg m-2 s-1].
+    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
     tmelt       , & !< Ice-top melt energy into the ice/snow in J m-2.
     bmelt       , & !< Ice-bottom melting energy into the ice in J m-2.
     Tskin_cat       !< The ice skin temperature by category [degC].
@@ -198,14 +198,14 @@ type fast_ice_avg_type
     WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [Pa].
     WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [Pa].
     p_atm_surf , &  !< The atmospheric pressure at the top of the ice [Pa].
-    runoff, &       !< Liquid runoff into the ocean, in kg m-2.
-    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean, in kg m-2.
+    runoff, &       !< Liquid runoff into the ocean [kg m-2].
+    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [kg m-2].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
                     !! on the temperature difference relative to a reference temperature, in ???.
   real, allocatable, dimension(:,:) :: calving_hflx !< The heat flux associated with calving, based
                     !! on the temperature difference relative to a reference temperature, in ???.
   real, allocatable, dimension(:,:) :: calving_preberg !< Calving of ice or runoff of frozen fresh
-                    !! water into the ocean, exclusive of any iceberg contributions, in kg m-2.
+                    !! water into the ocean, exclusive of any iceberg contributions [kg m-2].
   real, allocatable, dimension(:,:) :: calving_hflx_preberg !< The heat flux associated with calving
                     !! exclusive of any iceberg contributions, based on the temperature difference
                     !! relative to a reference temperature, in ???.
@@ -227,7 +227,7 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:,:) ::  flux_sh0 !< The upward sensible heat flux at the ice top
                 !! extrapolated to a skin temperature of 0 degC, in W m-2.
   real, allocatable, dimension(:,:,:) ::  evap0 !< The upward evaporative moisture flux
-                !! at the top of the ice extrapolated to a skin temperature of 0 degC, in kg m-2 s-1.
+                !! at the top of the ice extrapolated to a skin temperature of 0 degC [kg m-2 s-1].
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
                 !! at the top of the  ice extrapolated to a skin temperature of 0 degC, in W m-2.
   real, allocatable, dimension(:,:,:) :: &
@@ -266,11 +266,11 @@ type total_sfc_flux_type
     flux_u  , & !< The downward flux of zonal momentum on an A-grid [Pa].
     flux_v  , & !< The downward flux of meridional momentum on an A-grid [Pa].
     flux_sh , & !< The upward sensible heat flux at the ice top in W m-2.
-    evap    , & !< The upward evaporative moisture flux at top of the ice, in kg m-2 s-1.
+    evap    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
     flux_lw , & !< The downward flux of longwave radiation at  the top of the ice, in W m-2.
     flux_lh , & !< The upward flux of latent heat at the top of the ice, in W m-2.
-    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice, in kg m-2 s-1.
-    fprec       !< The downward flux of frozen precipitation at the top of the ice, in kg m-2 s-1.
+    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [kg m-2 s-1].
+    fprec       !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
   real, allocatable, dimension(:,:,:) :: flux_sw
                 !< The downward flux of shortwave radiation at the top of the sea-ice in W m-2.
                 !! The third dimension combines angular orientation (direct or diffuse) and
@@ -342,19 +342,19 @@ type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
     flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere, in W m-2.
-    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface, in kg m-2 s-1.
+    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [kg m-2 s-1].
     flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface, in W m-2.
     flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface, in W m-2.
-    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface, in kg m-2 s-1.
-    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface, in kg m-2 s-1.
+    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
+    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by flux_uv_stagger [Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
     flux_v_ocn, &      !< The flux of y-momentum into the ocean at locations given by flux_uv_stagger [Pa].
                        !! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
     stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
-                       !! surface salinity to facilitate the retention of sea ice, in kg m-2 s-1.
-    flux_salt          !< The flux of salt out of the ocean in kg m-2.
+                       !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
+    flux_salt          !< The flux of salt out of the ocean [kg m-2].
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
                        !! at the ocean surface in W m-2.  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency

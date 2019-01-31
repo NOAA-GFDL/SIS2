@@ -52,8 +52,8 @@ type, public :: SIS_C_dyn_CS ; private
   real :: c0 = 20.0           !< another pressure constant
   real :: cdw = 3.24e-3       !< ice/water drag coef. (nondim)
   real :: EC = 2.0            !< yield curve axis ratio
-  real :: Rho_ocean = 1030.0  !< The nominal density of sea water, in kg m-3.
-  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  real :: Rho_ocean = 1030.0  !< The nominal density of sea water [kg m-3].
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice [kg m-3].
   real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag
                               !< with the ocean squared, in m2 s-2.
   real :: min_ocn_inertial_h = 0. !< A minimum ocean thickness used to limit the viscous coupling
@@ -490,7 +490,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     diag_val_u, & ! A temporary diagnostic array.
     u_tmp, & ! A temporary copy of the old values of ui, in m s-1.
     u_IC, &  ! The initial zonal ice velocities, in m s-1.
-    mi_u, &  ! The total ice and snow mass interpolated to u points, in kg m-2.
+    mi_u, &  ! The total ice and snow mass interpolated to u points [kg m-2].
     f2dt_u, &! The squared effective Coriolis parameter at u-points times a
              ! time step, in s-1.
     I1_f2dt2_u  ! 1 / ( 1 + f^2 dt^2) at u-points, nondimensional.
@@ -503,7 +503,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     PFv, &   ! Meridional hydrostatic pressure driven acceleration, in m s-2.
     diag_val_v, & ! A temporary diagnostic array.
     v_IC, &  ! The initial meridional ice velocities, in m s-1.
-    mi_v, &  ! The total ice and snow mass interpolated to v points, in kg m-2.
+    mi_v, &  ! The total ice and snow mass interpolated to v points [kg m-2].
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
              ! time step, in s-1.
     I1_f2dt2_v  ! 1 / ( 1 + f^2 dt^2) at v-points, nondimensional.
@@ -526,19 +526,19 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                   ! directions.
 
   real :: Cor       ! A Coriolis accleration, in m s-2.
-  real :: fxic_now, fyic_now  ! ice internal stress convergence, in kg m-1 s-2.
-  real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points, in kg m-2 s-1.
-  real :: drag_max  ! A maximum drag rate allowed in the ocean, in kg m-2 s-1.
+  real :: fxic_now, fyic_now  ! ice internal stress convergence [kg m-1 s-2].
+  real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points [kg m-2 s-1].
+  real :: drag_max  ! A maximum drag rate allowed in the ocean [kg m-2 s-1].
   real :: tot_area  ! The sum of the area of the four neighboring cells, in m2.
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings, in m.
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
-                      ! area surrounding a vorticity point, in kg2 m-4.
+                      ! area surrounding a vorticity point [kg2 m-4].
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
-                      ! to a vorticity point on the coast, in kg m-2.
+                      ! to a vorticity point on the coast [kg m-2].
   real :: pres_sum    ! The sum of the internal ice pressures aroung a point [Pa].
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale, ND.
-  real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp)
-  real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp)
+  real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp), ND.
+  real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp), ND.
 
   real :: v2_at_u     ! The squared v-velocity interpolated to u points, in m s-1.
   real :: u2_at_v     ! The squared u-velocity interpolated to v points, in m s-1.
@@ -548,13 +548,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: b_vel0      ! The initial difference between the velocity magnitude
                       ! and the absolute value of the u- or v- component, plus
                       ! the ice thickness divided by the time step and the drag
-                      ! coefficient, all in m s-1.
+                      ! coefficient [m s-1].
   real :: uio_C   ! A u-velocity difference between the ocean and ice, in m s-1.
   real :: vio_C   ! A v-velocity difference between the ocean and ice, in m s-1.
 
   real :: Tdamp   ! The damping timescale of the stress tensor components
-                  ! toward their equilibrium solution due to the elastic terms,
-                  ! in s.
+                  ! toward their equilibrium solution due to the elastic terms, in s.
   real :: dt      ! The short timestep associated with the EVP dynamics, in s.
   real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale.
   real :: dt_cumulative ! The elapsed time within this call to EVP dynamics, in s.
@@ -567,9 +566,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: I_2EC   ! 1/(2*EC), where EC is the yield curve axis ratio.
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
                                            ! can be cubed without underflow.
-  real :: m_neglect  ! A tiny mass per unit area, in kg m-2.
-  real :: m_neglect2 ! A tiny mass per unit area squared, in kg2 m-4.
-  real :: m_neglect4 ! A tiny mass per unit area to the 4th power, in kg4 m-8.
+  real :: m_neglect  ! A tiny mass per unit area [kg m-2].
+  real :: m_neglect2 ! A tiny mass per unit area squared [kg2 m-4].
+  real :: m_neglect4 ! A tiny mass per unit area to the 4th power [kg4 m-8].
   real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
 
   type(time_type) :: &
@@ -1355,7 +1354,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice !< The ice internal pressure per
                                                              !! unit column mass, in N m / kg.
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: mice  !< The mass per unit total area (ice
-                                                             !! covered and ice free) of the ice, in kg m-2.
+                                                             !! covered and ice free) of the ice [kg m-2].
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component [Pa m].
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component [Pa m].
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component [Pa m].
@@ -1656,7 +1655,7 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velicity in m s-1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity in m s-1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity in m s-1.
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area [kg m-2]
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force [Pa].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force [Pa].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration, in m s-2.
@@ -1726,7 +1725,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi   !< The meridional ice velicity in m s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: v_IC !< The initial meridional ice velicity in m s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vo   !< The meridional ocean velicity in m s-1.
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area [kg m-2]
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc !< The meridional ocean-to-ice force [Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyic !< The ice internal force [Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: Cor_v !< The meridional Coriolis acceleration, in m s-2.

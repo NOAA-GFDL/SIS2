@@ -1662,9 +1662,9 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
   type(SIS_hor_grid_type),    intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZCAT_(IG)), &
-                              intent(in)    :: vol_start !< The category volume before advection, in kg or m3.
+                              intent(in)    :: vol_start !< The category volume before advection [H m2 ~> kg or m3].
   real, dimension(SZI_(G),SZCAT_(IG)),&
-                              intent(in)    :: vol_trans !< The category volume to transfer, in kg or m3.
+                              intent(in)    :: vol_trans !< The category volume to transfer [H m2 ~> kg or m3].
   type(SIS_tracer_advect_CS), pointer       :: CS  !< The control structure returned by a previous
                                                    !! call to SIS_tracer_advect_init.
   type(SIS_tracer_registry_type), pointer   :: TrReg !< A pointer to the SIS tracer registry.

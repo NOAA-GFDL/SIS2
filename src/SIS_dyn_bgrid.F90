@@ -37,15 +37,15 @@ type, public :: SIS_B_dyn_CS ; private
     sig22 => NULL()     !< The yy component of the stress tensor [Pa m] (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
-  real :: p0 = 2.75e4         !< Hibbler rheology pressure constant (Pa)
-  real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
+  real :: p0 = 2.75e4         !< Hibbler rheology pressure constant [Pa]
+  real :: p0_rho              !< The pressure constant divided by ice density [N m kg-1].
   real :: c0 = 20.0           !< another pressure constant
   real :: cdw = 3.24e-3       !< ice/water drag coef. (nondim)
   real :: blturn = 0.0        !< air/water surf. turning angle (degrees)
   real :: EC = 2.0            !< yield curve axis ratio
-  real :: MIV_MIN =  1.0      !< min ice mass to do dynamics (kg/m^2)
-  real :: Rho_ocean = 1030.0  !< The nominal density of sea water, in kg m-3.
-  real :: Rho_ice = 905.0     !< The nominal density of sea ice, in kg m-3.
+  real :: MIV_MIN =  1.0      !< min ice mass to do dynamics [kg m-2]
+  real :: Rho_ocean = 1030.0  !< The nominal density of sea water [kg m-3].
+  real :: Rho_ice = 905.0     !< The nominal density of sea ice [kg m-3].
   logical :: debug            !< If true, write verbose checksums for debugging purposes.
   logical :: debug_redundant  !< If true, debug redundant points
   integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics

@@ -68,8 +68,8 @@ module ice_shortwave_dEdd
          awtidf = 0.36218_dbl_kind    !< near IR, diffuse band weight for history and diagnostics
 
       real (kind=dbl_kind), parameter :: &
-         Timelt    = 0.0_dbl_kind,& !<  melting temperature, ice top surface  (C)
-         rhos      = 330.0_dbl_kind !< density of snow (kg/m^3)
+         Timelt    = 0.0_dbl_kind,& !<  melting temperature, ice top surface [degC]
+         rhos      = 330.0_dbl_kind !< density of snow [kg m-3]
 
 
       real (kind=dbl_kind), parameter :: &
@@ -188,7 +188,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
         fs          !< horizontal coverage of snow
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
-        rhosnw      !< density in snow layer (kg/m3)
+        rhosnw      !< density in snow layer [kg m-3]
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
         rsnw        !< grain radius in snow layer (m)
 
@@ -546,7 +546,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
         hs          !< snow thickness (m)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
-        rhosnw      !< snow density in snow layer (kg/m3)
+        rhosnw      !< snow density in snow layer [kg m-3]
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
         rsnw        !< snow grain radius in snow layer (m)
 
@@ -774,7 +774,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
          gs_tab      ! assymetry parameter   for each snow grain radius
       real (kind=dbl_kind) :: &
          delr    , & ! snow grain radius interpolation parameter
-         rhoi    , & ! pure ice density (kg/m3)
+         rhoi    , & ! pure ice density [kg m-3]
          fr      , & ! snow grain adjustment factor
          fr_max  , & ! snow grain adjustment factor max
          fr_min      ! snow grain adjustment factor min
@@ -1005,7 +1005,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
 
       ! snow data
       data hs_ssl / 0.040_dbl_kind / ! snow surface scattering layer thickness (m)
-      data rhoi   /917.0_dbl_kind /  ! snow mass density (kg/m3)
+      data rhoi   /917.0_dbl_kind /  ! snow mass density [kg m-3]
       data fr_max / 1.00_dbl_kind /  ! snow grain adjustment factor max
       data fr_min / 0.80_dbl_kind /  ! snow grain adjustment factor min
 
@@ -2215,7 +2215,7 @@ subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
         fs         !< horizontal coverage of snow
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
-        rhosnw     !< density in snow layer (kg/m3)
+        rhosnw     !< density in snow layer [kg m-3]
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
         rsnw       !< grain radius in snow layer (micro-meters)
 !

@@ -1033,8 +1033,8 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                    ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v
   real :: area_pt
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -1223,8 +1223,8 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
   real, dimension(IG%NkIce) :: sw_abs_lay
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   real :: H_to_m_ice  ! The specific volumes of ice and snow times the
@@ -1728,9 +1728,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
-  real :: rho_ice        ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow       ! The nominal density of snow in kg m-3.
-  real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
+  real :: rho_ice        ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow       ! The nominal density of snow [kg m-3].
+  real :: rho_Ocean      ! The nominal density of seawater [kg m-3].
   real :: kmelt          ! A constant that is used in the calculation of the
                          ! ocean/ice basal heat flux [W m-2 degC-1].  This could
                          ! be changed to reflect the turbulence in the under-ice
@@ -2818,7 +2818,7 @@ end subroutine share_ice_domains
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
-  real,                         intent(in)    :: Rho_ice !< The nominal ice density, in kg m-3.
+  real,                         intent(in)    :: Rho_ice !< The nominal ice density [kg m-3].
   type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
   real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits, in m.
 

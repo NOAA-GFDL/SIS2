@@ -190,7 +190,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
     windstr_x, &      ! The area-weighted average ice thickness [Pa].
     windstr_y         ! The area-weighted average ice thickness [Pa].
-  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
+  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
   integer :: stress_stagger
@@ -280,8 +280,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    mi_sum, &           ! Masses of ice per unit total area, in kg m-2.
-    misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area, in kg m-2.
+    mi_sum, &           ! Masses of ice per unit total area [kg m-2].
+    misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area [kg m-2].
     ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
     ice_cover           ! The fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
@@ -688,8 +688,8 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true.
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: enth_units, I_enth_units
   real :: tmp_mca  ! A temporary cell averaged mass, in H.
   real :: I_Nk        ! The inverse of the number of layers in the ice.
@@ -722,7 +722,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
     if (CS%id_mib>0) then
       if (associated(IOF%mass_berg)) then
         do j=jsc,jec ; do i=isc,iec
-          mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass in kg/m^2
+          mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass [kg m-2]
         enddo ; enddo
       endif
       call post_data(CS%id_mib, mass(isc:iec,jsc:jec), diag)

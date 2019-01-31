@@ -324,7 +324,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   real, dimension(SZI_(G),SZJ_(G))   :: &
     h_ice_input    ! The specified ice thickness, with specified_ice, in m.
 
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
   real :: Idt_slow ! The inverse of the slow thermodynamic time step, in s-1
   integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
@@ -585,7 +585,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                           ! acts to create sea-ice, in W m-2.
     net_melt              ! The net mass flux from the ice and snow into the
                           ! ocean due to melting and freezing integrated
-                          ! across all categories, in kg m-2 s-1.
+                          ! across all categories [kg m-2 s-1].
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
 
@@ -593,7 +593,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
                                           ! layer in g/kg, with the salinity of
                                           ! newly formed ice in layer NkIce+1.
-  real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow, in kg m-2.
+  real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow [kg m-2].
   real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow, in g/kg.
   real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
@@ -619,24 +619,24 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(EOS_type), pointer :: EOS => NULL()
   real :: Cp_water
   real :: drho_dT(1), drho_dS(1), pres_0(1)
-  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
+  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step, in s-1.
   real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
                       ! to change the units of several diagnostics to rate yr-1
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt
-  real :: salt_to_ice ! The flux of salt from the ocean to the ice, in kg m-2 s-1.
+  real :: salt_to_ice ! The flux of salt from the ocean to the ice [kg m-2 s-1].
                       ! This may be of either sign; in some places it is an
                       ! average over the whole cell, while in others just a partition.
-  real :: mtot_ice    ! The total mass of ice and snow in a cell, in kg m-2.
+  real :: mtot_ice    ! The total mass of ice and snow in a cell [kg m-2].
   real :: e2m_tot     ! The total enthalpy required to melt all ice and snow, in J m-2.
   real :: enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, enth_snowfall
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb
   real :: enth_units, I_enth_units ! The units of enthaply and their inverse.
-  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, nd.
-  real :: ice_melt_lay ! The amount of excess ice removed from each layer in kg/m2.
-  real :: snow_melt    ! The amount of excess snow that is melted, in kg/m2.
+  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, ND.
+  real :: ice_melt_lay ! The amount of excess ice removed from each layer [kg m-2].
+  real :: snow_melt    ! The amount of excess snow that is melted [kg m-2].
   real :: enth_freeze  ! The freezing point enthalpy of a layer, in enth_units.
   real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
                        ! and snow in enth_unit kg/m2.
@@ -651,8 +651,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: sw_tot       ! The total shortwave radiation incident on a category, in W m-2.
   integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
-  real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
-  real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: LatHtFus     ! The latent heat of fusion of ice [J kg-1].
+  real :: LatHtVap     ! The latent heat of vaporization of water at 0C [J kg-1].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2

@@ -49,7 +49,7 @@ public accumulate_input_1, accumulate_input_2
 type, public :: SIS_sum_out_CS ; private
 
   real    :: mass_prev          !<   The total sea ice mass the last time that
-                                !! write_ice_statistics was called, in kg.
+                                !! write_ice_statistics was called [kg].
   real    :: fresh_water_input  !<   The total mass of fresh water added by
                                 !! surface fluxes since the last time that
   real    :: salt_prev          !<   The total amount of salt in the sea ice the last
@@ -62,17 +62,17 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called, in Joules.
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called, in kg m-2.
+                                !! the last time that write_ice_statistics was called [kg m-2].
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called, in J m-2.
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called, in kg m-2.
+                                !! the last time that write_ice_statistics was called [kg m-2].
     water_col_prev, &           !< The column integrated water that was in the ice and snow the last
-                                !! time that write_ice_statistics was called, in kg m-2.
+                                !! time that write_ice_statistics was called [kg m-2].
     heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
                                 !! time that write_ice_statistics was called, in J m-2.
     salt_col_prev               !< The column integrated salt that was in the ice and snow the last
-                                !! time that write_ice_statistics was called, in kg m-2.
+                                !! time that write_ice_statistics was called [kg m-2].
 
   type(EFP_type) :: fresh_water_in_EFP !< An extended fixed point version of fresh_water_in
   type(EFP_type) :: net_salt_in_EFP !< An extended fixed point version of net_salt_in
@@ -230,26 +230,26 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     ice_extent, &  ! The extent (cells with >10% coverage) of ice in each
                    ! cell and hemisphere, in m2.
     col_mass, &    ! The column integrated ice and snow mass in each cell and
-                   ! hemisphere, in kg.
+                   ! hemisphere [kg].
     col_heat, &    ! The column integrated ice and snow heat in each cell and
                    ! hemisphere, in J.
     col_salt       ! The column integrated salt in the ice in each cell and
-                   ! hemisphere in kg.
+                   ! hemisphere [kg].
 
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres, in m2.
     Extent_NS, &   ! The total sea-ice extent in the two hemispheres, in m2.
     Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres, in J.
-    mass_NS, &     ! The total sea-ice mass in the two hemispheres, in kg.
-    salt_NS, &     ! The total sea-ice salt in the two hemispheres, in kg.
+    mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
+    salt_NS, &     ! The total sea-ice salt in the two hemispheres [kg].
     salinity_NS    ! The average sea-ice salinity in the two hemispheres, in g/kg.
 
-  real :: Mass         ! The total mass of the sea ice and snow atop it in kg.
+  real :: Mass         ! The total mass of the sea ice and snow atop it [kg].
   real :: mass_chg     ! The change in total sea ice mass of fresh water since
-                       ! the last call to this subroutine, in kg.
+                       ! the last call to this subroutine [kg].
   real :: mass_anom    ! The change in fresh water that cannot be accounted for
-                       ! by the surface fluxes, in kg.
-  real :: I_Mass       ! Adcroft's rule reciprocal of mass: 1/Mass or 0, in kg-1.
+                       ! by the surface fluxes [kg].
+  real :: I_Mass       ! Adcroft's rule reciprocal of mass: 1/Mass or 0 [kg-1].
   real :: Salt         ! The total amount of salt in the ocean, in PSU kg.
   real :: Salt_chg     ! The change in total sea ice salt since the last call
                        ! to this subroutine, in PSU kg.
@@ -261,7 +261,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
                        ! to this subroutine divided by total mass, in PSU.
   real :: salin_anom   ! The change in total salt that cannot be accounted for by
                        ! the surface fluxes divided by total mass in PSU.
-  real :: salin_mass_in ! The mass of salt input since the last call, kg.
+  real :: salin_mass_in ! The mass of salt input since the last call [kg].
   real :: Heat         ! The total amount of Heat in the ocean, in Joules.
   real :: Heat_chg     ! The change in total sea ice heat since the last call
                        ! to this subroutine, in Joules.
@@ -274,8 +274,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
                        ! capacity of the ocean [degC].
   real :: Area         ! The total area of the sea ice in m2.
   real :: Extent       ! The total extent of the sea ice in m2.
-  real :: heat_imb     ! The column integrated heat imbalance in enth_unit kg m-2.
-  real :: mass_imb     ! The column integrated mass imbalance in kg.
+  real :: heat_imb     ! The column integrated heat imbalance [Enth kg m-2 ~> J m-2].
+  real :: mass_imb     ! The column integrated mass imbalance [kg].
   real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point, in enth_unit.
   real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
@@ -773,23 +773,23 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    FW_in, &   ! The net fresh water input, integrated over a timestep in kg.
+    FW_in, &   ! The net fresh water input, integrated over a timestep [kg].
     salt_in, & ! The total salt added by surface fluxes, integrated
-               ! over a time step in PSU kg.
+               ! over a time step [PSU kg].
     heat_in    ! The total heat added by surface fluxes, integrated
-               ! over a time step in Joules.
+               ! over a time step [J].
   real :: FW_input   ! The net fresh water input, integrated over a timestep
-                  ! and summed over space, in kg.
+                  ! and summed over space [kg].
   real :: salt_input ! The total salt added by surface fluxes, integrated
-                  ! over a time step and summed over space, in kg.
+                  ! over a time step and summed over space [kg].
   real :: heat_input ! The total heat added by surface fluxes, integrated
-                  ! over a time step and summed over space, in Joules.
+                  ! over a time step and summed over space [J].
   real :: area_h, area_pt, Flux_SW
   real :: enth_units
   type(EFP_type) :: &
-    FW_in_EFP, &   ! Extended fixed point versions of FW_input, salt_input, and
-    salt_in_EFP, & ! heat_input, in kg, PSU kg, and Joules.
-    heat_in_EFP    !
+    FW_in_EFP, &   ! Extended fixed point version of FW_input [kg]
+    salt_in_EFP, & ! Extended fixed point version of salt_input [PSU kg]
+    heat_in_EFP    ! Extended fixed point version of heat_input [J]
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
