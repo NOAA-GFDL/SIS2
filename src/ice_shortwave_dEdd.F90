@@ -197,13 +197,13 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
         hp          !< pond depth (m)
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swvdr       !< sw down, visible, direct  (W/m^2)
+        swvdr       !< sw down, visible, direct  [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swvdf       !< sw down, visible, diffuse (W/m^2)
+        swvdf       !< sw down, visible, diffuse [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swidr       !< sw down, near IR, direct  (W/m^2)
+        swidr       !< sw down, near IR, direct  [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swidf       !< sw down, near IR, diffuse (W/m^2)
+        swidf       !< sw down, near IR, diffuse [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
         alvdr       !< visible, direct, albedo (fraction)
@@ -214,17 +214,17 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
         alidf       !< near-ir, diffuse, albedo (fraction)
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        fswint      !< SW interior absorption (below surface, above ocean,W m-2)
+        fswint      !< SW interior absorption (below surface, above ocean [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        fswthru     !< SW through snow/bare ice/ponded ice into ocean (W m-2)
+        fswthru     !< SW through snow/bare ice/ponded ice into ocean [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(out) :: &
-        Sswabs      !< SW absorbed in snow layer (W m-2)
+        Sswabs      !< SW absorbed in snow layer [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), intent(out) :: &
-        Iswabs      !< SW absorbed in ice layer (W m-2)
+        Iswabs      !< SW absorbed in ice layer [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
         albice      !< bare ice albedo, for history
@@ -531,13 +531,13 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
         coszen      !< cosine solar zenith angle
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swvdr       !< shortwave down at surface, visible, direct  (W/m^2)
+        swvdr       !< shortwave down at surface, visible, direct  [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swvdf       !< shortwave down at surface, visible, diffuse (W/m^2)
+        swvdf       !< shortwave down at surface, visible, diffuse [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swidr       !< shortwave down at surface, near IR, direct  (W/m^2)
+        swidr       !< shortwave down at surface, near IR, direct  [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        swidf       !< shortwave down at surface, near IR, diffuse (W/m^2)
+        swidf       !< shortwave down at surface, near IR, diffuse [W m-2]
 
       integer (kind=int_kind), dimension(nx_block,ny_block), intent(in) :: &
         srftyp      !< surface type over ice: (0=air, 1=snow, 2=pond)
@@ -566,17 +566,17 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
         alidf       !< near-ir, diffuse, albedo (fraction)
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+        fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
         fswint      !< SW interior absorption (below surface, above ocean,W m-2)
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        fswthru     !< SW through snow/bare ice/ponded ice into ocean (W m-2)
+        fswthru     !< SW through snow/bare ice/ponded ice into ocean [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(inout) :: &
-        Sswabs      !< SW absorbed in snow layer (W m-2)
+        Sswabs      !< SW absorbed in snow layer [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nilyr), intent(inout) :: &
-        Iswabs      !< SW absorbed in ice layer (W m-2)
+        Iswabs      !< SW absorbed in ice layer [W m-2]
 !
 !EOP
 !-----------------------------------------------------------------------
@@ -714,15 +714,15 @@ subroutine compute_dEdd0(nx_block, ny_block, &
          aidf        ! near-ir albedo, diffuse  (fraction)
 
       real (kind=dbl_kind), dimension(icells_DE) :: &
-         fsfc    , & ! shortwave absorbed at snow/bare ice/ponded ice surface (W m-2)
-         fint    , & ! shortwave absorbed in interior (below surface but above ocean, W m-2)
-         fthru       ! shortwave through snow/bare ice/ponded ice to ocean (W/m^2)
+         fsfc    , & ! shortwave absorbed at snow/bare ice/ponded ice surface [W m-2]
+         fint    , & ! shortwave absorbed in interior (below surface but above ocean) [W m-2]
+         fthru       ! shortwave through snow/bare ice/ponded ice to ocean [W m-2]
 
       real (kind=dbl_kind), dimension(icells_DE,nslyr) :: &
-         Sabs        ! shortwave absorbed in snow layer (W m-2)
+         Sabs        ! shortwave absorbed in snow layer [W m-2]
 
       real (kind=dbl_kind), dimension(icells_DE,nilyr) :: &
-         Iabs        ! shortwave absorbed in ice layer (W m-2)
+         Iabs        ! shortwave absorbed in ice layer [W m-2]
 
       real (kind=dbl_kind), dimension (icells_DE,nspint) :: &
          wghtns              ! spectral weights

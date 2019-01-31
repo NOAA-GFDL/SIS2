@@ -213,10 +213,10 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
     Tsfc   , & ! surface temperature
     coszen , & ! cosine of solar zenith angle
     tarea  , & ! cell area - not used
-    swvdr  , & ! sw down, visible, direct  (W/m^2)
-    swvdf  , & ! sw down, visible, diffuse (W/m^2)
-    swidr  , & ! sw down, near IR, direct  (W/m^2)
-    swidf      ! sw down, near IR, diffuse (W/m^2)
+    swvdr  , & ! sw down, visible, direct  [W m-2]
+    swvdf  , & ! sw down, visible, diffuse [W m-2]
+    swidr  , & ! sw down, near IR, direct  [W m-2]
+    swidf      ! sw down, near IR, diffuse [W m-2]
 
   ! outputs
   real (kind=dbl_kind), dimension (1,1) :: &
@@ -236,15 +236,15 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
     alvdf   , & ! visible, diffuse, albedo (fraction)
     alidr   , & ! near-ir, direct, albedo (fraction)
     alidf   , & ! near-ir, diffuse, albedo (fraction)
-    fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface (W m-2)
+    fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
     fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
-    fswthru     ! SW through snow/bare ice/ponded ice into ocean (W m-2)
+    fswthru     ! SW through snow/bare ice/ponded ice into ocean [W m-2]
 
   real (kind=dbl_kind), dimension (1,1,1) :: &
-    Sswabs      ! SW absorbed in snow layer (W m-2)
+    Sswabs      ! SW absorbed in snow layer [W m-2]
 
   real (kind=dbl_kind), dimension (1,1,NkIce) :: &
-    Iswabs      ! SW absorbed in ice layer (W m-2)
+    Iswabs      ! SW absorbed in ice layer [W m-2]
 
   real (kind=dbl_kind), dimension (1,1) :: &
     albice  , & ! bare ice albedo, for history

@@ -54,21 +54,21 @@ type atmos_ice_boundary_type
                          !! and _not_ rotated to align with the model grid [Pa].
     u_star  => NULL(), & !< The atmospheric friction velocity on an A-grid [Pa].
     t_flux  => NULL(), & !< The net sensible heat flux flux from the ocean or ice into the
-                         !! atmosphere at the surface, in W m-2.
+                         !! atmosphere at the surface [W m-2].
     q_flux  => NULL(), & !< The flux of moisture from the ice or ocean to the
                          !! atmosphere due to evaporation or sublimation [kg m-2 s-1].
     lw_flux => NULL(), & !< The net flux of longwave radiation from the atmosphere into the
-                         !! ice or ocean, in W m-2.
+                         !! ice or ocean [W m-2].
     !! sw_flux_tot_down => NULL(), & !< The total downward flux of shortwave radiation
-    !!                      !! at the surface of the ice or ocean, in W m-2.
+    !!                      !! at the surface of the ice or ocean [W m-2].
     sw_flux_vis_dir => NULL(), & !< The visible (_vis) or near-infrared (_nir),
     sw_flux_vis_dif => NULL(), & !< direct (_dir) or diffuse (_dif) net shortwave
     sw_flux_nir_dir => NULL(), & !< radiation fluxes from the atmosphere into
-    sw_flux_nir_dif => NULL(), & !< the ice or ocean, in W m-2.
+    sw_flux_nir_dif => NULL(), & !< the ice or ocean [W m-2].
     sw_down_vis_dir => NULL(), & !< The visible (_vis) or near-infrared (_nir),
     sw_down_vis_dif => NULL(), & !< direct (_dir) or diffuse (_dif) downward
     sw_down_nir_dir => NULL(), & !< shortwave radiation fluxes from the atmosphere
-    sw_down_nir_dif => NULL(), & !< into the ice or ocean, in W m-2.
+    sw_down_nir_dif => NULL(), & !< into the ice or ocean [W m-2].
 
     lprec   => NULL(), & !< The liquid precipitation from the atmosphere onto the
                          !! atmosphere or ice in each thickness category [kg m-2 s-1].
@@ -104,10 +104,10 @@ type land_ice_boundary_type
                          !! used or modified before being passed to the ocean [kg m-2].
     runoff_hflx  =>NULL(), & !< The heat flux associated with the temperature of
                          !! of the liquid runoff, relative to liquid water
-                         !! at 0 degC, in W m-2.
+                         !! at 0 degC [W m-2].
     calving_hflx =>NULL() !< The heat flux associated with the temperature of
                          !! of the frozen runoff, relative to liquid? (or frozen?) water
-                         !! at 0 degC, in W m-2.
+                         !! at 0 degC [W m-2].
   real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and isused by coupler

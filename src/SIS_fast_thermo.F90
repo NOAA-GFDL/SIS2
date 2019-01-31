@@ -110,29 +110,29 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_sh  !< The upward sensible heat flux from the top of the ice into
-                           !! the atmosphere in W m-2.
+                           !! the atmosphere [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: evap     !< The upward flux of water due to sublimation or evaporation
                            !! from the top of the ice to the atmosphere [kg m-2 s-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_lw  !< The net longwave heat flux from the atmosphere into the
-                           !! ice or ocean, in W m-2.
+                           !! ice or ocean [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: lprec    !< The liquid precipitation onto the ice [kg m-2 s-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: fprec    !< The frozen precipitation onto the ice [kg m-2 s-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_lh  !< The upward latent heat flux associated with sublimation or
-                           !! evaporation, in W m-2.
+                           !! evaporation [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: sh_T0    !< The upward sensible heat flux from the top of the ice into
-                           !! the atmosphere when the skin temperature is 0 degC, in W m-2.
+                           !! the atmosphere when the skin temperature is 0 degC [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: evap_T0  !< The sublimation rate when the skin temperature is 0 degC,
                            !! [kg m-2 s-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: lw_T0    !< The downward longwave heat flux from the atmosphere into the
-                           !! ice or ocean when the skin temperature is 0 degC, in W m-2.
+                           !! ice or ocean when the skin temperature is 0 degC [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: dshdt    !< The derivative of the upward sensible heat flux from the
                            !! the top of the ice into the atmosphere with ice skin
@@ -148,7 +148,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
     intent(in) :: SST      !< The sea surface temperature [degC].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
-    intent(in) :: flux_sw  !< The downward shortwave heat fluxes in W m-2. The 4th
+    intent(in) :: flux_sw  !< The downward shortwave heat fluxes [W m-2]. The 4th
                            !! dimension is a combination of angular orientation & frequency.
 
   real :: t_sfc
@@ -588,20 +588,20 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce) :: &
     flux_sh, &  ! The upward sensible heat flux from the ice to the atmosphere
-                ! at the surface of the ice, in W m-2.
+                ! at the surface of the ice [W m-2].
     evap, &     ! The upward flux of water due to sublimation or evaporation
                 ! from the top of the ice to the atmosphere [kg m-2 s-1].
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
-                ! evaporation, in W m-2.
-    flux_lw, &  ! The net downward longwave heat flux into the ice, in W m-2.
+                ! evaporation [W m-2].
+    flux_lw, &  ! The net downward longwave heat flux into the ice [W m-2].
     flux_u, flux_v, lprec, fprec, &
 
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
-                ! the atmosphere when the skin temperature is 0 degC, in W m-2.
+                ! the atmosphere when the skin temperature is 0 degC [W m-2].
     evap_T0, &  ! The sublimation rate  when the skin temperature is 0 degC,
                 ! [kg m-2 s-1].
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
-                ! ice or ocean when the skin temperature is 0 degC, in W m-2.
+                ! ice or ocean when the skin temperature is 0 degC [W m-2].
     dshdt, &    ! The derivative of the upward sensible heat flux with the surface
                 ! temperature [W m-2 degC-1].
     devapdt, &  ! The derivative of the sublimation rate with the surface
@@ -609,18 +609,18 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     dlwdt       ! The derivative of the downward radiative heat flux with surface
                 ! temperature (i.e. d(flux_lw)/d(surf_temp)) [W m-2 degC-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)) :: &
-    flux_sw     ! The downward shortwave heat fluxes in W m-2.  The fourth
+    flux_sw     ! The downward shortwave heat fluxes [W m-2].  The fourth
                 ! dimension is a combination of angular orientation and frequency.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow [degC].
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
-  real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice, in W m-2.
+  real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice [W m-2].
   real :: dt_fast ! The fast thermodynamic time step, in s.
   real :: Tskin   ! The new skin temperature [degC].
   real :: dTskin  ! The change in the skin temperatue [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
-  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC, in W m-2.
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
   real :: sw_tot ! sum over all shortwave (dir/dif and vis/nir) components
   real :: snow_wt ! A fractional weighting of snow in the category surface area.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
@@ -876,7 +876,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     S_col         ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: &
     T_col, &      ! The temperature of a column of ice and snow [degC].
-    SW_abs_col, & ! The shortwave absorption within a column of snow and ice, in W m-2.
+    SW_abs_col, & ! The shortwave absorption within a column of snow and ice [W m-2].
     enth_col, &   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
     enth_col_in   ! The initial enthalpy of a column of snow and ice,
                   ! in enth_unit (J/kg?).
@@ -884,8 +884,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: dt_here ! The time step here, in s.
   real :: Tskin   ! The new skin temperature [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
-  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC, in W m-2.
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts, in W m-2 C-1.
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components
   real :: rho_ice       ! The nominal density of sea ice [kg m-3].
   real :: rho_snow      ! The nominal density of snow [kg m-3].
@@ -899,13 +899,13 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
     sw_tot_ice_band     !   The total shortwave radiation by band, integrated
                         ! across the ice thickness partitions, but not the open
-                        ! ocean partition, in W m-2.
+                        ! ocean partition [W m-2].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce,size(FIA%flux_sw_top,4)) :: &
     sw_top_chg          !   The change in the shortwave down due to the new albedos.
-  real    :: flux_sw_prev  ! The previous value of flux_sw_top, in W m-2.
+  real    :: flux_sw_prev  ! The previous value of flux_sw_top [W m-2].
   real    :: rescale    ! A rescaling factor between 0 and 1.
   real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays, in J m-2.
-  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature, in W m-2 C-1.
+  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [W m-2 degC-1].
   real    :: Tskin_prev ! The previous value of Tskin
   real    :: T_bright   ! A skin temperature below which the snow and ice attain
                         ! their greatest brightness and albedo no longer varies [degC].
@@ -919,9 +919,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   integer :: b, b2, nb, nbmerge, itt, max_itt
 
   real :: ice_sw_tot ! The sum of shortwave fluxes into the ice and snow, but
-                     ! excluding the fluxes transmitted to the ocean, in W m-2.
+                     ! excluding the fluxes transmitted to the ocean [W m-2].
   real :: TSF_sw_tot ! The total of all shortwave fluxes into the snow, ice,
-                     ! and ocean that were previouslly stored in TSF, in W m-2.
+                     ! and ocean that were previouslly stored in TSF [W m-2].
 
   real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
   real :: I_Nk

@@ -1416,10 +1416,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
   real, dimension(G%isd:G%ied, G%jsd:G%jed,size(FIA%flux_sw_dn,3)) :: &
     sw_dn_bnd  ! The downward shortwave radiation by frequency and angular band
-               ! averaged over all of the ice thickness categories, in W m-2.
+               ! averaged over all of the ice thickness categories [W m-2].
   real, dimension(G%isd:G%ied) :: Tskin_avg, ice_conc
   real :: dt_diag
-  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
+  real    :: Stefan ! The Stefan-Boltzmann constant [W m-2 degK-4] as used for
                     ! strictly diagnostic purposes.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
@@ -1474,7 +1474,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   if (Rad%id_lwdn > 0) then
     tmp_diag(:,:) = 0.0
-    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
+    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant [W m-2 degK-4].
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
@@ -1701,7 +1701,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
   ! Parameters that properly belong exclusively to ice_thm.
-  real :: k_snow         ! snow conductivity (W/mK)
+  real :: k_snow         ! snow conductivity [W m degC-1]
   real :: h_lo_lim       ! The min ice thickness for temp. calc, in m.
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion

@@ -165,12 +165,12 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                                   !! snow and ice, in enth_unit (J kg-1).
   real, dimension(NkIce), &
         intent(in)    :: Sice  !< ice salinity by layer (g/kg)
-  real, intent(in   ) :: SF_0  !< net upward surface heat flux at ts=0 (W/m^2)
+  real, intent(in   ) :: SF_0  !< net upward surface heat flux at ts=0 [W m-2]
   real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [W m-2 degC-1]
   real, dimension(0:NkIce), &
-        intent(in)    :: sol   !< Solar heating of the snow and ice layers (W m-2)
+        intent(in)    :: sol   !< Solar heating of the snow and ice layers [W m-2]
   real, intent(in   ) :: tfw   !< seawater freezing temperature [degC]
-  real, intent(in   ) :: fb    !< heat flux upward from ocean to ice bottom (W/m^2)
+  real, intent(in   ) :: fb    !< heat flux upward from ocean to ice bottom [W m-2]
   real, intent(  out) :: tsurf !< surface temperature [degC]
   real, intent(in   ) :: dtt   !< timestep (sec)
   integer, intent(in   ) :: NkIce !< The number of ice layers.
@@ -183,7 +183,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 ! variables for temperature calculation [see Winton (1999) section II.A.]
 ! note:  here equations are multiplied by hi to improve thin ice accuracy
 !
-!  real :: A ! Net downward surface heat flux from the atmosphere at 0C (W/m^2)
+!  real :: A ! Net downward surface heat flux from the atmosphere at 0C [W m-2]
 !  real, dimension(0:NkIce) :: &
 !    temp_est, &    ! An estimated snow and ice temperature [degC].
 !    temp_IC, &     ! The temperatures of the snow and ice based on the initial
@@ -216,7 +216,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
   real, dimension(0:NkIce) :: cc_bb ! Remaining coupling ratios.
   real, dimension(-1:NkIce) :: heat_flux_int ! The downward heat fluxes at the
-                                ! interfaces between layers, in W m-2.
+                                ! interfaces between layers [W m-2].
                                 ! heat_flux_int uses the index convention from
                                 ! MOM6 that interface K is below layer k.
   real :: I_liq_lim     ! The inverse of CS%liq_lim.
@@ -546,10 +546,10 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
                                   !! snow and ice, in enth_unit (J kg-1).
   real, dimension(NkIce), &
         intent(in)    :: Sice  !< ice salinity by layer (g/kg)
-  real, intent(in   ) :: SF_0  !< net upward surface heat flux when Tsurf=0 (W/m^2)
+  real, intent(in   ) :: SF_0  !< net upward surface heat flux when Tsurf=0 [W m-2]
   real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [W m-2 degC-1]
   real, dimension(0:NkIce), &
-        intent(in)    :: sol   !< Solar heating of the snow and ice layers (W m-2)
+        intent(in)    :: sol   !< Solar heating of the snow and ice layers [W m-2]
   real, intent(in   ) :: tfw   !< seawater freezing temperature [degC]
   real, intent(  out) :: tsurf !< surface temperature [degC]
   real, intent(in   ) :: dtt   !< timestep (sec)
@@ -581,7 +581,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real :: tsf       ! The surface freezing temperature [degC].
   real :: k0a_x_ta  ! The surface heat flux times normalized by 1 + the ratio
                     ! of the temperature feedback on surface fluces to the
-                    ! skin-snow conductive sensitivity, in W m-2.
+                    ! skin-snow conductive sensitivity [W m-2].
   real :: tsurf_est ! An estimate of the surface temperature [degC].
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
@@ -864,20 +864,20 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real, intent(inout) :: enth  !< ice enthalpy in enth_units [Enth ~> J kg-1].
   real, intent(inout) :: ftop  !< Downward heat flux atop the layer at T = 0 degC, or
                                !! the prescribed heat flux if dftop_dT = 0 [W m-2].
-  real, intent(in) :: ht_body  !< Body forcing to layer in W/m2
+  real, intent(in) :: ht_body  !< Body heating to layer [W m-2]
   real, intent(inout) :: fbot  !< Downward heat below the layer at T = 0 degC [W m-2].
   real, intent(in) :: dftop_dT !< The linearization of ftop with layer temperature [W m-2 degC-1].
   real, intent(in) :: dfbot_dT !< The linearization of fbot with layer temperature [W m-2 degC-1].
   real, intent(in) :: dtt      !< The timestep in s.
   real, intent(in) :: hf_err_rat  !< A conversion factor for comparing the errors
                                !! in explicit and implicit estimates of the updated
-                               !! heat fluxes [ (kg m-2) / (W m-2 K-1) ].
+                               !! heat fluxes [kg degC W-1].
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, intent(out) :: extra_heat !< The heat above the melt point, in J.
   real, optional, intent(out) :: temp_new !< The new temperature [degC].
   real, optional, intent(in)  :: temp_max !< The maximum new temperature [degC].
 
-  real :: htg      ! The rate of heating of the layer in W m-2.
+  real :: htg      ! The rate of heating of the layer [W m-2].
   real :: new_temp ! The new layer temperature [degC].
   real :: max_temp ! The maximum new layer temperature [degC].
   real :: max_enth ! The maximum new layer enthalpy [degC].
@@ -892,7 +892,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                    ! in units of K / Enth_unit.
   real :: En_J     ! The enthalpy in Joules with 0 offset for liquid at 0 degC.
   real :: T_fr     ! Ice freezing temperature (determined by bulk salinity) [degC].
-  real :: fbot_in, ftop_in ! Input values of fbot and ftop in W m-2.
+  real :: fbot_in, ftop_in ! Input values of fbot and ftop [W m-2].
   real :: dflux_dtot_dT  ! A temporary work array in units of degC.
 
   real :: T_g    ! The latest best guess at Temp [degC].
@@ -1121,8 +1121,8 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
   integer, intent(in) :: NkIce !< The number of vertical temperature layers in the ice
   character(len=*), intent(in) :: msg_part !< An identifying message
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, optional, intent(in) :: bmelt  !< The heat flux assocated with bottom melt in W m-2
-  real, optional, intent(in) :: tmelt  !< The heat flux assocated with top melt in W m-2
+  real, optional, intent(in) :: bmelt  !< The heat flux assocated with bottom melt [W m-2]
+  real, optional, intent(in) :: tmelt  !< The heat flux assocated with top melt [W m-2]
   real, optional, intent(in) :: t_sfc  !< The ice surface temperature [degC]
 
   character(len=300) :: mesg

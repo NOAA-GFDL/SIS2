@@ -488,7 +488,7 @@ subroutine add_excess_fluxes(IOF, XSF, G)
                                                   !! those stored in TSF
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
 
-  real :: sw_comb  ! A combination of two downward shortwave fluxes, in W m-2.
+  real :: sw_comb  ! A combination of two downward shortwave fluxes [W m-2].
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
@@ -582,7 +582,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(SZI_(G),SZJ_(G))   :: &
     qflx_lim_ice, qflx_res_ice, &
     cool_nudge, &         ! A heat flux out of the sea ice that
-                          ! acts to create sea-ice, in W m-2.
+                          ! acts to create sea-ice [W m-2].
     net_melt              ! The net mass flux from the ice and snow into the
                           ! ocean due to melting and freezing integrated
                           ! across all categories [kg m-2 s-1].
@@ -648,7 +648,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  real :: sw_tot       ! The total shortwave radiation incident on a category, in W m-2.
+  real :: sw_tot       ! The total shortwave radiation incident on a category [W m-2].
   integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice [J kg-1].

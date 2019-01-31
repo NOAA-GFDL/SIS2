@@ -107,7 +107,7 @@ type ocean_sfc_state_type
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points, in m s-1.
     v_ocn_C     !< The ocean's meridional velocity on C-grid points, in m s-1.
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
-                !! to the ice at the base of the ice, in W m-2.
+                !! to the ice at the base of the ice [W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
                 !! timestep, in J m-2. This is the input value and is not changed by the ice.
@@ -147,7 +147,7 @@ type simple_OSS_type
     u_ice_A, &  !< The sea ice's zonal velocity on A-grid points in m s-1.
     v_ice_A     !< The sea ice's meridional velocity on A-grid points in m s-1.
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
-                !! from the ocean to the ice at the base of the ice, in W m-2.
+                !! from the ocean to the ice at the base of the ice [W m-2].
 
   type (coupler_2d_bc_type) :: &
     tr_fields   !< A structure of fields related to properties for additional tracers.
@@ -171,10 +171,10 @@ type fast_ice_avg_type
     ! The 3rd dimension in each of the following is ice thickness category.
     flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [Pa].
     flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh_top , & !< The upward sensible heat flux at the ice top in W m-2.
+    flux_sh_top , & !< The upward sensible heat flux at the ice top [W m-2].
     evap_top    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice, in W m-2.
-    flux_lh_top , & !< The upward flux of latent heat at the top of the ice, in W m-2.
+    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice [W m-2].
+    flux_lh_top , & !< The upward flux of latent heat at the top of the ice [W m-2].
     lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [kg m-2 s-1].
     fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
     tmelt       , & !< Ice-top melt energy into the ice/snow in J m-2.
@@ -186,12 +186,12 @@ type fast_ice_avg_type
                     !! ice_rad_type because it is used as a part of the slow thermodynamic updates.
   ! The last dimension in each of the following is angular and frequency radiation band.
   real, allocatable, dimension(:,:,:,:) :: flux_sw_top
-                    !< The downward flux of shortwave radiation at the top of the sea-ice in W m-2.
+                    !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
                     !! The fourth dimension combines angular orientation (direct or diffuse) and
                     !! frequency (visible or near-IR) bands, with the integer parameters
                     !! from this module helping to distinguish them.
   real, allocatable, dimension(:,:,:) :: flux_sw_dn !< The total downward shortwave flux
-                    !! by wavelength band, averaged across all thickness categories, in W m-2.
+                    !! by wavelength band, averaged across all thickness categories [W m-2].
   real, allocatable, dimension(:,:) :: &
     WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [Pa].
     WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [Pa].
@@ -225,11 +225,11 @@ type fast_ice_avg_type
   ! then interpolated into unoccupied categories for the purpose of redoing
   ! the application of the fast thermodynamics
   real, allocatable, dimension(:,:,:) ::  flux_sh0 !< The upward sensible heat flux at the ice top
-                !! extrapolated to a skin temperature of 0 degC, in W m-2.
+                !! extrapolated to a skin temperature of 0 degC [W m-2].
   real, allocatable, dimension(:,:,:) ::  evap0 !< The upward evaporative moisture flux
                 !! at the top of the ice extrapolated to a skin temperature of 0 degC [kg m-2 s-1].
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
-                !! at the top of the  ice extrapolated to a skin temperature of 0 degC, in W m-2.
+                !! at the top of the  ice extrapolated to a skin temperature of 0 degC [W m-2].
   real, allocatable, dimension(:,:,:) :: &
     dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [W m-2 degC-1].
     devapdt, &  !< The partial derivative of evap0 with ice skin temperature [kg m-2 s-1 degC-1].
@@ -265,14 +265,14 @@ type total_sfc_flux_type
   real, allocatable, dimension(:,:) :: &
     flux_u  , & !< The downward flux of zonal momentum on an A-grid [Pa].
     flux_v  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh , & !< The upward sensible heat flux at the ice top in W m-2.
+    flux_sh , & !< The upward sensible heat flux at the ice top [W m-2].
     evap    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice, in W m-2.
-    flux_lh , & !< The upward flux of latent heat at the top of the ice, in W m-2.
+    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [W m-2].
+    flux_lh , & !< The upward flux of latent heat at the top of the ice [W m-2].
     lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [kg m-2 s-1].
     fprec       !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
   real, allocatable, dimension(:,:,:) :: flux_sw
-                !< The downward flux of shortwave radiation at the top of the sea-ice in W m-2.
+                !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
                 !! The third dimension combines angular orientation (direct or diffuse) and
                 !! frequency (visible or near-IR) bands, with the integer parameters
                 !! from this module helping to distinguish them.
@@ -341,10 +341,10 @@ end type ice_rad_type
 type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
-    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere, in W m-2.
+    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere [W m-2].
     evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [kg m-2 s-1].
-    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface, in W m-2.
-    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface, in W m-2.
+    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface [W m-2].
+    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [W m-2].
     lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
     fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by flux_uv_stagger [Pa].
@@ -356,7 +356,7 @@ type ice_ocean_flux_type
                        !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
     flux_salt          !< The flux of salt out of the ocean [kg m-2].
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
-                       !! at the ocean surface in W m-2.  The third dimension combines
+                       !! at the ocean surface [W m-2].  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency
                        !! (visible or near-IR) bands, with the integer parameters
                        !! from this module helping to distinguish them.
