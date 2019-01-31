@@ -188,8 +188,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness, in m.
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
-    windstr_x, &      ! The area-weighted average ice thickness, in Pa.
-    windstr_y         ! The area-weighted average ice thickness, in Pa.
+    windstr_x, &      ! The area-weighted average ice thickness [Pa].
+    windstr_y         ! The area-weighted average ice thickness [Pa].
   real :: rho_ice     ! The nominal density of sea ice in kg m-3.
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units, in m H-1.
@@ -287,19 +287,19 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
                         ! thickness categories; nondimensional, between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
-    WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid, in Pa.
-    WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid, in Pa.
-    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid, in Pa.
-    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid, in Pa.
+    WindStr_y_B, &      ! averaged over the ice categories on a B-grid [Pa].
+    WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [Pa].
+    WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [Pa].
+    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [Pa].
+    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
-    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
-    WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
-    str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points, in Pa.
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [Pa].
+    WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [Pa].
+    str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points [Pa].
   real, dimension(SZI_(G),SZJB_(G))  :: &
-    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
-    WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
-    str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points, in Pa.
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
+    WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
+    str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
   real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
 
@@ -956,16 +956,16 @@ end subroutine finish_ocean_top_stresses
 subroutine stresses_to_stress_mag(G, str_x, str_y, stagger, stress_mag)
   type(SIS_hor_grid_type),   intent(in)    :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: str_x !< The x-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_x !< The x-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: str_y !< The y-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_y !< The y-direction ice to ocean stress [Pa].
   integer,                   intent(in)    :: stagger !< The staggering relative to the tracer points of the
                                                   !! two wind stress components. Valid entries include AGRID,
                                                   !! BGRID_NE, and CGRID_NE, following the Arakawa
                                                   !! grid-staggering  notation.  BGRID_SW and CGRID_SW are
                                                   !! possibilties that have not been implemented yet.
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(inout) :: stress_mag !< The magnitude of the stress at tracer points, in Pa.
+                             intent(inout) :: stress_mag !< The magnitude of the stress at tracer points [Pa].
 
   ! Local variables
   real :: taux2, tauy2  ! squared wind stress components (Pa^2)
@@ -1018,13 +1018,13 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),       intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
                                                   !! thickness categories, nondim, 0-1
@@ -1125,13 +1125,13 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),       intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water [Pa].
   real, dimension(SZI_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJ_(G)), &
-                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
                                                   !! thickness categories, nondim, 0-1
@@ -1230,13 +1230,13 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress [Pa].
   real, dimension(SZIB_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G)), &
                              intent(in)    :: ice_free  !< The fractional open water area coverage, nondim, 0-1
   real, dimension(SZI_(G),SZJ_(G)), &
@@ -1321,13 +1321,13 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_x_water !< The x-direction wind stress over open water [Pa].
   real, dimension(SZI_(G),SZJB_(G)), &
-                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water, in Pa.
+                             intent(in)    :: windstr_y_water !< The y-direction wind stress over open water [Pa].
   real, dimension(SZIB_(G),SZJ_(G)), &
-                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_x   !< The x-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJB_(G)), &
-                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress, in Pa.
+                             intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G)), &
                              intent(in)    :: ice_free  !< The fractional open water area coverage, nondim, 0-1
   real, dimension(SZI_(G),SZJ_(G)), &
@@ -1503,19 +1503,19 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
                         !! thickness categories; nondimensional, between 0 & 1.
     ice_free            !< The fractional open water; nondimensional, between 0 & 1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)  :: &
-    WindStr_x_Cu, &   !< Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
-    WindStr_x_ocn_Cu  !< Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
+    WindStr_x_Cu, &   !< Zonal wind stress averaged over the ice categores on C-grid u-points [Pa].
+    WindStr_x_ocn_Cu  !< Zonal wind stress on the ice-free ocean on C-grid u-points [Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(out)  :: &
-    WindStr_y_Cv, &   !< Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
-    WindStr_y_ocn_Cv  !< Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
+    WindStr_y_Cv, &   !< Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
+    WindStr_y_ocn_Cv  !< Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
   integer,                           intent(in)   :: ncat !< The number of ice thickness categories.
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [Pa].
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
@@ -1619,17 +1619,17 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
     ice_free            !< The fractional open water; nondimensional, between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)), intent(out) :: &
     WindStr_x_B, &      !< Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      !< averaged over the ice categories on a B-grid, in Pa.
-    WindStr_x_ocn_B, &  !< Zonal wind stress on the ice-free ocean on a B-grid, in Pa.
-    WindStr_y_ocn_B     !< Meridional wind stress on the ice-free ocean on a B-grid, in Pa.
+    WindStr_y_B, &      !< averaged over the ice categories on a B-grid [Pa].
+    WindStr_x_ocn_B, &  !< Zonal wind stress on the ice-free ocean on a B-grid [Pa].
+    WindStr_y_ocn_B     !< Meridional wind stress on the ice-free ocean on a B-grid [Pa].
   integer,                            intent(in)   :: ncat !< The number of ice thickness categories.
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [Pa].
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now

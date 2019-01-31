@@ -48,11 +48,11 @@ type atmos_ice_boundary_type
   real, dimension(:,:,:), pointer :: &
     u_flux  => NULL(), & !< The true-eastward stresses (momentum fluxes) from the atmosphere
                          !! to the ocean or ice in each category, discretized on an A-grid,
-                         !! and _not_ rotated to align with the model grid, in Pa.
+                         !! and _not_ rotated to align with the model grid [Pa].
     v_flux  => NULL(), & !< The true-northward stresses (momentum fluxes) from the atmosphere
                          !! to the ocean or ice in each category, discretized on an A-grid,
-                         !! and _not_ rotated to align with the model grid, in Pa.
-    u_star  => NULL(), & !< The atmospheric friction velocity on an A-grid, in Pa.
+                         !! and _not_ rotated to align with the model grid [Pa].
+    u_star  => NULL(), & !< The atmospheric friction velocity on an A-grid [Pa].
     t_flux  => NULL(), & !< The net sensible heat flux flux from the ocean or ice into the
                          !! atmosphere at the surface, in W m-2.
     q_flux  => NULL(), & !< The flux of moisture from the ice or ocean to the
@@ -88,7 +88,7 @@ type atmos_ice_boundary_type
     coszen  => NULL(), & !< The cosine of the solar zenith angle averged over the
                          !! next radiation timestep (not the one that was used to
                          !! calculate the sw_flux fields), nondim and <=1.
-    p       => NULL()    !< The atmospheric surface pressure, in Pa, often ~1e5 Pa.
+    p       => NULL()    !< The atmospheric surface pressure [Pa], often ~1e5 Pa.
 !    data    => NULL() ! This can probably be removed.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and isused by coupler

@@ -32,9 +32,9 @@ public :: SIS_B_dyn_init, SIS_B_dynamics, SIS_B_dyn_end, SIS_B_dyn_register_rest
 !> The control structure with parameters regulating B-grid ice dynamics
 type, public :: SIS_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
-    sig11 => NULL(), &  !< The xx component of the stress tensor in Pa m (or N m-1).
-    sig12 => NULL(), &  !< The xy and yx component of the stress tensor in Pa m (or N m-1).
-    sig22 => NULL()     !< The yy component of the stress tensor in Pa m (or N m-1).
+    sig11 => NULL(), &  !< The xx component of the stress tensor [Pa m] (or N m-1).
+    sig12 => NULL(), &  !< The xy and yx component of the stress tensor [Pa m] (or N m-1).
+    sig22 => NULL()     !< The yy component of the stress tensor [Pa m] (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
   real :: p0 = 2.75e4         !< Hibbler rheology pressure constant (Pa)
@@ -177,7 +177,7 @@ end subroutine SIS_B_dyn_init
 !> find_ice_strength determines the magnitude of force on ice in plastic deformation
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength in N m-1
   type(SIS_B_dyn_CS),               pointer     :: CS  !< The control structure for this module
@@ -250,19 +250,19 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: misp  !< Mass per unit ocean area of sea ice,
-                                                             !! snow and melt pond water (kg m-2)
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: mice  !< Mass per unit ocean area of sea ice (kg m-2)
+                                                             !! snow and melt pond water [kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: mice  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui    !< Zonal ice velocity in m s-1
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity in m s-1
   real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: uo    !< Zonal ocean velocity in m s-1
   real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity in m s-1
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice in Pa
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice in Pa
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: sea_lev !< The height of the sea level, including
                                                              !! contributions from non-levitating ice from
                                                              !! an earlier time step, in m.
-  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean in Pa
-  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean in Pa
+  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
   logical,                            intent(in   ) :: do_ridging !< If true, the ice can ridge
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate !< ridging rate from drift state in UNITS?
   real,                               intent(in   ) :: dt_slow !< The amount of time over which the ice
@@ -292,7 +292,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
 
   ! temporaries for ice stress calculation
   real                             :: del2, a, b, tmp
-  real, dimension(SZI_(G),SZJ_(G)) :: edt   ! The elasticity (E) times a time-step, in Pa m s.
+  real, dimension(SZI_(G),SZJ_(G)) :: edt   ! The elasticity (E) times a time-step [Pa m s].
   real, dimension(SZI_(G),SZJ_(G)) :: mp4z, t0, t1, It2
   real                             :: f11, f22
   real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
@@ -641,7 +641,7 @@ end subroutine SIS_B_dynamics
 !> sigI evaluates the first stress invariant
 function sigI(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor, in N m-1
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor, in N m-1
@@ -664,7 +664,7 @@ end function sigI
 !> sigII evaluates the second stress invariant
 function sigII(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor, in N m-1
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor, in N m-1
@@ -740,11 +740,11 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
   integer,                          intent(in   ) :: iec !< The ending i-index to work on
   integer,                          intent(in   ) :: jsc !< The starting i-index to work on
   integer,                          intent(in   ) :: jec !< The ending j-index to work on
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure in Pa m.
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure [Pa m].
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate, in s-1
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate, in s-1
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate, in s-1
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step, in Pa m s.
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
   real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor, in N m-1
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor, in N m-1
@@ -813,11 +813,11 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
   integer,                          intent(in   ) :: iec !< The ending i-index to work on
   integer,                          intent(in   ) :: jsc !< The starting i-index to work on
   integer,                          intent(in   ) :: jec !< The ending j-index to work on
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure in Pa m.
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure [Pa m].
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate
-  real,                             intent(in   ) :: edt   !< The ice elasticity times a time-step, in Pa m s.
+  real,                             intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
   real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor

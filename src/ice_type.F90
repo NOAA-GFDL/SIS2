@@ -92,8 +92,8 @@ type ice_data_type !  ice_public_type
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
     SST_C => NULL(), &    !< The ocean surface temperature [degC].
-    flux_u => NULL(), &   !< The flux of x-momentum into the ocean, in Pa.
-    flux_v => NULL(), &   !< The flux of y-momentum into the ocean, in Pa.
+    flux_u => NULL(), &   !< The flux of x-momentum into the ocean [Pa].
+    flux_v => NULL(), &   !< The flux of y-momentum into the ocean [Pa].
     flux_t => NULL(), &   !< The flux of sensible heat out of the ocean, in W m-2.
     flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean, in kg m-2 s-1.
     flux_lw => NULL(), &  !< The longwave flux out of the ocean, in W m-2.
@@ -104,12 +104,12 @@ type ice_data_type !  ice_public_type
     flux_lh => NULL(), &  !< The latent heat flux out of the ocean, in W m-2.
     lprec => NULL(), &    !< The liquid precipitation flux into the ocean, in kg m-2.
     fprec => NULL(), &    !< The frozen precipitation flux into the ocean, in kg m-2.
-    p_surf => NULL(), &   !< The pressure at the ocean surface, in Pa.  This may
+    p_surf => NULL(), &   !< The pressure at the ocean surface [Pa].  This may
                           !! or may not include atmospheric pressure.
     runoff => NULL(), &   !< Liquid runoff into the ocean, in kg m-2.
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
                           !! the ocean, in kg m-2.
-    stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean, in Pa.
+    stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean [Pa].
     ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
     area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
     mass_berg => NULL(),  &  !< mass of icebergs in kg/m^2

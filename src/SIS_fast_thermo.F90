@@ -105,9 +105,9 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice in Pa.
+    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice [Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice in Pa.
+    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_sh  !< The upward sensible heat flux from the top of the ice into
                            !! the atmosphere in W m-2.

@@ -42,9 +42,9 @@ public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
 !> The control structure with parameters regulating C-grid ice dynamics
 type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
-    str_t, &  !< The tension stress tensor component, in Pa m.
-    str_d, &  !< The divergence stress tensor component, in Pa m.
-    str_s     !< The shearing stress tensor component (cross term), in Pa m.
+    str_t, &  !< The tension stress tensor component [Pa m].
+    str_d, &  !< The divergence stress tensor component [Pa m].
+    str_s     !< The shearing stress tensor component (cross term) [Pa m].
 
   ! parameters for calculating water drag and internal ice stresses
   real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology (Pa)
@@ -415,7 +415,7 @@ end subroutine SIS_C_dyn_init
 !> find_ice_strength returns the magnitude of force on ice in plastic deformation
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength in N m-1.
   type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
@@ -438,19 +438,19 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci  !< Sea ice concentration (nondim)
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mis   !< Mass per unit ocean area of sea ice,
-                                                            !! snow and melt pond water (kg m-2)
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mice  !< Mass per unit ocean area of sea ice (kg m-2)
+                                                            !! snow and melt pond water [kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mice  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui    !< Zonal ice velocity in m s-1
   real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity in m s-1
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo    !< Zonal ocean velocity in m s-1
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity in m s-1
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice in Pa
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice in Pa
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: sea_lev !< The height of the sea level, including
                                                             !! contributions from non-levitating ice from
                                                             !! an earlier time step, in m.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean in Pa
-  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean in Pa
+  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
+  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
   real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
                                                             !! dynamics are to be advanced, in s.
   type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
@@ -469,7 +469,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real, dimension(SZI_(G),SZJ_(G)) :: &
     pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
     ci_proj, &  ! The projected ice concentration, nondim.
-    zeta, &     ! The ice bulk viscosity, in Pa m s or N s / m.
+    zeta, &     ! The ice bulk viscosity [Pa m s] (i.e., [N s m-1]).
     del_sh, &   ! The magnitude of the shear rates, in s-1.
     diag_val, & ! A temporary diagnostic array.
     del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
@@ -478,10 +478,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                 ! stability, and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points, in m2.
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points, nondim.
-    siu, siv, sispeed  ! diagnostics on T points, m/s
+    siu, siv, sispeed  ! diagnostics on T points, in m s-1.
 
   real, dimension(SZIB_(G),SZJ_(G)) :: &
-    fxic, &  ! Zonal force due to internal stresses, in Pa.
+    fxic, &  ! Zonal force due to internal stresses [Pa].
     fxic_d, fxic_t, fxic_s, &
     ui_min_trunc, &  ! The range of v-velocities beyond which the velocities
     ui_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
@@ -495,7 +495,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
              ! time step, in s-1.
     I1_f2dt2_u  ! 1 / ( 1 + f^2 dt^2) at u-points, nondimensional.
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    fyic, &  ! Meridional force due to internal stresses, in Pa.
+    fyic, &  ! Meridional force due to internal stresses [Pa].
     fyic_d, fyic_t, fyic_s, &
     vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
     vi_max_trunc, &  ! are truncated, in m s-1, or 0 for land cells.
@@ -535,7 +535,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                       ! area surrounding a vorticity point, in kg2 m-4.
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
                       ! to a vorticity point on the coast, in kg m-2.
-  real :: pres_sum    ! The sum of the internal ice pressures aroung a point, in Pa.
+  real :: pres_sum    ! The sum of the internal ice pressures aroung a point [Pa].
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale, ND.
   real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp)
   real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp)
@@ -1356,9 +1356,9 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
                                                              !! unit column mass, in N m / kg.
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: mice  !< The mass per unit total area (ice
                                                              !! covered and ice free) of the ice, in kg m-2.
-  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component, in Pa m.
-  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component, in Pa m.
-  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component [Pa m].
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component [Pa m].
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component [Pa m].
   type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
   real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
 
@@ -1368,8 +1368,8 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
 ! ice flow convergence or divergence may have altered the ice concentration.
 
   ! Local variables
-  real :: pressure  ! The internal ice pressure at a point, in Pa.
-  real :: pres_avg  ! The average of the internal ice pressures around a point, in Pa.
+  real :: pressure  ! The internal ice pressure at a point [Pa].
+  real :: pres_avg  ! The average of the internal ice pressures around a point [Pa].
   real :: sum_area  ! The sum of ocean areas around a vorticity point, in m2.
   real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
   real :: lim       ! A local copy of the factor by which the limits are changed.
@@ -1377,8 +1377,8 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
 !  real :: EC2       ! EC^2, where EC is the yield curve axis ratio.
 !  real :: rescale_str ! A factor by which to rescale the internal stresses, ND.
 !  real :: stress_mag  ! The magnitude of the stress at a point.
-!  real :: str_d_q     ! CS%str_d interpolated to a vorticity point, in Pa m.
-!  real :: str_t_q     ! CS%str_t interpolated to a vorticity point, in Pa m.
+!  real :: str_d_q     ! CS%str_d interpolated to a vorticity point [Pa m].
+!  real :: str_t_q     ! CS%str_t interpolated to a vorticity point [Pa m].
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1473,14 +1473,14 @@ end subroutine limit_stresses
 !> find_sigI finds the first stress invariant
 subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
   type(SIS_hor_grid_type),          intent(in)  :: G  !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: str_d !< The divergence stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: str_d !< The divergence stress tensor component [Pa m].
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI  !< The first stress invariant, nondim
   type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength, in Pa m.
+    strength ! The ice strength [Pa m].
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1497,18 +1497,18 @@ end subroutine find_sigI
 !> find_sigII finds the second stress invariant
 subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
   type(SIS_hor_grid_type),            intent(in)  :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi  !< Mass per unit ocean area of sea ice (kg m-2)
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: ci  !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component, in Pa m
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component, in Pa m.
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component, [Pa m]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component [Pa m].
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII !< The second stress invariant, nondim.
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength, in Pa m.
+    strength ! The ice strength [Pa m].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
-  real :: strength_sum  ! The sum of the 4 neighboring strengths, in Pa m.
+  real :: strength_sum  ! The sum of the 4 neighboring strengths [Pa m].
   real :: sum_area   ! The sum of ocean areas around a vorticity point, in m2.
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1657,11 +1657,11 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity in m s-1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity in m s-1.
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force, in Pa.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force [Pa].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force [Pa].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration, in m s-2.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration, in m s-2.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress, in Pa.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
@@ -1727,11 +1727,11 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: v_IC !< The initial meridional ice velicity in m s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vo   !< The meridional ocean velicity in m s-1.
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area, in kg m-2
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc !< The meridional ocean-to-ice force, in Pa.
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyic !< The ice internal force, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc !< The meridional ocean-to-ice force [Pa].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyic !< The ice internal force [Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: Cor_v !< The meridional Coriolis acceleration, in m s-2.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force accleration, in m s-2.
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress [Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
