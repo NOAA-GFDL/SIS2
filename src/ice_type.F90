@@ -91,7 +91,7 @@ type ice_data_type !  ice_public_type
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
-    SST_C => NULL(), &    !< The ocean surface temperature, in deg C.
+    SST_C => NULL(), &    !< The ocean surface temperature [degC].
     flux_u => NULL(), &   !< The flux of x-momentum into the ocean, in Pa.
     flux_v => NULL(), &   !< The flux of y-momentum into the ocean, in Pa.
     flux_t => NULL(), &   !< The flux of sensible heat out of the ocean, in W m-2.

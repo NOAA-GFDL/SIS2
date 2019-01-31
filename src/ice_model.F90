@@ -1215,7 +1215,7 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice !< The sea ice skin temperature in deg C.
+                           intent(in)    :: Tskin_ice !< The sea ice skin temperature [degC].
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
                            intent(in)    :: coszen  !< Cosine of the solar zenith angle for this step
   type(ice_rad_type),      intent(inout) :: Rad !< A structure with fields related to the absorption,
@@ -1732,7 +1732,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: rho_snow       ! The nominal density of snow in kg m-3.
   real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
   real :: kmelt          ! A constant that is used in the calculation of the
-                         ! ocean/ice basal heat flux, in W m-2 K-1.  This could
+                         ! ocean/ice basal heat flux [W m-2 degC-1].  This could
                          ! be changed to reflect the turbulence in the under-ice
                          ! ocean boundary layer and the effective depth of the
                          ! reported value of t_ocn.

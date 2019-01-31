@@ -100,8 +100,8 @@ type ocean_sfc_state_type
   ! 7 of the following 9 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  !< The ocean's surface salinity in g/kg.
-    SST_C  , &  !< The ocean's bulk surface temperature in degC.
-    T_fr_ocn, & !< The freezing point temperature in degC at the ocean's surface salinity.
+    SST_C  , &  !< The ocean's bulk surface temperature [degC].
+    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_B, &  !< The ocean's zonal velocity on B-grid points in m s-1.
     v_ocn_B, &  !< The ocean's meridional velocity on B-grid points in m s-1.
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points, in m s-1.
@@ -122,7 +122,7 @@ type ocean_sfc_state_type
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt !< A constant that is used in the calculation of the ocean/ice basal heat flux,
-                !! in W m-2 K-1.  This could be replaced with an array reflecting the turbulence
+                !! [W m-2 degC-1].  This could be replaced with an array reflecting the turbulence
                 !! in the under-ice ocean boundary layer and the effective depth of the reported
                 !! value of t_ocn.
 
@@ -140,8 +140,8 @@ type simple_OSS_type
   ! atmosphere and use for the rapid thermodynamic sea ice changes.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  !< The ocean's surface salinity in g/kg.
-    SST_C  , &  !< The ocean's bulk surface temperature in degC.
-    T_fr_ocn, & !< The freezing point temperature in degC at the ocean's surface salinity.
+    SST_C  , &  !< The ocean's bulk surface temperature [degC].
+    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points in m s-1.
     v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points in m s-1.
     u_ice_A, &  !< The sea ice's zonal velocity on A-grid points in m s-1.
@@ -179,7 +179,7 @@ type fast_ice_avg_type
     fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice, in kg m-2 s-1.
     tmelt       , & !< Ice-top melt energy into the ice/snow in J m-2.
     bmelt       , & !< Ice-bottom melting energy into the ice in J m-2.
-    Tskin_cat       !< The ice skin temperature by category, in degC.
+    Tskin_cat       !< The ice skin temperature by category [degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
                     !! shortwave radiation that is absorbed in the ocean, nondim and <=1.
                     !! Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type and the
@@ -210,7 +210,7 @@ type fast_ice_avg_type
                     !! exclusive of any iceberg contributions, based on the temperature difference
                     !! relative to a reference temperature, in ???.
   real, allocatable, dimension(:,:) :: Tskin_avg !< The area-weighted average skin temperature
-                    !! across all ice thickness categories, in deg C, or 0 if there is no ice.
+                    !! across all ice thickness categories [degC], or 0 if there is no ice.
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
                     !! WindStr_[xy]_A; nondimensional, between 0 & 1.
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
@@ -225,15 +225,15 @@ type fast_ice_avg_type
   ! then interpolated into unoccupied categories for the purpose of redoing
   ! the application of the fast thermodynamics
   real, allocatable, dimension(:,:,:) ::  flux_sh0 !< The upward sensible heat flux at the ice top
-                !! extrapolated to a skin temperature of 0 deg C, in W m-2.
+                !! extrapolated to a skin temperature of 0 degC, in W m-2.
   real, allocatable, dimension(:,:,:) ::  evap0 !< The upward evaporative moisture flux
-                !! at the top of the ice extrapolated to a skin temperature of 0 deg C, in kg m-2 s-1.
+                !! at the top of the ice extrapolated to a skin temperature of 0 degC, in kg m-2 s-1.
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
-                !! at the top of the  ice extrapolated to a skin temperature of 0 deg C, in W m-2.
+                !! at the top of the  ice extrapolated to a skin temperature of 0 degC, in W m-2.
   real, allocatable, dimension(:,:,:) :: &
-    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature in W m-2 K-1.
-    devapdt, &  !< The partial derivative of evap0 with ice skin temperature in kg m-2 s-1 K-1.
-    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature in W m-2 K-1.
+    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [W m-2 degC-1].
+    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [kg m-2 s-1 degC-1].
+    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [W m-2 degC-1].
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: frazil_left !< The frazil heat flux that has not yet been

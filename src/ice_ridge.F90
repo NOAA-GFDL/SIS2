@@ -205,8 +205,8 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   real, dimension(1:), intent(inout) :: hi  !< ice volume in each category, in m3
   real, dimension(1:), intent(inout) :: hs  !< snow volume in each category, in m3
    ! CAUTION: these quantities are extensive here,
-  real, dimension(1:), intent(inout) :: t1  !< Volume integrated upper layer temperature, in degC m3?
-  real, dimension(1:), intent(inout) :: t2  !< Volume integrated upper layer temperature, in degC m3?
+  real, dimension(1:), intent(inout) :: t1  !< Volume integrated upper layer temperature [degC m3]?
+  real, dimension(1:), intent(inout) :: t2  !< Volume integrated upper layer temperature [degC m3]?
   real, dimension(1:), intent(inout) :: age !< Volume integrated ice age in m3 years?
   real,                intent(out)   :: snow_to_ocn !< total snow volume dumped into ocean during ridging
   real,                intent(in)    :: rdg_rate    !< Ridging rate from subroutine ridge_rate

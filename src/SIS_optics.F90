@@ -162,7 +162,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   real, intent(in   ) :: mp  !< pond mass (kg/m2)
   real, intent(in   ) :: hs  !< snow thickness (m-snow)
   real, intent(in   ) :: hi  !< ice thickness (m-ice)
-  real, intent(in   ) :: ts  !< surface temperature in deg C.
+  real, intent(in   ) :: ts  !< surface temperature [degC].
   real, intent(in   ) :: tfw !< seawater freezing temperature
   integer, intent(in) :: NkIce !< The number of sublayers in the ice
   real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1)
@@ -191,7 +191,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   real :: pen             ! The fraction of the shortwave flux that will pass
                           ! below the surface (frac 1-pen absorbed at the surface)
   real :: sal_ice_top(1)  ! A specified surface salinity of ice.
-  real :: temp_ice_freeze ! The freezing temperature of the top ice layer, in C.
+  real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
   integer :: m, b, nb
   character(len=200) :: mesg
 
@@ -394,7 +394,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
 
 end subroutine ice_optics_SIS2
 
-!> bright_ice_temp returns the skin temperature (in deg C) below which the snow
+!> bright_ice_temp returns the skin temperature (in degC) below which the snow
 !! and ice attain their greatest brightness and albedo no longer varies, for
 !! the highest attainable salinity.
 function bright_ice_temp(CS, ITV) result(bright_temp)
@@ -403,7 +403,7 @@ function bright_ice_temp(CS, ITV) result(bright_temp)
   real :: bright_temp
 
   real :: salin_max       ! The maximum attainable salinity, in PSU.
-  real :: temp_freeze_min ! The freezing temperature of water at salin_max, in C.
+  real :: temp_freeze_min ! The freezing temperature of water at salin_max [degC].
 
   salin_max = 40.0
 

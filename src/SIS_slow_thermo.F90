@@ -594,9 +594,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                           ! layer in g/kg, with the salinity of
                                           ! newly formed ice in layer NkIce+1.
   real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow, in kg m-2.
-  real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow, in degC.
+  real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow, in g/kg.
-  real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow, in degC.
+  real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
                           ! and the surface ocean, in enth_units (often J/kg).

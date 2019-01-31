@@ -31,8 +31,8 @@ type ocean_ice_boundary_type
                          !! determined by stagger, in m s-1.
     v      => NULL(), &  !< The y-direction ocean velocity at a position
                          !! determined by stagger, in m s-1.
-    t      => NULL(), &  !< The ocean's surface temperature in Kelvin.
-    s      => NULL(), &  !< The ocean's surface temperature in g/kg.
+    t      => NULL(), &  !< The ocean's surface temperature, in Kelvin.
+    s      => NULL(), &  !< The ocean's surface salinity, in g/kg.
     frazil => NULL(), &  !< The frazil heat rejected by the ocean, in J m-2.
     sea_level => NULL()  !< The sea level after adjustment for any surface
                          !! pressure that the ocean allows to be expressed, in m.
@@ -80,11 +80,11 @@ type atmos_ice_boundary_type
                          !! all frozen precipitation, including snow, sleet, hail
                          !! and graupel, are all treated as snow.
     dhdt    => NULL(), & !< The derivative of the upward sensible heat flux with the
-                         !! surface temperature in W m-2 K-1.
+                         !! surface temperature [W m-2 degC-1].
     dedt    => NULL(), & !< The derivative of the sublimation and evaporation rate
-                         !! with the surface temperature, in kg m-2 s-1 K-1.
+                         !! with the surface temperature [kg m-2 s-1 degC-1].
     drdt    => NULL(), & !< The derivative of the net UPWARD longwave radiative
-                         !! heat flux (-lw_flux) with surface temperature, in W m-2 K-1.
+                         !! heat flux (-lw_flux) with surface temperature [W m-2 degC-1].
     coszen  => NULL(), & !< The cosine of the solar zenith angle averged over the
                          !! next radiation timestep (not the one that was used to
                          !! calculate the sw_flux fields), nondim and <=1.
@@ -105,10 +105,10 @@ type land_ice_boundary_type
                          !! in kg m-2.
     runoff_hflx  =>NULL(), & !< The heat flux associated with the temperature of
                          !! of the liquid runoff, relative to liquid water
-                         !! at 0 deg C, in W m-2.
+                         !! at 0 degC, in W m-2.
     calving_hflx =>NULL() !< The heat flux associated with the temperature of
                          !! of the frozen runoff, relative to liquid? (or frozen?) water
-                         !! at 0 deg C, in W m-2.
+                         !! at 0 degC, in W m-2.
   real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and isused by coupler

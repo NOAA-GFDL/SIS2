@@ -679,9 +679,9 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   ! Local variables
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow, tmp2d
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
-    temp_ice    ! A diagnostic array with the ice temperature in degC.
+    temp_ice    ! A diagnostic array with the ice temperature [degC].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-    temp_snow   ! A diagnostic array with the snow temperature in degC.
+    temp_snow   ! A diagnostic array with the snow temperature [degC].
   ! ### This diagnostic does not exist yet.
   ! real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
   !   rdg_frac    ! fraction of ridged ice per category
@@ -1262,7 +1262,6 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
                        (windstr_x_water(I-1,J) + windstr_x_water(I,J-1))) + &
              ps_ice * ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
                        (str_ice_oce_x(I-1,J) + str_ice_oce_x(I,J-1))) )
-                             
       IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + 0.25 * &
             (ps_ocn * ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
                        (windstr_y_water(I-1,J) + windstr_y_water(I,J-1))) + &

@@ -85,7 +85,7 @@ subroutine ice_line(year, day, second, cn_ocn, sst, G)
   real, dimension(G%isc:G%iec,G%jsc:G%jec), &
                            intent(in) :: cn_ocn !< The concentration of ocean in each cell, nondim, 0-1.
   real, dimension(G%isc:G%iec,G%jsc:G%jec), &
-                           intent(in) :: sst  !< The sea surface temperature in degC.
+                           intent(in) :: sst  !< The sea surface temperature [degC].
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
   real :: gx(3)

@@ -268,10 +268,10 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   real :: Heat_anom    ! The change in heat that cannot be accounted for by
                        ! the surface fluxes, in Joules.
   real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero).
-  real :: temp         ! The mean potential temperature of the ocean, in C.
+  real :: temp         ! The mean potential temperature of the ocean [degC].
   real :: temp_anom    ! The change in total heat that cannot be accounted for
                        ! by the surface fluxes, divided by the total heat
-                       ! capacity of the ocean, in C.
+                       ! capacity of the ocean [degC].
   real :: Area         ! The total area of the sea ice in m2.
   real :: Extent       ! The total extent of the sea ice in m2.
   real :: heat_imb     ! The column integrated heat imbalance in enth_unit kg m-2.
