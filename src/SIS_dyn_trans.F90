@@ -283,12 +283,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     mi_sum, &           ! Masses of ice per unit total area, in kg m-2.
     misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area, in kg m-2.
     ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
-    ice_cover, &        ! The fractional ice coverage, summed across all
+    ice_cover           ! The fractional ice coverage, summed across all
                         ! thickness categories; nondimensional, between 0 & 1.
-    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
-    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid, in Pa.
@@ -309,21 +305,18 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
-  real :: weights  ! A sum of the weights around a point.
-  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
-  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   real :: dt_slow_dyn  ! The slow dynamics timestep in s.
   real :: dt_adv       ! The advective timestep in s.
   real :: Idt_slow     ! The inverse of dt_slow_dyn, in s-1.
   real, dimension(SZI_(G),SZJ_(G)) :: &
    ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
-    rdg_rate, & ! A ridging rate in s-1, this will be calculated from the strain rates in the dynamics.
-    snow2ocn    ! Snow dumped into ocean during ridging in kg m-2
+    rdg_rate, & ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
+    snow2ocn    ! Snow dumped into ocean during ridging [kg m-2]
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
-  integer :: ndyn_steps, nds ! The number of dynamicsteps.
+  integer :: ndyn_steps, nds ! The number of dynamic steps.
   integer :: iyr, imon, iday, ihr, imin, isec
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -336,11 +329,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     ndyn_steps = 0 ; dt_slow_dyn = 0.0
     !$OMP parallel do default(shared)
     do j=jsd,jed ; do i=isd,ied
-      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
-      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
       ice_cover(i,j) = FIA%ice_cover(i,j) ; ice_free(i,j) = FIA%ice_free(i,j)
-      WindStr_x_A(i,j) = FIA%WindStr_x(i,j) ; WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
     enddo ; enddo
+    call set_ocean_top_stress_FIA(FIA, IOF, G)
   else
     ndyn_steps = 1
     if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
@@ -380,38 +371,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,1) = misp_sum(i,j) ; enddo ; enddo
     endif
 
-    ! Correct the wind stresses for changes in the fractional ice-coverage.
-    ! This block of code must be executed if ice_cover and ice_free were updated.
-    max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
-    !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
-    do j=jsd,jed ; do i=isd,ied
-      ! The use of these limits prevents the use of the ocean wind stresses if
-      ! there is actually no open ocean and hence there may be no valid ocean
-      ! stresses.  This can occur when ice_cover ~= 1 for both states, but
-      ! they are not exactly 1.0 due to roundoff in the sum across categories above.
-      ice_cover_now = min(ice_cover(i,j), max_ice_cover)
-      FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
-
-      if (ice_cover_now > FIA_ice_cover) then
-        WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
-                            FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
-        WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
-                            FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
-      else
-        WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
-        WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
-      endif
-
-      if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-        WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
-        WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
-      else
-        WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                            FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
-        WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                            FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
-      endif
-    enddo ;  enddo
 
     !
     ! Dynamics - update ice velocities.
@@ -422,51 +381,14 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     ! equation) are not included in the dynamics.  All of the thickness categories
     ! are merged together.
     if (CS%Cgrid_dyn) then
-      !   The j-loop extents here are larger than they would normally be in case
-      ! the stresses are being passed to the ocean on a B-grid.
-      !$OMP parallel default(shared) private(weights,I_wts)
-      !$OMP do
-      do j=jsc-1,jec+1 ; do I=isc-1,iec
-        weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i+1,j)*ice_cover(i+1,j))
-        if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
-          WindStr_x_Cu(I,j) = G%mask2dCu(I,j) * &
-              (G%areaT(i,j) * ice_cover(i,j) * WindStr_x_A(i,j) + &
-               G%areaT(i+1,j)*ice_cover(i+1,j)*WindStr_x_A(i+1,j)) * I_wts
-        else
-          WindStr_x_Cu(I,j) = 0.0
-        endif
 
-        weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
-        if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
-          WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
-              (G%areaT(i,j) * ice_free(i,j) * WindStr_x_ocn_A(i,j) + &
-               G%areaT(i+1,j)*ice_free(i+1,j)*WindStr_x_ocn_A(i+1,j)) * I_wts
-        else
-          WindStr_x_ocn_Cu(I,j) = 0.0
-        endif
-      enddo ; enddo
-      !$OMP end do nowait
-      !$OMP do
-      do J=jsc-1,jec ; do i=isc-1,iec+1
-        weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i,j+1)*ice_cover(i,j+1))
-        if (G%mask2dCv(i,J) * weights > 0.0) then ; I_wts = 1.0 / weights
-          WindStr_y_Cv(i,J) = G%mask2dCv(i,J) * &
-              (G%areaT(i,j) * ice_cover(i,j) * WindStr_y_A(i,j) + &
-               G%areaT(i,j+1)*ice_cover(i,j+1)*WindStr_y_A(i,j+1)) * I_wts
-        else
-          WindStr_y_Cv(i,J) = 0.0
-        endif
+      ! Correct the wind stresses for changes in the fractional ice-coverage and set
+      ! the wind stresses on the ice and the open ocean for a C-grid staggering.
+      ! This block of code must be executed if ice_cover and ice_free or the various wind
+      ! stresses were updated.
+      call set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
+                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, ncat)
 
-        weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
-        if (weights > 0.0) then ; I_wts = 1.0 / weights
-          WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
-              (G%areaT(i,j) * ice_free(i,j) * WindStr_y_ocn_A(i,j) + &
-               G%areaT(i,j+1)*ice_free(i,j+1)*WindStr_y_ocn_A(i,j+1)) * I_wts
-        else
-          WindStr_y_ocn_Cv(i,J) = 0.0
-        endif
-      enddo ; enddo
-      !$OMP end parallel
 
       if (CS%debug) then
         call IST_chksum("Before SIS_C_dynamics", IST, G, IG)
@@ -477,7 +399,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
         call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
-        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
+!        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
       endif
 
       !### Ridging needs to be added with C-grid dynamics.
@@ -555,40 +477,13 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
     else ! B-grid dynamics.
 
-      !$OMP parallel do default(shared) private(weights,I_wts)
-      do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(I,J) > 0.0) then
-        weights = ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1) + G%areaT(i,j)*ice_cover(i,j)) + &
-                   (G%areaT(i+1,j)*ice_cover(i+1,j) + G%areaT(i,j+1)*ice_cover(i,j+1)) )
-        I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
-        WindStr_x_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_x_A(i+1,j+1) + &
-                  G%areaT(i,j)   * ice_cover(i,j)   * WindStr_x_A(i,j)) + &
-                 (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_x_A(i+1,j) + &
-                  G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_x_A(i,j+1)) ) * I_wts
-        WindStr_y_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_y_A(i+1,j+1) + &
-                  G%areaT(i,j)   * ice_cover(i,j)   * WindStr_y_A(i,j)) + &
-                 (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_y_A(i+1,j) + &
-                  G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_y_A(i,j+1)) ) * I_wts
+      ! Correct the wind stresses for changes in the fractional ice-coverage and set
+      ! the wind stresses on the ice and the open ocean for a C-grid staggering.
+      ! This block of code must be executed if ice_cover and ice_free or the various wind
+      ! stresses were updated.
 
-
-        weights = ((G%areaT(i+1,j+1)*ice_free(i+1,j+1) + G%areaT(i,j)*ice_free(i,j)) + &
-                   (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
-        I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
-        WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_x_ocn_A(i+1,j+1) + &
-                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_x_ocn_A(i,j)) + &
-                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_x_ocn_A(i+1,j) + &
-                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_x_ocn_A(i,j+1)) ) * I_wts
-        WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
-                ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_y_ocn_A(i+1,j+1) + &
-                  G%areaT(i,j)   * ice_free(i,j)   * WindStr_y_ocn_A(i,j)) + &
-                 (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_y_ocn_A(i+1,j) + &
-                  G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_y_ocn_A(i,j+1)) ) * I_wts
-      else
-        WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
-        WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0
-      endif ; enddo ; enddo
+      call set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
+                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, ncat)
 
       if (CS%debug) then
         call IST_chksum("Before ice_dynamics", IST, G, IG)
@@ -1278,9 +1173,9 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         !### Consider deleting the masks here?  They probably do not change answers.
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_x_water(I,j) + windstr_x_water(I,j+1))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_y_water(i,J) + windstr_y_water(i+1,J))
       enddo
       do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
@@ -1350,7 +1245,6 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
   real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point, nondim.
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
 
   if (IOF%stress_count == 0) then
     IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
@@ -1473,10 +1367,10 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
                          (ice_cover(i+1,j) + ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + &
+      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
           (ps_ocn * 0.5 * (windstr_x_water(I,j) + windstr_x_water(I,j+1)) + &
            ps_ice * 0.5 * (str_ice_oce_x(I,j) + str_ice_oce_x(I,j+1)) )
-      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + &
+      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
           (ps_ocn * 0.5 * (windstr_y_water(i,J) + windstr_y_water(i+1,J)) + &
            ps_ice * 0.5 * (str_ice_oce_y(i,J) + str_ice_oce_y(i+1,J)) )
     enddo ; enddo
@@ -1508,6 +1402,312 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
   IOF%stress_count = IOF%stress_count + 1
 
 end subroutine set_ocean_top_stress_C2
+
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Calculate the stresses on the ocean integrated across all the thickness categories
+!! with the appropriate staggering, based on the information in a fast_ice_avg_type.
+subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
+  type(fast_ice_avg_type),   intent(inout) :: FIA !< A type containing averages of fields
+                                                  !! (mostly fluxes) over the fast updates
+  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                  !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+
+  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point, nondim.
+  integer :: i, j, k, isc, iec, jsc, jec
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  if (IOF%stress_count == 0) then
+    IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
+  endif
+
+  !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
+  ! complicated because there are 3 different staggering options supported.
+
+  if (IOF%flux_uv_stagger == AGRID) then
+    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
+    do j=jsc,jec ; do i=isc,iec
+      ps_ocn = G%mask2dT(i,j) * FIA%ice_free(i,j)
+      ps_ice = G%mask2dT(i,j) * FIA%ice_cover(i,j)
+      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + &
+           (ps_ocn * FIA%WindStr_ocn_x(i,j) + ps_ice * FIA%WindStr_x(i,j))
+      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + &
+           (ps_ocn * FIA%WindStr_ocn_y(i,j) + ps_ice * FIA%WindStr_y(i,j))
+    enddo ; enddo
+  elseif (IOF%flux_uv_stagger == BGRID_NE) then
+    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
+    do J=jsc-1,jec ; do I=isc-1,iec
+      ps_ocn = 1.0 ; ps_ice = 0.0
+      if (G%mask2dBu(I,J)>0.5) then
+        ps_ocn = 0.25 * ((FIA%ice_free(i+1,j+1) + FIA%ice_free(i,j)) + &
+                         (FIA%ice_free(i+1,j) + FIA%ice_free(i,j+1)) )
+        ps_ice = 0.25 * ((FIA%ice_cover(i+1,j+1) + FIA%ice_cover(i,j)) + &
+                         (FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j+1)) )
+      endif
+      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
+          (ps_ocn * 0.25 * ((FIA%WindStr_ocn_x(i,j) + FIA%WindStr_ocn_x(i+1,j+1)) + &
+                            (FIA%WindStr_ocn_x(i,j+1) + FIA%WindStr_ocn_x(i+1,j))) + &
+           ps_ice * 0.25 * ((FIA%WindStr_x(i,j) + FIA%WindStr_x(i+1,j+1)) + &
+                            (FIA%WindStr_x(i,j+1) + FIA%WindStr_x(i+1,J))) )
+      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
+          (ps_ocn * 0.25 * ((FIA%WindStr_ocn_y(i,j) + FIA%WindStr_ocn_y(i+1,j+1)) + &
+                            (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i+1,j))) + &
+           ps_ice * 0.25 * ((FIA%WindStr_y(i,j) + FIA%WindStr_y(i+1,j+1)) + &
+                            (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i+1,J))) )
+    enddo ; enddo
+  elseif (IOF%flux_uv_stagger == CGRID_NE) then
+    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
+    do j=jsc,jec ; do I=Isc-1,iec
+      ps_ocn = 1.0 ; ps_ice = 0.0
+      if (G%mask2dCu(I,j)>0.5) then
+        ps_ocn = 0.5*(FIA%ice_free(i+1,j) + FIA%ice_free(i,j))
+        ps_ice = 0.5*(FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j))
+      endif
+      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + &
+           (ps_ocn * 0.5 * (FIA%WindStr_ocn_x(i+1,j) + FIA%WindStr_ocn_x(i,j)) + &
+            ps_ice * 0.5 * (FIA%WindStr_x(i+1,j) + FIA%WindStr_x(i,j)) )
+    enddo ; enddo
+    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
+    do J=jsc-1,jec ; do i=isc,iec
+      ps_ocn = 1.0 ; ps_ice = 0.0
+      if (G%mask2dCv(i,J)>0.5) then
+        ps_ocn = 0.5*(FIA%ice_free(i,j+1) + FIA%ice_free(i,j))
+        ps_ice = 0.5*(FIA%ice_cover(i,j+1) + FIA%ice_cover(i,j))
+      endif
+      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + &
+          (ps_ocn * 0.5 * (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i,j)) + &
+           ps_ice * 0.5 * (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i,j)) )
+    enddo ; enddo
+  else
+    call SIS_error(FATAL, "set_ocean_top_stress_C2: Unrecognized flux_uv_stagger.")
+  endif
+
+  IOF%stress_count = IOF%stress_count + 1
+
+end subroutine set_ocean_top_stress_FIA
+
+
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_wind_stresses_C determines the wind stresses on the ice and open ocean with
+!!   a C-grid staggering of the points.
+subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
+                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, ncat)
+  type(fast_ice_avg_type),          intent(in)    :: FIA !< A type containing averages of fields
+                                                   !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),           intent(in)   :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in)   :: &
+    ice_cover, &        !< The fractional ice coverage, summed across all
+                        !! thickness categories; nondimensional, between 0 & 1.
+    ice_free            !< The fractional open water; nondimensional, between 0 & 1.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(out)  :: &
+    WindStr_x_Cu, &   !< Zonal wind stress averaged over the ice categores on C-grid u-points, in Pa.
+    WindStr_x_ocn_Cu  !< Zonal wind stress on the ice-free ocean on C-grid u-points, in Pa.
+  real, dimension(SZI_(G),SZJB_(G)), intent(out)  :: &
+    WindStr_y_Cv, &   !< Meridional wind stress averaged over the ice categores on C-grid v-points, in Pa.
+    WindStr_y_ocn_Cv  !< Meridional wind stress on the ice-free ocean on C-grid v-points, in Pa.
+  integer,                           intent(in)   :: ncat !< The number of ice thickness categories.
+
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
+  real :: weights  ! A sum of the weights around a point.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
+  integer :: i, j, isc, iec, jsc, jec
+  integer :: isd, ied, jsd, jed
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+
+  max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
+  !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
+  do j=jsd,jed ; do i=isd,ied
+    ! The use of these limits prevents the use of the ocean wind stresses if
+    ! there is actually no open ocean and hence there may be no valid ocean
+    ! stresses.  This can occur when ice_cover ~= 1 for both states, but
+    ! they are not exactly 1.0 due to roundoff in the sum across categories above.
+    ice_cover_now = min(ice_cover(i,j), max_ice_cover)
+    FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
+
+    if (ice_cover_now > FIA_ice_cover) then
+      WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+      WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
+    else
+      WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+      WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+    endif
+
+    if (ice_free(i,j) <= FIA%ice_free(i,j)) then
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+    else
+      WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
+                          FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
+      WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
+                          FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
+    endif
+  enddo ;  enddo
+
+  !   The j-loop extents here are larger than they would normally be in case
+  ! the stresses are being passed to the ocean on a B-grid.
+  !$OMP parallel default(shared) private(weights,I_wts)
+  !$OMP do
+  do j=jsc-1,jec+1 ; do I=isc-1,iec
+    weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i+1,j)*ice_cover(i+1,j))
+    if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+      WindStr_x_Cu(I,j) = G%mask2dCu(I,j) * &
+          (G%areaT(i,j) * ice_cover(i,j) * WindStr_x_A(i,j) + &
+           G%areaT(i+1,j)*ice_cover(i+1,j)*WindStr_x_A(i+1,j)) * I_wts
+    else
+      WindStr_x_Cu(I,j) = 0.0
+    endif
+
+    weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i+1,j)*ice_free(i+1,j))
+    if (G%mask2dCu(I,j) * weights > 0.0) then ; I_wts = 1.0 / weights
+      WindStr_x_ocn_Cu(I,j) = G%mask2dCu(I,j) * &
+          (G%areaT(i,j) * ice_free(i,j) * WindStr_x_ocn_A(i,j) + &
+           G%areaT(i+1,j)*ice_free(i+1,j)*WindStr_x_ocn_A(i+1,j)) * I_wts
+    else
+      WindStr_x_ocn_Cu(I,j) = 0.0
+    endif
+  enddo ; enddo
+  !$OMP end do nowait
+  !$OMP do
+  do J=jsc-1,jec ; do i=isc-1,iec+1
+    weights = (G%areaT(i,j)*ice_cover(i,j) + G%areaT(i,j+1)*ice_cover(i,j+1))
+    if (G%mask2dCv(i,J) * weights > 0.0) then ; I_wts = 1.0 / weights
+      WindStr_y_Cv(i,J) = G%mask2dCv(i,J) * &
+          (G%areaT(i,j) * ice_cover(i,j) * WindStr_y_A(i,j) + &
+           G%areaT(i,j+1)*ice_cover(i,j+1)*WindStr_y_A(i,j+1)) * I_wts
+    else
+      WindStr_y_Cv(i,J) = 0.0
+    endif
+
+    weights = (G%areaT(i,j)*ice_free(i,j) + G%areaT(i,j+1)*ice_free(i,j+1))
+    if (weights > 0.0) then ; I_wts = 1.0 / weights
+      WindStr_y_ocn_Cv(i,J) = G%mask2dCv(i,J) * &
+          (G%areaT(i,j) * ice_free(i,j) * WindStr_y_ocn_A(i,j) + &
+           G%areaT(i,j+1)*ice_free(i,j+1)*WindStr_y_ocn_A(i,j+1)) * I_wts
+    else
+      WindStr_y_ocn_Cv(i,J) = 0.0
+    endif
+  enddo ; enddo
+  !$OMP end parallel
+
+end subroutine set_wind_stresses_C
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_wind_stresses_B determines the wind stresses on the ice and open ocean with
+!!   a B-grid staggering of the points.
+subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
+                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, ncat)
+  type(fast_ice_avg_type),            intent(in)   :: FIA !< A type containing averages of fields
+                                                          !! (mostly fluxes) over the fast updates
+  type(SIS_hor_grid_type),            intent(in)   :: G   !< The horizontal grid type
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)   :: &
+    ice_cover, &        !< The fractional ice coverage, summed across all
+                        !! thickness categories; nondimensional, between 0 & 1.
+    ice_free            !< The fractional open water; nondimensional, between 0 & 1.
+  real, dimension(SZIB_(G),SZJB_(G)), intent(out) :: &
+    WindStr_x_B, &      !< Zonal (_x_) and meridional (_y_) wind stresses
+    WindStr_y_B, &      !< averaged over the ice categories on a B-grid, in Pa.
+    WindStr_x_ocn_B, &  !< Zonal wind stress on the ice-free ocean on a B-grid, in Pa.
+    WindStr_y_ocn_B     !< Meridional wind stress on the ice-free ocean on a B-grid, in Pa.
+  integer,                            intent(in)   :: ncat !< The number of ice thickness categories.
+
+  ! Local variables
+  real, dimension(SZI_(G),SZJ_(G))   :: &
+    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid, in Pa.
+    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid, in Pa.
+  real :: weights  ! A sum of the weights around a point.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
+  integer :: i, j, isc, iec, jsc, jec
+  integer :: isd, ied, jsd, jed
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+
+  max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
+  !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
+  do j=jsd,jed ; do i=isd,ied
+    ! The use of these limits prevents the use of the ocean wind stresses if
+    ! there is actually no open ocean and hence there may be no valid ocean
+    ! stresses.  This can occur when ice_cover ~= 1 for both states, but
+    ! they are not exactly 1.0 due to roundoff in the sum across categories above.
+    ice_cover_now = min(ice_cover(i,j), max_ice_cover)
+    FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
+
+    if (ice_cover_now > FIA_ice_cover) then
+      WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+      WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
+    else
+      WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+      WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
+    endif
+
+    if (ice_free(i,j) <= FIA%ice_free(i,j)) then
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
+    else
+      WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
+                          FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
+      WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
+                          FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
+    endif
+  enddo ;  enddo
+
+  !$OMP parallel do default(shared) private(weights,I_wts)
+  do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(I,J) > 0.0) then
+    weights = ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1) + G%areaT(i,j)*ice_cover(i,j)) + &
+               (G%areaT(i+1,j)*ice_cover(i+1,j) + G%areaT(i,j+1)*ice_cover(i,j+1)) )
+    I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+    WindStr_x_B(I,J) = G%mask2dBu(I,J) * &
+            ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_x_A(i+1,j+1) + &
+              G%areaT(i,j)   * ice_cover(i,j)   * WindStr_x_A(i,j)) + &
+             (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_x_A(i+1,j) + &
+              G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_x_A(i,j+1)) ) * I_wts
+    WindStr_y_B(I,J) = G%mask2dBu(I,J) * &
+            ((G%areaT(i+1,j+1)*ice_cover(i+1,j+1)*WindStr_y_A(i+1,j+1) + &
+              G%areaT(i,j)   * ice_cover(i,j)   * WindStr_y_A(i,j)) + &
+             (G%areaT(i+1,j) * ice_cover(i+1,j) * WindStr_y_A(i+1,j) + &
+              G%areaT(i,j+1) * ice_cover(i,j+1) * WindStr_y_A(i,j+1)) ) * I_wts
+
+
+    weights = ((G%areaT(i+1,j+1)*ice_free(i+1,j+1) + G%areaT(i,j)*ice_free(i,j)) + &
+               (G%areaT(i+1,j)*ice_free(i+1,j) + G%areaT(i,j+1)*ice_free(i,j+1)) )
+    I_wts = 0.0 ; if (weights > 0.0) I_wts = 1.0 / weights
+    WindStr_x_ocn_B(I,J) = G%mask2dBu(I,J) * &
+            ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_x_ocn_A(i+1,j+1) + &
+              G%areaT(i,j)   * ice_free(i,j)   * WindStr_x_ocn_A(i,j)) + &
+             (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_x_ocn_A(i+1,j) + &
+              G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_x_ocn_A(i,j+1)) ) * I_wts
+    WindStr_y_ocn_B(I,J) = G%mask2dBu(I,J) * &
+            ((G%areaT(i+1,j+1)*ice_free(i+1,j+1)*WindStr_y_ocn_A(i+1,j+1) + &
+              G%areaT(i,j)   * ice_free(i,j)   * WindStr_y_ocn_A(i,j)) + &
+             (G%areaT(i+1,j) * ice_free(i+1,j) * WindStr_y_ocn_A(i+1,j) + &
+              G%areaT(i,j+1) * ice_free(i,j+1) * WindStr_y_ocn_A(i,j+1)) ) * I_wts
+  else
+    WindStr_x_B(I,J) = 0.0 ; WindStr_y_B(I,J) = 0.0
+    WindStr_x_ocn_B(I,J) = 0.0 ; WindStr_y_ocn_B(I,J) = 0.0
+  endif ; enddo ; enddo
+
+end subroutine set_wind_stresses_B
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
