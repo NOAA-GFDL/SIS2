@@ -28,26 +28,26 @@ integer, parameter :: NIR_DIF=4 !< Indicates the near-infrared diffuse band
 type, public :: SIS_optics_CS ; private
 
   ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
-  real :: alb_snow        !< albedo of snow (not melting)
-  real :: alb_ice         !< albedo of ice (not melting)
-  real :: pen_ice         !< ice surface penetrating solar fraction
-  real :: opt_dep_ice     !< ice optical depth (m)
-  real :: t_range_melt    !< melt albedos scaled in below melting T
+  real :: alb_snow        !< albedo of snow (not melting) [nondim]
+  real :: alb_ice         !< albedo of ice (not melting) [nondim]
+  real :: pen_ice         !< ice surface penetrating solar fraction [nondim]
+  real :: opt_dep_ice     !< ice optical depth [m]
+  real :: t_range_melt    !< melt albedos scaled in below melting T [degC]
 
   logical :: do_deltaEdd = .true.  !< If true, use a delta-Eddington radiative
                           ! transfer calculation for the shortwave radiation
                           ! within the sea-ice and snow.
 
   logical :: do_pond = .false. !< activate melt pond scheme - mw/new
-  real :: max_pond_frac = 0.5  !< pond water beyond this is dumped
-  real :: min_pond_frac = 0.2  !< ponds below sea level don't drain
+  real :: max_pond_frac = 0.5  !< pond water beyond this is dumped [nondim]
+  real :: min_pond_frac = 0.2  !< ponds below sea level don't drain [nondim]
 
   logical :: slab_optics = .false. !< If true use the very old slab ice optics
                                    !! from the supersource model.
   real :: slab_crit_thick !< The thickness beyond which the slab ice optics no
-                          !! longer exhibits a thickness dependencs on albedo, in m.
-  real :: slab_alb_ocean  !< The ocean albedo as used in the slab ice optics.
-  real :: slab_min_ice_alb !< The minimum thick ice albedo with the slab ice optics.
+                          !! longer exhibits a thickness dependencs on albedo [m].
+  real :: slab_alb_ocean  !< The ocean albedo as used in the slab ice optics [nondim].
+  real :: slab_min_ice_alb !< The minimum thick ice albedo with the slab ice optics [nondim].
 
 end type SIS_optics_CS
 
@@ -160,37 +160,37 @@ end subroutine SIS_optics_init
 subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
                     abs_snow, abs_ice_lay, abs_ocn, abs_int, CS, ITV, coszen_in)
   real, intent(in   ) :: mp  !< pond mass [kg m-2]
-  real, intent(in   ) :: hs  !< snow thickness (m-snow)
-  real, intent(in   ) :: hi  !< ice thickness (m-ice)
+  real, intent(in   ) :: hs  !< snow thickness [m]
+  real, intent(in   ) :: hi  !< ice thickness [m]
   real, intent(in   ) :: ts  !< surface temperature [degC].
-  real, intent(in   ) :: tfw !< seawater freezing temperature
+  real, intent(in   ) :: tfw !< seawater freezing temperature [degC]
   integer, intent(in) :: NkIce !< The number of sublayers in the ice
-  real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1)
-  real, intent(  out) :: abs_sfc  !< fraction of absorbed SW that is absorbed at surface
-  real, intent(  out) :: abs_snow !< fraction of absorbed SW that is absorbed in snow
-  real, intent(  out) :: abs_ice_lay(NkIce) !< fraction of absorbed SW that is absorbed by each ice layer
-  real, intent(  out) :: abs_ocn  !< fraction of absorbed SW that is absorbed in ocean
-  real, intent(  out) :: abs_int  !< fraction of absorbed SW that is absorbed in ice interior
+  real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1) [nondim]
+  real, intent(  out) :: abs_sfc  !< fraction of absorbed SW that is absorbed at surface [nondim]
+  real, intent(  out) :: abs_snow !< fraction of absorbed SW that is absorbed in snow [nondim]
+  real, intent(  out) :: abs_ice_lay(NkIce) !< fraction of absorbed SW that is absorbed by each ice layer [nondim]
+  real, intent(  out) :: abs_ocn  !< fraction of absorbed SW that is absorbed in ocean [nondim]
+  real, intent(  out) :: abs_int  !< fraction of absorbed SW that is absorbed in ice interior [nondim]
   type(SIS_optics_CS), intent(in) :: CS  !< The ice optics control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, intent(in),optional :: coszen_in !< The cosine of the solar zenith angle.
+  real, intent(in),optional :: coszen_in !< The cosine of the solar zenith angle [nondim].
 
-  real :: alb             ! The albedo for all bands, 0-1, nondimensional.
-  real :: as              ! A snow albedo, 0-1, nondimensional.
-  real :: ai              ! The ice albedo, 0-1, nondimensional.
-  real :: snow_cover      ! The fraction of the area covered by snow, 0-1, ND.
+  real :: alb             ! The albedo for all bands, 0-1 [nondim].
+  real :: as              ! A snow albedo, 0-1 [nondim].
+  real :: ai              ! The ice albedo, 0-1 [nondim].
+  real :: snow_cover      ! The fraction of the area covered by snow, 0-1 [nondim].
   real :: fh              ! A weighting fraction of the ice albedo (as compared
-                          ! with the albedo of water) when ice is thin, 0-1, ND.
+                          ! with the albedo of water) when ice is thin, 0-1 [nondim].
   real :: coalb, I_coalb  ! The coalbedo (0-1) and its reciprocal.
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
-                          ! is still present at the top of each ice layer (ND).
-  real :: opt_decay_lay   ! The optical extinction in each ice layer (ND).
+                          ! is still present at the top of each ice layer [nondim].
+  real :: opt_decay_lay   ! The optical extinction in each ice layer [nondim].
   real :: rho_ice         ! The nominal density of sea ice [kg m-3].
   real :: rho_snow        ! The nominal density of snow [kg m-3].
   real :: rho_water       ! The nominal density of sea water [kg m-3].
-  real :: pen             ! The fraction of the shortwave flux that will pass
-                          ! below the surface (frac 1-pen absorbed at the surface)
-  real :: sal_ice_top(1)  ! A specified surface salinity of ice.
+  real :: pen             ! The fraction of the shortwave flux that will pass below
+                          ! the surface (frac 1-pen absorbed at the surface) [nondim]
+  real :: sal_ice_top(1)  ! A specified surface salinity of ice [ppt].
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
   integer :: m, b, nb
   character(len=200) :: mesg
@@ -221,21 +221,21 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   ! outputs
   real (kind=dbl_kind), dimension (1,1) :: &
     fs     , & ! horizontal coverage of snow
-    fp     , & ! pond fractional coverage (0 to 1)
-    hprad      ! pond depth (m) for radiation code - may be diagnosed
+    fp     , & ! pond fractional coverage (0 to 1) [nondim]
+    hprad      ! pond depth [m] for radiation code - may be diagnosed
 
   real (kind=dbl_kind), dimension (1,1,1) :: &
     rhosnw , & ! density in snow layer [kg m-3]
-    rsnw       ! grain radius in snow layer (micro-meters)
+    rsnw       ! grain radius in snow layer [micro-meters]
 
   real (kind=dbl_kind), dimension (1,1,18) :: &
     trcr        ! aerosol tracers
 
   real (kind=dbl_kind), dimension (1,1) :: &
-    alvdr   , & ! visible, direct, albedo (fraction)
-    alvdf   , & ! visible, diffuse, albedo (fraction)
-    alidr   , & ! near-ir, direct, albedo (fraction)
-    alidf   , & ! near-ir, diffuse, albedo (fraction)
+    alvdr   , & ! visible, direct, albedo [nondim]
+    alvdf   , & ! visible, diffuse, albedo [nondim]
+    alidr   , & ! near-ir, direct, albedo [nondim]
+    alidf   , & ! near-ir, diffuse, albedo [nondim]
     fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
     fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
     fswthru     ! SW through snow/bare ice/ponded ice into ocean [W m-2]
@@ -247,9 +247,9 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
     Iswabs      ! SW absorbed in ice layer [W m-2]
 
   real (kind=dbl_kind), dimension (1,1) :: &
-    albice  , & ! bare ice albedo, for history
-    albsno  , & ! snow albedo, for history
-    albpnd      ! pond albedo, for history
+    albice  , & ! bare ice albedo, for history [nondim]
+    albsno  , & ! snow albedo, for history [nondim]
+    albpnd      ! pond albedo, for history [nondim]
 
   real (kind=dbl_kind) :: max_mp, hs_mask_pond, pond_decr
 

@@ -467,7 +467,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
+    pres_mice, & ! The ice internal pressure per unit column mass [N m kg-1].
     ci_proj, &  ! The projected ice concentration, nondim.
     zeta, &     ! The ice bulk viscosity [Pa m s] (i.e., [N s m-1]).
     del_sh, &   ! The magnitude of the shear rates [s-1].
@@ -563,7 +563,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: I_EC2   ! 1/EC^2, where EC is the yield curve axis ratio.
   real :: I_EC    ! 1/EC, where EC is the yield curve axis ratio.
   real :: I_2EC   ! 1/(2*EC), where EC is the yield curve axis ratio.
-  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
+  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness [m], that
                                            ! can be cubed without underflow.
   real :: m_neglect  ! A tiny mass per unit area [kg m-2].
   real :: m_neglect2 ! A tiny mass per unit area squared [kg2 m-4].
@@ -1351,7 +1351,7 @@ end subroutine SIS_C_dynamics
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   type(SIS_hor_grid_type),            intent(in)    :: G     !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice !< The ice internal pressure per
-                                                             !! unit column mass, in N m / kg.
+                                                             !! unit column mass [N m kg-1].
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: mice  !< The mass per unit total area (ice
                                                              !! covered and ice free) of the ice [kg m-2].
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component [Pa m].
@@ -1664,7 +1664,7 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
-  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
+  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness [m], that
                                            ! can be cubed without underflow.
   integer :: file
   integer :: yr, mo, day, hr, minute, sec, yearday
@@ -1734,7 +1734,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
-  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness, in m, that
+  real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness [m], that
                                            ! can be cubed without underflow.
   integer :: file
   integer :: yr, mo, day, hr, minute, sec, yearday

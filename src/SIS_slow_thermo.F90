@@ -107,7 +107,7 @@ type slow_thermo_CS ; private
                             !! do_ice_restore is true, in days.
 
   logical :: do_ice_limit   !< Limit the sea ice thickness to max_ice_limit.
-  real    :: max_ice_limit  !< The maximum sea ice thickness, in m, when do_ice_limit is true.
+  real    :: max_ice_limit  !< The maximum sea ice thickness [m], when do_ice_limit is true.
 
   logical :: nudge_sea_ice = .false. !< If true, nudge sea ice concentrations towards observations.
   real    :: nudge_sea_ice_rate = 0.0 !< The rate of cooling of ice-free water that should be ice
@@ -322,7 +322,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    h_ice_input    ! The specified ice thickness, with specified_ice, in m.
+    h_ice_input    ! The specified ice thickness, with specified_ice [m].
 
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
   real :: Idt_slow ! The inverse of the slow thermodynamic time step [s-1]

@@ -585,8 +585,8 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real :: tsurf_est ! An estimate of the surface temperature [degC].
   real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients.
   real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities.
-  real :: hsnow_eff  ! The effective thickness of the snow layer, in m.
-  real :: hL_ice_eff ! The effective thickness of each ice sub-layer, in m.
+  real :: hsnow_eff  ! The effective thickness of the snow layer [m].
+  real :: hL_ice_eff ! The effective thickness of each ice sub-layer [m].
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
   real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].

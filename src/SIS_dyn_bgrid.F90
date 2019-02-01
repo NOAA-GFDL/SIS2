@@ -643,9 +643,9 @@ function sigI(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor, in N m-1
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor, in N m-1
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor, in N m-1
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [N m-1]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G))             :: sigI !< The first stress invariant, nondim
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
@@ -666,9 +666,9 @@ function sigII(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor, in N m-1
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor, in N m-1
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor, in N m-1
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [N m-1]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G))             :: sigII !< The second stress invariant, nondim
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
@@ -746,9 +746,9 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate [s-1]
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
   real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor, in N m-1
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor, in N m-1
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor, in N m-1
+  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor [N m-1]
+  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor [N m-1]
+  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
   real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An elipticity modulated estimate of
                                                            !! the squared strain rate [s-2].
   logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell

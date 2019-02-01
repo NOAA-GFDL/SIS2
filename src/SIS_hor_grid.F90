@@ -77,8 +77,8 @@ type, public :: SIS_hor_grid_type
     geoLonT, &   !< The geographic longitude at q points in degrees of longitude or m.
     dxT, &       !< dxT is delta x at h points [m].
     IdxT, &      !< 1/dxT [m-1].
-    dyT, &       !< dyT is delta y at h points, in m, and IdyT is 1/dyT [m-1].
-    IdyT, &      !< dyT is delta y at h points, in m, and IdyT is 1/dyT [m-1].
+    dyT, &       !< dyT is delta y at h points [m], and IdyT is 1/dyT [m-1].
+    IdyT, &      !< dyT is delta y at h points [m], and IdyT is 1/dyT [m-1].
     areaT, &     !< The area of an h-cell [m2].
     IareaT       !< 1/areaT [m-2].
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: sin_rot

@@ -177,7 +177,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
         indxj       !< compressed j-index for ice-covered cells
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        coszen      !< cosine of solar zenith angle
+        coszen      !< cosine of solar zenith angle [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
         aice        !< concentration of ice
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
@@ -190,12 +190,12 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
         rhosnw      !< density in snow layer [kg m-3]
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
-        rsnw        !< grain radius in snow layer (m)
+        rsnw        !< grain radius in snow layer [m]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        fp          !< pond fractional coverage (0 to 1)
+        fp          !< pond fractional coverage (0 to 1) [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-        hp          !< pond depth (m)
+        hp          !< pond depth [m]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
         swvdr       !< sw down, visible, direct  [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
@@ -206,13 +206,13 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
         swidf       !< sw down, near IR, diffuse [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        alvdr       !< visible, direct, albedo (fraction)
+        alvdr       !< visible, direct, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        alvdf       !< visible, diffuse, albedo (fraction)
+        alvdf       !< visible, diffuse, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        alidr       !< near-ir, direct, albedo (fraction)
+        alidr       !< near-ir, direct, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        alidf       !< near-ir, diffuse, albedo (fraction)
+        alidf       !< near-ir, diffuse, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
         fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
@@ -227,11 +227,11 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
         Iswabs      !< SW absorbed in ice layer [W m-2]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
-        albice      !< bare ice albedo, for history
+        albice      !< bare ice albedo, for history [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
-        albsno      !< snow albedo, for history
+        albsno      !< snow albedo, for history [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(out) :: &
-        albpnd      !< pond albedo, for history
+        albpnd      !< pond albedo, for history [nondim]
 !
 !EOP
 !
@@ -241,9 +241,9 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
          fnidr        ! fraction of direct to total down surface flux in nir
 
       real (kind=dbl_kind), dimension(nx_block,ny_block) :: &
-         hs       , & ! snow thickness (all snow layers, m)
-         hi       , & ! ice thickness (all sea ice layers, m)
-         fi           ! snow/bare ice fractional coverage (0 to 1)
+         hs       , & ! snow thickness (all snow layers) [m]
+         hi       , & ! ice thickness (all sea ice layers) [m]
+         fi           ! snow/bare ice fractional coverage (0 to 1) [nondim]
 
       integer (kind=int_kind), dimension(nx_block,ny_block) :: &
          srftyp       ! surface type over ice: (0=air, 1=snow, 2=pond)
@@ -280,10 +280,10 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
 
       ! for history
       real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
-         avdrl   , & ! visible, direct, albedo (fraction)
-         avdfl   , & ! visible, diffuse, albedo (fraction)
-         aidrl   , & ! near-ir, direct, albedo (fraction)
-         aidfl       ! near-ir, diffuse, albedo (fraction)
+         avdrl   , & ! visible, direct, albedo [nondim]
+         avdfl   , & ! visible, diffuse, albedo [nondim]
+         aidrl   , & ! near-ir, direct, albedo [nondim]
+         aidfl       ! near-ir, diffuse, albedo [nondim]
 
 !-----------------------------------------------------------------------
 
@@ -543,28 +543,28 @@ subroutine compute_dEdd0(nx_block, ny_block, &
         srftyp      !< surface type over ice: (0=air, 1=snow, 2=pond)
 
       real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
-        hs          !< snow thickness (m)
+        hs          !< snow thickness [m]
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
         rhosnw      !< snow density in snow layer [kg m-3]
       real (kind=dbl_kind), dimension (nx_block,ny_block,nslyr), intent(in) :: &
-        rsnw        !< snow grain radius in snow layer (m)
+        rsnw        !< snow grain radius in snow layer [m]
 
       real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
-        hi          !< ice thickness (m)
+        hi          !< ice thickness [m]
       real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
-        hp          !< pond depth (m)
+        hp          !< pond depth [m]
       real (kind=dbl_kind), dimension(nx_block,ny_block), intent(in) :: &
         fi          !< snow/bare ice fractional coverage (0 to 1)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        alvdr       !< visible, direct, albedo (fraction)
+        alvdr       !< visible, direct, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        alvdf       !< visible, diffuse, albedo (fraction)
+        alvdf       !< visible, diffuse, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        alidr       !< near-ir, direct, albedo (fraction)
+        alidr       !< near-ir, direct, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
-        alidf       !< near-ir, diffuse, albedo (fraction)
+        alidf       !< near-ir, diffuse, albedo [nondim]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
         fswsfc      !< SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
       real (kind=dbl_kind), dimension (nx_block,ny_block),  intent(inout) :: &
@@ -708,10 +708,10 @@ subroutine compute_dEdd0(nx_block, ny_block, &
          nmbrad  = 32        ! number of snow grain radii in tables
 
       real (kind=dbl_kind), dimension(icells_DE) :: &
-         avdr    , & ! visible albedo, direct   (fraction)
-         avdf    , & ! visible albedo, diffuse  (fraction)
-         aidr    , & ! near-ir albedo, direct   (fraction)
-         aidf        ! near-ir albedo, diffuse  (fraction)
+         avdr    , & ! visible albedo, direct   [nondim]
+         avdf    , & ! visible albedo, diffuse  [nondim]
+         aidr    , & ! near-ir albedo, direct   [nondim]
+         aidf        ! near-ir albedo, diffuse  [nondim]
 
       real (kind=dbl_kind), dimension(icells_DE) :: &
          fsfc    , & ! shortwave absorbed at snow/bare ice/ponded ice surface [W m-2]
@@ -818,8 +818,8 @@ subroutine compute_dEdd0(nx_block, ny_block, &
          gi_p_int         ! Ice under pond asymmetry parameter
 
       real (kind=dbl_kind) :: &
-         hi_ssl       , & ! sea ice surface scattering layer thickness (m)
-         hs_ssl       , & ! snow surface scattering layer thickness (m)
+         hi_ssl       , & ! sea ice surface scattering layer thickness [m]
+         hs_ssl       , & ! snow surface scattering layer thickness [m]
          dz           , & ! snow, sea ice or pond water layer thickness
          dz_ssl       , & ! snow or sea ice surface scattering layer thickness
          fs               ! scaling factor to reduce (nilyr<4) or increase (nilyr>4) DL
@@ -851,8 +851,8 @@ subroutine compute_dEdd0(nx_block, ny_block, &
 
       ! for melt pond transition to bare sea ice for small pond depths
       real (kind=dbl_kind) :: &
-         hpmin        , & ! minimum allowed melt pond depth (m)
-         hp0          , & ! melt pond depth below which iops are weighted bare ice + pond (m)
+         hpmin        , & ! minimum allowed melt pond depth [m]
+         hp0          , & ! melt pond depth below which iops are weighted bare ice + pond [m]
          sig_i        , & ! ice scattering coefficient (/m)
          sig_p        , & ! pond scattering coefficient (/m)
          kext             ! weighted extinction coefficient (/m)
@@ -1004,13 +1004,13 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       data gw   /    0.00_dbl_kind,   0.00_dbl_kind,   0.00_dbl_kind /
 
       ! snow data
-      data hs_ssl / 0.040_dbl_kind / ! snow surface scattering layer thickness (m)
+      data hs_ssl / 0.040_dbl_kind / ! snow surface scattering layer thickness [m]
       data rhoi   /917.0_dbl_kind /  ! snow mass density [kg m-3]
       data fr_max / 1.00_dbl_kind /  ! snow grain adjustment factor max
       data fr_min / 0.80_dbl_kind /  ! snow grain adjustment factor min
 
       ! ice data
-      data hi_ssl / 0.050_dbl_kind / ! sea ice surface scattering layer thickness (m)
+      data hi_ssl / 0.050_dbl_kind / ! sea ice surface scattering layer thickness [m]
       data kalg   / 0.60_dbl_kind /  ! for 0.5 m path of 75 mg Chl a / m2
 
       ! ice and pond scat coeff fractional change for +- one-sigma in albedo
@@ -1020,8 +1020,8 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       data fm_pnd / 0.50_dbl_kind /
 
       ! ice to pond parameters
-      data hpmin  / .005_dbl_kind / ! minimum allowable pond depth (m)
-      data hp0    / .200_dbl_kind / ! pond depth below which transition to bare sea ice
+      data hpmin  / .005_dbl_kind / ! minimum allowable pond depth [m]
+      data hp0    / .200_dbl_kind / ! pond depth below which transition to bare sea ice [m]
 
 !-----------------------------------------------------------------------
 ! Initialize and tune bare ice/ponded ice iops
@@ -2231,13 +2231,13 @@ subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
          ks           ! snow vertical index
 
       real (kind=dbl_kind) :: &
-         hs  , & ! snow depth (m)
+         hs  , & ! snow depth [m]
          fT  , & ! piecewise linear function of surface temperature
          dTs , & ! difference of Tsfc and Timelt
          rsnw_nm ! actual used nonmelt snow grain radius (micro-meters)
 
       real (kind=dbl_kind), parameter :: &
-         hsmin  = .0001_dbl_kind, & ! minimum allowed snow depth (m) for DE
+         hsmin  = .0001_dbl_kind, & ! minimum allowed snow depth [m] for DE
          hs0    = .0300_dbl_kind, & ! snow depth for transition to bare sea ice
          dT_mlt    = c1, & ! change in temp to give non-melt to melt change
                            ! in snow grain radius
@@ -2347,7 +2347,7 @@ subroutine shortwave_dEdd0_set_pond(nx_block, ny_block, &
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
         fp         !< pond fractional coverage (0 to 1)
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
-        hp         !< pond depth (m)
+        hp         !< pond depth [m]
 
 !
 !EOP
