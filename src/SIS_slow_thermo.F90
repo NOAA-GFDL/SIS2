@@ -601,7 +601,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     enthalpy              ! The initial enthalpy of a column of ice and snow
                           ! and the surface ocean, in enth_units (often J/kg).
   real, dimension(IG%CatIce) :: frazil_cat  ! The frazil heating applied to each thickness
-                          ! category, averaged over the area of that category in J m-2.
+                          ! category, averaged over the area of that category [J m-2].
   real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
   real :: heat_fill_val   ! An enthalpy to use for massless categories, in enth_units.
 
@@ -629,7 +629,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                       ! This may be of either sign; in some places it is an
                       ! average over the whole cell, while in others just a partition.
   real :: mtot_ice    ! The total mass of ice and snow in a cell [kg m-2].
-  real :: e2m_tot     ! The total enthalpy required to melt all ice and snow, in J m-2.
+  real :: e2m_tot     ! The total enthalpy required to melt all ice and snow [J m-2].
   real :: enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, enth_snowfall
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb

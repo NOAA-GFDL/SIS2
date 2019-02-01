@@ -95,8 +95,8 @@ type, public :: cell_average_state_type ; private
                                                 !! since the fields were populated, in H m2.
   type(EFP_type) :: tot_ice                     !< The globally integrated mass of sea ice [kg].
   type(EFP_type) :: tot_snow                    !< The globally integrated mass of snow [kg].
-  type(EFP_type) :: enth_ice                    !< The globally integrated sea ice enthalpy, in J.
-  type(EFP_type) :: enth_snow                   !< The globally integrated snow enthalpy, in J.
+  type(EFP_type) :: enth_ice                    !< The globally integrated sea ice enthalpy [J].
+  type(EFP_type) :: enth_snow                   !< The globally integrated snow enthalpy [J].
 end type cell_average_state_type
 
 contains
@@ -1018,8 +1018,8 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  type(EFP_type),          intent(out)   :: enth_ice !< The globally integrated total ice enthalpy in J.
-  type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy in J.
+  type(EFP_type),          intent(out)   :: enth_ice !< The globally integrated total ice enthalpy [J].
+  type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy [J].
   real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
 
   ! Local variables

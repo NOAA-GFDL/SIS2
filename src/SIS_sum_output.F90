@@ -57,20 +57,20 @@ type, public :: SIS_sum_out_CS ; private
   real    :: net_salt_input     !<   The total salt added by surface fluxes since the last
                                 !! time that write_ice_statistics was called, in PSU kg.
   real    :: heat_prev          !<   The total amount of heat in the sea ice the last
-                                !! time that write_ice_statistics was called, in Joules.
+                                !! time that write_ice_statistics was called [J].
   real    :: net_heat_input     !<   The total heat added by surface fluxes since the last
-                                !! time that write_ice_statistics was called, in Joules.
+                                !! time that write_ice_statistics was called [J].
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [kg m-2].
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called, in J m-2.
+                                !! the last time that write_ice_statistics was called [J m-2].
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [kg m-2].
     water_col_prev, &           !< The column integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
     heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
-                                !! time that write_ice_statistics was called, in J m-2.
+                                !! time that write_ice_statistics was called [J m-2].
     salt_col_prev               !< The column integrated salt that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
 
@@ -232,14 +232,14 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     col_mass, &    ! The column integrated ice and snow mass in each cell and
                    ! hemisphere [kg].
     col_heat, &    ! The column integrated ice and snow heat in each cell and
-                   ! hemisphere, in J.
+                   ! hemisphere [J].
     col_salt       ! The column integrated salt in the ice in each cell and
                    ! hemisphere [kg].
 
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres, in m2.
     Extent_NS, &   ! The total sea-ice extent in the two hemispheres, in m2.
-    Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres, in J.
+    Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
     mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
     salt_NS, &     ! The total sea-ice salt in the two hemispheres [kg].
     salinity_NS    ! The average sea-ice salinity in the two hemispheres, in g/kg.
@@ -262,11 +262,11 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   real :: salin_anom   ! The change in total salt that cannot be accounted for by
                        ! the surface fluxes divided by total mass in PSU.
   real :: salin_mass_in ! The mass of salt input since the last call [kg].
-  real :: Heat         ! The total amount of Heat in the ocean, in Joules.
+  real :: Heat         ! The total amount of Heat in the ocean [J].
   real :: Heat_chg     ! The change in total sea ice heat since the last call
-                       ! to this subroutine, in Joules.
+                       ! to this subroutine [J].
   real :: Heat_anom    ! The change in heat that cannot be accounted for by
-                       ! the surface fluxes, in Joules.
+                       ! the surface fluxes [J].
   real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero).
   real :: temp         ! The mean potential temperature of the ocean [degC].
   real :: temp_anom    ! The change in total heat that cannot be accounted for

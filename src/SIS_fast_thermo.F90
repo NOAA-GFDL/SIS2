@@ -60,10 +60,10 @@ public :: redo_update_ice_model_fast, find_excess_fluxes
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
-  real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy in J, used with
+  real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy [J m-2], used with
                                      !! column_check when evaluating the enthalpy conservation
                                      !! with the fast thermodynamics code
-  real, pointer, dimension(:,:,:) :: heat_in => NULL() !< The heat input in J,  used with
+  real, pointer, dimension(:,:,:) :: heat_in => NULL() !< The heat input [J m-2],  used with
                                      !! column_check when evaluating the enthalpy conservation
                                      !! with the fast thermodynamics code
 
@@ -618,12 +618,12 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real :: dt_fast ! The fast thermodynamic time step [s].
   real :: Tskin   ! The new skin temperature [degC].
   real :: dTskin  ! The change in the skin temperatue [degC].
-  real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
+  real :: latent  ! The latent heat of sublimation of ice or snow [J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
   real :: sw_tot ! sum over all shortwave (dir/dif and vis/nir) components
   real :: snow_wt ! A fractional weighting of snow in the category surface area.
-  real :: LatHtVap       ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: LatHtVap       ! The latent heat of vaporization of water at 0C [J kg-1].
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
@@ -883,7 +883,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   real :: dt_here ! The time step here [s].
   real :: Tskin   ! The new skin temperature [degC].
-  real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
+  real :: latent  ! The latent heat of sublimation of ice or snow [J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components
@@ -904,7 +904,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     sw_top_chg          !   The change in the shortwave down due to the new albedos.
   real    :: flux_sw_prev  ! The previous value of flux_sw_top [W m-2].
   real    :: rescale    ! A rescaling factor between 0 and 1.
-  real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays, in J m-2.
+  real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays [J m-2].
   real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [W m-2 degC-1].
   real    :: Tskin_prev ! The previous value of Tskin
   real    :: T_bright   ! A skin temperature below which the snow and ice attain

@@ -110,7 +110,7 @@ type ocean_sfc_state_type
                 !! to the ice at the base of the ice [W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
-                !! timestep, in J m-2. This is the input value and is not changed by the ice.
+                !! timestep [J m-2]. This is the input value and is not changed by the ice.
   real, allocatable, dimension(:,:) :: sea_lev !< The equivalent sea-level, after any non-levitating
                 !! ice has been converted to sea-water, as determined by the ocean, in m.
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
@@ -177,8 +177,8 @@ type fast_ice_avg_type
     flux_lh_top , & !< The upward flux of latent heat at the top of the ice [W m-2].
     lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [kg m-2 s-1].
     fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
-    tmelt       , & !< Ice-top melt energy into the ice/snow in J m-2.
-    bmelt       , & !< Ice-bottom melting energy into the ice in J m-2.
+    tmelt       , & !< Ice-top melt energy into the ice/snow [J m-2].
+    bmelt       , & !< Ice-bottom melting energy into the ice [J m-2].
     Tskin_cat       !< The ice skin temperature by category [degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
                     !! shortwave radiation that is absorbed in the ocean, nondim and <=1.
@@ -237,7 +237,7 @@ type fast_ice_avg_type
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: frazil_left !< The frazil heat flux that has not yet been
-                    !! consumed in making ice, in J m-2. This array is decremented by the ice
+                    !! consumed in making ice [J m-2]. This array is decremented by the ice
                     !! model as the heat flux is used up.
 !SLOW ONLY
   !!@{ Diagnostic IDs
@@ -373,10 +373,10 @@ type ice_ocean_flux_type
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
     ! that add mass to the ice are generally negative.
-    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere, in J m-2.
-    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to the atmosphere, in J m-2.
-    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean, in J m-2.
-    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to the ocean, in J m-2.
+    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere [J m-2].
+    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to the atmosphere [J m-2].
+    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [J m-2].
+    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to the ocean [J m-2].
 
   integer :: stress_count !< The number of times that the stresses from the ice to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two wind

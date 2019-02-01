@@ -23,20 +23,20 @@ public :: e_to_melt_TS, energy_melt_enthS, latent_sublimation
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            !< The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_water          !< The heat capacity of liquid water in the ice model,
-                            !! but not in the brine pockets, in J/(kg K).
+                            !! but not in the brine pockets [J kg-1 degC-1].
   real :: Cp_brine          !< The heat capacity of liquid water in the brine
-                            !! pockets within the ice, in J/(kg K).  Cp_brine
+                            !! pockets within the ice [J kg-1 degC-1].  Cp_brine
                             !! should be set equal to Cp_Water, but for
                             !! algorithmic convenience can be set equal to Cp_ice.
   real :: rho_ice           !< The nominal density of ice [kg m-3].
   real :: rho_snow          !< The nominal density of snow [kg m-3].
   real :: rho_water         !< The nominal density of water [kg m-3].
-  real :: LI                !< The latent heat of fusion, in J kg-1.
-  real :: Lat_Vapor         !< The latent heat of vaporization, in J kg-1.
+  real :: LI                !< The latent heat of fusion [J kg-1].
+  real :: Lat_Vapor         !< The latent heat of vaporization [J kg-1].
   real :: dTf_dS            !< The derivative of the freezing point with salinity,
                             !! [degC PSU-1].  (dTf_dS is negative.)
 
-  real :: enth_liq_0 = 0.0  !< The value of enthalpy for liquid fresh water at 0 degC, in J kg-1.
+  real :: enth_liq_0 = 0.0  !< The value of enthalpy for liquid fresh water at 0 degC [J kg-1].
   real :: enth_unit = 1.0   !< A conversion factor for enthalpy from Joules kg-1.
   real :: I_enth_unit = 1.0 !< A conversion factor for enthalpy back to Joules kg-1.
   logical :: slab_ice = .false. !< If true use the very old slab ice thermodynamics,
@@ -238,7 +238,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [J kg-1 degC-1].
-  real :: Lat_fus  ! The latent heat of fusion, in J kg-1.
+  real :: Lat_fus  ! The latent heat of fusion [J kg-1].
   real :: enth_unit    ! A conversion factor for enthalpy from Joules kg-1.
   real :: I_enth_unit  ! The inverse of enth_unit.
   logical :: col_check
@@ -592,7 +592,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [J kg-1 degC-1].
-  real :: Lat_fus  ! The latent heat of fusion, in J kg-1.
+  real :: Lat_fus  ! The latent heat of fusion [J kg-1].
   integer :: k
 
   temp_IC(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
@@ -716,10 +716,10 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
   real :: T_g    ! The latest best guess at Temp [degC].
   real :: T_deriv  ! The value of Temp at which to evaluate dErr_dT [degC].
   real :: T_max, T_min ! Bracketing temperatures [degC].
-  real :: Err    ! The enthalpy at T_guess, in J kg-1.
-  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min, in J m-2.
+  real :: Err    ! The enthalpy at T_guess [J kg-1].
+  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min [J m-2].
   real :: T_prev  ! The previous value of T_g [degC].
-  real :: dErr_dT ! The partial derivative of Err with T_g, in J m-2 C-1.
+  real :: dErr_dT ! The partial derivative of Err with T_g [J m-2 degC-1].
   real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
   real :: TfmxdCp_BI
 
@@ -730,7 +730,7 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
                    ! [J kg-1 degC-1].
   real :: Cp_water ! The heat capacity of liquid water in the ice model,
                    ! but not in the brine pockets [J kg-1 degC-1].
-  real :: LI       ! The latent heat of fusion, in J kg-1.
+  real :: LI       ! The latent heat of fusion [J kg-1].
 
   integer :: itt
 !  real :: T_itt(20), dTemp(20), Err_itt(20)
@@ -873,7 +873,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                                !! in explicit and implicit estimates of the updated
                                !! heat fluxes [kg degC W-1].
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, intent(out) :: extra_heat !< The heat above the melt point, in J.
+  real, intent(out) :: extra_heat !< The heat above the melt point [J].
   real, optional, intent(out) :: temp_new !< The new temperature [degC].
   real, optional, intent(in)  :: temp_max !< The maximum new temperature [degC].
 
@@ -884,24 +884,24 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: fb       ! The negative of the dependence of layer heating on
                    ! temperature [W m-2 degC-1]. fb > 0.
   real :: extra_enth ! Excess enthalpy above the melt point [kg Enth ~> J].
-  real :: enth_in  ! The initial enthalpy, in enth_units.
-  real :: enth_fp  ! The enthalpy at the freezing point, in enth_units.
+  real :: enth_in  ! The initial enthalpy [Enth ~> J kg-1].
+  real :: enth_fp  ! The enthalpy at the freezing point [Enth ~> J kg-1].
   real :: AA, BB, CC ! Temporary variables used to solve a quadratic equation.
   real :: dtEU     ! The timestep times the unit conversion from J to Enth_units [s]?
-  real :: dT_dEnth ! The partial derivative of temperature with enthalpy,
-                   ! in units of K / Enth_unit.
-  real :: En_J     ! The enthalpy in Joules with 0 offset for liquid at 0 degC.
+  real :: dT_dEnth ! The partial derivative of temperature with enthalpy
+                   ! [degC Enth-1 ~> degC kg J-1].
+  real :: En_J     ! The enthalpy [J] with 0 offset for liquid at 0 degC.
   real :: T_fr     ! Ice freezing temperature (determined by bulk salinity) [degC].
   real :: fbot_in, ftop_in ! Input values of fbot and ftop [W m-2].
-  real :: dflux_dtot_dT  ! A temporary work array in units of degC.
+  real :: dflux_dtot_dT  ! A temporary work array [degC].
 
   real :: T_g    ! The latest best guess at Temp [degC].
   real :: T_deriv  ! The value of Temp at which to evaluate dErr_dT [degC].
   real :: T_max, T_min ! Bracketing temperatures [degC].
-  real :: Err    ! The enthalpy at T_guess, in J kg-1.
-  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min, in J m-2.
+  real :: Err    ! The enthalpy at T_guess [J kg-1].
+  real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min [J m-2].
   real :: T_prev  ! The previous value of T_g [degC].
-  real :: dErr_dT ! The partial derivative of Err with T_g, in J m-2 C-1.
+  real :: dErr_dT ! The partial derivative of Err with T_g [J m-2 degC-1].
   real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
   real :: TfxdCp_WI, TfxdCp_BI, Err_Tind
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
@@ -1204,9 +1204,9 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
                                        !! by evaporation / sublimation.
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
-                                       !! by melting, in J m-2.
+                                       !! by melting [J m-2].
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the mass gain
-                                       !! by freezing, in J m-2.
+                                       !! by freezing [J m-2].
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
   real :: mtot_ice    ! The summed ice mass [kg m-2].
@@ -1225,8 +1225,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: enth_unit   ! A conversion factor for enthalpy from Joules kg-1.
-  real :: LI          ! The latent heat of fusion, in J kg-1.
-  real :: Lat_vapor   ! The latent heat of vaporization, in J kg-1.
+  real :: LI          ! The latent heat of fusion [J kg-1].
+  real :: Lat_vapor   ! The latent heat of vaporization [J kg-1].
   real :: rho_ice     ! The nominal density of sea ice [kg m-3].
   real :: rho_water   ! The nominal density of seawater [kg m-3].
   real :: h2o_to_ocn, h2o_orig, h2o_imb
@@ -1506,7 +1506,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the
-                                     !! mass gain by freezing, in J m-2.
+                                     !! mass gain by freezing [J m-2].
 
   real :: enth_frazil ! The enthalpy of newly formed frazil ice, in enth_unit.
   real :: frazil_per_layer    ! The frazil heat sink from each of the sublayers of
@@ -1522,7 +1522,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   real :: enthM_freezing      ! The enthalpy gain due to the mass gain by
                               ! freezing, in enth_unit kg m-2 (often J m-2).
   real :: enth_unit           ! The units for enthalpy (often J kg-1).
-  real :: LI          ! The latent heat of fusion, in J kg-1.
+  real :: LI          ! The latent heat of fusion [J kg-1].
   ! These variables are used only for debugging.
   real :: mtot_ice    ! The summed ice mass [kg m-2].
   real :: h2o_to_ocn, h2o_orig, h2o_imb
@@ -1887,10 +1887,9 @@ function latent_sublimation(enth_snow, enth_ice, wt_snow, ITV) result (latent)
   real, intent(in) :: wt_snow    !< A weighting factor (0-1) for the snow areal
                                  !! coverage; the complement is for the ice.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real :: latent !< The latent heat of sublimation in J kg-1.
+  real :: latent !< The latent heat of sublimation [J kg-1].
 
-  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 degC, in
-                     ! enthalpy units (sometimes J kg-1).
+  real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 degC [Enth ~> J kg-1].
                      ! This should become ITV%Enth_liq_0, but it is not due to
                      ! a bug in how this is calculated.
 
@@ -1941,7 +1940,7 @@ function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
   real :: I_enth_unit
   real :: Cp_Ice, LI, Mu_TS
   real :: T_fr  ! The freezing temperature [degC].
-  real :: En_J  ! Enthalpy in Joules with 0 offset.
+  real :: En_J  ! Enthalpy with 0 offset at 0 degC [J kg-1].
   Cp_Ice = ITV%Cp_Ice ; LI = ITV%LI ; Mu_TS = -ITV%dTf_dS
 
   I_Cp_Ice = 1.0 / Cp_Ice ; I_enth_unit = 1.0 / ITV%enth_unit
@@ -2128,14 +2127,14 @@ end function Temp_from_En_S
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> e_to_melt_TS - return the energy needed to melt a given snow/ice
-!!      configuration, in J kg-1.
+!!      configuration [J kg-1].
 function e_to_melt_TS(T, S, ITV) result(e_to_melt)
   real, intent(in) :: T  !< The ice temperature [degC]
   real, intent(in) :: S  !< The ice bulk salinity in g/kg
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
-                     !! and warm it to its bulk freezing temperature, in J kg-1.
+                     !! and warm it to its bulk freezing temperature [J kg-1].
 
   real :: T_fr  ! The freezing temperature [degC].
   T_fr = ITV%dTf_dS*S
@@ -2154,14 +2153,14 @@ end function e_to_melt_TS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> energy_melt_enthS returns the energy needed to melt a given snow/ice
-!!      configuration, in J kg-1.
+!!      configuration [J kg-1].
 function energy_melt_enthS(En, S, ITV) result(e_to_melt)
   real, intent(in) :: En !< The ice enthalpy, in enthalpy units (often J/kg)
   real, intent(in) :: S  !< The ice bulk salinity in g/kg
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
-                     !! and warm it to its bulk freezing temperature, in J kg-1.
+                     !! and warm it to its bulk freezing temperature [J kg-1].
 
   e_to_melt = ITV%enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
 
@@ -2188,8 +2187,8 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   real,    optional, intent(out) :: rho_ice   !< A nominal density of ice [kg m-3].
   real,    optional, intent(out) :: rho_snow  !< A nominal density of snow [kg m-3].
   real,    optional, intent(out) :: rho_water !< A nominal density of water [kg m-3].
-  real,    optional, intent(out) :: Latent_fusion !< The latent heat of fusion, in J kg-1.
-  real,    optional, intent(out) :: Latent_vapor !< The latent heat of vaporization, in J kg-1.
+  real,    optional, intent(out) :: Latent_fusion !< The latent heat of fusion [J kg-1].
+  real,    optional, intent(out) :: Latent_vapor !< The latent heat of vaporization [J kg-1].
   type(EOS_type), &
            optional, pointer     :: EOS       !< A pointer to the MOM6/SIS2 ocean equation-of-state type.
   logical, optional, intent(out) ::  specified_thermo_salinity !< If true, all thermodynamic calculations
