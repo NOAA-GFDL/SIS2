@@ -353,7 +353,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units
+                               intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units [Conc]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(in)    :: h_prev !< Category thickness times fractional
                                                       !! coverage before advection [H ~> kg m-2].
@@ -390,9 +390,9 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
   logical :: x_first    ! If true, advect in the x-direction first.
   integer :: max_iter   ! The maximum number of iterations in each layer.
 
-  real, dimension(SZIB_(G),SZJ_(G)) :: flux_U2d_x  ! x-direction tracer fluxes, in conc * kg
-  real, dimension(SZI_(G),SZJB_(G)) :: flux_U2d_y  ! y-direction tracer fluxes, in conc * kg
-  real    :: tr_up              ! Upwind tracer concentrations, in conc.
+  real, dimension(SZIB_(G),SZJ_(G)) :: flux_U2d_x  ! x-direction tracer fluxes [Conc kg]
+  real, dimension(SZI_(G),SZJB_(G)) :: flux_U2d_y  ! y-direction tracer fluxes [Conc kg]
+  real    :: tr_up              ! Upwind tracer concentrations [Conc].
   real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
 
   integer :: domore_k(SZCAT_(IG))
@@ -602,7 +602,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units
+                               intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units [Conc]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: hprev !< Category thickness times fractional coverage
                                                       !! before this step of advection [H ~> kg m-2].
@@ -627,16 +627,15 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   !   This subroutine does 1-d flux-form advection in the zonal direction using
   ! a monotonic piecewise linear scheme.
   real, dimension(SZI_(G)) :: &
-    slope_x         ! The concentration slope per grid point in units of
-                    ! concentration (nondim.).
+    slope_x         ! The concentration slope per grid point [Conc].
   real, dimension(SZIB_(G)) :: &
     Tr_x            ! The tracer concentration averaged over the water flux
-                    ! across a zonal boundary in conc.
+                    ! across a zonal boundary [Conc].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope  ! The maximum concentration slope per grid point consistent
-                    ! with monotonicity, in conc. (nondim.).
+                    ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [H m2 ~> kg].
@@ -777,16 +776,15 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
 
   ! Local variables
   real, dimension(SZI_(G),nL_max,ntr) :: &
-    slope_x         ! The concentration slope per grid point in units of
-                    ! concentration (nondim.).
+    slope_x         ! The concentration slope per grid point [Conc].
   real, dimension(SZIB_(G),nL_max,ntr) :: &
     Tr_x            ! The tracer concentration averaged over the water flux
-                    ! across a zonal boundary in conc.
+                    ! across a zonal boundary [Conc].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope  ! The maximum concentration slope per grid point consistent
-                    ! with monotonicity, in conc. (nondim.).
+                    ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [H m2 ~> kg].
@@ -972,10 +970,10 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
   integer,                           intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                           intent(in)    :: j   !< The tracer j-index to work on
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect,
-                                                          !! in arbitrary units of CONC
+                                                          !! in arbitrary units [Conc]
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask !< A multiplicative mask at u-points
   real, dimension(SZI_(G)),          intent(inout) :: slope_x !< The x-slope in tracer concentration
-                                                          !! times the grid spacing, in units of CONC.
+                                                          !! times the grid spacing [Conc].
   ! Local
   integer :: i
   real :: Tp, Tc, Tm, dMx, dMn
@@ -1001,7 +999,7 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
   real, dimension(SZIB_(G)),         intent(in)    :: uhh !< The volume or mass flux in this
                                                           !! pass of advection [H m2 ~> kg].
   real, dimension(SZIB_(G)),         intent(in)    :: CFL !< The CFL number for this phase of advection
-  real, dimension(SZIB_(G)),         intent(inout) :: Tr_x !< The average tracer concentration in the flux
+  real, dimension(SZIB_(G)),         intent(inout) :: Tr_x !< The average tracer concentration in the flux [Conc]
   ! Local
   integer :: i
   real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
@@ -1107,14 +1105,14 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G)) :: &
     Tr_y            ! The tracer concentration averaged over the water flux
-                    ! across a meridional boundary in conc.
+                    ! across a meridional boundary [Conc].
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
     vhh             ! The meridional flux that occurs during the current
                     ! iteration [H m2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
-                    ! with monotonicity, in conc. (nondim.).
+                    ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [H m2 ~> kg].
@@ -1262,14 +1260,14 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     ! concentration (nondim.).
   real, dimension(SZI_(G),SZJB_(G),nL_max,ntr) :: &
     Tr_y            ! The tracer concentration averaged over the water flux
-                    ! across a meridional boundary in conc.
+                    ! across a meridional boundary [Conc].
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
                     ! both neighboring cells have any mass, and 0 otherwise.
     vhh             ! The meridional flux that occurs during the current
                     ! iteration [H m2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
-                    ! with monotonicity, in conc. (nondim.).
+                    ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [H m2 ~> kg].
@@ -1476,10 +1474,10 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
   integer,                           intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                           intent(in)    :: j   !< The tracer j-index to work on
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect,
-                                                          !! in arbitrary units of CONC
+                                                          !! in arbitrary units [Conc]
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask !< A multiplicative mask at v-points
   real, dimension(SZI_(G)),          intent(inout) :: slope_y !< The y-slope in tracer concentration
-                                                          !! times the grid spacing, in units of CONC.
+                                                          !! times the grid spacing [Conc].
   ! Local
   integer :: i
   real :: Tp, Tc, Tm, dMx, dMn
@@ -1596,9 +1594,9 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
   real,                        intent(in)    :: dt    !<  Time increment [s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
 
-  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
-  real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
-  real    :: tr_up  ! Upwind tracer concentrations, in conc.
+  real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes [Conc kg]
+  real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes [Conc kg]
+  real    :: tr_up  ! Upwind tracer concentrations [Conc].
   real    :: Idt    ! The inverse of the time increment [s-1]
   real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
   integer :: i, j, k, l, m, is, ie, js, je

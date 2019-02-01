@@ -50,14 +50,14 @@ type, public :: SIS_tracer_type
   real :: massless_val = 0.0 !< A value to use in massless layers.
   real, dimension(:,:), &
     pointer :: ad2d_x => NULL() !< The x-direction advective flux summed vertically and across
-                                !! ice category in units of CONC m3 s-1.
+                                !! ice category [Conc kg s-1].
   real, dimension(:,:), &
     pointer :: ad2d_y => NULL() !< The y-direction advective flux summed vertically and across
-                                !! ice category in units of CONC m3 s-1.
+                                !! ice category [Conc kg s-1].
   real, dimension(:,:,:), &
-    pointer :: ad3d_x => NULL() !< The vertically summed x-direction advective flux in units of CONC m3 s-1.
+    pointer :: ad3d_x => NULL() !< The vertically summed x-direction advective flux [Conc kg s-1].
   real, dimension(:,:,:), &
-    pointer :: ad3d_y => NULL() !< The vertically summed y-direction advective flux in units of CONC m3 s-1.
+    pointer :: ad3d_y => NULL() !< The vertically summed y-direction advective flux [Conc kg s-1].
   real, dimension(:,:,:,:), &
     pointer :: ad4d_x => NULL() !< The x-direction advective flux by ice category and layer in
                                 !! units of CONC m3 s-1.
@@ -110,7 +110,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nLtr), &
                    target, intent(in) :: tr1 !< The pointer to the tracer, in arbitrary
-                                             !! concentration units (CONC), and dimensions of
+                                             !! concentration units [Conc], and dimensions of
                                              !! i-, j-, category, and layer.
   character(len=*),        intent(in) :: name  !< The name to be used in messages about the tracer.
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -120,31 +120,31 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   real,          optional, intent(in) :: massless_val !< The value to use to fill in massless categories.
   real, dimension(:,:), &
                  optional, pointer    :: ad_2d_x !< An array for the x-direction advective flux summed
-                                             !! vertically and across ice category in units of CONC m3 s-1.
+                                             !! vertically and across ice category [Conc kg s-1].
   real, dimension(:,:), &
                  optional, pointer    :: ad_2d_y !< An array for the Y-direction advective flux summed
-                                             !! vertically and across ice category in units of CONC m3 s-1.
+                                             !! vertically and across ice category [Conc kg s-1].
   real, dimension(:,:,:), &
                  optional, pointer    :: ad_3d_x !< An array for the vertically summed x-direction
-                                             !! advective flux in units of CONC m3 s-1.
+                                             !! advective flux [Conc kg s-1].
   real, dimension(:,:,:), &
                  optional, pointer    :: ad_3d_y !< An array for the vertically summed y-direction
-                                             !! advective flux in units of CONC m3 s-1.
+                                             !! advective flux [Conc kg s-1].
   real, dimension(:,:,:,:), &
                  optional, pointer    :: ad_4d_x !< An array for the x-direction advective flux by
-                                             !! ice category and layer in units of CONC m3 s-1.
+                                             !! ice category and layer [Conc kg s-1].
   real, dimension(:,:,:,:), &
                  optional, pointer    :: ad_4d_y  !< An array for the x-direction advective flux by
-                                             !! ice category and layer in units of CONC m3 s-1.
+                                             !! ice category and layer [Conc kg s-1].
   real,          optional, intent(in) :: OBC_inflow !<  The value of the tracer for all inflows via
                                              !! the open boundary conditions for which OBC_in_u or
-                                             !! OBC_in_v are not specified, in the same units as tr (CONC).
+                                             !! OBC_in_v are not specified, in the same units as tr [Conc].
   real, dimension(:,:,:), &
                  optional, pointer    :: OBC_in_u !< The value of the tracer at inflows through u-faces
-                                             !! of tracer cells, in the same units as tr (CONC).
+                                             !! of tracer cells, in the same units as tr [Conc].
   real, dimension(:,:,:), &
                  optional, pointer    :: OBC_in_v !< The value of the tracer at inflows through v-faces
-                                             !! of tracer cells, in the same units as tr (CONC).
+                                             !! of tracer cells, in the same units as tr [Conc].
   logical,       optional, intent(in) :: nonnegative !< If true, this tracer should never be negative.
   real, dimension(:,:,:), &
                  optional, pointer    :: ocean_BC !< Value of the tracer at the ice-ocean boundary
@@ -228,11 +228,11 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_ice), &
                    target, intent(in) :: ice_tr !<  The pointer to the ice tracer, in arbitrary
-                                               !! concentration units (CONC), and dimensions
+                                               !! concentration units [Conc], and dimensions
                                                !! of i-, j-, category, and layer.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG),nL_snow), &
                    target, intent(in) :: snow_tr !< The pointer to the snow tracer, in arbitrary
-                                               !! concentration units (CONC), and dimensions
+                                               !! concentration units [Conc], and dimensions
                                                !! of i-, j-, category, and layer.
   character(len=*),        intent(in) :: name_ice !< The name to be used in messages about the tracer.
   character(len=*),        intent(in) :: name_snow !< The name to be used in messages about the tracer.
@@ -500,13 +500,13 @@ subroutine add_SIS_tracer_OBC_values(name, TrReg, OBC_inflow, OBC_in_u, OBC_in_v
                            pointer    :: TrReg !< A pointer to the SIS tracer registry
   real,          optional, intent(in) :: OBC_inflow !<  The value of the tracer for all inflows via
                                              !! the open boundary conditions for which OBC_in_u or
-                                             !! OBC_in_v are not specified, in the same units as tr (CONC).
+                                             !! OBC_in_v are not specified, in the same units as tr [Conc].
   real, dimension(:,:,:), &
                  optional, pointer    :: OBC_in_u !< The value of the tracer at inflows through u-faces
-                                             !! of tracer cells, in the same units as tr (CONC).
+                                             !! of tracer cells, in the same units as tr [Conc].
   real, dimension(:,:,:), &
                  optional, pointer    :: OBC_in_v !< The value of the tracer at inflows through v-faces
-                                             !! of tracer cells, in the same units as tr (CONC).
+                                             !! of tracer cells, in the same units as tr [Conc].
 ! This subroutine adds open boundary condition concentrations for a tracer that
 ! has previously been registered by a call to register_SIS_tracer.
 
@@ -544,22 +544,22 @@ subroutine add_SIS_tracer_diagnostics(name, TrReg, ad_2d_x, ad_2d_y, ad_3d_x, &
                            pointer    :: TrReg !< A pointer to the SIS tracer registry
   real, dimension(:,:), &
                  optional, pointer    :: ad_2d_x !< An array for the x-direction advective flux summed
-                                             !! vertically and across ice category in units of CONC m3 s-1.
+                                             !! vertically and across ice category [Conc kg s-1].
   real, dimension(:,:), &
                  optional, pointer    :: ad_2d_y !< An array for the Y-direction advective flux summed
-                                             !! vertically and across ice category in units of CONC m3 s-1.
+                                             !! vertically and across ice category [Conc kg s-1].
   real, dimension(:,:,:), &
                  optional, pointer    :: ad_3d_x !< An array for the vertically summed x-direction
-                                             !! advective flux in units of CONC m3 s-1.
+                                             !! advective flux [Conc kg s-1].
   real, dimension(:,:,:), &
                  optional, pointer    :: ad_3d_y !< An array for the vertically summed y-direction
-                                             !! advective flux in units of CONC m3 s-1.
+                                             !! advective flux [Conc kg s-1].
   real, dimension(:,:,:,:), &
                  optional, pointer    :: ad_4d_x !< An array for the x-direction advective flux by
-                                             !! ice category and layer in units of CONC m3 s-1.
+                                             !! ice category and layer [Conc kg s-1].
   real, dimension(:,:,:,:), &
                  optional, pointer    :: ad_4d_y  !< An array for the x-direction advective flux by
-                                             !! ice category and layer in units of CONC m3 s-1.
+                                             !! ice category and layer [Conc kg s-1].
 
 ! This subroutine adds diagnostic arrays for a tracer that has previously been
 ! registered by a call to register_SIS_tracer.
