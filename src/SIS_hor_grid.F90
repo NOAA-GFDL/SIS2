@@ -72,7 +72,7 @@ type, public :: SIS_hor_grid_type
                              !! during the course of the run via calls to set_first_direction.
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
-    mask2dT, &   !< 0 for land points and 1 for ocean points on the h-grid. Nd.
+    mask2dT, &   !< 0 for land points and 1 for ocean points on the h-grid [nondim].
     geoLatT, &   !< The geographic latitude at q points in degrees of latitude or m.
     geoLonT, &   !< The geographic longitude at q points in degrees of longitude or m.
     dxT, &       !< dxT is delta x at h points [m].
@@ -89,7 +89,7 @@ type, public :: SIS_hor_grid_type
                  !! and the true northward directions.
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
-    mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid.  Nondim.
+    mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid [nondim].
     geoLatCu, &  !< The geographic latitude at u points in degrees of latitude or m.
     geoLonCu, &  !< The geographic longitude at u points in degrees of longitude or m.
     dxCu, &      !< dxCu is delta x at u points [m].
@@ -101,7 +101,7 @@ type, public :: SIS_hor_grid_type
     areaCu       !< The areas of the u-grid cells [m2].
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
-    mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid.  Nondim.
+    mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid [nondim].
     geoLatCv, &  !< The geographic latitude at v points in degrees of latitude or m.
     geoLonCv, &  !<  The geographic longitude at v points in degrees of longitude or m.
     dxCv, &      !< dxCv is delta x at v points [m].
@@ -113,7 +113,7 @@ type, public :: SIS_hor_grid_type
     areaCv       !< The areas of the v-grid cells [m2].
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
-    mask2dBu, &  !< 0 for boundary points and 1 for ocean points on the q grid.  Nondim.
+    mask2dBu, &  !< 0 for boundary points and 1 for ocean points on the q grid [nondim].
     geoLatBu, &  !< The geographic latitude at q points in degrees of latitude or m.
     geoLonBu, &  !< The geographic longitude at q points in degrees of longitude or m.
     dxBu, &      !< dxBu is delta x at q points [m].
@@ -159,8 +159,8 @@ type, public :: SIS_hor_grid_type
   real :: west_lon      !< The longitude (or x-coordinate) of the first u-line
   real :: len_lat = 0.  !< The latitudinal (or y-coord) extent of physical domain
   real :: len_lon = 0.  !< The longitudinal (or x-coord) extent of physical domain
-  real :: Rad_Earth = 6.378e6 !< The radius of the planet in meters.
-  real :: max_depth     !< The maximum depth of the ocean in meters.
+  real :: Rad_Earth = 6.378e6 !< The radius of the planet [m].
+  real :: max_depth     !< The maximum depth of the ocean [m].
 end type SIS_hor_grid_type
 
 contains

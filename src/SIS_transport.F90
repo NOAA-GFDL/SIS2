@@ -236,7 +236,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
   real :: yr_dt           ! Tne number of timesteps in a year.
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv      ! The convergence of frozen water transport [kg m-2].
-  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   type(EFP_type) :: tot_ice, tot_snow, enth_ice, enth_snow
   real :: I_tot_ice, I_tot_snow
   real :: Idt  ! The reciprocal of the accumulated time, times a unit conversion factor, in
@@ -383,7 +383,7 @@ subroutine ice_state_to_cell_ave_state(IST, G, IG, CS, CAS)
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness [kg m-2].
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
@@ -452,7 +452,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
   type(SIS_tracer_registry_type), pointer       :: TrReg !< The registry of SIS ice and snow tracers.
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
+  real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   real :: mass_neglect    ! A negligible mass per unit area [H ~> kg m-2].
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
@@ -525,7 +525,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                            intent(inout) :: part_sz !< The fractional ice concentration
                                                 !! within a cell in each thickness
-                                                !! category, nondimensional, 0-1.
+                                                !! category [nondim], 0-1.
   type(SIS_tracer_registry_type), &
                            pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),  pointer       :: CS  !< A pointer to the control structure for this module
@@ -535,7 +535,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
 
   ! Local variables
   real :: mca_trans  ! The cell-averaged ice mass transfered between categories [kg m-2].
-  real :: part_trans ! The fractional area transfered between categories, nondim.
+  real :: part_trans ! The fractional area transfered between categories [nondim].
   real :: snow_trans ! The cell-averaged snow transfered between categories [kg m-2].
   real :: pond_trans ! The cell-averaged pond transfered between categories [kg m-2].
   real :: I_mH_lim1  ! The inverse of the lower thickness limit [m2 kg-1].
@@ -737,7 +737,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                                      intent(inout) :: part_sz !< The fractional ice concentration
                                                           !! within a cell in each thickness
-                                                          !! category, nondimensional, 0-1.
+                                                          !! category [nondim], 0-1.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: mH_ice  !< The mass per unit area of the ice
                                                           !! in each category [H ~> kg m-2].
@@ -768,7 +768,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
   real :: mca_old
 !  real :: Imca_new
   real :: mass_neglect
-  real :: part_trans ! The fractional area transfered into a thicker category, nondim.
+  real :: part_trans ! The fractional area transfered into a thicker category [nondim].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category [H ~> kg m-2].
     m0_snow, & ! The initial mass per unit grid-cell area of snow in each category [H ~> kg m-2].

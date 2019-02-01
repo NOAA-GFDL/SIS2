@@ -87,7 +87,7 @@ type, public :: SIS_sum_out_CS ; private
   logical :: column_check       !< If true, enable the column by column heat and
                                 !! mass conservation check
   real    :: imb_tol            !< The tolerance for imbalances to be flagged by
-                                !! column_check, nondim.
+                                !! column_check [nondim].
   integer :: maxtrunc           !< The number of truncations per ice statistics
                                 !! save interval at which the run is stopped.
   logical :: write_stdout       !< If true, periodically write sea ice statistics
@@ -284,10 +284,10 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     salt_EFP, heat_EFP, salt_chg_EFP, heat_chg_EFP, mass_chg_EFP, &
     mass_anom_EFP, salt_anom_EFP, heat_anom_EFP
 
-  real :: CFL_trans    ! A transport-based definition of the CFL number, nondim.
-  real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection, nondim.
+  real :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
+  real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection [nondim].
   real :: dt_CFL       ! The timestep for calculating the CFL number [s].
-  real :: max_CFL      ! The maximum of the CFL numbers, nondim.
+  real :: max_CFL      ! The maximum of the CFL numbers [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int
   logical :: check_col
@@ -830,7 +830,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
                                                 !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), &
                               intent(in) :: part_size !< The fractional ice concentration within a
-                                                !! cell in each thickness category, nondimensional, 0-1.
+                                                !! cell in each thickness category [nondim], 0-1.
   real,                       intent(in) :: dt  !< The amount of time over which to average.
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.

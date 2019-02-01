@@ -641,7 +641,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                     ! the grid box, both [H m2 ~> kg].
   real, dimension(SZIB_(G)) :: &
     uhh, &          ! The zonal flux that occurs during the current iteration [H m2 ~> kg].
-    CFL             ! A nondimensional work variable.
+    CFL             ! A nondimensional work variable [nondim].
   real, dimension(SZI_(G)) :: &
     hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
     haddE, haddW    ! Tiny amounts of thickness that should be added to the
@@ -790,7 +790,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                     ! the grid box, both [H m2 ~> kg].
   real, dimension(SZIB_(G)) :: &
     uhh, &          ! The zonal flux that occurs during the current iteration [H m2 ~> kg].
-    CFL             ! A nondimensional work variable.
+    CFL             ! A nondimensional work variable [nondim].
   real, dimension(SZI_(G)) :: &
     hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
     haddE, haddW    ! Tiny amounts of thickness that should be added to the
@@ -1101,8 +1101,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    slope_y         ! The concentration slope per grid point in units of
-                    ! concentration (nondim.).
+    slope_y         ! The concentration slope per grid point [Conc].
   real, dimension(SZI_(G),SZJB_(G)) :: &
     Tr_y            ! The tracer concentration averaged over the water flux
                     ! across a meridional boundary [Conc].
@@ -1122,7 +1121,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal north
                     ! and south of the present cell [H m2 ~> kg].
-    CFL             ! A nondimensional work variable.
+    CFL             ! A nondimensional work variable [nondim].
   real :: hnew      ! The projected thickness [H m2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [H m2 ~> kg].
@@ -1256,8 +1255,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
   ! linear scheme.
   real, dimension(SZI_(G),SZJ_(G),nL_max,ntr) :: &
-    slope_y         ! The concentration slope per grid point in units of
-                    ! concentration (nondim.).
+    slope_y         ! The concentration slope per grid point [Conc].
   real, dimension(SZI_(G),SZJB_(G),nL_max,ntr) :: &
     Tr_y            ! The tracer concentration averaged over the water flux
                     ! across a meridional boundary [Conc].
@@ -1277,7 +1275,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal north
                     ! and south of the present cell [H m2 ~> kg].
-    CFL             ! A nondimensional work variable.
+    CFL             ! A nondimensional work variable [nondim].
   real :: hnew      ! The projected thickness [H m2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [H m2 ~> kg].

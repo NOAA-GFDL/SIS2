@@ -57,7 +57,7 @@ integer, parameter :: NBANDS=4 !< the number of 4-D arrays for shortwave radiati
 type ice_state_type
   ! The 8 of the following 10 variables constitute the sea-ice state.
   real, allocatable, dimension(:,:,:) :: part_size !< The fractional coverage of a grid cell by
-                !! each ice thickness category, nondim, 0 to 1.  Category 0 is open ocean.
+                !! each ice thickness category [nondim], 0 to 1.  Category 0 is open ocean.
                 !!  The sum of part_size is 1.
   ! These velocities are only used on the slow ice processors
   real, allocatable, dimension(:,:) :: u_ice_B  !< The pseudo-zonal ice velocity along the
@@ -212,9 +212,9 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:) :: Tskin_avg !< The area-weighted average skin temperature
                     !! across all ice thickness categories [degC], or 0 if there is no ice.
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
-                    !! WindStr_[xy]_A; nondimensional, between 0 & 1.
+                    !! WindStr_[xy]_A, between 0 & 1 [nondim].
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
-                    !! thickness categories, used in calculating WindStr_[xy]_A; nondimensional, between 0 & 1.
+                    !! thickness categories, used in calculating WindStr_[xy]_A, between 0 & 1 [nondim].q
 
   integer :: copy_calls = 0 !< The number of times this structure has been
                     !! copied from the fast ice to the slow ice.
@@ -313,9 +313,9 @@ type ice_rad_type
 
   real, allocatable, dimension(:,:)   :: &
     coszen_lastrad, & !< Cosine of the solar zenith angle averaged
-                    !! over the last radiation timestep, nondim.
+                    !! over the last radiation timestep [nondim].
     coszen_nextrad  !< Cosine of the solar zenith angle averaged
-                    !! over the next radiation timestep, nondim.
+                    !! over the next radiation timestep [nondim].
 
   logical :: add_diurnal_sw       !< If true, apply a synthetic diurnal cycle to
                                   !! the shortwave radiation.

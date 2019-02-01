@@ -84,7 +84,7 @@ type slow_thermo_CS ; private
   real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity [gSalt kg-1]
                             !! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin     !< The initial bulk salinity of sea-ice relative to the
-                            !! salinity of the water from which it formed, nondim.
+                            !! salinity of the water from which it formed [nondim].
 
   logical :: filling_frazil !< If true, apply frazil to fill as many categories
                             !! as possible to fill in a uniform (minimum) amount
@@ -122,7 +122,7 @@ type slow_thermo_CS ; private
 
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
   logical :: column_check   !< If true, enable the heat check column by column.
-  real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check, nondim.
+  real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check [nondim].
   logical :: bounds_check   !< If true, check for sensible values of thicknesses temperatures, fluxes, etc.
 
   integer :: n_calls = 0    !< The number of times update_ice_model_slow_down has been called.
@@ -605,7 +605,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters [Enth ~> J kg-1].
   real :: heat_fill_val   ! An enthalpy to use for massless categories [Enth ~> J kg-1].
 
-  real :: I_part        ! The inverse of a part_size, nondim.
+  real :: I_part        ! The inverse of a part_size [nondim].
   logical :: spec_thermo_sal  ! If true, use the specified salinities of the
                               ! various sub-layers of the ice for all thermodynamic
                               ! calculations; otherwise use the prognostic
@@ -634,13 +634,13 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb
   real :: enth_units, I_enth_units ! The units of enthaply and their inverse.
-  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, ND.
+  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove [nondim].
   real :: ice_melt_lay ! The amount of excess ice removed from each layer [kg m-2].
   real :: snow_melt    ! The amount of excess snow that is melted [kg m-2].
   real :: enth_freeze  ! The freezing point enthalpy of a layer [Enth ~> J kg-1].
   real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
                        ! and snow [Enth kg m-2 ~> J m-2].
-  real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
+  real :: I_Nk         ! The inverse of the number of layers in the ice [nondim].
   real :: kg_H_Nk      ! The conversion factor from units of H to kg/m2 over Nk.
   real :: part_sum     ! A running sum of partition sizes.
   real :: part_ocn     ! A slightly modified ocean part size.

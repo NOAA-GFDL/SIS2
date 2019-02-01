@@ -64,7 +64,7 @@ type, public :: ice_age_tracer_CS
       young_val = 0.0, &                      !< The value assigned to tr at the surface.
       land_val = -1.0                         !< The value of tr used where land is masked out.
   real, dimension(NTR_MAX) :: tracer_start_year = 0.0 !< The year in which tracers start aging, or at which the
-                                              !! surface value equals young_val, in years.
+                                              !! surface value equals young_val [year].
   logical :: mask_tracers                     !< If true, tracers are masked out in massless layers.
   logical :: tracers_may_reinit               !< If true, tracers may go through the initialization code
                                               !! if they are not found in the restart files.
@@ -302,7 +302,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
   real :: year            ! The time in years.
   real :: dt_year         ! Timestep in units of years
   real :: min_age         ! Minimum age of ice to avoid being set to 0
-  real :: mi_min          ! Minimum mass in ice category
+  real :: mi_min          ! Minimum mass in ice category [kg m-2]
   real :: max_age         ! Maximum age at a grid point
   real, dimension(SZI_(G),SZJ_(G)) :: vertsum_mi, vertsum_mi_old
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: tr_avg

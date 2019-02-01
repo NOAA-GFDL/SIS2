@@ -106,7 +106,7 @@ type dyn_trans_CS ; private
   logical :: debug        !< If true, write verbose checksums for debugging purposes.
   logical :: column_check !< If true, enable the heat check column by column.
   real    :: imb_tol      !< The tolerance for imbalances to be flagged by
-                          !! column_check, nondim.
+                          !! column_check [nondim].
   logical :: bounds_check !< If true, check for sensible values of thicknesses
                           !! temperatures, fluxes, etc.
   logical :: verbose      !< A flag to control the printing of an ice-diagnostic
@@ -282,9 +282,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real, dimension(SZI_(G),SZJ_(G))   :: &
     mi_sum, &           ! Masses of ice per unit total area [kg m-2].
     misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area [kg m-2].
-    ice_free, &         ! The fractional open water; nondimensional, between 0 & 1.
+    ice_free, &         ! The fractional open water [nondim], between 0 & 1.
     ice_cover           ! The fractional ice coverage, summed across all
-                        ! thickness categories; nondimensional, between 0 & 1.
+                        ! thickness categories [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid [Pa].
@@ -1027,9 +1027,9 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
                              intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
-                                                  !! thickness categories, nondim, 0-1
+                                                  !! thickness categories [nondim], 0-1
 
-  real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
+  real    :: ps_vel ! part_size interpolated to a velocity point [nondim].
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -1134,9 +1134,9 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
                              intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
-                                                  !! thickness categories, nondim, 0-1
+                                                  !! thickness categories [nondim], 0-1
 
-  real    :: ps_vel ! part_size interpolated to a velocity point, nondim.
+  real    :: ps_vel ! part_size interpolated to a velocity point [nondim].
   integer :: i, j, k, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -1238,11 +1238,11 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
   real, dimension(SZIB_(G),SZJB_(G)), &
                              intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: ice_free  !< The fractional open water area coverage, nondim, 0-1
+                             intent(in)    :: ice_free  !< The fractional open water area coverage [nondim], 0-1
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: ice_cover !< The fractional ice area coverage, nondim, 0-1
+                             intent(in)    :: ice_cover !< The fractional ice area coverage [nondim], 0-1
 
-  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point, nondim.
+  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1329,11 +1329,11 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
   real, dimension(SZI_(G),SZJB_(G)), &
                              intent(in)    :: str_ice_oce_y   !< The y-direction ice to ocean stress [Pa].
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: ice_free  !< The fractional open water area coverage, nondim, 0-1
+                             intent(in)    :: ice_free  !< The fractional open water area coverage [nondim], 0-1
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: ice_cover !< The fractional ice area coverage, nondim, 0-1
+                             intent(in)    :: ice_cover !< The fractional ice area coverage [nondim], 0-1
 
-  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point, nondim.
+  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1414,7 +1414,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
 
-  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point, nondim.
+  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1500,8 +1500,8 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
   type(SIS_hor_grid_type),           intent(in)   :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)   :: &
     ice_cover, &        !< The fractional ice coverage, summed across all
-                        !! thickness categories; nondimensional, between 0 & 1.
-    ice_free            !< The fractional open water; nondimensional, between 0 & 1.
+                        !! thickness categories [nondim], between 0 & 1.
+    ice_free            !< The fractional open water [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)  :: &
     WindStr_x_Cu, &   !< Zonal wind stress averaged over the ice categores on C-grid u-points [Pa].
     WindStr_x_ocn_Cu  !< Zonal wind stress on the ice-free ocean on C-grid u-points [Pa].
@@ -1517,7 +1517,7 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
     WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
-  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0 [nondim].
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
@@ -1615,8 +1615,8 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
   type(SIS_hor_grid_type),            intent(in)   :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)   :: &
     ice_cover, &        !< The fractional ice coverage, summed across all
-                        !! thickness categories; nondimensional, between 0 & 1.
-    ice_free            !< The fractional open water; nondimensional, between 0 & 1.
+                        !! thickness categories [nondim], between 0 & 1.
+    ice_free            !< The fractional open water [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)), intent(out) :: &
     WindStr_x_B, &      !< Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      !< averaged over the ice categories on a B-grid [Pa].
@@ -1631,7 +1631,7 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
     WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
-  real :: I_wts    ! 1.0 / wts or 0 if wts is 0, nondim.
+  real :: I_wts    ! 1.0 / wts or 0 if wts is 0 [nondim].
   real :: max_ice_cover, FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed

@@ -63,23 +63,23 @@ type ice_data_type !  ice_public_type
   ! atmosphere, and contain separate values for each ice thickness category.
   real, pointer, dimension(:,:,:) :: &
     part_size => NULL(), &    !< The fractional coverage of a grid cell by each ice
-                              !! thickness category, nondim, 0 to 1.  Category 1 is
+                              !! thickness category [nondim], 0 to 1.  Category 1 is
                               !! open ocean.  The sum of part_size is 1.
     albedo    => NULL(), &    !< The surface albedo averaged across all wavelength
                               !! and orientation bands within each ice-thickness
-                              !! category.  Nondimensional, between 0 and 1.
+                              !! category [nondim], between 0 and 1.
     albedo_vis_dir => NULL(), & !< The surface albedo for direct visible shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_nir_dir => NULL(), & !< The surface albedo for diffuse visible shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_vis_dif => NULL(), & !< The surface albedo for direct near-infrared shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_nir_dif => NULL(), & !< The surface albedo for diffuse near-infrared shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     rough_mom   => NULL(), &  !< The roughness for momentum at the ocean surface, as provided by
                               !! ocean_rough_mod, apparently [m].
     rough_heat  => NULL(), &  !< The roughness for heat at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     rough_moist => NULL(), &  !< The roughness for moisture at the ocean surface, as provided by
                               !! ocean_rough_mod, apparently [m].
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
@@ -110,7 +110,7 @@ type ice_data_type !  ice_public_type
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
                           !! the ocean [kg m-2].
     stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean [Pa].
-    ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
+    ustar_berg => NULL(), &  !< ustar contribution below icebergs [m s-1]
     area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in [m2 m-2]
     mass_berg => NULL(),  &  !< mass of icebergs in [kg m-2]
     runoff_hflx => NULL(), &  !< The heat flux associated with runoff, based on

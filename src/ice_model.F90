@@ -1369,7 +1369,7 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
-    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
+    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo [nondim].
   real :: rad
   real :: rrsun_dt_ice
   type(time_type) :: dT_ice   ! The time interval for this update.
@@ -1724,7 +1724,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
-                         ! salinity of the water from which it formed, nondim.
+                         ! salinity of the water from which it formed [nondim].
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.

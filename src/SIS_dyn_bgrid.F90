@@ -40,7 +40,7 @@ type, public :: SIS_B_dyn_CS ; private
   real :: p0 = 2.75e4         !< Hibbler rheology pressure constant [Pa]
   real :: p0_rho              !< The pressure constant divided by ice density [N m kg-1].
   real :: c0 = 20.0           !< another pressure constant
-  real :: cdw = 3.24e-3       !< ice/water drag coef. (nondim)
+  real :: cdw = 3.24e-3       !< ice/water drag coef. [nondim]
   real :: blturn = 0.0        !< air/water surf. turning angle (degrees)
   real :: EC = 2.0            !< yield curve axis ratio
   real :: MIV_MIN =  1.0      !< min ice mass to do dynamics [kg m-2]
@@ -178,7 +178,7 @@ end subroutine SIS_B_dyn_init
 subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength in N m-1
   type(SIS_B_dyn_CS),               pointer     :: CS  !< The control structure for this module
   ! integer, intent(in) :: nCat !< The number of sea ice categories.
@@ -248,7 +248,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
      fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: misp  !< Mass per unit ocean area of sea ice,
                                                              !! snow and melt pond water [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: mice  !< Mass per unit ocean area of sea ice [kg m-2]
@@ -642,11 +642,11 @@ end subroutine SIS_B_dynamics
 function sigI(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
-  real, dimension(SZI_(G),SZJ_(G))             :: sigI !< The first stress invariant, nondim
+  real, dimension(SZI_(G),SZJ_(G))             :: sigI !< The first stress invariant [nondim]
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
   integer :: i, j, isc, iec, jsc, jec
@@ -665,11 +665,11 @@ end function sigI
 function sigII(mi, ci, sig11, sig22, sig12, G, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration (nondim)
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
-  real, dimension(SZI_(G),SZJ_(G))             :: sigII !< The second stress invariant, nondim
+  real, dimension(SZI_(G),SZJ_(G))             :: sigII !< The second stress invariant [nondim]
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
   integer :: i, j, isc, iec, jsc, jec

@@ -751,7 +751,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
     hl, hr      ! Left and right face thicknesses [H ~> kg m-2].
   real, dimension(SZIB_(G)) :: &
     uhtot      ! The total transports [H m2 s-1 ~> kg s-1].
-  real :: CFL  ! The CFL number based on the local velocity and grid spacing, ND.
+  real :: CFL  ! The CFL number based on the local velocity and grid spacing [nondim].
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
 !  real :: h_marg ! The marginal thickness of a flux [H ~> kg m-2].
@@ -873,7 +873,7 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
     hl, hr     ! Left and right face thicknesses [m].
   real, dimension(SZI_(G)) :: &
     vhtot      ! The total transports [H m2 s-1 ~> kg s-1].
-  real :: CFL ! The CFL number based on the local velocity and grid spacing, ND.
+  real :: CFL ! The CFL number based on the local velocity and grid spacing [nondim].
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
   real :: h_marg ! The marginal thickness of a flux [m].

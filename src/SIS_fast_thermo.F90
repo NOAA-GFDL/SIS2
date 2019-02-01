@@ -73,7 +73,7 @@ type fast_thermo_CS ; private
                           !! executed on slow ice PEs for debugging purposes.
   logical :: column_check !< If true, enable the heat check column by column.
   real    :: imb_tol      !< The tolerance for imbalances to be flagged by
-                          !! column_check, nondim.
+                          !! column_check [nondim].
   logical :: bounds_check !< If true, check for sensible values of thicknesses
                           !! temperatures, fluxes, etc.
 
@@ -233,7 +233,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, IG)
 
   real    :: u, v, divid, sign
   real    :: I_avc    ! The inverse of the number of contributions.
-  real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0, nondim.
+  real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0 [nondim].
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
@@ -364,7 +364,7 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, IG)
   type(ice_grid_type),       intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
-                                                  !! thickness categories, nondim, 0-1
+                                                  !! thickness categories [nondim], 0-1
 
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
@@ -420,7 +420,7 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, IG)
   type(ice_grid_type),       intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
-                                                  !! thickness categories, nondim, 0-1
+                                                  !! thickness categories [nondim], 0-1
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
 
