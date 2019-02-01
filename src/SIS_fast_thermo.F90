@@ -615,7 +615,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice, in g/kg.
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
   real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice [W m-2].
-  real :: dt_fast ! The fast thermodynamic time step, in s.
+  real :: dt_fast ! The fast thermodynamic time step [s].
   real :: Tskin   ! The new skin temperature [degC].
   real :: dTskin  ! The change in the skin temperatue [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
@@ -881,7 +881,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     enth_col_in   ! The initial enthalpy of a column of snow and ice,
                   ! in enth_unit (J/kg?).
 
-  real :: dt_here ! The time step here, in s.
+  real :: dt_here ! The time step here [s].
   real :: Tskin   ! The new skin temperature [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow, in J kg.
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].

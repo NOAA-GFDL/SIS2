@@ -266,7 +266,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   logical,                            intent(in   ) :: do_ridging !< If true, the ice can ridge
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate !< ridging rate from drift state in UNITS?
   real,                               intent(in   ) :: dt_slow !< The amount of time over which the ice
-                                                             !! dynamics are to be advanced, in s.
+                                                             !! dynamics are to be advanced [s].
   type(SIS_B_dyn_CS),                 pointer       :: CS    !< The control structure for this module
 
   ! Local variables
@@ -301,7 +301,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
 
   ! for velocity calculation
   real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
-  real :: dt_Rheo  ! The short timestep associated with the rheology, in s.
+  real :: dt_Rheo  ! The short timestep associated with the rheology [s].
   real :: I_2dt_Rheo ! 1.0 / (2*dt_Rheo)
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps
@@ -741,16 +741,16 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
   integer,                          intent(in   ) :: jsc !< The starting i-index to work on
   integer,                          intent(in   ) :: jec !< The ending j-index to work on
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure [Pa m].
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate, in s-1
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate, in s-1
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate, in s-1
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate [s-1]
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate [s-1]
+  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate [s-1]
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
   real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor, in N m-1
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor, in N m-1
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor, in N m-1
   real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An elipticity modulated estimate of
-                                                           !! the squared strain rate, in s-2.
+                                                           !! the squared strain rate [s-2].
   logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
   !
   integer                          :: i, j
@@ -823,7 +823,7 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor
   real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An elipticity modulated estimate of
-                                                           !! the squared strain rate, in s-2.
+                                                           !! the squared strain rate [s-2].
   logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
   !
   integer :: i, j

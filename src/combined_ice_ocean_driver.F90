@@ -59,7 +59,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=40)  :: mdl = "ice_ocean_driver_init"  ! This module's name.
-!     real :: Time_unit   ! The time unit in seconds for ENERGYSAVEDAYS.
+!     real :: Time_unit   ! The time unit for ENERGYSAVEDAYS [s].
 !     character(len=48)  :: stagger
   type(param_file_type) :: param_file !< A structure to parse for run-time parameters
   integer :: unit, io, ierr, valid_param_files
@@ -136,7 +136,7 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
   type(time_type),         intent(in)    :: coupling_time_step !< The amount of time over which to advance
                                                                !! the ocean and ice
 
-  real :: time_step         ! The time step of a call to step_MOM in seconds.
+  real :: time_step         ! The time step of a call to step_MOM [s].
 
   call callTree_enter("update_ice_and_ocean(), combined_ice_ocean_driver.F90")
   time_step = time_type_to_real(coupling_time_step)

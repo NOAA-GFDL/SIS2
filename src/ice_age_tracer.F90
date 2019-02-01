@@ -285,7 +285,7 @@ end subroutine initialize_ice_age_tracer
 
 !> Change the ice age tracers due to ice column physics like melting and freezing
 subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
-  real,                    intent(in) :: dt  !< The amount of time covered by this call, in s.
+  real,                    intent(in) :: dt  !< The amount of time covered by this call [s].
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   type(ice_age_tracer_CS), pointer    :: CS  !< The control structure returned by a

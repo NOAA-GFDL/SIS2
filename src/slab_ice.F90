@@ -36,7 +36,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
                                                           !! total ice mass in m or kg m-2.
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr
-  real,                              intent(in   ) :: dt_slow !< The time covered by this call, in s.
+  real,                              intent(in   ) :: dt_slow !< The time covered by this call [s].
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
                                                           !! whether trc (which may be mass) exceeds 0.
   integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.

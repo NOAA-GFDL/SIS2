@@ -23,7 +23,7 @@ public SIS_tracer_advect_init, SIS_tracer_advect_end
 
 !> This control structure hold parameters that regulate tracer advection
 type, public :: SIS_tracer_advect_CS ; private
-  real    :: dt             !< The baroclinic dynamics time step, in s.
+  real    :: dt             !< The baroclinic dynamics time step [s].
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                             !! timing of diagnostic output.
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
@@ -59,7 +59,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, s
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces, in m3 s-1 or kg s-1.
-  real,                        intent(in)    :: dt    !<  Time increment in s.
+  real,                        intent(in)    :: dt    !<  Time increment [s].
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
   type(SIS_tracer_registry_type), pointer    :: TrReg !< A pointer to the SIS tracer registry.
@@ -114,7 +114,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces, in m3 s-1 or kg s-1.
-  real,                        intent(in)    :: dt    !<  Time increment in s.
+  real,                        intent(in)    :: dt    !<  Time increment [s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
@@ -135,7 +135,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
                                 ! can be simply discarded, in m3 or kg.
 
   real :: landvolfill         ! An arbitrary? nonzero cell volume, m3.
-  real :: Idt                 ! 1/dt in s-1.
+  real :: Idt                 ! 1/dt [s-1].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected, in m or kg m-2.
   logical :: domore_u(SZJ_(G),SZCAT_(IG))  ! domore__ indicate whether there is more
@@ -366,7 +366,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces, in m3 s-1 or kg s-1.
-  real,                        intent(in)    :: dt    !< Time increment in s.
+  real,                        intent(in)    :: dt    !< Time increment [s].
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
 
@@ -381,7 +381,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
                                 ! can be simply discarded, in m3 or kg.
 
   real :: landvolfill   ! An arbitrary? nonzero cell volume, m3.
-  real :: Idt           ! 1/dt in s-1.
+  real :: Idt           ! 1/dt [s-1].
   real :: h_neglect     ! A thickness that is so small it is usually lost
                         ! in roundoff and can be neglected, in m or kg m-2.
   logical :: domore_u(SZJ_(G),SZCAT_(IG))  ! domore__ indicate whether there is more
@@ -616,7 +616,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                                                       ! ! conditions are used.
   logical, dimension(SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: domore_u !< True in rows with more advection to be done
-  real,                        intent(in)    :: Idt !< The inverse of the time increment, in s-1
+  real,                        intent(in)    :: Idt !< The inverse of the time increment [s-1]
   integer,                     intent(in)    :: is  !< The starting tracer i-index to work on
   integer,                     intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                     intent(in)    :: js  !< The starting tracer j-index to work on
@@ -762,7 +762,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                                                       ! ! conditions are used.
   logical, dimension(SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: domore_u !< True in rows with more advection to be done
-  real,                        intent(in)    :: Idt   !< The inverse of the time increment, in s-1
+  real,                        intent(in)    :: Idt   !< The inverse of the time increment [s-1]
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
   integer,                     intent(in)    :: nL_max !< The maximum number of layers in the tracers
   integer,                     intent(in)    :: is  !< The starting tracer i-index to work on
@@ -1091,7 +1091,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                                                 ! ! conditions are used.
   logical, dimension(SZJB_(G),SZCAT_(IG)), &
                            intent(inout) :: domore_v !< True in rows with more advection to be done
-  real,                    intent(in)    :: Idt !< The inverse of the time increment, in s-1
+  real,                    intent(in)    :: Idt !< The inverse of the time increment [s-1]
   integer,                 intent(in)    :: is  !< The starting tracer i-index to work on
   integer,                 intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                 intent(in)    :: js  !< The starting tracer j-index to work on
@@ -1245,7 +1245,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                                                 ! ! conditions are used.
   logical, dimension(SZJB_(G),SZCAT_(IG)), &
                            intent(inout) :: domore_v !< True in rows with more advection to be done
-  real,                    intent(in)    :: Idt !< The inverse of the time increment, in s-1
+  real,                    intent(in)    :: Idt !< The inverse of the time increment [s-1]
   integer,                 intent(in)    :: ntr   !< The number of tracers to advect
   integer,                 intent(in)    :: nL_max !< The maximum number of layers in the tracers
   integer,                 intent(in)    :: is  !< The starting tracer i-index to work on
@@ -1593,13 +1593,13 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces, in m3 s-1 or kg s-1.
-  real,                        intent(in)    :: dt    !<  Time increment in s.
+  real,                        intent(in)    :: dt    !<  Time increment [s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
 
   real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes, in conc * kg
   real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes, in conc * kg
   real    :: tr_up  ! Upwind tracer concentrations, in conc.
-  real    :: Idt    ! The inverse of the time increment, in s-1
+  real    :: Idt    ! The inverse of the time increment [s-1]
   real    :: vol_end, Ivol_end  ! Cell volume at the end of a step and its inverse.
   integer :: i, j, k, l, m, is, ie, js, je
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
@@ -1729,17 +1729,11 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
                                                      !! call to SIS_tracer_advect_init.
   character(len=*),  optional, intent(in)    :: scheme !< A character string describing the tracer
                                                      !! advection scheme.  Valid entries include PCM, PLM, and PPM
-! Arguments: Time - The current model time.
-!  (in)      G - The ocean's grid structure.
-!  (in)      param_file - A structure indicating the open file to parse for
-!                         model parameter values.
-!  (in)      diag - A structure that is used to regulate diagnostic output.
-!  (in/out)  CS - A pointer to the control structure for this module
 
-!   integer, save :: init_calls = 0
+  ! Local variables
   logical :: debug
-! This include declares and sets the variable "version".
-#include "version_variable.h"
+  ! This include declares and sets the variable "version".
+# include "version_variable.h"
   character(len=40)  :: mdl = "SIS_tracer_advect" ! This module's name.
   character(len=256) :: mesg    ! Message for error messages.
 

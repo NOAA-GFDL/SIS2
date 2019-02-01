@@ -1695,7 +1695,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! other modules had control states, these would be moved to those modules.
   real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
   real :: heat_rough_ice ! heat roughness length, in m.
-  real :: dt_Rad_real    ! The radiation timestep, in s.
+  real :: dt_Rad_real    ! The radiation timestep [s].
   type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
   real :: rad            ! The conversion factor from degrees to radians.
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.

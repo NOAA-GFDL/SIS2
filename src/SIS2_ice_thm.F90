@@ -172,7 +172,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real, intent(in   ) :: tfw   !< seawater freezing temperature [degC]
   real, intent(in   ) :: fb    !< heat flux upward from ocean to ice bottom [W m-2]
   real, intent(  out) :: tsurf !< surface temperature [degC]
-  real, intent(in   ) :: dtt   !< timestep (sec)
+  real, intent(in   ) :: dtt   !< timestep [s]
   integer, intent(in   ) :: NkIce !< The number of ice layers.
   real, intent(inout) :: tmelt !< accumulated top melting energy  [J m-2]
   real, intent(inout) :: bmelt !< accumulated bottom melting energy [J m-2]
@@ -543,16 +543,16 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real, intent(in   ) :: m_ice   !< ice mass per unit area [H ~> kg m-2]
   real, dimension(0:NkIce) , &
         intent(in   ) :: enthalpy !< The enthalpy of each layer in a column of
-                                  !! snow and ice, in enth_unit (J kg-1).
+                                  !! snow and ice, in enth_unit [J kg-1].
   real, dimension(NkIce), &
-        intent(in)    :: Sice  !< ice salinity by layer (g/kg)
+        intent(in)    :: Sice  !< ice salinity by layer [g/kg]
   real, intent(in   ) :: SF_0  !< net upward surface heat flux when Tsurf=0 [W m-2]
   real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [W m-2 degC-1]
   real, dimension(0:NkIce), &
         intent(in)    :: sol   !< Solar heating of the snow and ice layers [W m-2]
   real, intent(in   ) :: tfw   !< seawater freezing temperature [degC]
   real, intent(  out) :: tsurf !< surface temperature [degC]
-  real, intent(in   ) :: dtt   !< timestep (sec)
+  real, intent(in   ) :: dtt   !< timestep [s]
   integer, intent(in   ) :: NkIce !< The number of ice layers.
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2 ice thermodynamics control structure
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -710,7 +710,7 @@ function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp
   real, intent(in) :: tp   !< prior step temperature [degC]
   real, intent(in) :: enth !< prior step enthalpy
   real, intent(in) :: salin !< ice salinity in ppt.
-  real, intent(in) :: dtt  !< timestep in s.
+  real, intent(in) :: dtt  !< timestep [s]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real :: T_g    ! The latest best guess at Temp [degC].
@@ -868,7 +868,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real, intent(inout) :: fbot  !< Downward heat below the layer at T = 0 degC [W m-2].
   real, intent(in) :: dftop_dT !< The linearization of ftop with layer temperature [W m-2 degC-1].
   real, intent(in) :: dfbot_dT !< The linearization of fbot with layer temperature [W m-2 degC-1].
-  real, intent(in) :: dtt      !< The timestep in s.
+  real, intent(in) :: dtt      !< The timestep [s]
   real, intent(in) :: hf_err_rat  !< A conversion factor for comparing the errors
                                !! in explicit and implicit estimates of the updated
                                !! heat fluxes [kg degC W-1].
@@ -887,7 +887,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: enth_in  ! The initial enthalpy, in enth_units.
   real :: enth_fp  ! The enthalpy at the freezing point, in enth_units.
   real :: AA, BB, CC ! Temporary variables used to solve a quadratic equation.
-  real :: dtEU     ! The timestep times the unit conversion from J to Enth_units, in s?
+  real :: dtEU     ! The timestep times the unit conversion from J to Enth_units [s]?
   real :: dT_dEnth ! The partial derivative of temperature with enthalpy,
                    ! in units of K / Enth_unit.
   real :: En_J     ! The enthalpy in Joules with 0 offset for liquid at 0 degC.

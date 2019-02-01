@@ -78,7 +78,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
                            intent(out)   :: uh  !< Volume flux through zonal faces = u*h*dy, H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                            intent(out)   :: vh  !< Volume flux through meridional faces = v*h*dx, in H m2 s-1.
-  real,                    intent(in)    :: dt  !< Time increment in s.
+  real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
 !    This subroutine time steps the category thicknesses, using a monotonically
@@ -219,7 +219,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
                                                          !! = u*h*dy, H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(out)   :: vh !< Total mass flux through meridional faces
                                                          !! = v*h*dx, in H m2 s-1.
-  real,                              intent(in)    :: dt !< Time increment in s.
+  real,                              intent(in)    :: dt !< Time increment [s]
   type(SIS_continuity_CS),           pointer       :: CS !< The control structure returned by a
                                                          !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(inout) :: h_ice  !< Total ice mass per unit cell
@@ -432,7 +432,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
                                                           !! cell area in H.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces, in H m2 s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces, in H m2 s-1.
-  real,                           intent(in)    :: dt  !< Time increment in s.
+  real,                           intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS),        pointer       :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -705,7 +705,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
                            intent(in)    :: u   !< Zonal ice velocity, in m s-1.
-  real,                    intent(in)    :: dt  !< Time increment in s
+  real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
@@ -825,7 +825,7 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJB_(G)), &
                            intent(in)    :: v   !< Meridional ice velocity, in m s-1.
-  real,                    intent(in)    :: dt  !< Time increment in s
+  real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.

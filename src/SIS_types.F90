@@ -2217,11 +2217,8 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
   type(ice_grid_type),     intent(in) :: IG    !< The sea-ice grid type.
   integer, optional,       intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
-!   This subroutine writes out chksums for the model's basic state variables.
-! Arguments: mesg - A message that appears on the chksum lines.
-!  (in)      IST - The ice state type variable to be checked.
-!  (in)      G - The ocean's grid structure.  (Inout due to halo updates.)
-!  (in,opt)  haloshift - If present, check halo points out this far.
+
+  ! Local variables
   character(len=20) :: k_str1, k_str
   integer :: hs, k
 

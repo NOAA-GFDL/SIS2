@@ -85,7 +85,7 @@ type dyn_trans_CS ; private
   logical :: slab_ice = .false. !< If true, do old style GFDL slab ice.
   real    :: dt_ice_dyn   !< The time step used for the slow ice dynamics, including
                           !! stepping the continuity equation and interactions
-                          !! between the ice mass field and velocities, in s. If
+                          !! between the ice mass field and velocities [s]. If
                           !! 0 or negative, the coupling time step will be used.
   logical :: merged_cont  !< If true, update the continuity equations for the ice, snow,
                           !! and melt pond water together with proportionate fluxes.
@@ -179,7 +179,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep, in s.
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
   type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -270,7 +270,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep, in s.
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
@@ -307,9 +307,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
-  real :: dt_slow_dyn  ! The slow dynamics timestep in s.
-  real :: dt_adv       ! The advective timestep in s.
-  real :: Idt_slow     ! The inverse of dt_slow_dyn, in s-1.
+  real :: dt_slow_dyn  ! The slow dynamics timestep [s].
+  real :: dt_adv       ! The advective timestep [s].
+  real :: Idt_slow     ! The inverse of dt_slow_dyn [s-1].
   real, dimension(SZI_(G),SZJ_(G)) :: &
    ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
@@ -693,7 +693,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   real :: enth_units, I_enth_units
   real :: tmp_mca  ! A temporary cell averaged mass, in H.
   real :: I_Nk        ! The inverse of the number of layers in the ice.
-  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  real :: Idt_slow ! The inverse of the thermodynamic step [s-1].
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
@@ -874,7 +874,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
   type(SIS_hor_grid_type),    intent(inout) :: G    !< The horizontal grid type
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
 
-  real :: Idt_slow ! The inverse of the thermodynamic step, in s-1.
+  real :: Idt_slow ! The inverse of the thermodynamic step [s-1].
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
@@ -1780,7 +1780,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_dyn_trans" ! This module's name.
-  real :: Time_unit      ! The time unit in seconds for ICE_STATS_INTERVAL.
+  real :: Time_unit      ! The time unit for ICE_STATS_INTERVAL [s].
   character(len=8) :: nstr
   integer :: n, nLay
   logical :: debug

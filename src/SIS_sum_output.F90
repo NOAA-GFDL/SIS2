@@ -80,8 +80,8 @@ type, public :: SIS_sum_out_CS ; private
   type(EFP_type) :: heat_prev_EFP !< An extended fixed point version of heat_prev
   type(EFP_type) :: salt_prev_EFP !< An extended fixed point version of salt_prev
   type(EFP_type) :: mass_prev_EFP !< An extended fixed point version of mass_prev
-  real    :: dt                 !< The baroclinic dynamics time step, in s.
-  real    :: timeunit           !<   The length of the units for the time axis, in s.
+  real    :: dt                 !< The baroclinic dynamics time step [s].
+  real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90
   logical :: column_check       !< If true, enable the column by column heat and
@@ -286,7 +286,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 
   real :: CFL_trans    ! A transport-based definition of the CFL number, nondim.
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection, nondim.
-  real :: dt_CFL       ! The timestep for calculating the CFL number, in s.
+  real :: dt_CFL       ! The timestep for calculating the CFL number [s].
   real :: max_CFL      ! The maximum of the CFL numbers, nondim.
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int

@@ -174,8 +174,8 @@ end subroutine ice_ridging_init
 !!   to ridging (Flato and Hibler, 1995, JGR) or the net area loss in riding
 !!   (CICE documentation) depending on the state of the ice drift                         !
 function ridge_rate(del2, div) result (rnet)
-  real, intent(in)  :: del2 !< The magnitude of the shear rates, in s-1.
-  real, intent(in)  :: div  !< The ice flow divergence, in s-1
+  real, intent(in)  :: del2 !< The magnitude of the shear rates [s-1].
+  real, intent(in)  :: div  !< The ice flow divergence [s-1]
 
   ! Local variables
   real              :: del, rnet, rconv, rshear

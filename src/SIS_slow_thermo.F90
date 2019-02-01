@@ -94,7 +94,7 @@ type slow_thermo_CS ; private
   real    :: fraz_fill_time !< A timescale with which the filling frazil causes
                             !! the thinest cells to attain similar thicknesses,
                             !! or a negative number to apply the frazil flux
-                            !! uniformly, in s.
+                            !! uniformly [s].
 
   logical :: do_ridging     !<   If true, apply a ridging scheme to the convergent
                             !! ice.  The original SIS2 implementation is based on
@@ -164,7 +164,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(SIS_hor_grid_type),   intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),       intent(in) :: IG  !< The sea-ice specific grid type
   real,                      intent(in) :: Idt_slow !< The inverse of the slow thermodynamic
-                                               !! time step, in s-1
+                                               !! time step [s-1]
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn
   real :: sw_cat
@@ -306,7 +306,7 @@ end subroutine post_flux_diagnostics
 subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -325,7 +325,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
     h_ice_input    ! The specified ice thickness, with specified_ice, in m.
 
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
-  real :: Idt_slow ! The inverse of the slow thermodynamic time step, in s-1
+  real :: Idt_slow ! The inverse of the slow thermodynamic time step [s-1]
   integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
 
@@ -560,7 +560,7 @@ end subroutine add_excess_fluxes
 !! including freezing or melting, and the accumulation of snow and frazil ice.
 subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -621,7 +621,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: drho_dT(1), drho_dS(1), pres_0(1)
   real :: rho_ice     ! The nominal density of sea ice [kg m-3].
 
-  real :: Idt_slow    ! The inverse of the thermodynamic step, in s-1.
+  real :: Idt_slow    ! The inverse of the thermodynamic step [s-1].
   real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
                       ! to change the units of several diagnostics to rate yr-1
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt

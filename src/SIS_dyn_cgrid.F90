@@ -59,7 +59,7 @@ type, public :: SIS_C_dyn_CS ; private
   real :: min_ocn_inertial_h = 0. !< A minimum ocean thickness used to limit the viscous coupling
                               !! rate implied for the ocean by the ice-ocean stress.
   real :: Tdamp               !< The damping timescale of the stress tensor components toward
-                              !! their equilibrium solution due to the elastic terms, in s.
+                              !! their equilibrium solution due to the elastic terms [s].
   real :: del_sh_min_scale = 2.0 !< A scaling factor for the minimum permitted value of minimum
                               !! shears used in the denominator of the stress equations, nondim.
                               !  I suspect that this needs to be greater than 1. -RWH
@@ -452,30 +452,30 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
   real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
   real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
-                                                            !! dynamics are to be advanced, in s.
+                                                            !! dynamics are to be advanced [s].
   type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
     sh_Dt, &    ! sh_Dt is the horizontal tension (du/dx - dv/dy) including
-                ! all metric terms, in s-1.
+                ! all metric terms [s-1].
     sh_Dd       ! sh_Dd is the flow divergence (du/dx + dv/dy) including all
-                ! metric terms, in s-1.
+                ! metric terms [s-1].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     sh_Ds       ! sh_Ds is the horizontal shearing strain (du/dy + dv/dx)
-                ! including all metric terms, in s-1.
+                ! including all metric terms [s-1].
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     pres_mice, & ! The ice internal pressure per unit column mass, in N m / kg.
     ci_proj, &  ! The projected ice concentration, nondim.
     zeta, &     ! The ice bulk viscosity [Pa m s] (i.e., [N s m-1]).
-    del_sh, &   ! The magnitude of the shear rates, in s-1.
+    del_sh, &   ! The magnitude of the shear rates [s-1].
     diag_val, & ! A temporary diagnostic array.
     del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
-                ! value of del_sh that is used in the calculation of zeta,
-                ! in s-1.  This is set based on considerations of numerical
-                ! stability, and varies with the grid spacing.
+                ! value of del_sh that is used in the calculation of zeta [s-1].
+                ! This is set based on considerations of numerical stability,
+                ! and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points, in m2.
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points, nondim.
     siu, siv, sispeed  ! diagnostics on T points, in m s-1.
@@ -492,7 +492,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     u_IC, &  ! The initial zonal ice velocities, in m s-1.
     mi_u, &  ! The total ice and snow mass interpolated to u points [kg m-2].
     f2dt_u, &! The squared effective Coriolis parameter at u-points times a
-             ! time step, in s-1.
+             ! time step [s-1].
     I1_f2dt2_u  ! 1 / ( 1 + f^2 dt^2) at u-points, nondimensional.
   real, dimension(SZI_(G),SZJB_(G)) :: &
     fyic, &  ! Meridional force due to internal stresses [Pa].
@@ -505,16 +505,15 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     v_IC, &  ! The initial meridional ice velocities, in m s-1.
     mi_v, &  ! The total ice and snow mass interpolated to v points [kg m-2].
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
-             ! time step, in s-1.
+             ! time step [s-1].
     I1_f2dt2_v  ! 1 / ( 1 + f^2 dt^2) at v-points, nondimensional.
 
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     mi_ratio_A_q, & ! A ratio of the masses interpolated to the faces around a
              ! vorticity point that ranges between (4 mi_min/mi_max) and 1,
              ! divided by the sum of the ocean areas around a point, in m-2.
-    q, &     ! A potential-vorticity-like field for the ice, the Coriolis
-             ! parameter divided by a spatially averaged mass per unit area,
-             ! in s-1 m2 kg-1.
+    q, &     ! A potential-vorticity-like field for the ice, the Coriolis parameter
+             ! divided by a spatially averaged mass per unit area [s-1 m2 kg-1].
     dx2B, dy2B, &   ! dx^2 or dy^2 at B points, in m2.
     dx_dyB, dy_dxB  ! dx/dy or dy_dx at B points, nondim.
   real, dimension(SZIB_(G),SZJ_(G)) :: &
@@ -553,10 +552,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: vio_C   ! A v-velocity difference between the ocean and ice, in m s-1.
 
   real :: Tdamp   ! The damping timescale of the stress tensor components
-                  ! toward their equilibrium solution due to the elastic terms, in s.
-  real :: dt      ! The short timestep associated with the EVP dynamics, in s.
+                  ! toward their equilibrium solution due to the elastic terms [s].
+  real :: dt      ! The short timestep associated with the EVP dynamics [s].
   real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale.
-  real :: dt_cumulative ! The elapsed time within this call to EVP dynamics, in s.
+  real :: dt_cumulative ! The elapsed time within this call to EVP dynamics [s].
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps  ! The number inverse of the number of EVP time steps per
                   ! slow time step.
@@ -1661,7 +1660,7 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration, in m s-2.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration, in m s-2.
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [Pa].
-  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
+  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [s].
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
@@ -1731,7 +1730,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: Cor_v !< The meridional Coriolis acceleration, in m s-2.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force accleration, in m s-2.
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress [Pa].
-  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep, in s.
+  real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [s].
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL

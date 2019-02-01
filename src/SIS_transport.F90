@@ -109,7 +109,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   real,                              intent(in)    :: dt_slow !< The amount of time over which the
-                                                          !! ice dynamics are to be advanced, in s.
+                                                          !! ice dynamics are to be advanced [s].
   integer,                           intent(in)    :: nsteps  !< The number of advective iterations
                                                           !! to use within this time step.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
@@ -220,7 +220,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZI_(G),SZJ_(G)), &
                            optional, intent(inout) :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate in s-1.
+  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: &
