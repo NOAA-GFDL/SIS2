@@ -75,14 +75,14 @@ type ice_state_type
     mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
     mH_snow, &  !< The mass per unit area of the snow in each category [H ~> kg m-2].
     mH_ice, &   !< The mass per unit area of the ice in each category [H ~> kg m-2].
-    t_surf      !< The surface temperature, in Kelvin.
+    t_surf      !< The surface temperature [Kelvin].
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
                 !! in each category and fractional thickness layer [gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
-                !! in each category and fractional thickness layer, in enth_unit (J/kg or rescaled).
+                !! in each category and fractional thickness layer [Enth ~> J kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_snow !< The enthalpy of the snow
-                !! in each category and snow thickness layer, in enth_unit.
+                !! in each category and snow thickness layer [Enth ~> J kg-1].
 
   real, allocatable, dimension(:,:,:) :: &
     rdg_mice    !< A diagnostic of the ice load that was formed by ridging [H ~> kg m-2].
@@ -181,7 +181,7 @@ type fast_ice_avg_type
     bmelt       , & !< Ice-bottom melting energy into the ice [J m-2].
     Tskin_cat       !< The ice skin temperature by category [degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
-                    !! shortwave radiation that is absorbed in the ocean, nondim and <=1.
+                    !! shortwave radiation that is absorbed in the ocean, <=1, [nondim].
                     !! Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type and the
                     !! ice_rad_type because it is used as a part of the slow thermodynamic updates.
   ! The last dimension in each of the following is angular and frequency radiation band.
@@ -292,24 +292,24 @@ type ice_rad_type
     t_skin, &   !< The surface skin temperature as calculated by the most
                 !! recent fast atmospheric timestep, or a value filled in
                 !! from other ice categories or the local freezing point of
-                !! seawater when there is no ice at all, in degrees Celsius.
+                !! seawater when there is no ice at all [degC].
     Tskin_Rad   !< The surface skin temperature that was most recently used in
-                !! ice optics calculations, in degrees Celsius.
+                !! ice optics calculations [degC].
   ! Shortwave absorption parameters that are set in ice_optics.
   real, allocatable, dimension(:,:,:) :: &
     sw_abs_sfc , &  !< The fraction of the absorbed shortwave radiation that is
-                    !! absorbed in a surface skin layer, nondim and <=1.
+                    !! absorbed in a surface skin layer, <=1, [nondim].
     sw_abs_snow, &  !< The fraction of the absorbed shortwave radiation that is
-                    !! absorbed in the snow, nondim and <=1.
+                    !! absorbed in the snow, <=1, [nondim].
     sw_abs_ocn , &  !< The fraction of the absorbed shortwave radiation that is
-                    !! absorbed in the ocean, nondim and <=1.
+                    !! absorbed in the ocean, <=1, [nondim].
                     !  Only sw_abs_ocn is used in the slow step.
     sw_abs_int      !< The fraction of the absorbed shortwave radiation that is
-                    !! absorbed by all ice layers in aggregate, nondim and <=1.
+                    !! absorbed by all ice layers in aggregate, <=1, [nondim].
                     !  sw_abs_int is only used for diagnostics.
   real, allocatable, dimension(:,:,:,:) :: &
     sw_abs_ice      !< The fraction of the absorbed shortwave that is
-                    !! absorbed in each of the ice layers, nondim, <=1.
+                    !! absorbed in each of the ice layers, <=1, [nondim].
 
   real, allocatable, dimension(:,:)   :: &
     coszen_lastrad, & !< Cosine of the solar zenith angle averaged

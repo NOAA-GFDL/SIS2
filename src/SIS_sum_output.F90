@@ -276,7 +276,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   real :: Extent       ! The total extent of the sea ice [m2].
   real :: heat_imb     ! The column integrated heat imbalance [Enth kg m-2 ~> J m-2].
   real :: mass_imb     ! The column integrated mass imbalance [kg].
-  real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point, in enth_unit.
+  real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Enth ~> J kg-1].
   real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
   type(EFP_type) :: &

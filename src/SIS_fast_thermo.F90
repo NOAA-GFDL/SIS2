@@ -613,7 +613,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! dimension is a combination of angular orientation and frequency.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow [degC].
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice [gSalt kg-1].
-  real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
+  real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice [Enth ~> J kg-1].
   real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice [W m-2].
   real :: dt_fast ! The fast thermodynamic time step [s].
   real :: Tskin   ! The new skin temperature [degC].
@@ -877,9 +877,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real, dimension(0:IG%NkIce) :: &
     T_col, &      ! The temperature of a column of ice and snow [degC].
     SW_abs_col, & ! The shortwave absorption within a column of snow and ice [W m-2].
-    enth_col, &   ! The enthalpy of a column of snow and ice, in enth_unit (J/kg?).
-    enth_col_in   ! The initial enthalpy of a column of snow and ice,
-                  ! in enth_unit (J/kg?).
+    enth_col, &   ! The enthalpy of a column of snow and ice [Enth ~> J kg-1].
+    enth_col_in   ! The initial enthalpy of a column of snow and ice [Enth ~> J kg-1].
 
   real :: dt_here ! The time step here [s].
   real :: Tskin   ! The new skin temperature [degC].

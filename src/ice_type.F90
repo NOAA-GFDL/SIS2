@@ -83,7 +83,7 @@ type ice_data_type !  ice_public_type
     rough_moist => NULL(), &  !< The roughness for moisture at the ocean surface, as provided by
                               !! ocean_rough_mod, apparently [m].
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
-                              !! each ice-thickness category, in Kelvin.
+                              !! each ice-thickness category [Kelvin].
     u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
     v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &

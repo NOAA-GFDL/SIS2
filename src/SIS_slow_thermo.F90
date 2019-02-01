@@ -104,7 +104,7 @@ type slow_thermo_CS ; private
   logical :: do_ice_restore !< If true, restore the sea-ice toward climatology
                             !! by applying a restorative heat flux.
   real    :: ice_restore_timescale !< The time scale for restoring ice when
-                            !! do_ice_restore is true, in days.
+                            !! do_ice_restore is true [days].
 
   logical :: do_ice_limit   !< Limit the sea ice thickness to max_ice_limit.
   real    :: max_ice_limit  !< The maximum sea ice thickness [m], when do_ice_limit is true.
@@ -599,11 +599,11 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
-                          ! and the surface ocean, in enth_units (often J/kg).
+                          ! and the surface ocean [Enth ~> J kg-1].
   real, dimension(IG%CatIce) :: frazil_cat  ! The frazil heating applied to each thickness
                           ! category, averaged over the area of that category [J m-2].
-  real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
-  real :: heat_fill_val   ! An enthalpy to use for massless categories, in enth_units.
+  real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters [Enth ~> J kg-1].
+  real :: heat_fill_val   ! An enthalpy to use for massless categories [Enth ~> J kg-1].
 
   real :: I_part        ! The inverse of a part_size, nondim.
   logical :: spec_thermo_sal  ! If true, use the specified salinities of the
@@ -637,14 +637,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, ND.
   real :: ice_melt_lay ! The amount of excess ice removed from each layer [kg m-2].
   real :: snow_melt    ! The amount of excess snow that is melted [kg m-2].
-  real :: enth_freeze  ! The freezing point enthalpy of a layer, in enth_units.
+  real :: enth_freeze  ! The freezing point enthalpy of a layer [Enth ~> J kg-1].
   real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
-                       ! and snow in enth_unit kg/m2.
+                       ! and snow [Enth kg m-2 ~> J m-2].
   real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
   real :: kg_H_Nk      ! The conversion factor from units of H to kg/m2 over Nk.
   real :: part_sum     ! A running sum of partition sizes.
   real :: part_ocn     ! A slightly modified ocean part size.
-  real :: d_enth       ! The change in enthalpy between categories.
+  real :: d_enth       ! The change in enthalpy between categories [Enth ~> J kg-1].
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.

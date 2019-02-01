@@ -30,7 +30,7 @@ type, public :: ice_grid_type
                         !! the internal units of thickness.
   real :: H_subroundoff !<   A thickness that is so small that it can be added to
                         !! any physically meaningful positive thickness without
-                        !! changing it at the bit level, in thickness units.
+                        !! changing it at the bit level [H ~> kg m-2].
   real :: ocean_part_min !< The minimum value for the fractional open-ocean area.  This can be 0,
                         !! but for some purposes it may be useful to set this to a miniscule value
                         !! (like 1e-40) that will be lost to roundoff during any sums so that the
