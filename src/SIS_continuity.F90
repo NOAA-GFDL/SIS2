@@ -67,9 +67,9 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                           intent(in)    :: u   !< Zonal ice velocity, in m s-1.
+                           intent(in)    :: u   !< Zonal ice velocity [m s-1].
   real, dimension(SZI_(G),SZJB_(G)), &
-                           intent(in)    :: v   !< Meridional ice velocity, in m s-1.
+                           intent(in)    :: v   !< Meridional ice velocity [m s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(in)    :: hin !< Initial ice or snow thickness by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -211,8 +211,8 @@ end subroutine ice_continuity
 subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   type(SIS_hor_grid_type),           intent(inout) :: G  !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG !< The sea-ice specific grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity, in m s-1.
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity, in m s-1.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity [m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity [m s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: h_in !< Initial total ice and snow mass per
                                                          !! unit cell area [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: h  !< Total ice and snow mass per unit cell
@@ -232,7 +232,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   real, dimension(SZIB_(G),SZJ_(G)) :: uh_ice ! Ice mass flux through zonal faces = u*h*dy
                                               ! [H m2 s-1 ~> kg s-1].
-  real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx 
+  real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx
                                               ! [H m2 s-1 ~> kg s-1].
   real    :: h_up
   integer :: is, ie, js, je, stensil
@@ -723,7 +723,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                           intent(in)    :: u   !< Zonal ice velocity, in m s-1.
+                           intent(in)    :: u   !< Zonal ice velocity [m s-1].
   real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
@@ -755,7 +755,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
 !  real :: h_marg ! The marginal thickness of a flux [H ~> kg m-2].
-  real :: dx_E, dx_W ! Effective x-grid spacings to the east and west, in m.
+  real :: dx_E, dx_W ! Effective x-grid spacings to the east and west [m].
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = IG%CatIce
@@ -845,7 +845,7 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJB_(G)), &
-                           intent(in)    :: v   !< Meridional ice velocity, in m s-1.
+                           intent(in)    :: v   !< Meridional ice velocity [m s-1].
   real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
@@ -870,14 +870,14 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
   real, dimension(SZI_(G),SZJ_(G)) :: &
     htot, &    ! The total thickness summed across categories [H ~> kg m-2].
     I_htot, &  ! The inverse of htot or 0 [H-1 ~> m2 kg-1].
-    hl, hr     ! Left and right face thicknesses, in m.
+    hl, hr     ! Left and right face thicknesses [m].
   real, dimension(SZI_(G)) :: &
     vhtot      ! The total transports [H m2 s-1 ~> kg s-1].
   real :: CFL ! The CFL number based on the local velocity and grid spacing, ND.
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
-  real :: h_marg ! The marginal thickness of a flux, in m.
-  real :: dy_N, dy_S ! Effective y-grid spacings to the north and south, in m.
+  real :: h_marg ! The marginal thickness of a flux [m].
+  real :: dy_N, dy_S ! Effective y-grid spacings to the north and south [m].
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = IG%CatIce

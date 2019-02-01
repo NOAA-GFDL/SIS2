@@ -61,15 +61,15 @@ type ice_state_type
                 !!  The sum of part_size is 1.
   ! These velocities are only used on the slow ice processors
   real, allocatable, dimension(:,:) :: u_ice_B  !< The pseudo-zonal ice velocity along the
-                !! along the grid directions on a B-grid, in m s-1.
+                !! along the grid directions on a B-grid [m s-1].
                 !! All thickness categories are assumed to have the same velocities.
   real, allocatable, dimension(:,:) :: v_ice_B  !< The pseudo-meridional ice velocity along the
-                !! along the grid directions on a B-grid, in m s-1.
+                !! along the grid directions on a B-grid [m s-1].
   real, allocatable, dimension(:,:) :: u_ice_C  !< The pseudo-zonal ice velocity along the
-                !! along the grid directions on a C-grid, in m s-1.
+                !! along the grid directions on a C-grid [m s-1].
                 !! All thickness categories are assumed to have the same velocities.
   real, allocatable, dimension(:,:) :: v_ice_C  !< The pseudo-meridional ice velocity along the
-                !! along the grid directions on a C-grid, in m s-1.
+                !! along the grid directions on a C-grid [m s-1].
 
   real, allocatable, dimension(:,:,:) :: &
     mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
@@ -102,17 +102,17 @@ type ocean_sfc_state_type
     s_surf , &  !< The ocean's surface salinity in g/kg.
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
-    u_ocn_B, &  !< The ocean's zonal velocity on B-grid points in m s-1.
-    v_ocn_B, &  !< The ocean's meridional velocity on B-grid points in m s-1.
-    u_ocn_C, &  !< The ocean's zonal velocity on C-grid points, in m s-1.
-    v_ocn_C     !< The ocean's meridional velocity on C-grid points, in m s-1.
+    u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [m s-1].
+    v_ocn_B, &  !< The ocean's meridional velocity on B-grid points [m s-1].
+    u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [m s-1].
+    v_ocn_C     !< The ocean's meridional velocity on C-grid points [m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
                 !! to the ice at the base of the ice [W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
                 !! timestep [J m-2]. This is the input value and is not changed by the ice.
   real, allocatable, dimension(:,:) :: sea_lev !< The equivalent sea-level, after any non-levitating
-                !! ice has been converted to sea-water, as determined by the ocean, in m.
+                !! ice has been converted to sea-water, as determined by the ocean [m].
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
                 !! (partially) converted back to its equivalent by the ocean.
 
@@ -142,10 +142,10 @@ type simple_OSS_type
     s_surf , &  !< The ocean's surface salinity in g/kg.
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
-    u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points in m s-1.
-    v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points in m s-1.
-    u_ice_A, &  !< The sea ice's zonal velocity on A-grid points in m s-1.
-    v_ice_A     !< The sea ice's meridional velocity on A-grid points in m s-1.
+    u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [m s-1].
+    v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points [m s-1].
+    u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [m s-1].
+    v_ice_A     !< The sea ice's meridional velocity on A-grid points [m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
                 !! from the ocean to the ice at the base of the ice [W m-2].
 
@@ -363,9 +363,9 @@ type ice_ocean_flux_type
 
   !Iceberg fields
   real, pointer, dimension(:,:)   :: &
-    ustar_berg =>NULL(), &  !< ustar contribution below icebergs in m/s
-    area_berg =>NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
-    mass_berg =>NULL()      !< mass of icebergs in km/m^2
+    ustar_berg =>NULL(), &  !< ustar contribution below icebergs [m s-1]
+    area_berg =>NULL(),  &  !< fraction of grid cell covered by icebergs [m2 m-2]
+    mass_berg =>NULL()      !< mass of icebergs [kg m-2]
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &

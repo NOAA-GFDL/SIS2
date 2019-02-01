@@ -28,14 +28,14 @@ public :: lnd_ice_bnd_type_chksum
 type ocean_ice_boundary_type
   real, dimension(:,:), pointer :: &
     u      => NULL(), &  !< The x-direction ocean velocity at a position
-                         !! determined by stagger, in m s-1.
+                         !! determined by stagger [m s-1].
     v      => NULL(), &  !< The y-direction ocean velocity at a position
-                         !! determined by stagger, in m s-1.
+                         !! determined by stagger [m s-1].
     t      => NULL(), &  !< The ocean's surface temperature, in Kelvin.
     s      => NULL(), &  !< The ocean's surface salinity, in g/kg.
     frazil => NULL(), &  !< The frazil heat rejected by the ocean [J m-2].
     sea_level => NULL()  !< The sea level after adjustment for any surface
-                         !! pressure that the ocean allows to be expressed, in m.
+                         !! pressure that the ocean allows to be expressed [m].
   real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to

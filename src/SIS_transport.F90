@@ -113,8 +113,8 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
   integer,                           intent(in)    :: nsteps  !< The number of advective iterations
                                                           !! to use within this time step.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity, in m s-1.
-  real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity, in m s-1.
+  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [m s-1].
   real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)), optional, intent(in) :: &
     mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
                ! categories in a cell, before each substep [H ~> kg m-2].
@@ -538,7 +538,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real :: part_trans ! The fractional area transfered between categories, nondim.
   real :: snow_trans ! The cell-averaged snow transfered between categories [kg m-2].
   real :: pond_trans ! The cell-averaged pond transfered between categories [kg m-2].
-  real :: I_mH_lim1  ! The inverse of the lower thickness limit, in m2 kg-1.
+  real :: I_mH_lim1  ! The inverse of the lower thickness limit [m2 kg-1].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     ! The mass of snow, pond and ice per unit total area in a cell [H ~> kg m-2].
     ! "mca" stands for "mass cell averaged"

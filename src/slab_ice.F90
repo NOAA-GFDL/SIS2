@@ -29,11 +29,11 @@ contains
 !! dating back to the Manabe model.
 subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity in m s-1
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity in m s-1
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity [m s-1]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity [m s-1]
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to
-                                                          !! advect, in m kg kg-1 or other units, or the
-                                                          !! total ice mass in m or kg m-2.
+                                                          !! advect, in [m kg kg-1] or other units, or the
+                                                          !! total ice mass [H ~> kg m-2].
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr
   real,                              intent(in   ) :: dt_slow !< The time covered by this call [s].
@@ -97,10 +97,10 @@ end subroutine slab_ice_advect
 !! B-grid or C-grid discretiztions, but the velocity and stress variables must have consistent
 !! array sizes.
 subroutine slab_ice_dynamics(ui, vi, uo, vo, fxat, fyat, fxoc, fyoc)
-  real, dimension(:,:), intent(inout) :: ui    !< Zonal ice velocity in m s-1
-  real, dimension(:,:), intent(inout) :: vi    !< Meridional ice velocity in m s-1
-  real, dimension(:,:), intent(in   ) :: uo    !< Zonal ocean velocity in m s-1
-  real, dimension(:,:), intent(in   ) :: vo    !< Meridional ocean velocity in m s-1
+  real, dimension(:,:), intent(inout) :: ui    !< Zonal ice velocity [m s-1]
+  real, dimension(:,:), intent(inout) :: vi    !< Meridional ice velocity [m s-1]
+  real, dimension(:,:), intent(in   ) :: uo    !< Zonal ocean velocity [m s-1]
+  real, dimension(:,:), intent(in   ) :: vo    !< Meridional ocean velocity [m s-1]
   real, dimension(:,:), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
   real, dimension(:,:), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
   real, dimension(:,:), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]

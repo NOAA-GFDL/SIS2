@@ -186,13 +186,13 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    hi_avg            ! The area-weighted average ice thickness, in m.
+    hi_avg            ! The area-weighted average ice thickness [m].
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
     windstr_x, &      ! The area-weighted average ice thickness [Pa].
     windstr_y         ! The area-weighted average ice thickness [Pa].
   real :: rho_ice     ! The nominal density of sea ice [kg m-3].
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
-                      ! from thickness units, in m H-1.
+                      ! from thickness units [m H-1 ~> m3].
   integer :: stress_stagger
   integer :: i, j, isc, iec, jsc, jec
 
@@ -301,7 +301,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
-  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid, in m s-1.
+  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid [m s-1].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.

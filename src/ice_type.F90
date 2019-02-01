@@ -84,8 +84,8 @@ type ice_data_type !  ice_public_type
                               !! ocean_rough_mod, apparently in m.
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
                               !! each ice-thickness category, in Kelvin.
-    u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice, in m s-1.
-    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice, in m s-1.
+    u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
+    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
     s_surf         =>NULL()   !< The ocean's surface salinity, in g/kg.
 
@@ -122,7 +122,7 @@ type ice_data_type !  ice_public_type
     flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
 
   real, pointer, dimension(:,:) :: &
-    area => NULL() , &    !< The area of ocean cells, in m2.  Land cells have
+    area => NULL() , &    !< The area of ocean cells [m2].  Land cells have
                           !! a value of 0, so this could also be used as a mask.
     mi   => NULL()        !< The total ice+snow mass [kg m-2].
              ! mi is needed for the wave model. It is introduced here,

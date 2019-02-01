@@ -226,9 +226,9 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
-    ice_area, &    ! The area of ice in each cell and hemisphere, in m2.
+    ice_area, &    ! The area of ice in each cell and hemisphere [m2].
     ice_extent, &  ! The extent (cells with >10% coverage) of ice in each
-                   ! cell and hemisphere, in m2.
+                   ! cell and hemisphere [m2].
     col_mass, &    ! The column integrated ice and snow mass in each cell and
                    ! hemisphere [kg].
     col_heat, &    ! The column integrated ice and snow heat in each cell and
@@ -237,8 +237,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
                    ! hemisphere [kg].
 
   real, dimension(2) :: &
-    Area_NS, &     ! The total sea-ice area in the two hemispheres, in m2.
-    Extent_NS, &   ! The total sea-ice extent in the two hemispheres, in m2.
+    Area_NS, &     ! The total sea-ice area in the two hemispheres [m2].
+    Extent_NS, &   ! The total sea-ice extent in the two hemispheres [m2].
     Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
     mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
     salt_NS, &     ! The total sea-ice salt in the two hemispheres [kg].
@@ -272,8 +272,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   real :: temp_anom    ! The change in total heat that cannot be accounted for
                        ! by the surface fluxes, divided by the total heat
                        ! capacity of the ocean [degC].
-  real :: Area         ! The total area of the sea ice in m2.
-  real :: Extent       ! The total extent of the sea ice in m2.
+  real :: Area         ! The total area of the sea ice [m2].
+  real :: Extent       ! The total extent of the sea ice [m2].
   real :: heat_imb     ! The column integrated heat imbalance [Enth kg m-2 ~> J m-2].
   real :: mass_imb     ! The column integrated mass imbalance [kg].
   real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point, in enth_unit.

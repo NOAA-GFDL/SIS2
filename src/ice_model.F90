@@ -1040,7 +1040,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  real :: H_to_m_snow    ! conversion factor from thickness units [m H-1 ~> m3].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1228,7 +1228,7 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   real :: H_to_m_ice  ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow ! conversion factor from thickness units, in m H-1.
+  real :: H_to_m_snow ! conversion factor from thickness units [m H-1 ~> m3].
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1693,8 +1693,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Parameters that are read in and used to initialize other modules.  If those
   ! other modules had control states, these would be moved to those modules.
-  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
-  real :: heat_rough_ice ! heat roughness length, in m.
+  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2 [m].
+  real :: heat_rough_ice ! heat roughness length [m].
   real :: dt_Rad_real    ! The radiation timestep [s].
   type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
   real :: rad            ! The conversion factor from degrees to radians.
@@ -1702,7 +1702,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Parameters that properly belong exclusively to ice_thm.
   real :: k_snow         ! snow conductivity [W m degC-1]
-  real :: h_lo_lim       ! The min ice thickness for temp. calc, in m.
+  real :: h_lo_lim       ! The min ice thickness for temp. calc [m].
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion
                          ! factor.
@@ -1720,7 +1720,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  real :: g_Earth        !   The gravitational acceleration in m s-2.
+  real :: g_Earth        !   The gravitational acceleration [m s-2].
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
@@ -2820,7 +2820,7 @@ subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
   real,                         intent(in)    :: Rho_ice !< The nominal ice density [kg m-3].
   type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
-  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits, in m.
+  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits [m].
 
   ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
   !  ###This subroutine should be extended to add more options.
