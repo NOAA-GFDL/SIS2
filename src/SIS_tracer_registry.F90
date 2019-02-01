@@ -416,7 +416,7 @@ subroutine set_massless_SIS_tracers(mass, TrReg, G, IG, compute_domain, do_snow,
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                  intent(in)    :: mass !< The ice or snow mass in H units.
+                                  intent(in)    :: mass !< The ice or snow mass [H ~> kg m-2].
   type(SIS_tracer_registry_type), intent(inout) :: TrReg !< A pointer to the SIS tracer registry
   logical,              optional, intent(in) :: compute_domain !< If true, work over the whole data domain
   logical,              optional, intent(in) :: do_snow !< If true, work on snow tracers; the default is true.

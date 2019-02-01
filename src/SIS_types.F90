@@ -72,9 +72,9 @@ type ice_state_type
                 !! along the grid directions on a C-grid, in m s-1.
 
   real, allocatable, dimension(:,:,:) :: &
-    mH_pond, &  !< The mass per unit area of the pond in each category, in units of H (usually kg m-2).
-    mH_snow, &  !< The mass per unit area of the snow in each category, in units of H (usually kg m-2).
-    mH_ice, &   !< The mass per unit area of the ice in each category, in units of H (usually kg m-2).
+    mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
+    mH_snow, &  !< The mass per unit area of the snow in each category [H ~> kg m-2].
+    mH_ice, &   !< The mass per unit area of the ice in each category [H ~> kg m-2].
     t_surf      !< The surface temperature, in Kelvin.
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
@@ -85,7 +85,7 @@ type ice_state_type
                 !! in each category and snow thickness layer, in enth_unit.
 
   real, allocatable, dimension(:,:,:) :: &
-    rdg_mice    !< A diagnostic of the ice load that was formed by ridging, in H (usually kg m-2).
+    rdg_mice    !< A diagnostic of the ice load that was formed by ridging [H ~> kg m-2].
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
 

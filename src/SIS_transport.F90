@@ -72,13 +72,13 @@ end type SIS_transport_CS
 !! advection, but not so useful for diagnosing ice thickness.
 type, public :: cell_average_state_type ; private
   real, allocatable, dimension(:,:,:) :: m_ice  !< The mass of ice in each thickness category
-                                                !! per unit total area in a cell, in H.
+                                                !! per unit total area in a cell [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: m_snow !< The mass of ice in each thickness category
-                                                !! per unit total area in a cell, in H.
+                                                !! per unit total area in a cell [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: m_pond !< The mass of melt pond water in each thickness
-                                                !! category per unit total area in a cell, in H.
+                                                !! category per unit total area in a cell [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: mH_ice !< The mass of ice in each thickness category
-                                                !! per unit of ice area in a cell, in H.  The
+                                                !! per unit of ice area in a cell [H ~> kg m-2].  The
                                                 !! ratio of m_ice / mH_ice gives the fractional
                                                 !! ice coverage of each category.  Massless cells
                                                 !! still are given plausible values of mH_ice.
@@ -86,13 +86,13 @@ type, public :: cell_average_state_type ; private
   ! The following fields are used for diagnostics.
   real :: dt_sum = 0.0 !< The accumulated time since the fields were populated from an ice state type.
   real, allocatable, dimension(:,:) :: mass0    !< The total mass of ice, snow and melt pond water
-                                                !! when the fields were populated, in H.
+                                                !! when the fields were populated [H ~> kg m-2].
   real, allocatable, dimension(:,:) :: uh_sum   !< The accumulated zonal mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
-                                                !! since the fields were populated, in H m2.
+                                                !! since the fields were populated [H m2 ~> kg].
   real, allocatable, dimension(:,:) :: vh_sum   !< The accumulated meridional mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
-                                                !! since the fields were populated, in H m2.
+                                                !! since the fields were populated [H m2 ~> kg].
   type(EFP_type) :: tot_ice                     !< The globally integrated mass of sea ice [kg].
   type(EFP_type) :: tot_snow                    !< The globally integrated mass of snow [kg].
   type(EFP_type) :: enth_ice                    !< The globally integrated sea ice enthalpy [J].
@@ -117,26 +117,26 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
   real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity, in m s-1.
   real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)), optional, intent(in) :: &
     mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, before each substep, in units of H (often kg m-2).
+               ! categories in a cell, before each substep [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)), optional, intent(in) :: &
-    uh_tot     ! Total zonal fluxes during each substep in H m2 s-1.
+    uh_tot     ! Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)), optional, intent(in) :: &
-    vh_tot     ! Total meridional fluxes during each substep in H m2 s-1.
+    vh_tot     ! Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
-    uh_ice, &  ! Zonal fluxes of ice in H m2 s-1.
-    uh_snow, & ! Zonal fluxes of snow in H m2 s-1.
-    uh_pond    ! Zonal fluxes of melt pond water in H m2 s-1.
+    uh_ice, &  ! Zonal fluxes of ice [H m2 s-1 ~> kg s-1].
+    uh_snow, & ! Zonal fluxes of snow [H m2 s-1 ~> kg s-1].
+    uh_pond    ! Zonal fluxes of melt pond water [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
-    vh_ice, &  ! Meridional fluxes of ice in H m2 s-1.
-    vh_snow, & ! Meridional fluxes of snow in H m2 s-1.
-    vh_pond    ! Meridional fluxes of melt pond water in H m2 s-1.
+    vh_ice, &  ! Meridional fluxes of ice [H m2 s-1 ~> kg s-1].
+    vh_snow, & ! Meridional fluxes of snow [H m2 s-1 ~> kg s-1].
+    vh_pond    ! Meridional fluxes of melt pond water [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
-    mca0_snow, & ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
+    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [H ~> kg m-2].
+    mca0_snow, & ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
     mca0_pond    ! The initial mass of melt pond water per unit ocean area
-                 ! in a cell, in H (often kg m-2).
+                 ! in a cell [H ~> kg m-2].
   real :: dt_adv
   logical :: merged_cont
   character(len=200) :: mesg
@@ -228,8 +228,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
   real, dimension(SZI_(G),SZJB_(G)) :: &
     vf           ! Total meridional fluxes [kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell, in H (often kg m-2).
-    mca0_snow    ! The initial mass of snow per unit ocean area in a cell, in H (often kg m-2).
+    mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [H ~> kg m-2].
+    mca0_snow    ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
 !### These will be needed when the ice ridging is properly implemented.
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging
@@ -453,7 +453,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration, ND.
-  real :: mass_neglect    ! A negligible mass per unit area, in H.
+  real :: mass_neglect    ! A negligible mass per unit area [H ~> kg m-2].
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
@@ -515,13 +515,13 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: mH_ice  !< The mass per unit area of the ice
-                                                !! in each category in H (often kg m-2).
+                                                !! in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: mH_snow !< The mass per unit area of the snow
-                                                !! atop the ice in each category in H (often kg m-2).
+                                                !! atop the ice in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: mH_pond !< The mass per unit area of the pond
-                                                !! on the ice in each category in H (often kg m-2).
+                                                !! on the ice in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                            intent(inout) :: part_sz !< The fractional ice concentration
                                                 !! within a cell in each thickness
@@ -540,8 +540,8 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real :: pond_trans ! The cell-averaged pond transfered between categories [kg m-2].
   real :: I_mH_lim1  ! The inverse of the lower thickness limit, in m2 kg-1.
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
-    ! The mass of snow, pond and ice per unit total area in a cell, in units of H
-    ! (often kg m-2).  "mca" stands for "mass cell averaged"
+    ! The mass of snow, pond and ice per unit total area in a cell [H ~> kg m-2].
+    ! "mca" stands for "mass cell averaged"
     mca_ice, mca_snow, mca_pond, &
     ! Initial ice, snow and pond masses per unit cell area [kg m-2].
     mca0_ice, mca0_snow, mca0_pond, &
@@ -740,13 +740,13 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
                                                           !! category, nondimensional, 0-1.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: mH_ice  !< The mass per unit area of the ice
-                                                          !! in each category in H (often kg m-2).
+                                                          !! in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: mH_snow !< The mass per unit area of the snow
-                                                          !! atop the ice in each category in H (often kg m-2).
+                                                          !! atop the ice in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                      intent(inout) :: mH_pond !< The mass per unit area of the pond
-                                                          !! on the ice in each category in H (often kg m-2).
+                                                          !! on the ice in each category [H ~> kg m-2].
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   type(cell_average_state_type), optional, intent(in) :: CAS !< A structure with ocean-cell averaged masses.
@@ -770,17 +770,17 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
   real :: mass_neglect
   real :: part_trans ! The fractional area transfered into a thicker category, nondim.
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
-    m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category, in H.
-    m0_snow, & ! The initial mass per unit grid-cell area of snow in each category, in H.
-    m0_pond    ! The initial mass per unit grid-cell pond melt water in each category, in H.
+    m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category [H ~> kg m-2].
+    m0_snow, & ! The initial mass per unit grid-cell area of snow in each category [H ~> kg m-2].
+    m0_pond    ! The initial mass per unit grid-cell pond melt water in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
-    trans_ice, trans_snow, trans_pond ! The masses tranferred into the next thicker category, in H.
+    trans_ice, trans_snow, trans_pond ! The masses tranferred into the next thicker category [H ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: mca_ice  ! The mass per unit grid-cell area
-                                                  ! of the ice in each category in H (often kg m-2).
+                                                  ! of the ice in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: mca_snow ! The mass per unit grid-cell area
-                                                  ! of the snow atop the ice in each category in H.
+                                                  ! of the snow atop the ice in each category [H ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: mca_pond ! The mass per unit grid-cell area of the melt
-                                                  ! ponds atop the ice in each category in H.
+                                                  ! ponds atop the ice in each category [H ~> kg m-2].
   logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec, nCat
@@ -974,7 +974,7 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   type(ice_state_type),             intent(in)  :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of ice and snow in H.
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of ice and snow [H ~> kg m-2].
   real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
 
   real :: H_to_units ! A conversion factor from H to the desired output units.
@@ -997,7 +997,7 @@ subroutine cell_mass_from_CAS(CAS, G, IG, mca, scale)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: mca !< The combined mass of ice, snow, and
-                                                       !! melt pond water in each cell in H.
+                                                       !! melt pond water in each cell [H ~> kg m-2].
   real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
 
   real :: H_to_units ! A conversion factor from H to the desired output units.

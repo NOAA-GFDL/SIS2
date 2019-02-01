@@ -71,13 +71,15 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
   real, dimension(SZI_(G),SZJB_(G)), &
                            intent(in)    :: v   !< Meridional ice velocity, in m s-1.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in)    :: hin !< Initial ice or snow thickness by category, in H.
+                           intent(in)    :: hin !< Initial ice or snow thickness by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: h   !< Final ice or snow thickness by category, in H.
+                           intent(inout) :: h   !< Final ice or snow thickness by category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(out)   :: uh  !< Volume flux through zonal faces = u*h*dy, H m2 s-1.
+                           intent(out)   :: uh  !< Volume flux through zonal faces = u*h*dy
+                                                !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                           intent(out)   :: vh  !< Volume flux through meridional faces = v*h*dx, in H m2 s-1.
+                           intent(out)   :: vh  !< Volume flux through meridional faces = v*h*dx
+                                                !! [H m2 s-1 ~> kg s-1].
   real,                    intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
@@ -212,24 +214,26 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity, in m s-1.
   real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity, in m s-1.
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: h_in !< Initial total ice and snow mass per
-                                                         !! unit cell area in H (usually m or kg m-2).
+                                                         !! unit cell area [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: h  !< Total ice and snow mass per unit cell
-                                                         !! area in H (usually m or kg m-2).
+                                                         !! area [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)   :: uh !< Total mass flux through zonal faces
-                                                         !! = u*h*dy, H m2 s-1.
+                                                         !! = u*h*dy [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)), intent(out)   :: vh !< Total mass flux through meridional faces
-                                                         !! = v*h*dx, in H m2 s-1.
+                                                         !! = v*h*dx [H m2 s-1 ~> kg s-1].
   real,                              intent(in)    :: dt !< Time increment [s]
   type(SIS_continuity_CS),           pointer       :: CS !< The control structure returned by a
                                                          !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(inout) :: h_ice  !< Total ice mass per unit cell
-                                                         !! area in H.  h_ice must not exceed h.
+                                                         !! area [H ~> kg m-2].  h_ice must not exceed h.
 
 
   ! Local variables
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
-  real, dimension(SZIB_(G),SZJ_(G)) :: uh_ice ! Ice mass flux through zonal faces = u*h*dy, H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx, in H m2 s-1.
+  real, dimension(SZIB_(G),SZJ_(G)) :: uh_ice ! Ice mass flux through zonal faces = u*h*dy
+                                              ! [H m2 s-1 ~> kg s-1].
+  real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx 
+                                              ! [H m2 s-1 ~> kg s-1].
   real    :: h_up
   integer :: is, ie, js, je, stensil
   integer :: i, j
@@ -429,34 +433,45 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: h_tot_in !< Initial total ice and snow mass per unit
-                                                          !! cell area in H.
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces, in H m2 s-1.
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces, in H m2 s-1.
+                                                       !! cell area [H ~> kg m-2].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
+                                                       !! [H m2 s-1 ~> kg s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
+                                                       !! [H m2 s-1 ~> kg s-1].
   real,                           intent(in)    :: dt  !< Time increment [s]
   type(SIS_continuity_CS),        pointer       :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(inout) :: h1  !< Updated mass of medium 1 (often ice) by category, in H.
+                        optional, intent(inout) :: h1  !< Updated mass of medium 1 (often ice) by
+                                                       !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: uh1 !< Zonal mass flux of medium 1 by category, H m2 s-1.
+                        optional, intent(out)   :: uh1 !< Zonal mass flux of medium 1 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: vh1 !< Meridional mass flux of medium 1 by category, H m2 s-1.
+                        optional, intent(out)   :: vh1 !< Meridional mass flux of medium 1 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(inout) :: h2  !< Updated mass of medium 2 (often snow) by category, in H.
+                        optional, intent(inout) :: h2  !< Updated mass of medium 2 (often snow) by
+                                                       !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: uh2 !< Zonal mass flux of medium 2 by category, H m2 s-1.
+                        optional, intent(out)   :: uh2 !< Zonal mass flux of medium 2 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: vh2 !< Meridional mass flux of medium 2 by category, H m2 s-1.
+                        optional, intent(out)   :: vh2 !< Meridional mass flux of medium 2 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(inout) :: h3  !< Updated mass of medium 3 (pond water?) by category, in H.
+                        optional, intent(inout) :: h3  !< Updated mass of medium 3 (pond water?) by
+                                                       !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: uh3 !< Zonal mass flux of medium 3 by category, H m2 s-1.
+                        optional, intent(out)   :: uh3 !< Zonal mass flux of medium 3 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                        optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category, H m2 s-1.
+                        optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category
+                                                       !! [H m2 s-1 ~> kg s-1].
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! Total thicknesses in H.
-  real, dimension(SZI_(G),SZJ_(G)) :: I_htot ! The Adcroft reciprocal of the total thicknesses in H-1.
+  real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! Total thicknesses [H ~> kg m-2].
+  real, dimension(SZI_(G),SZJ_(G)) :: I_htot ! The Adcroft reciprocal of the total thicknesses [H-1 ~> m2 kg-1].
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   real    :: h_up
   integer :: is, ie, js, je, nCat, stensil
@@ -650,13 +665,15 @@ end subroutine proportionate_continuity
 subroutine zonal_proportionate_fluxes(uh_tot, I_htot, h, uh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces, in H m2 s-1.
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
+                                                !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
-                                                          !! cell area in H-1.
+                                                !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: h   !< Mass per unit cell area by category, in H.
+                           intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(out)   :: uh  !< Category mass flux through zonal faces = u*h*dy, H m2 s-1.
+                           intent(out)   :: uh  !< Category mass flux through zonal faces = u*h*dy.
+                                                !! [H m2 s-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables
@@ -676,13 +693,15 @@ end subroutine zonal_proportionate_fluxes
 subroutine merid_proportionate_fluxes(vh_tot, I_htot, h, vh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces, in H m2 s-1.
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
+                                                !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
-                                                          !! cell area in H-1.
+                                                !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: h   !< Mass per unit cell area by category, in H.
+                           intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                           intent(out)   :: vh  !< Category mass flux through meridional faces = v*h*dx, H m2 s-1.
+                           intent(out)   :: vh  !< Category mass flux through meridional faces = v*h*dx
+                                                !! [H m2 s-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables
@@ -711,29 +730,31 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                 optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes, in H.
+                 optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                 optional, intent(out)   :: uh  !< Category volume flux through zonal faces = u*h*dy, H m2 s-1.
+                 optional, intent(out)   :: uh  !< Category volume flux through zonal faces = u*h*dy
+                                                !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)), &
-                 optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes, in H.
+                 optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), &
-                 optional, intent(out)   :: uh_tot !< Total mass flux through zonal faces = u*htot*dy, H m2 s-1.
+                 optional, intent(out)   :: uh_tot !< Total mass flux through zonal faces = u*htot*dy
+                                                !! [H m2 s-1 ~> kg s-1].
 !   This subroutine calculates the mass or volume fluxes through the zonal
 ! faces, and other related quantities.
 
   ! Local variables
 !  real, dimension(SZIB_(G)) :: &
-!    duhdu      ! Partial derivative of uh with u, in H m.
+!    duhdu      ! Partial derivative of uh with u [H m ~> kg m-1].
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    htot, &    ! The total thickness summed across categories, in H.
-    I_htot, &  ! The inverse of htot or 0, in H-1.
-    hl, hr      ! Left and right face thicknesses, in H.
+    htot, &    ! The total thickness summed across categories [H ~> kg m-2].
+    I_htot, &  ! The inverse of htot or 0 [H-1 ~> m2 kg-1].
+    hl, hr      ! Left and right face thicknesses [H ~> kg m-2].
   real, dimension(SZIB_(G)) :: &
-    uhtot      ! The total transports in H m2 s-1.
+    uhtot      ! The total transports [H m2 s-1 ~> kg s-1].
   real :: CFL  ! The CFL number based on the local velocity and grid spacing, ND.
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
-!  real :: h_marg ! The marginal thickness of a flux, in H.
+!  real :: h_marg ! The marginal thickness of a flux [H ~> kg m-2].
   real :: dx_E, dx_W ! Effective x-grid spacings to the east and west, in m.
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
@@ -830,26 +851,28 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
                                                 !! previous call to SIS_continuity_init.
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                 optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes, in H.
+                 optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                 optional, intent(out)   :: vh  !< Category volume flux through meridional faces = v*h*dx, H m2 s-1.
+                 optional, intent(out)   :: vh  !< Category volume flux through meridional faces = v*h*dx
+                                                !! [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)), &
-                 optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes, in H.
+                 optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G)), &
-                 optional, intent(out)   :: vh_tot !< Total mass flux through meridional faces = v*htot*dx, H m2 s-1.
+                 optional, intent(out)   :: vh_tot !< Total mass flux through meridional faces = v*htot*dx
+                                                !! [H m2 s-1 ~> kg s-1].
 
 !   This subroutine calculates the mass or volume fluxes through the meridional
 ! faces, and other related quantities.
 
   ! Local variables
   real, dimension(SZI_(G)) :: &
-    dvhdv      ! Partial derivative of vh with v, in m2.
+    dvhdv      ! Partial derivative of vh with v [H m ~> kg m-1].
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    htot, &    ! The total thickness summed across categories, in H.
-    I_htot, &  ! The inverse of htot or 0, in H-1.
+    htot, &    ! The total thickness summed across categories [H ~> kg m-2].
+    I_htot, &  ! The inverse of htot or 0 [H-1 ~> m2 kg-1].
     hl, hr     ! Left and right face thicknesses, in m.
   real, dimension(SZI_(G)) :: &
-    vhtot      ! The total transports in H m2 s-1.
+    vhtot      ! The total transports [H m2 s-1 ~> kg s-1].
   real :: CFL ! The CFL number based on the local velocity and grid spacing, ND.
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
@@ -938,12 +961,12 @@ end subroutine meridional_mass_flux
 !> Calculate a piecewise parabolic thickness reconstruction in the x-direction.
 subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_2nd)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in !< Initial thickness of a category, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_r !< Right edge value of thickness reconstruction, in H
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in !< Initial thickness of a category [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l !< Left edge value of thickness reconstruction [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_r !< Right edge value of thickness reconstruction [H ~> kg m-2]
   type(loop_bounds_type),           intent(in)  :: LB  !< A structure with the active loop bounds.
   real,                             intent(in)  :: h_min !< The minimum thickness that can be
-                                                       !! obtained by a concave parabolic fit, in H.
+                                                       !! obtained by a concave parabolic fit [H ~> kg m-2].
   logical, optional,                intent(in)  :: monotonic !< If true, use the Colella & Woodward monotonic limiter.
                                                        !! Otherwise use a simple positive-definite limiter.
   logical, optional,                intent(in)  :: simple_2nd !< If true, use the arithmetic mean thicknesses as the
@@ -1032,12 +1055,12 @@ end subroutine PPM_reconstruction_x
 !> Calculate a piecewise parabolic thickness reconstruction in the y-direction.
 subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_2nd)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in !< Initial thickness of a category, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_r !< Right edge value of thickness reconstruction, in H
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: h_in !< Initial thickness of a category [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_l !< Left edge value of thickness reconstruction [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: h_r !< Right edge value of thickness reconstruction [H ~> kg m-2]
   type(loop_bounds_type),           intent(in)  :: LB  !< A structure with the active loop bounds.
   real,                             intent(in)  :: h_min !< The minimum thickness that can be
-                                                       !! obtained by a concave parabolic fit, in H.
+                                                       !! obtained by a concave parabolic fit [H ~> kg m-2].
   logical, optional,                intent(in)  :: monotonic !< If true, use the Colella & Woodward monotonic limiter.
                                                        !! Otherwise use a simple positive-definite limiter.
   logical, optional,                intent(in)  :: simple_2nd !< If true, use the arithmetic mean thicknesses as the
@@ -1123,11 +1146,11 @@ end subroutine PPM_reconstruction_y
 !! reconstruction that is positive-definite.
 subroutine PPM_limit_pos(h_in, h_L, h_R, h_min, G, iis, iie, jis, jie)
   type(SIS_hor_grid_type),          intent(in)    :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in !< Initial thickness of a category, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_L !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_R !< Right edge value of thickness reconstruction, in H
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in !< Initial thickness of a category [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_L !< Left edge value of thickness reconstruction [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_R !< Right edge value of thickness reconstruction [H ~> kg m-2]
   real,                             intent(in)    :: h_min !< The minimum thickness that can be
-                                                           !! obtained by a concave parabolic fit, in H.
+                                                           !! obtained by a concave parabolic fit [H ~> kg m-2].
   integer,                          intent(in)    :: iis !< The starting i-index to work on
   integer,                          intent(in)    :: iie !< The ending i-index to work on
   integer,                          intent(in)    :: jis !< The starting j-index to work on
@@ -1168,9 +1191,9 @@ end subroutine PPM_limit_pos
 !! using prescription of Colella and Woodward, 1984.
 subroutine PPM_limit_CW84(h_in, h_l, h_r, G, iis, iie, jis, jie)
   type(SIS_hor_grid_type),          intent(in)    :: G   !< The horizontal grid type
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in !< Initial thickness of a category, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_L !< Left edge value of thickness reconstruction, in H
-  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_R !< Right edge value of thickness reconstruction, in H
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)    :: h_in !< Initial thickness of a category [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_L !< Left edge value of thickness reconstruction [H ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G)), intent(inout) :: h_R !< Right edge value of thickness reconstruction [H ~> kg m-2]
   integer,                          intent(in)    :: iis !< The starting i-index to work on
   integer,                          intent(in)    :: iie !< The ending i-index to work on
   integer,                          intent(in)    :: jis !< The starting j-index to work on

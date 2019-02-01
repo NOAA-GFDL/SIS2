@@ -128,11 +128,11 @@ type dyn_trans_CS ; private
                                    !! timing of diagnostic output.
   real, allocatable, dimension(:,:,:) :: mca_step !< The total mass per unit total area of snow
                           !! and ice summed across thickness categories in a cell, before each
-                          !! transportation substep, in units of H (often kg m-2).
+                          !! transportation substep [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: uh_step !< The total zonal mass fluxes during each
-                          !! transportation substep in H m2 s-1.
+                          !! transportation substep [H m2 s-1 ~> kg s-1].
   real, allocatable, dimension(:,:,:) :: vh_step !< The total meridional mass fluxes during each
-                          !! transportation substep in H m2 s-1.
+                          !! transportation substep [H m2 s-1 ~> kg s-1].
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1, id_mib=-1, id_mi=-1
@@ -691,7 +691,7 @@ subroutine post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, Time, G, IG, d
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
   real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: enth_units, I_enth_units
-  real :: tmp_mca  ! A temporary cell averaged mass, in H.
+  real :: tmp_mca  ! A temporary cell averaged mass [H ~> kg m-2].
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   real :: Idt_slow ! The inverse of the thermodynamic step [s-1].
   logical :: spec_thermo_sal
