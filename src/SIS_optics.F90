@@ -190,7 +190,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   real :: rho_water       ! The nominal density of sea water [kg m-3].
   real :: pen             ! The fraction of the shortwave flux that will pass below
                           ! the surface (frac 1-pen absorbed at the surface) [nondim]
-  real :: sal_ice_top(1)  ! A specified surface salinity of ice [ppt].
+  real :: sal_ice_top(1)  ! A specified surface salinity of ice [gSalt kg-1].
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
   integer :: m, b, nb
   character(len=200) :: mesg
@@ -402,7 +402,7 @@ function bright_ice_temp(CS, ITV) result(bright_temp)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: bright_temp
 
-  real :: salin_max       ! The maximum attainable salinity, in PSU.
+  real :: salin_max       ! The maximum attainable salinity [gSalt kg-1].
   real :: temp_freeze_min ! The freezing temperature of water at salin_max [degC].
 
   salin_max = 40.0

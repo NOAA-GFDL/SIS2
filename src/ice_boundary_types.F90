@@ -32,7 +32,7 @@ type ocean_ice_boundary_type
     v      => NULL(), &  !< The y-direction ocean velocity at a position
                          !! determined by stagger [m s-1].
     t      => NULL(), &  !< The ocean's surface temperature, in Kelvin.
-    s      => NULL(), &  !< The ocean's surface salinity, in g/kg.
+    s      => NULL(), &  !< The ocean's surface salinity [gSalt kg-1].
     frazil => NULL(), &  !< The frazil heat rejected by the ocean [J m-2].
     sea_level => NULL()  !< The sea level after adjustment for any surface
                          !! pressure that the ocean allows to be expressed [m].

@@ -81,7 +81,7 @@ public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
 type slow_thermo_CS ; private
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
-  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity, in g/kg
+  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity [gSalt kg-1]
                             !! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin     !< The initial bulk salinity of sea-ice relative to the
                             !! salinity of the water from which it formed, nondim.
@@ -589,13 +589,13 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
 
-  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice, in g/kg.
+  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [gSalt kg-1].
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
-                                          ! layer in g/kg, with the salinity of
+                                          ! layer [gSalt kg-1], with the salinity of
                                           ! newly formed ice in layer NkIce+1.
   real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow [kg m-2].
   real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
-  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow, in g/kg.
+  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow [gSalt kg-1].
   real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow

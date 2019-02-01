@@ -1721,7 +1721,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   real :: g_Earth        !   The gravitational acceleration [m s-2].
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed, nondim.

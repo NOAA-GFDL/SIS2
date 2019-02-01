@@ -78,7 +78,7 @@ type ice_state_type
     t_surf      !< The surface temperature, in Kelvin.
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
-                !! in each category and fractional thickness layer, in g/kg.
+                !! in each category and fractional thickness layer [gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
                 !! in each category and fractional thickness layer, in enth_unit (J/kg or rescaled).
   real, allocatable, dimension(:,:,:,:) :: enth_snow !< The enthalpy of the snow
@@ -99,7 +99,7 @@ end type ice_state_type
 type ocean_sfc_state_type
   ! 7 of the following 9 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
-    s_surf , &  !< The ocean's surface salinity in g/kg.
+    s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [m s-1].
@@ -139,7 +139,7 @@ type simple_OSS_type
   ! The following 5 variables describe the ocean state as seen by the
   ! atmosphere and use for the rapid thermodynamic sea ice changes.
   real, allocatable, dimension(:,:) :: &
-    s_surf , &  !< The ocean's surface salinity in g/kg.
+    s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [m s-1].

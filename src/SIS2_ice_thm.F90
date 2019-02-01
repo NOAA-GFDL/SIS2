@@ -34,7 +34,7 @@ type, public :: ice_thermo_type ; private
   real :: LI                !< The latent heat of fusion [J kg-1].
   real :: Lat_Vapor         !< The latent heat of vaporization [J kg-1].
   real :: dTf_dS            !< The derivative of the freezing point with salinity,
-                            !! [degC PSU-1].  (dTf_dS is negative.)
+                            !! [degC kg gSalt-1].  (dTf_dS is negative.)
 
   real :: enth_liq_0 = 0.0  !< The value of enthalpy for liquid fresh water at 0 degC [J kg-1].
   real :: enth_unit = 1.0   !< A conversion factor for enthalpy from Joules kg-1.
@@ -53,8 +53,8 @@ end type ice_thermo_type
 !> The control structure for the SIS2 ice thermodynamics
 type, public :: SIS2_ice_thm_CS ; private
   ! properties of ice, snow, and seawater (NCAR CSM values)
-  real :: KS   !< Thermal conductivity of snow, often 0.31 W/(mK)
-  real :: KI   !<  Thermalconductivity of ice, often 2.03 W/(mK)
+  real :: KS   !< Thermal conductivity of snow, often 0.31 [W m-1 degC-1]
+  real :: KI   !<  Thermalconductivity of ice, often 2.03 [W m-1 degC-1]
 
   real :: temp_ice_freeze !< The freezing temperature of the top ice layer [degC].
   real :: temp_range_est  !< An estimate of the range of snow and ice temperatures
@@ -164,7 +164,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
         intent(inout) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice, in enth_unit (J kg-1).
   real, dimension(NkIce), &
-        intent(in)    :: Sice  !< ice salinity by layer (g/kg)
+        intent(in)    :: Sice  !< ice salinity by layer [gSalt kg-1]
   real, intent(in   ) :: SF_0  !< net upward surface heat flux at ts=0 [W m-2]
   real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [W m-2 degC-1]
   real, dimension(0:NkIce), &
@@ -239,7 +239,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [J kg-1 degC-1].
   real :: Lat_fus  ! The latent heat of fusion [J kg-1].
-  real :: enth_unit    ! A conversion factor for enthalpy from Joules kg-1.
+  real :: enth_unit    ! A conversion factor for enthalpy [Enth J-1 kg ~> 1].
   real :: I_enth_unit  ! The inverse of enth_unit.
   logical :: col_check
   integer :: k
@@ -254,7 +254,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 
   I_enth_unit = 1.0 / enth_unit
   mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
-  mL_snow = m_snow         ! snow mass per unit area (in kg m-2).
+  mL_snow = m_snow         ! snow mass per unit area [kg m-2].
   call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
 
   ! Set the effective thickness of each ice and snow layer, limited to avoid
@@ -474,7 +474,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
     tflux_bot_diff = -heat_flux_int(NkIce)*dtt
 
     ! Estimate the errors with these two expressions from 64-bit roundoff.
-    tfb_diff_err = 1e-15*2.0*kk*dtt * sqrt(tfw**2 + 10.0**2)  ! The -10 deg is arbitrary but good enough?
+    tfb_diff_err = 1e-15*2.0*kk*dtt * sqrt(tfw**2 + 10.0**2)  ! The -10 degC is arbitrary but good enough?
     tfb_resid_err = 1e-15*sqrt(col_enth2**2 + col_enth1**2 + sum_sol**2 + tflux_sfc**2)
 
     d_tflux_bot = tflux_bot_diff - tflux_bot_resid
@@ -545,7 +545,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
         intent(in   ) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice, in enth_unit [J kg-1].
   real, dimension(NkIce), &
-        intent(in)    :: Sice  !< ice salinity by layer [g/kg]
+        intent(in)    :: Sice  !< ice salinity by layer [gSalt kg-1]
   real, intent(in   ) :: SF_0  !< net upward surface heat flux when Tsurf=0 [W m-2]
   real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [W m-2 degC-1]
   real, dimension(0:NkIce), &
@@ -703,13 +703,13 @@ end subroutine estimate_tsurf
 !> laytemp_SIS2 does an implicit calculation of new layer temperature
 function laytemp_SIS2(m, T_fr, f, b, tp, enth, salin, dtt, ITV) result (new_temp)
   real :: new_temp         !< The new temperature of the ice layer [degC]
-  real, intent(in) :: m    !< mass of ice - kg/m2
+  real, intent(in) :: m    !< mass of ice [kg m-2]
   real, intent(in) :: T_fr !< ice freezing temp. (determined by salinity)
-  real, intent(in) :: f    !< Inward forcing - W/m2
-  real, intent(in) :: b    !< response of outward heat flux to local temperature - W/m2/K
+  real, intent(in) :: f    !< Inward forcing [W m-2]
+  real, intent(in) :: b    !< response of outward heat flux to local temperature [W m-2 degC]
   real, intent(in) :: tp   !< prior step temperature [degC]
   real, intent(in) :: enth !< prior step enthalpy
-  real, intent(in) :: salin !< ice salinity in ppt.
+  real, intent(in) :: salin !< ice salinity [gSalg kg-1].
   real, intent(in) :: dtt  !< timestep [s]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -860,7 +860,7 @@ end function laytemp_SIS2
 subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                            dfbot_dT, dtt, hf_err_rat, ITV, extra_heat, temp_new, temp_max)
   real, intent(in) :: m_lay    !< This layers mass of ice [kg m-2]
-  real, intent(in) :: sice     !< ice salinity in g/kg
+  real, intent(in) :: sice     !< ice salinity [gSalt kg-1]
   real, intent(inout) :: enth  !< ice enthalpy in enth_units [Enth ~> J kg-1].
   real, intent(inout) :: ftop  !< Downward heat flux atop the layer at T = 0 degC, or
                                !! the prescribed heat flux if dftop_dT = 0 [W m-2].
@@ -902,7 +902,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   real :: Err_Tmin, Err_Tmax ! The errors at T_max and T_min [J m-2].
   real :: T_prev  ! The previous value of T_g [degC].
   real :: dErr_dT ! The partial derivative of Err with T_g [J m-2 degC-1].
-  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence [nondim].
   real :: TfxdCp_WI, TfxdCp_BI, Err_Tind
   real :: Cp_ice   ! The heat capacity of ice [J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
@@ -1117,7 +1117,7 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
   real, intent(in) :: mi !< The mass of ice [kg m-2]
   real, dimension(0:NkIce), &
         intent(in) :: enthalpy !< The ice enthalpy, in enthalpy units (often J/kg)
-  real, dimension(NkIce), intent(in) :: s_ice !< The ice bulk salinity in g/kg
+  real, dimension(NkIce), intent(in) :: s_ice !< The ice bulk salinity [gSalt kg-1]
   integer, intent(in) :: NkIce !< The number of vertical temperature layers in the ice
   character(len=*), intent(in) :: msg_part !< An identifying message
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -1179,9 +1179,9 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer in enth_units
                                      !! (which might be J/kg).
   real, dimension(NkIce), &
-        intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics (g/kg)
+        intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics [gSalt kg-1]
   real, dimension(NkIce+1), &
-        intent(inout) :: Salin       !< Conserved ice bulk salinity by layer (g/kg)
+        intent(inout) :: Salin       !< Conserved ice bulk salinity by layer [gSalt kg-1]
   real, intent(in   ) :: snow        !< new snow [kg m-2]
   real, intent(in   ) :: rain        !< rain for pond source [kg m-2] - not yet active
   real, intent(in   ) :: evap        !< ice evaporation/sublimation [kg m-2]
@@ -1195,8 +1195,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean [kg m-2]
   real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
   real, intent(  out) :: evap_from_ocn!< evaporation flux from ocean [kg m-2]
-  real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice
-  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice, in g m-2.
+  real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice [kg m-2]
+  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [g m-2].
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -1222,7 +1222,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real :: evap_left           ! The remaining evaporation [kg m-2].
   real :: evap_here           ! The evaporation from the current layer [kg m-2].
   real :: m_submerged         ! The submerged mass of ice [kg m-2].
-  real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
+  real :: salin_freeze        ! The salinity of newly frozen ice [gSalt kg-1].
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: enth_unit   ! A conversion factor for enthalpy from Joules kg-1.
   real :: LI          ! The latent heat of fusion [J kg-1].
@@ -1491,17 +1491,17 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer in enth_units
                                      !! (which might be J/kg).
   real, dimension(NkIce), &
-        intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics (g/kg)
+        intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics [gSalt kg-1]
   real, dimension(NkIce+1), &
-        intent(inout) :: Salin       !< Conserved ice bulk salinity by layer (g/kg)
+        intent(inout) :: Salin       !< Conserved ice bulk salinity by layer [gSalt kg-1]
   integer, intent(in) :: npassive    !< Number of passive tracers
   real, dimension(NkIce+1,npassive), &
-        intent(inout) :: TrLay       !< Passive tracer in the column layer
-  real, intent(in   ) :: frazil      !< frazil in energy units
+        intent(inout) :: TrLay       !< Passive tracer in the column layer [Conc]
+  real, intent(in   ) :: frazil      !< frazil in energy units [J m-2]
   real, intent(in   ) :: tfw         !< seawater freezing temperature [degC]
   integer, intent(in) :: NkIce       !< The number of ice layers.
   real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
-  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice, in g m-2.
+  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [gSalt m-2].
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -1518,7 +1518,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
                               ! the latent heat of fusion in a small fraction of
                               ! the water, in Enth_unit kg-1 (perhaps J kg-1).
   real :: m_freeze            ! The newly formed ice from freezing [kg m-2].
-  real :: salin_freeze        ! The salinity of newly frozen ice, in g kg-1.
+  real :: salin_freeze        ! The salinity of newly frozen ice [gSalt kg-1].
   real :: enthM_freezing      ! The enthalpy gain due to the mass gain by
                               ! freezing, in enth_unit kg m-2 (often J m-2).
   real :: enth_unit           ! The units for enthalpy (often J kg-1).
@@ -1599,7 +1599,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
   real, dimension(0:NkIce),   intent(inout) :: m_lay !< The ice mass by layer [kg m-2].
   real,                       intent(out)   :: mtot_ice !< The summed ice mass [kg m-2].
   real, dimension(0:NkIce+1), intent(inout) :: Enthalpy !< Snow, ice, and ocean enthalpy by layer in enth_units.
-  real, dimension(NkIce+1),   intent(inout) :: Salin  !< Conserved ice bulk salinity by layer (g/kg)
+  real, dimension(NkIce+1),   intent(inout) :: Salin  !< Conserved ice bulk salinity by layer [gSalt kg-1]
   integer,                    intent(in)    :: NkIce  !< The number of ice layers.
   integer,                    intent(in)    :: npassive !< Number of passive tracers
   real, dimension(0:NkIce+1,npassive), &
@@ -1768,7 +1768,7 @@ end subroutine ice_thermo_init
 !> T_Freeze returns the freezing temperature as a function of salinity.
 !### (and possibly later pressure).
 function T_Freeze(S, ITV)
-  real, intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: T_Freeze !< The freezing point temperature [degC]
 
@@ -1780,7 +1780,7 @@ end function T_Freeze
 !> calculate_T_Freeze calculates an array of freezing temperatures for an
 !!            an array of salinities (and maybe later pressures).
 subroutine calculate_T_Freeze(S, T_Freeze, ITV)
-  real, dimension(:), intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, dimension(:), intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   real, dimension(:), intent(out) :: T_Freeze !< The freezing point temperature [degC]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -1795,7 +1795,7 @@ end subroutine calculate_T_Freeze
 !> enthalpy_from_TS sets a column of enthalpies from temperature and salinity.
 subroutine enthalpy_from_TS(T, S, enthalpy, ITV)
   real, dimension(:), intent(in) :: T  !< The ice temperature [degC]
-  real, dimension(:), intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, dimension(:), intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   real, dimension(:), intent(out) :: enthalpy !< The ice enthalpy, in enthalpy units (often J/kg)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -1809,7 +1809,7 @@ end subroutine enthalpy_from_TS
 !> enth_from_TS returns an ice enthalpy given temperature and salinity.
 function enth_from_TS(T, S, ITV) result(enthalpy)
   real, intent(in)  :: T  !< The ice temperature [degC]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: enthalpy !< The ice enthalpy, in enthalpy units (often J/kg)
 
@@ -1843,7 +1843,7 @@ end function enth_from_TS
 !> enthalpy_liquid_freeze returns the enthalpy of liquid water at the freezing
 !!    point for a given salinity.
 function enthalpy_liquid_freeze(S, ITV)
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: enthalpy_liquid_freeze
 
@@ -1857,7 +1857,7 @@ end function enthalpy_liquid_freeze
 !!     temperature and salinity, in enth_unit.
 function enthalpy_liquid(T, S, ITV)
   real, intent(in)  :: T  !< The ice temperature [degC]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: enthalpy_liquid
 
@@ -1867,10 +1867,10 @@ end function enthalpy_liquid
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> enth_melt returns the enthalpy change associated with melting water of
-!! a given temperature (T, in C) and salinity (S), in enth_unit.
+!! a given temperature (T) and salinity (S), in enthalpy units [Enth ~> J kg-1].
 function enth_melt(T, S, ITV) result (emelt)
   real, intent(in)  :: T  !< The ice temperature [degC]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real             :: emelt
 
@@ -1913,7 +1913,7 @@ end function latent_sublimation
 !> Temp_from_Enth_S sets a column of temperatures from enthalpy and salinity.
 subroutine Temp_from_Enth_S(En, S, Temp, ITV)
   real, dimension(:), intent(in) :: En !< The ice enthalpy, in enthalpy units (often J/kg)
-  real, dimension(:), intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, dimension(:), intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   real, dimension(:), intent(out) :: Temp !< The ice temperature [degC]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
@@ -1932,7 +1932,7 @@ end subroutine Temp_from_Enth_S
 !! for ice of a given enthalpy and salinity.
 function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
   real, intent(in)  :: En !< The ice enthalpy, in enthalpy units [Enth_unit ~> J kg-1]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: dT_dE  !< Partial derivative of temperature with enthalpy [degC Enth_unit-1 ~> degC kg J-1].
 
@@ -1975,7 +1975,7 @@ end function dTemp_dEnth_EnS
 !! for ice of a given temperature and salinity.
 function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
   real, intent(in)  :: Temp !< The ice temperature [degC]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: dT_dE  !< Partial derivative of temperature with enthalpy [degC Enth_unit-1 ~> degC kg J-1].
 
@@ -2015,7 +2015,7 @@ end function dTemp_dEnth_TS
 !! and salinity.
 function Temp_from_En_S(En, S, ITV) result(Temp)
   real, intent(in)  :: En !< The ice enthalpy, in enthalpy units [Enth ~> J/kg]
-  real, intent(in)  :: S  !< The ice bulk salinity in g/kg
+  real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: Temp  !< Temperature [degC].
 
@@ -2130,7 +2130,7 @@ end function Temp_from_En_S
 !!      configuration [J kg-1].
 function e_to_melt_TS(T, S, ITV) result(e_to_melt)
   real, intent(in) :: T  !< The ice temperature [degC]
-  real, intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
@@ -2156,7 +2156,7 @@ end function e_to_melt_TS
 !!      configuration [J kg-1].
 function energy_melt_enthS(En, S, ITV) result(e_to_melt)
   real, intent(in) :: En !< The ice enthalpy, in enthalpy units (often J/kg)
-  real, intent(in) :: S  !< The ice bulk salinity in g/kg
+  real, intent(in) :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
 
   real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
@@ -2176,7 +2176,7 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, dimension(:), &
            optional, intent(out) :: ice_salinity  !< The specified salinity of each layer when the
-                    !! thermodynamic salinities are pre-specified, in g kg-1.
+                    !! thermodynamic salinities are pre-specified [gSalt kg-1].
   real,    optional, intent(out) :: enthalpy_units !< A unit conversion factor for enthalpy from its
                     !! internal representation to Joules kg-1.
   real,    optional, intent(out) :: Cp_Ice    !< The heat capacity of ice [J kg-1 degC-1].

@@ -77,17 +77,17 @@ type ice_data_type !  ice_public_type
     albedo_nir_dif => NULL(), & !< The surface albedo for diffuse near-infrared shortwave radiation
                                 !! in each ice-thickness category. Nondim, between 0 and 1.
     rough_mom   => NULL(), &  !< The roughness for momentum at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     rough_heat  => NULL(), &  !< The roughness for heat at the ocean surface, as provided by
                               !! ocean_rough_mod, apparently in m.
     rough_moist => NULL(), &  !< The roughness for moisture at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
                               !! each ice-thickness category, in Kelvin.
     u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
     v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
-    s_surf         =>NULL()   !< The ocean's surface salinity, in g/kg.
+    s_surf         =>NULL()   !< The ocean's surface salinity [gSalt kg-1].
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &

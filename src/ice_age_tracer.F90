@@ -50,11 +50,11 @@ type, public :: ice_age_tracer_CS
                                               ! can be found, or an empty string for internal initialization.
   type(time_type), pointer :: Time            !< A pointer to the ocean model's clock.
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine, in g m-3?
-  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output, in g m-3.
+  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine [g kg-1].
+  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output [g kg-1].
   type(p3d), dimension(NTR_MAX) :: &
-      tr_adx, &                               !< Tracer zonal advective fluxes in g m-3 m3 s-1.
-      tr_ady                                  !< Tracer meridional advective fluxes in g m-3 m3 s-1.
+      tr_adx, &                               !< Tracer zonal advective fluxes [g s-1].
+      tr_ady                                  !< Tracer meridional advective fluxes [g s-1].
 
   real, pointer :: ocean_BC(:,:,:,:)=>NULL()  !< Ocean boundary value of the tracer by category
   real, pointer :: snow_BC(:,:,:,:)=>NULL()   !< Snow boundary value of the tracer by category

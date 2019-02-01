@@ -53,9 +53,9 @@ type, public :: SIS_sum_out_CS ; private
   real    :: fresh_water_input  !<   The total mass of fresh water added by
                                 !! surface fluxes since the last time that
   real    :: salt_prev          !<   The total amount of salt in the sea ice the last
-                                !! time that write_ice_statistics was called, in PSU kg.
+                                !! time that write_ice_statistics was called [gSalt].
   real    :: net_salt_input     !<   The total salt added by surface fluxes since the last
-                                !! time that write_ice_statistics was called, in PSU kg.
+                                !! time that write_ice_statistics was called [gSalt].
   real    :: heat_prev          !<   The total amount of heat in the sea ice the last
                                 !! time that write_ice_statistics was called [J].
   real    :: net_heat_input     !<   The total heat added by surface fluxes since the last
@@ -242,7 +242,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
     mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
     salt_NS, &     ! The total sea-ice salt in the two hemispheres [kg].
-    salinity_NS    ! The average sea-ice salinity in the two hemispheres, in g/kg.
+    salinity_NS    ! The average sea-ice salinity in the two hemispheres [gSalt kg-1].
 
   real :: Mass         ! The total mass of the sea ice and snow atop it [kg].
   real :: mass_chg     ! The change in total sea ice mass of fresh water since
@@ -250,17 +250,17 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   real :: mass_anom    ! The change in fresh water that cannot be accounted for
                        ! by the surface fluxes [kg].
   real :: I_Mass       ! Adcroft's rule reciprocal of mass: 1/Mass or 0 [kg-1].
-  real :: Salt         ! The total amount of salt in the ocean, in PSU kg.
+  real :: Salt         ! The total amount of salt in the ocean [gSalt].
   real :: Salt_chg     ! The change in total sea ice salt since the last call
-                       ! to this subroutine, in PSU kg.
+                       ! to this subroutine [gSalt].
   real :: Salt_anom    ! The change in salt that cannot be accounted for by
-                       ! the surface fluxes, in PSU kg.
+                       ! the surface fluxes [gSalt].
   real :: Salt_anom_norm ! The salt anomaly normalized by salt (if it is nonzero).
-  real :: salin        ! The mean salinity of the ocean, in PSU.
+  real :: salin        ! The mean salinity of the ocean [gSalt kg-1].
   real :: salin_chg    ! The change in total salt since the last call
-                       ! to this subroutine divided by total mass, in PSU.
+                       ! to this subroutine divided by total mass [gSalt kg-1].
   real :: salin_anom   ! The change in total salt that cannot be accounted for by
-                       ! the surface fluxes divided by total mass in PSU.
+                       ! the surface fluxes divided by total mass [gSalt kg-1].
   real :: salin_mass_in ! The mass of salt input since the last call [kg].
   real :: Heat         ! The total amount of Heat in the ocean [J].
   real :: Heat_chg     ! The change in total sea ice heat since the last call
@@ -525,8 +525,8 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 !  if (G%Boussinesq) then
     mass_anom_EFP = mass_chg_EFP - CS%fresh_water_in_EFP
 !  else
-    ! net_salt_input needs to be converted from psu m s-1 to kg m-2 s-1.
 !    mass_anom_EFP = mass_chg_EFP - CS%fresh_water_in_EFP
+    ! net_salt_input needs to be converted from gSalt kg-1 m s-1 to kg m-2 s-1.
 !    salin_mass_in = 0.001*EFP_to_real(CS%net_salt_in_EFP)
 !  endif
   mass_chg = EFP_to_real(mass_chg_EFP)
@@ -775,7 +775,7 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
   real, dimension(SZI_(G),SZJ_(G)) :: &
     FW_in, &   ! The net fresh water input, integrated over a timestep [kg].
     salt_in, & ! The total salt added by surface fluxes, integrated
-               ! over a time step [PSU kg].
+               ! over a time step [gSalt].
     heat_in    ! The total heat added by surface fluxes, integrated
                ! over a time step [J].
   real :: FW_input   ! The net fresh water input, integrated over a timestep
@@ -788,7 +788,7 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
   real :: enth_units
   type(EFP_type) :: &
     FW_in_EFP, &   ! Extended fixed point version of FW_input [kg]
-    salt_in_EFP, & ! Extended fixed point version of salt_input [PSU kg]
+    salt_in_EFP, & ! Extended fixed point version of salt_input [gSalt]
     heat_in_EFP    ! Extended fixed point version of heat_input [J]
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
