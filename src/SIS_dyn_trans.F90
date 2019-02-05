@@ -25,7 +25,7 @@ use MOM_file_parser, only : get_param, read_param, log_param, log_version, param
 use MOM_hor_index, only : hor_index_type ! , hor_index_init
 ! use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
-use MOM_time_manager, only : get_date, get_time, set_date, operator(+), operator(-)
+use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
@@ -309,7 +309,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: dt_adv       ! The advective timestep [s].
-  real :: Idt_slow     ! The inverse of dt_slow_dyn [s-1].
+  real :: Idt_slow     ! The inverse of dt_slow [s-1].
   real, dimension(SZI_(G),SZJ_(G)) :: &
    ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
     rdg_rate, & ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
@@ -317,13 +317,15 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
-  integer :: iyr, imon, iday, ihr, imin, isec
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
+
+  CS%n_calls = CS%n_calls + 1
+  IOF%stress_count = 0
 
   if (CS%specified_ice) then
     ndyn_steps = 0 ; dt_slow_dyn = 0.0
@@ -338,9 +340,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
     dt_slow_dyn = dt_slow / ndyn_steps
   endif
-  IOF%stress_count = 0
-
-  CS%n_calls = CS%n_calls + 1
 
   do nds=1,ndyn_steps
 
@@ -615,10 +614,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   ! Add snow mass dumped into ocean to flux of frozen precipitation:
   !### WARNING - rdg_s2o is never calculated!!!
 !  if (CS%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j)/dt_slow
+!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j) * Idt_slow
 !  enddo ; enddo ; enddo ; endif
-
-  call mpp_clock_begin(iceClock9)
 
   ! Set appropriate surface quantities in categories with no ice.
   if (allocated(IST%t_surf)) then
@@ -628,34 +625,26 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     enddo ; enddo ; enddo
   endif
 
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "After ice_transport", OSS=OSS)
-  if (CS%debug) call IST_chksum("After ice_transport", IST, G, IG)
+  ! Calculate and output various diagnostics of the ice state.
+  call mpp_clock_begin(iceClock9)
 
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-
   call post_ice_state_diagnostics(CS, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
-
   call disable_SIS_averaging(CS%diag)
 
-  if (CS%verbose) then
-    call get_date(CS%Time, iyr, imon, iday, ihr, imin, isec)
-    call get_time(CS%Time-set_date(iyr,1,1,0,0,0), isec, iday)
-    call ice_line(iyr, iday+1, isec, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
-  endif
-
-  call mpp_clock_end(iceClock9)
-
+  if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
   if (CS%debug) call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-        tracer_CSp = tracer_CSp)
+                              tracer_CSp=tracer_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   elseif (CS%column_check) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
   endif
+
+  call mpp_clock_end(iceClock9)
 
 end subroutine SIS_dynamics_trans
 
