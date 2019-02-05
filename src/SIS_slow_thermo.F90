@@ -742,9 +742,24 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       qflx_res_ice(i,j) = -(LatHtFus*Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
                            (86400.0*CS%ice_restore_timescale)
       if (qflx_res_ice(i,j) < 0.0) then
+        !There is less ice in model than Obs,
+        !so make some ice by increasing frazil heat
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
+        !Note that ice should grow when frazil heat is positive
       elseif (qflx_res_ice(i,j) >  0.0) then
-        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
+        !There is more ice in model than Obs,
+        !so melt ice by increasing heat input to ice from ocean (bheat),
+        !        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
+        !Note that ice should melt when bheat increases.
+        !BUT, here it's too late for the bheat to have a negative feedback on the ice thickness
+        !since thickness is determined by the melting energies calculated in the fast ice
+        !module call ice_temp_SIS2() before this point.
+        !So, we should rather change the bottom melt energy directly here
+        !(as prescribed in ice_temp_SIS2) to have a restoring effect on the ice thickness
+        !later in the call ice_resize_SIS2() in this module.
+        do k=1,ncat
+          FIA%bmelt(i,j,k) = FIA%bmelt(i,j,k) + dt_slow*qflx_res_ice(i,j)
+        enddo
       endif
     enddo ; enddo
   endif
