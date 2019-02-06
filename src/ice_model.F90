@@ -97,7 +97,7 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
+use SIS_dyn_trans,   only : SIS_dynamics_trans, specified_ice_dynamics, update_icebergs
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
@@ -327,9 +327,14 @@ subroutine update_ice_dynamics_trans(Ice)
     call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG)
   endif
 
-  call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
-                          dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, sG, &
-                          sIG, Ice%sCS%SIS_tracer_flow_CSp)
+  if (Ice%sCS%specified_ice) then ! There is no ice dynamics or transport.
+    call specified_ice_dynamics(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
+                                dt_slow, Ice%sCS%dyn_trans_CSp, sG, sIG)
+  else
+    call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
+                            dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, sG, &
+                            sIG, Ice%sCS%SIS_tracer_flow_CSp)
+  endif
 
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
   call set_ocean_top_dyn_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, sG, sIG, Ice%sCS)
@@ -2612,7 +2617,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
 
     call SIS_dyn_trans_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
-                            Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init)
+                            Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
+                            specified_ice=specified_ice)
 
     if (Ice%sCS%redo_fast_update) then
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
