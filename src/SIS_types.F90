@@ -24,7 +24,7 @@ use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
+use SIS_debugging,     only : chksum, Bchksum, Bchksum_pair, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 
@@ -2239,8 +2239,7 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
-    if (allocated(IST%u_ice_B)) call Bchksum(IST%u_ice_B, mesg//" IST%u_ice_B", G%HI, haloshift=hs)
-    if (allocated(IST%v_ice_B)) call Bchksum(IST%v_ice_B, mesg//" IST%v_ice_B", G%HI, haloshift=hs)
+    call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs)
     call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   endif
   if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
