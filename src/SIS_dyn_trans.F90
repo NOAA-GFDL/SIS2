@@ -308,9 +308,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real :: dt_adv       ! The advective timestep [s].
   real :: Idt_slow     ! The inverse of dt_slow [s-1].
   real, dimension(SZI_(G),SZJ_(G)) :: &
-   ! rdg_s2o, &  ! snow mass [kg m-2] dumped into ocean during ridging
-    rdg_rate, & ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
-    snow2ocn    ! Snow dumped into ocean during ridging [kg m-2]
+    rdg_rate  ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
   integer :: i, j, k, l, m, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
@@ -587,7 +585,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
       if (CS%nts==0) &
         call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
-                                  snow2ocn=snow2ocn, rdg_rate=rdg_rate)
+                                  rdg_rate=rdg_rate)
 
       call mpp_clock_end(iceClock8)
     endif
@@ -598,12 +596,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
-
-  ! Add snow mass dumped into ocean to flux of frozen precipitation:
-  !### WARNING - rdg_s2o is never calculated!!!
-!  if (CS%do_ridging) then ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-!    FIA%fprec_top(i,j,k) = FIA%fprec_top(i,j,k) + rdg_s2o(i,j) * Idt_slow
-!  enddo ; enddo ; enddo ; endif
 
   ! Set appropriate surface quantities in categories with no ice.
   if (allocated(IST%t_surf)) then

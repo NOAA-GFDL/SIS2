@@ -445,6 +445,11 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
                   ((0.001*IST%mH_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
+    if (allocated(IST%snow_to_ocn)) then ; if (IST%snow_to_ocn(i,j) > 0.0) then
+      area_pt = G%areaT(i,j) * G%mask2dT(i,j)
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IST%snow_to_ocn(i,j)
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
+    endif ; endif
     if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)
 
   enddo ; enddo

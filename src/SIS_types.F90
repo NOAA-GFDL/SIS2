@@ -77,6 +77,12 @@ type ice_state_type
     mH_ice, &   !< The mass per unit area of the ice in each category [H ~> kg m-2].
     t_surf      !< The surface temperature [Kelvin].
 
+  real, allocatable, dimension(:,:) :: &
+    snow_to_ocn, & !< The mass per unit ocean area of snow that will be dumped into the
+                   !! ocean due to recent mechanical activities like ridging or drifting [kg m-2].
+    enth_snow_to_ocn !< The average enthalpy of the snow that will be dumped into the
+                   !! ocean due to recent mechanical activities like ridging or drifting [Enth ~> J kg-1].
+
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
                 !! in each category and fractional thickness layer [gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
@@ -403,12 +409,13 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_IST_arrays allocates the arrays in an ice_state_type.
-subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
+subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging)
   type(hor_index_type), intent(in)    :: HI  !< The horizontal index type describing the domain
   type(ice_grid_type),  intent(in)    :: IG  !< The sea-ice specific grid type
   type(ice_state_type), intent(inout) :: IST !< A type describing the state of the sea ice
   logical,    optional, intent(in)    :: omit_velocities !< If true, do not allocate velocity arrays
   logical,    optional, intent(in)    :: omit_Tsurf !< If true, do not allocate the surface temperature array
+  logical,    optional, intent(in)    :: do_ridging !< If true, allocate arrays related to ridging
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel, do_Tsurf
@@ -426,6 +433,11 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf)
   allocate(IST%mH_ice(   isd:ied, jsd:jed, CatIce)) ; IST%mH_ice(:,:,:) = 0.0
   allocate(IST%enth_ice( isd:ied, jsd:jed, CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
   allocate(IST%sal_ice(  isd:ied, jsd:jed, CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+
+  if (present(do_ridging)) then ; if (do_ridging) then
+    allocate(IST%snow_to_ocn(isd:ied, jsd:jed)) ; IST%snow_to_ocn(:,:) = 0.0
+    allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed)) ; IST%enth_snow_to_ocn(:,:) = 0.0
+  endif ; endif
 
   if (do_vel) then
     ! These velocities are only required for the slow ice processes, and hence
@@ -486,6 +498,13 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
                                  domain=mpp_domain, mandatory=.false., units="J kg-1")
     idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
                                  domain=mpp_domain, mandatory=.false., units="kg/kg")
+
+    if (allocated(IST%snow_to_ocn)) then
+      idr = register_restart_field(Ice_restart, restart_file, 'snow_to_ocn', IST%snow_to_ocn, &
+                                   domain=mpp_domain, mandatory=.false., units="kg m-2")
+      idr = register_restart_field(Ice_restart, restart_file, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
+                                   domain=mpp_domain, mandatory=.false., units="J kg-1")
+    endif
 
     if (IST%Cgrid_dyn) then
       if (G%symmetric) then
@@ -1979,6 +1998,8 @@ subroutine dealloc_IST_arrays(IST)
   deallocate(IST%part_size, IST%mH_snow, IST%mH_ice)
   deallocate(IST%mH_pond) ! mw/new
   deallocate(IST%enth_snow, IST%enth_ice, IST%sal_ice)
+  if (allocated(IST%snow_to_ocn)) deallocate(IST%snow_to_ocn)
+  if (allocated(IST%enth_snow_to_ocn)) deallocate(IST%enth_snow_to_ocn)
   if (allocated(IST%t_surf)) deallocate(IST%t_surf)
 
   if (allocated(IST%u_ice_C)) deallocate(IST%u_ice_C)

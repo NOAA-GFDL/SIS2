@@ -806,9 +806,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   bsnk(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,nb,G,IST,salt_change, &
-!$OMP                               kg_H_Nk,h2o_change,NkIce,IG,CS,IOF,FIA) &
-!$OMP                        private(part_ocn)
+  !$OMP parallel default(shared) private(part_ocn)
   if (CS%ice_rel_salin <= 0.0) then
     !$OMP do
     do j=jsc,jec ; do m=1,NkIce ; do k=1,ncat ; do i=isc,iec
@@ -836,12 +834,25 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
     IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
   enddo ; enddo
+
 ! mw/new precip will eventually be intercepted by pond eliminating need for next 3 lines
   !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
                              IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
+
+  ! Add fluxes of snow and other properties to the ocean due to recent ridging or drifting events.
+  if (allocated(IST%snow_to_ocn)) then
+    !$OMP do
+    do j=jsc,jec ; do i=isc,iec ; if (IST%snow_to_ocn(i,j) > 0.0) then
+      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + IST%snow_to_ocn(i,j) * Idt_slow
+      IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
+              IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
+      ! h2o_change(i,j) = h2o_change(i,j) - IST%snow_to_ocn(i,j)
+      IST%snow_to_ocn(i,j) = 0.0 ;  IST%enth_snow_to_ocn(i,j) = 0.0
+    endif ; enddo ; enddo
+  endif
 !$OMP end parallel
 
   ! Set up temporary tracer array

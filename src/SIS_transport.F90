@@ -211,15 +211,13 @@ end subroutine ice_cat_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> finish_ice_transport completes the ice transport and thickness class redistribution
-subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
+subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZI_(G),SZJ_(G)), &
-                           optional, intent(inout) :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [s-1].
 
   ! Local variables
@@ -231,6 +229,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
     mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [H ~> kg m-2].
     mca0_snow    ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
 !### These will be needed when the ice ridging is properly implemented.
+!  real :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
+!  real :: enth_snow2ocn !< Mass-averaged enthalpy of the now dumped into ocean during ridging [J kg-1]
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
@@ -278,14 +278,21 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
 !   !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
 !   if (CS%do_ridging) then
 !     do j=jsc,jec ; do i=isc,iec
-!       snow2ocn(i,j) = 0.0 !TOM> initializing snow2ocean
 !       if (sum(IST%mH_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
-!           sum(IST%part_size(i,j,1:nCat)) > 0.01) &
+!           sum(IST%part_size(i,j,1:nCat)) > 0.01) then
 !         call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
 !             IST%mH_snow(i,j,:), &
 !             heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
-!             age_ice(i,j,:), snow2ocn(i,j), rdg_rate(i,j), IST%rgd_mice(i,j,:), &
+!             age_ice(i,j,:), snow2ocn, enth_snow2ocn, rdg_rate(i,j), IST%rgd_mice(i,j,:), &
 !             CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
+!         ! Store the snow mass (and related properties?) that will be passed to the ocean at the
+!         ! next opportunity.
+!         if (snow2ocn > 0.0) then
+!           IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + enth_snow2ocn * snow2ocn) / &
+!                                       (IST%snow_to_ocn(i,j) + snow2ocn)
+!           IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
+!         endif
+!       endif
 !     enddo ; enddo
 !   endif   ! do_ridging
 
