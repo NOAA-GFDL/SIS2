@@ -99,6 +99,7 @@ type SIS_slow_CS
   logical :: Cgrid_dyn      !< If true use a C-grid discretization of the
                             !! sea-ice dynamics.
 
+  logical :: slab_ice       !< If true, use the archaic GFDL slab ice.
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
   logical :: pass_stress_mag !< If true, calculate the time-mean magnitude of the
