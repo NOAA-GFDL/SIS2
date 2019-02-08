@@ -442,10 +442,9 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   if (do_vel) then
     ! These velocities are only required for the slow ice processes, and hence
     ! can use the memory macros.
-    if (IST%Cgrid_dyn) then
-      allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
-      allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
-    else
+    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
+    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
+    if (.not.IST%Cgrid_dyn) then
       allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
       allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
     endif

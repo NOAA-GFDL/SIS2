@@ -468,24 +468,24 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 ! Calculate the maximum CFL numbers.
   max_CFL = 0.0
   dt_CFL = max(CS%dt, 0.)
-  if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
-    if (IST%u_ice_C(I,j) < 0.0) then
-      CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
-    else
-      CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
-    endif
-    max_CFL = max(max_CFL, CFL_trans)
-  enddo ; enddo ; endif
-  if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
-    if (IST%v_ice_C(i,J) < 0.0) then
-      CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
-    else
-      CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
-    endif
-    max_CFL = max(max_CFL, CFL_trans)
-  enddo ; enddo ; endif
-  if ( .not.(allocated(IST%u_ice_C) .or. allocated(IST%v_ice_C)) .and. &
-       (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) ) then
+  if (IST%Cgrid_dyn) then
+    if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
+      if (IST%u_ice_C(I,j) < 0.0) then
+        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+      else
+        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+      endif
+      max_CFL = max(max_CFL, CFL_trans)
+    enddo ; enddo ; endif
+    if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
+      if (IST%v_ice_C(i,J) < 0.0) then
+        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+      else
+        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+      endif
+      max_CFL = max(max_CFL, CFL_trans)
+    enddo ; enddo ; endif
+  elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     do J=js-1,je ; do I=is-1,ie
       CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
       CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)

@@ -297,8 +297,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [Pa].
-  real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
-  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid [m s-1].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
@@ -429,27 +427,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
       call mpp_clock_end(iceClock4)
 
-      ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
-      call mpp_clock_begin(iceClock8)
-      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
-      call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
-
-      if (CS%merged_cont) then
-        if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
-          "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
-        if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-        do n = CS%nts+1, CS%nts+CS%adv_substeps
-          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
-                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-          call pass_var(CS%mca_step(:,:,n), G%Domain)
-        enddo
-        CS%nts = CS%nts + CS%adv_substeps
-      else
-        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
-                               uc=IST%u_ice_C, vc=IST%v_ice_C)
-      endif
-      call mpp_clock_end(iceClock8)
-
     else ! B-grid dynamics.
 
       ! Correct the wind stresses for changes in the fractional ice-coverage and set
@@ -518,41 +495,37 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
                                         str_x_ice_ocn_B, str_y_ice_ocn_B, ice_free, ice_cover, G)
       endif
       call mpp_clock_end(iceClockc)
-      call mpp_clock_end(iceClock4)
 
-      ! Do B-grid ice mass transport and related tracer transport.
-      call mpp_clock_begin(iceClock8)
-      if (CS%debug) call Bchksum_pair("Before ice_transport [uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G)
-      call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
-
-      ! Convert the velocities to C-grid points for transport.
-      uc(:,:) = 0.0 ; vc(:,:) = 0.0
+      ! Convert the velocities to C-grid points for use in transport.
       do j=jsc,jec ; do I=isc-1,iec
-        uc(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
+        IST%u_ice_C(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
+        IST%v_ice_C(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
       enddo ; enddo
-
-      if (CS%merged_cont) then
-        if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
-          "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
-        if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-        do n = CS%nts+1, CS%nts+CS%adv_substeps
-          call summed_continuity(uc, vc, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
-                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-          call pass_var(CS%mca_step(:,:,n), G%Domain)
-        enddo
-        CS%nts = CS%nts + CS%adv_substeps
-      else
-        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
-                               uc=uc, vc=vc)
-      endif
-      call mpp_clock_end(iceClock8)
-
+      call mpp_clock_end(iceClock4)
     endif ! End of B-grid dynamics
 
+    ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
     call mpp_clock_begin(iceClock8)
+    if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+
+    if (CS%merged_cont) then
+      if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
+        "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
+      if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+      do n = CS%nts+1, CS%nts+CS%adv_substeps
+        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+                               CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+        call pass_var(CS%mca_step(:,:,n), G%Domain)
+      enddo
+      CS%nts = CS%nts + CS%adv_substeps
+    else
+      call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                             uc=IST%u_ice_C, vc=IST%v_ice_C)
+    endif
+
     if (CS%merged_cont .and. ((CS%nts + CS%adv_substeps > CS%max_nts) .or. (nds==ndyn_steps))) then
       n = CS%nts
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
@@ -643,8 +616,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
     WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [Pa].
-  real, dimension(SZIB_(G),SZJ_(G))  :: uc ! Ice velocities interpolated onto
-  real, dimension(SZI_(G),SZJB_(G))  :: vc ! a C-grid [m s-1].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
@@ -740,15 +711,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
 
       call mpp_clock_end(iceClock4)
 
-      ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
-      call mpp_clock_begin(iceClock8)
-      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
-      call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
-
-      call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
-                           dt_slow_dyn, G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
-      call mpp_clock_end(iceClock8)
-
     else ! B-grid dynamics.
 
       call mpp_clock_begin(iceClock4)
@@ -803,27 +765,27 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
                                    IST%part_size(:,:,0), IST%part_size(:,:,1), G)
       call mpp_clock_end(iceClockc)
 
-      call mpp_clock_end(iceClock4)
-
-      ! Do B-grid ice mass transport and related tracer transport.
-      call mpp_clock_begin(iceClock8)
+       ! Convert the B-grid velocities to C-grid points for transport.
       if (CS%debug) call Bchksum_pair("Before ice_transport [uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G)
-      call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
-
-      ! Convert the velocities to C-grid points for transport.
-      uc(:,:) = 0.0 ; vc(:,:) = 0.0
       do j=jsc,jec ; do I=isc-1,iec
-        uc(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
+        IST%u_ice_C(I,j) = 0.5 * ( IST%u_ice_B(I,J-1) + IST%u_ice_B(I,J) )
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        vc(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
+        IST%v_ice_C(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
       enddo ; enddo
 
-      call slab_ice_advect(uc, vc, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, dt_slow_dyn, &
-                           G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
-      call mpp_clock_end(iceClock8)
+      call mpp_clock_end(iceClock4)
 
     endif ! End of B-grid dynamics
+
+    ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
+    call mpp_clock_begin(iceClock8)
+    if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+
+    call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
+                         dt_slow_dyn, G, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
+    call mpp_clock_end(iceClock8)
 
     if (CS%column_check .and. (CS%nts==0)) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &

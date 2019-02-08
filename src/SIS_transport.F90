@@ -273,28 +273,29 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
 
-!  Niki: TOM does the ridging after redistribute which would need age_ice and IST%rgd_mice below.
-!   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
-!   !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
-!   if (CS%do_ridging) then
-!     do j=jsc,jec ; do i=isc,iec
-!       if (sum(IST%mH_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
-!           sum(IST%part_size(i,j,1:nCat)) > 0.01) then
-!         call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
-!             IST%mH_snow(i,j,:), &
-!             heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
-!             age_ice(i,j,:), snow2ocn, enth_snow2ocn, rdg_rate(i,j), IST%rgd_mice(i,j,:), &
-!             CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
-!         ! Store the snow mass (and related properties?) that will be passed to the ocean at the
-!         ! next opportunity.
-!         if (snow2ocn > 0.0) then
-!           IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + enth_snow2ocn * snow2ocn) / &
-!                                       (IST%snow_to_ocn(i,j) + snow2ocn)
-!           IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
-!         endif
-!       endif
-!     enddo ; enddo
-!   endif   ! do_ridging
+! Niki: TOM does the ridging after redistribute which would need age_ice and IST%rgd_mice below.
+!  !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
+!  !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
+!  if (CS%do_ridging) then
+!    do j=jsc,jec ; do i=isc,iec
+!      if (sum(IST%mH_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
+!          sum(IST%part_size(i,j,1:nCat)) > 0.01) then
+!        call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
+!            IST%mH_snow(i,j,:), &
+!            heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
+!            age_ice(i,j,:), snow2ocn, enth_snow2ocn, rdg_rate(i,j), IST%rgd_mice(i,j,:), &
+!            CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
+!        ! Store the snow mass (and related properties?) that will be passed to the ocean at the
+!        ! next opportunity.
+!        if (snow2ocn > 0.0) then
+!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + &
+!                                       enth_snow2ocn * snow2ocn) / &
+!                                      (IST%snow_to_ocn(i,j) + snow2ocn)
+!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
+!        endif
+!      endif
+!    enddo ; enddo
+!  endif   ! do_ridging
 
   !   Recalculate IST%part_size(:,:,0) to ensure that the sum of IST%part_size adds up to 1.
   ! Compress_ice should already have taken care of this within the computational
