@@ -301,6 +301,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: complete_ice_cover ! The fractional ice coverage that is close enough to 1 to be
+                       ! complete for the purpose of calculating wind stresses [nondim].
 
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: dt_adv       ! The advective timestep [s].
@@ -327,6 +329,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   dt_slow_dyn = dt_slow / ndyn_steps
   if (CS%merged_cont .and. CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
   nts_last = min(ndyn_steps*CS%adv_substeps, CS%adv_substeps*(CS%max_nts/CS%adv_substeps))
+
+  complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
   do nds=1,ndyn_steps
 
@@ -375,7 +379,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       ! This block of code must be executed if ice_cover and ice_free or the various wind
       ! stresses were updated.
       call set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
-                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, ncat)
+                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, complete_ice_cover)
 
 
       if (CS%debug) then
@@ -440,7 +444,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
       call mpp_clock_begin(iceClock4)
       call set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
-                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, ncat)
+                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, complete_ice_cover)
 
       if (CS%debug) then
         call Bchksum_pair("[uv]_ice_B before dynamics", IST%u_ice_B, IST%v_ice_B, G)
@@ -630,6 +634,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: complete_ice_cover ! The fractional ice coverage that is close enough to 1 to be
+                       ! complete for the purpose of calculating wind stresses [nondim].
 
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: Idt_slow     ! The inverse of dt_slow [s-1].
@@ -650,6 +656,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
     ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
+
+  complete_ice_cover = 1.0 - 2.0*epsilon(complete_ice_cover)
 
   do nds=1,ndyn_steps
 
@@ -680,7 +688,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
       ! This block of code must be executed if ice_cover and ice_free or the various wind
       ! stresses were updated.
       call set_wind_stresses_C(FIA, IST%part_size(:,:,1), IST%part_size(:,:,0), WindStr_x_Cu, WindStr_y_Cv, &
-                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, 1)
+                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, complete_ice_cover)
 
       if (CS%debug) then
         call uvchksum("Before SIS_C_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
@@ -729,7 +737,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
       ! stresses were updated.
 
       call set_wind_stresses_B(FIA, IST%part_size(:,:,1), IST%part_size(:,:,0), WindStr_x_B, WindStr_y_B, &
-                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, 1)
+                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, complete_ice_cover)
 
       if (CS%debug) then
         call Bchksum_pair("[uv]_ice_B before dynamics", IST%u_ice_B, IST%v_ice_B, G)
@@ -1722,21 +1730,23 @@ end subroutine set_ocean_top_stress_FIA
 !> set_wind_stresses_C determines the wind stresses on the ice and open ocean with
 !!   a C-grid staggering of the points.
 subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
-                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, ncat)
-  type(fast_ice_avg_type),          intent(in)    :: FIA !< A type containing averages of fields
-                                                   !! (mostly fluxes) over the fast updates
+                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, max_ice_cover)
+  type(fast_ice_avg_type),           intent(in)   :: FIA !< A type containing averages of fields
+                                                         !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),           intent(in)   :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)   :: &
     ice_cover, &        !< The fractional ice coverage, summed across all
                         !! thickness categories [nondim], between 0 & 1.
     ice_free            !< The fractional open water [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)  :: &
-    WindStr_x_Cu, &   !< Zonal wind stress averaged over the ice categores on C-grid u-points [Pa].
-    WindStr_x_ocn_Cu  !< Zonal wind stress on the ice-free ocean on C-grid u-points [Pa].
+    WindStr_x_Cu, &     !< Zonal wind stress averaged over the ice categores on C-grid u-points [Pa].
+    WindStr_x_ocn_Cu    !< Zonal wind stress on the ice-free ocean on C-grid u-points [Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(out)  :: &
-    WindStr_y_Cv, &   !< Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
-    WindStr_y_ocn_Cv  !< Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
-  integer,                           intent(in)   :: ncat !< The number of ice thickness categories.
+    WindStr_y_Cv, &     !< Meridional wind stress averaged over the ice categores on C-grid v-points [Pa].
+    WindStr_y_ocn_Cv    !< Meridional wind stress on the ice-free ocean on C-grid v-points [Pa].
+  real,                              intent(in)   :: max_ice_cover !< The fractional ice coverage
+                        !! that is close enough to 1 to be complete for the purpose of calculating
+                        !! wind stresses [nondim].
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -1746,14 +1756,13 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
     WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0 [nondim].
-  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
+  real :: FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied
     ! The use of these limits prevents the use of the ocean wind stresses if
@@ -1837,7 +1846,7 @@ end subroutine set_wind_stresses_C
 !> set_wind_stresses_B determines the wind stresses on the ice and open ocean with
 !!   a B-grid staggering of the points.
 subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
-                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, ncat)
+                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, max_ice_cover)
   type(fast_ice_avg_type),            intent(in)   :: FIA !< A type containing averages of fields
                                                           !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),            intent(in)   :: G   !< The horizontal grid type
@@ -1845,12 +1854,14 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
     ice_cover, &        !< The fractional ice coverage, summed across all
                         !! thickness categories [nondim], between 0 & 1.
     ice_free            !< The fractional open water [nondim], between 0 & 1.
-  real, dimension(SZIB_(G),SZJB_(G)), intent(out) :: &
+  real, dimension(SZIB_(G),SZJB_(G)), intent(out)  :: &
     WindStr_x_B, &      !< Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      !< averaged over the ice categories on a B-grid [Pa].
     WindStr_x_ocn_B, &  !< Zonal wind stress on the ice-free ocean on a B-grid [Pa].
     WindStr_y_ocn_B     !< Meridional wind stress on the ice-free ocean on a B-grid [Pa].
-  integer,                            intent(in)   :: ncat !< The number of ice thickness categories.
+  real,                               intent(in)   :: max_ice_cover !< The fractional ice coverage
+                        !! that is close enough to 1 to be complete for the purpose of calculating
+                        !! wind stresses [nondim].
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -1860,14 +1871,13 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
     WindStr_y_ocn_A     ! ice-free ocean on an A-grid [Pa].
   real :: weights  ! A sum of the weights around a point.
   real :: I_wts    ! 1.0 / wts or 0 if wts is 0 [nondim].
-  real :: max_ice_cover, FIA_ice_cover, ice_cover_now
+  real :: FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  max_ice_cover = 1.0 - 2.0*ncat*epsilon(max_ice_cover)
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied
     ! The use of these limits prevents the use of the ocean wind stresses if
