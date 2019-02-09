@@ -117,7 +117,7 @@ type dyn_trans_CS ; private
 
   integer :: n_calls = 0  !< The number of times SIS_dynamics_trans has been called.
   type(time_type) :: ice_stats_interval !< The interval between writes of the
-                          !< globally summed ice statistics and conservation checks.
+                          !! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time !< The next time to write out the ice statistics.
 
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
@@ -310,6 +310,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
+  integer :: nts_last ! The number of tracer advection steps before updating IST.
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
@@ -324,6 +325,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
     ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
+  if (CS%merged_cont .and. CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+  nts_last = min(ndyn_steps*CS%adv_substeps, CS%adv_substeps*(CS%max_nts/CS%adv_substeps))
 
   do nds=1,ndyn_steps
 
@@ -333,23 +336,24 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
-    misp_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
-    !$OMP parallel do default(shared)
-    do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
-      misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
-                      (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
-      mi_sum(i,j) = mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
-      ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
-    enddo ; enddo ; enddo
-    do j=jsd,jed ; do i=isd,ied
-      !### This can be merged in above, but it would change answers.
-      misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
-      ice_free(i,j) = IST%part_size(i,j,0)
-    enddo ; enddo
+    if (CS%nts == 0) then
+      misp_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
+      !$OMP parallel do default(shared)
+      do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
+        misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
+                        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
+        mi_sum(i,j) = mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
+        ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
+      enddo ; enddo ; enddo
+      do j=jsd,jed ; do i=isd,ied
+        !### This can be merged in above, but it would change answers.
+        misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
+        ice_free(i,j) = IST%part_size(i,j,0)
+      enddo ; enddo
 
-    !  Determine the whole-cell averaged mass of snow and ice.
-    if (CS%nts == 0) &
+      !  Determine the whole-cell averaged mass of snow and ice.
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
+    endif
     if (CS%merged_cont .and. (CS%nts == 0)) then
       do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,1) = misp_sum(i,j) ; enddo ; enddo
     endif
@@ -514,11 +518,16 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     if (CS%merged_cont) then
       if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
         "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
-      if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
       do n = CS%nts+1, CS%nts+CS%adv_substeps
-        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
-                               CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-        call pass_var(CS%mca_step(:,:,n), G%Domain)
+        if (n < nts_last) then
+          ! Some of the work is not needed for the last step before cat_ice_transport.
+          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+          call pass_var(CS%mca_step(:,:,n+1), G%Domain)
+        else
+          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+        endif
       enddo
       CS%nts = CS%nts + CS%adv_substeps
     else
@@ -527,6 +536,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     endif
 
     if (CS%merged_cont .and. ((CS%nts + CS%adv_substeps > CS%max_nts) .or. (nds==ndyn_steps))) then
+      if (CS%nts /= nts_last) call SIS_error(FATAL, "Bad logic in calculating nts_last.")
       n = CS%nts
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
                              CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,1:n+1), &
@@ -622,7 +632,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
-  real :: dt_adv       ! The advective timestep [s].
   real :: Idt_slow     ! The inverse of dt_slow [s-1].
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
