@@ -37,7 +37,7 @@ use mpp_domains_mod,  only  : domain2D
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 
-use SIS_continuity,    only : SIS_continuity_CS, summed_continuity
+use SIS_continuity,    only : SIS_continuity_CS, summed_continuity, ice_cover_transport
 use SIS_debugging,     only : chksum, Bchksum, hchksum
 use SIS_debugging,     only : hchksum_pair, Bchksum_pair, uvchksum
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
@@ -154,6 +154,8 @@ type dyn_trans_CS ; private
       !< Pointer to the control structure for the ice transport module
   type(SIS_continuity_CS),    pointer :: continuity_CSp => NULL()
       !< The control structure for the SIS continuity module
+  type(SIS_continuity_CS),    pointer :: cover_trans_CSp => NULL()
+      !< The control structure for ice cover transport by the SIS continuity module
   type(SIS_sum_out_CS), pointer   :: sum_output_CSp => NULL()
      !< Pointer to the control structure for the summed diagnostics module
   logical :: module_is_initialized = .false. !< If true, this module has been initialized.
@@ -526,8 +528,16 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         if (n < nts_last) then
           ! Some of the work is not needed for the last step before cat_ice_transport.
           call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
-                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-          call pass_var(CS%mca_step(:,:,n+1), G%Domain)
+                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
+                                 h_ice=mi_sum)
+          call ice_cover_transport(IST%u_ice_C, IST%v_ice_C, ice_cover, dt_adv, G, IG, CS%cover_trans_CSp)
+          call pass_var(mi_sum, G%Domain, complete=.false.)
+          call pass_var(ice_cover, G%Domain, complete=.false.)
+          call pass_var(CS%mca_step(:,:,n+1), G%Domain, complete=.true.)
+          do j=jsd,jed ; do i=isd,ied
+            misp_sum(i,j) = CS%mca_step(i,j,n+1)
+            ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
+          enddo ; enddo
         else
           call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
                                  CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
@@ -2128,8 +2138,13 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     else
       call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
     endif
-    call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
-                            continuity_CSp=CS%continuity_CSp)
+    if (CS%merged_cont) then
+      call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
+                              continuity_CSp=CS%continuity_CSp, cover_trans_CSp=CS%cover_trans_CSp)
+    else
+      call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
+                              continuity_CSp=CS%continuity_CSp)
+    endif
 
     call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
 
