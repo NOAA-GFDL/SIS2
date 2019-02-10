@@ -1068,7 +1068,7 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
+subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
@@ -1078,6 +1078,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
                                                      !! that is allocated and populated here
   type(SIS_continuity_CS), optional, pointer :: continuity_CSp !< The control structure for the
                                                      !!  SIS continuity module
+  type(SIS_continuity_CS), optional, pointer :: cover_trans_CSp !< The control structure for ice cover
+                                                     !!  transport by the SIS continuity module
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
 
@@ -1142,7 +1144,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
 
-  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
+  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp, &
+                           CS_cvr=cover_trans_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
 
   if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp

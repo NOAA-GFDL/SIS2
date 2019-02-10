@@ -28,7 +28,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public ice_continuity, SIS_continuity_init, SIS_continuity_end
-public summed_continuity, proportionate_continuity
+public summed_continuity, proportionate_continuity, ice_cover_transport
 
 integer :: id_clock_update  !< A CPU time clock ID
 integer :: id_clock_correct !< A CPU time clock ID
@@ -204,6 +204,121 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 
 end subroutine ice_continuity
 
+
+!> ice_cover_transport advects the total fractional ice cover and limits them not to exceed 1.
+subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
+  type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u   !< Zonal ice velocity [m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v   !< Meridional ice velocity [m s-1].
+  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: cvr !< Fractional ice cover [nondim].
+  real,                              intent(in)    :: dt  !< Time increment [s]
+  type(SIS_continuity_CS),           pointer       :: CS  !< The control structure returned by a
+                                                          !! previous call to SIS_continuity_init.
+
+  ! Local variables
+  type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
+  real, dimension(SZIB_(G),SZJ_(G)) :: ucvr ! Ice cover flux through zonal faces = u*cvr*dy [m2 s-1].
+  real, dimension(SZI_(G),SZJB_(G)) :: vcvr ! Ice cover flux through meridional faces = v*cvr*dx [m2 s-1].
+  real    :: cvr_up
+  integer :: is, ie, js, je, stensil
+  integer :: i, j
+
+  logical :: x_first
+  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
+
+  if (.not.associated(CS)) call SIS_error(FATAL, &
+         "SIS_continuity: Module must be initialized before it is used.")
+  x_first = (MOD(G%first_direction,2) == 0)
+
+  stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
+
+  do j=js,je ; do i=is,ie ; if (cvr(i,j) < 0.0) then
+    call SIS_error(FATAL, 'Negative mass input to ice_cover_transport().')
+  endif ; enddo ; enddo
+
+  if (CS%use_upwind2d) then
+    ! This reproduces the scheme that was originally used in SIS1.
+    !$OMP parallel default(shared) private(cvr_up)
+    !$OMP do
+    do j=js,je ; do I=is-1,ie
+      if (u(I,j) >= 0.0) then ; cvr_up = cvr(i,j)
+      else ; cvr_up = cvr(i+1,j) ; endif
+      ucvr(I,j) = G%dy_Cu(I,j) * u(I,j) * cvr_up
+    enddo ; enddo
+    !$OMP do
+    do J=js-1,je ; do i=is,ie
+      if (v(i,J) >= 0.0) then ; cvr_up = cvr(i,j)
+      else ; cvr_up = cvr(i,j+1) ; endif
+      vcvr(i,J) = G%dx_Cv(i,J) * v(i,J) * cvr_up
+    enddo ; enddo
+    !$OMP do
+    do j=js,je ; do i=is,ie
+      cvr(i,j) = cvr(i,j) - dt* G%IareaT(i,j) * &
+           ((ucvr(I,j) - ucvr(I-1,j)) + (vcvr(i,J) - vcvr(i,J-1)))
+      if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative ice cover encountered in ice_cover_transport().')
+    enddo ; enddo
+    !$OMP end parallel
+  elseif (x_first) then
+    ! First, advect zonally.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
+    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
+
+    call cpu_clock_begin(id_clock_update)
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      cvr(i,j) = cvr(i,j) - G%IareaT(i,j) * (dt*(ucvr(I,j) - ucvr(I-1,j)))
+      if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative ice cover encountered in u-pass of ice_cover_transport().')
+    enddo ; enddo
+    call cpu_clock_end(id_clock_update)
+
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    ! Now advect meridionally, using the updated ice covers to determine the fluxes.
+    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
+
+    call cpu_clock_begin(id_clock_update)
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      cvr(i,j) = max(1.0, cvr(i,j) - dt*G%IareaT(i,j) * (vcvr(i,J) - vcvr(i,J-1)))
+      if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative ice cover encountered in v-pass of ice_cover_transport().')
+    enddo ; enddo
+    call cpu_clock_end(id_clock_update)
+
+  else  ! .not. x_first
+    !  First, advect meridionally, so set the loop bounds accordingly.
+    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
+
+    call cpu_clock_begin(id_clock_update)
+    !$OMP parallel do default(shared)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      cvr(i,j) = cvr(i,j) - dt*G%IareaT(i,j) * (vcvr(i,J) - vcvr(i,J-1))
+      if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative ice cover encountered in v-pass of ice_cover_transport().')
+    enddo ; enddo
+    call cpu_clock_end(id_clock_update)
+
+    !  Now advect zonally, using the updated ice covers to determine the fluxes.
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
+
+    call cpu_clock_begin(id_clock_update)
+    !$OMP parallel do default(none) shared(LB,h,dt,G,uh)
+    do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+      cvr(i,j) = max(1.0, cvr(i,j) - dt* G%IareaT(i,j) * (ucvr(I,j) - ucvr(I-1,j)))
+      if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative ice cover encountered in u-pass of ice_cover_transport().')
+    enddo ; enddo
+    call cpu_clock_end(id_clock_update)
+
+  endif  ! End of x_first block.
+
+end subroutine ice_cover_transport
+
+
 !> summed_continuity time steps the total ice, water, and snow mass changes summed across all the
 !! thickness categories due to advection, using a monotonically limited, directionally split PPM
 !! scheme or simple upwind 2-d scheme.  It may also update the ice thickness, using fluxes that are
@@ -293,16 +408,13 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     do j=js,je ; do i=is,ie
       h(i,j) = h_in(i,j) - dt* G%IareaT(i,j) * &
            ((uh(I,j) - uh(I-1,j)) + (vh(i,J) - vh(i,J-1)))
-
-      if (h(i,j) < 0.0) then
-        call SIS_error(FATAL, 'Negative thickness encountered in ice_total_continuity().')
-      endif
+      if (h(i,j) < 0.0) call SIS_error(FATAL, &
+        'Negative thickness encountered in ice_total_continuity().')
     enddo ; enddo
     !$OMP end parallel
   elseif (x_first) then
     ! First, advect zonally.
-    LB%ish = G%isc ; LB%ieh = G%iec
-    LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
     call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=h_in, uh_tot=uh)
 
     call cpu_clock_begin(id_clock_update)
@@ -324,15 +436,12 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j) = h_in(i,j) - G%IareaT(i,j) * (dt*(uh(I,j) - uh(I-1,j)))
-      if (h(i,j) < 0.0) then
-        call SIS_error(FATAL, &
+      if (h(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_total_continuity().')
-      endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
-
     ! Now advect meridionally, using the updated thicknesses to determine the fluxes.
     call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h, vh_tot=vh)
 
@@ -353,18 +462,14 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j) = h(i,j) - dt*G%IareaT(i,j) * (vh(i,J) - vh(i,J-1))
-      if (h(i,j) < 0.0) then
-        call SIS_error(FATAL, &
+      if (h(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_total_continuity().')
-      endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
   else  ! .not. x_first
     !  First, advect meridionally, so set the loop bounds accordingly.
-    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil
-    LB%jsh = G%jsc ; LB%jeh = G%jec
-
+    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
     call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h_in, vh_tot=vh)
 
     call cpu_clock_begin(id_clock_update)
@@ -414,10 +519,8 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     !$OMP parallel do default(none) shared(LB,h,dt,G,uh)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j) = h(i,j) - dt* G%IareaT(i,j) * (uh(I,j) - uh(I-1,j))
-      if (h(i,j) < 0.0) then
-        call SIS_error(FATAL, &
+      if (h(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
-      endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -1226,14 +1329,17 @@ subroutine PPM_limit_CW84(h_in, h_l, h_r, G, iis, iie, jis, jie)
 end subroutine PPM_limit_CW84
 
 !> Initializes the sea ice continuity module
-subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
-  type(time_type),     target, intent(in)    :: Time   !< The sea-ice model's clock,
-                                                       !! set with the current model time.
+subroutine SIS_continuity_init(Time, G, param_file, diag, CS, CS_cvr)
+  type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
+                                                    !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G   !< The horizontal grid type
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
-  type(SIS_continuity_CS),     pointer       :: CS  !< The control structure for this module that
-                                                    !! is allocated and populated here.
+  type(SIS_continuity_CS),     pointer       :: CS  !< The control structure for mass transport that
+                                                    !! is carried out by this module; it is allocated
+                                                    !! and populated here.
+  type(SIS_continuity_CS),     optional, pointer :: CS_cvr !< A secondary control structure for the
+                                                    !! transport of ice cover.
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -1258,17 +1364,11 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
   CS%use_upwind2d = .false. ; CS%upwind_1st = .false. ; CS%simple_2nd = .false.
   CS%monotonic = .false.
   select case (trim(mesg))
-    case ("UPWIND_2D")
-      CS%use_upwind2d = .true.
-    case ("PCM")
-      CS%upwind_1st = .true.
-    case ("PPM:C2PD")
-      CS%simple_2nd = .true.
-    case ("PPM:C2MO")
-      CS%simple_2nd = .true.
-      CS%monotonic = .true.
-    case default
-      call SIS_error(FATAL, "SIS_continuity, SIS_continuity_init: "//&
+    case ("UPWIND_2D") ; CS%use_upwind2d = .true.
+    case ("PCM")      ; CS%upwind_1st = .true.
+    case ("PPM:C2PD") ; CS%simple_2nd = .true.
+    case ("PPM:C2MO") ; CS%simple_2nd = .true. ; CS%monotonic = .true.
+    case default ; call SIS_error(FATAL, "SIS_continuity, SIS_continuity_init: "//&
            "Unknown SIS_CONTINUITY_SCHEME = "//trim(mesg))
   end select
   call obsolete_logical(param_file, "MONOTONIC_CONTINUITY", &
@@ -1286,6 +1386,33 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS)
                  default=.false.)
 
   CS%diag => diag
+
+  if (present(CS_cvr)) then
+    allocate(CS_cvr)
+
+    call get_param(param_file, mdl, "SIS_COVER_TRANSPORT_SCHEME", mesg, &
+            desc="The horizontal transport scheme used for projections of ice cover:\n"//&
+            "  UPWIND_2D - Non-directionally split upwind\n"//&
+            "  PCM       - Directionally split piecewise constant\n"//&
+            "  PPM:C2PD  - Positive definite PPM with 2nd order edge values\n"//&
+            "  PPM:C2MO  - Monotonic PPM with 2nd order edge values\n", &
+            default='UPWIND_2D')
+    CS_cvr%use_upwind2d = .false. ; CS_cvr%upwind_1st = .false. ; CS_cvr%simple_2nd = .false.
+    CS_cvr%monotonic = .false.
+    select case (trim(mesg))
+      case ("UPWIND_2D") ; CS_cvr%use_upwind2d = .true.
+      case ("PCM")      ; CS_cvr%upwind_1st = .true.
+      case ("PPM:C2PD") ; CS_cvr%simple_2nd = .true.
+      case ("PPM:C2MO") ; CS_cvr%simple_2nd = .true. ; CS_cvr%monotonic = .true.
+      case default ; call SIS_error(FATAL, "SIS_continuity, SIS_continuity_init: "//&
+             "Unknown SIS_COVER_TRANSPORT_SCHEME = "//trim(mesg))
+    end select
+
+    call get_param(param_file, mdl, "COVER_PPM_VOLUME_BASED_CFL", CS_cvr%vol_CFL, &
+                   "If true, use the ratio of the open face lengths to the cell\n"//&
+                   "areas when estimating CFL numbers in ice cover transport.", &
+                   default=.false.)
+  endif
 
   id_clock_update = cpu_clock_id('(Ocean continuity update)', grain=CLOCK_ROUTINE)
   id_clock_correct = cpu_clock_id('(Ocean continuity correction)', grain=CLOCK_ROUTINE)
