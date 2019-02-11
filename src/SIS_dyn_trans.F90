@@ -629,7 +629,6 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     mi_sum, &           ! Masses of ice per unit total area [kg m-2].
-    misp_sum, &         ! Combined mass of snow, ice and melt pond water per unit total area [kg m-2].
     ice_free, &         ! The fractional open water [nondim], between 0 & 1.
     ice_cover           ! The fractional ice coverage, summed across all
                         ! thickness categories [nondim], between 0 & 1.
@@ -688,28 +687,29 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
     call mpp_clock_begin(iceClock4)
-
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
     if (CS%nts == 0) then
-      misp_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
+      CS%mca_step(:,:,0) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
       !$OMP parallel do default(shared)
       do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
-        misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
+        CS%mca_step(i,j,0) = CS%mca_step(i,j,0) + IST%part_size(i,j,k) * &
                         (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
         mi_sum(i,j) = mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
         ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
       enddo ; enddo ; enddo
       do j=jsd,jed ; do i=isd,ied
         !### This can be merged in above, but it would change answers.
-        misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
+        CS%mca_step(i,j,0) = CS%mca_step(i,j,0) + mi_sum(i,j)
         ice_free(i,j) = IST%part_size(i,j,0)
       enddo ; enddo
 
       !  Determine the whole-cell averaged mass of snow and ice.
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
-
-      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,0) = misp_sum(i,j) ; enddo ; enddo
+    else
+      do j=jsd,jed ; do i=isd,ied
+        ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
+      enddo ; enddo
     endif
     call mpp_clock_end(iceClock4)
 
@@ -734,7 +734,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       if (CS%debug) then
         call uvchksum("Before SIS_C_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
         call hchksum(ice_free, "ice_free before SIS_C_dynamics", G%HI)
-        call hchksum(misp_sum, "misp_sum before SIS_C_dynamics", G%HI)
+        call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before SIS_C_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
@@ -746,7 +746,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       !### Ridging needs to be added with C-grid dynamics.
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call SIS_C_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
+      call SIS_C_dynamics(ice_cover, CS%mca_step(:,:,CS%nts), mi_sum, IST%u_ice_C, IST%v_ice_C, &
                           OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
                           str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
       call mpp_clock_end(iceClocka)
@@ -785,7 +785,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       if (CS%debug) then
         call Bchksum_pair("[uv]_ice_B before dynamics", IST%u_ice_B, IST%v_ice_B, G)
         call hchksum(ice_free, "ice_free before ice_dynamics", G%HI)
-        call hchksum(misp_sum, "misp_sum before ice_dynamics", G%HI)
+        call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before ice_dynamics", G%HI)
         call hchksum(mi_sum, "mi_sum before ice_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
         call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G)
@@ -794,7 +794,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
       rdg_rate(:,:) = 0.0
       call mpp_clock_begin(iceClocka)
-      call SIS_B_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
+      call SIS_B_dynamics(ice_cover, CS%mca_step(:,:,CS%nts), mi_sum, IST%u_ice_B, IST%v_ice_B, &
                           OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                           str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
                           rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
@@ -855,10 +855,6 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
         call pass_var(mi_sum, G%Domain, complete=.false.)
         call pass_var(ice_cover, G%Domain, complete=.false.)
         call pass_var(CS%mca_step(:,:,n), G%Domain, complete=.true.)
-        do j=jsd,jed ; do i=isd,ied
-          misp_sum(i,j) = CS%mca_step(i,j,n)
-          ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
-        enddo ; enddo
       else
         call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
                                CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
