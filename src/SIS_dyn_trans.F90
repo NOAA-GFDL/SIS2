@@ -124,8 +124,8 @@ type dyn_trans_CS ; private
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    !! timing of diagnostic output.
   real, allocatable, dimension(:,:,:) :: mca_step !< The total mass per unit total area of snow
-                          !! and ice summed across thickness categories in a cell, before each
-                          !! transportation substep [H ~> kg m-2].
+                          !! and ice summed across thickness categories in a cell, after each
+                          !! transportation substep, with a 0 starting 3rd index [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: uh_step !< The total zonal mass fluxes during each
                           !! transportation substep [H m2 s-1 ~> kg s-1].
   real, allocatable, dimension(:,:,:) :: vh_step !< The total meridional mass fluxes during each
@@ -366,7 +366,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
     endif
     if (CS%merged_cont .and. (CS%nts == 0)) then
-      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,1) = misp_sum(i,j) ; enddo ; enddo
+      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,0) = misp_sum(i,j) ; enddo ; enddo
     endif
     call mpp_clock_end(iceClock4)
 
@@ -532,19 +532,19 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       do n = CS%nts+1, CS%nts+CS%adv_substeps
         if (n < nts_last) then
           ! Some of the work is not needed for the last step before cat_ice_transport.
-          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
                                  CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
                                  h_ice=mi_sum)
           call ice_cover_transport(IST%u_ice_C, IST%v_ice_C, ice_cover, dt_adv, G, IG, CS%cover_trans_CSp)
           call pass_var(mi_sum, G%Domain, complete=.false.)
           call pass_var(ice_cover, G%Domain, complete=.false.)
-          call pass_var(CS%mca_step(:,:,n+1), G%Domain, complete=.true.)
+          call pass_var(CS%mca_step(:,:,n), G%Domain, complete=.true.)
           do j=jsd,jed ; do i=isd,ied
-            misp_sum(i,j) = CS%mca_step(i,j,n+1)
+            misp_sum(i,j) = CS%mca_step(i,j,n)
             ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
           enddo ; enddo
         else
-          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+          call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
                                  CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
         endif
       enddo
@@ -558,7 +558,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       if (CS%nts /= nts_last) call SIS_error(FATAL, "Bad logic in calculating nts_last.")
       n = CS%nts
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
-                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,1:n+1), &
+                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:n), &
                              uh_tot=CS%uh_step(:,:,1:n), vh_tot=CS%vh_step(:,:,1:n))
       CS%nts = 0
     endif
@@ -709,7 +709,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       !  Determine the whole-cell averaged mass of snow and ice.
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
 
-      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,1) = misp_sum(i,j) ; enddo ; enddo
+      do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,0) = misp_sum(i,j) ; enddo ; enddo
     endif
     call mpp_clock_end(iceClock4)
 
@@ -848,19 +848,19 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     do n = CS%nts+1, CS%nts+CS%adv_substeps
       if (n < nts_last) then
         ! Some of the work is not needed for the last step before cat_ice_transport.
-        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
                                CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
                                h_ice=mi_sum)
         call ice_cover_transport(IST%u_ice_C, IST%v_ice_C, ice_cover, dt_adv, G, IG, CS%cover_trans_CSp)
         call pass_var(mi_sum, G%Domain, complete=.false.)
         call pass_var(ice_cover, G%Domain, complete=.false.)
-        call pass_var(CS%mca_step(:,:,n+1), G%Domain, complete=.true.)
+        call pass_var(CS%mca_step(:,:,n), G%Domain, complete=.true.)
         do j=jsd,jed ; do i=isd,ied
-          misp_sum(i,j) = CS%mca_step(i,j,n+1)
+          misp_sum(i,j) = CS%mca_step(i,j,n)
           ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
         enddo ; enddo
       else
-        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n), CS%mca_step(:,:,n+1), &
+        call summed_continuity(IST%u_ice_C, IST%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
                                CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
       endif
     enddo
@@ -871,7 +871,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       ! Do the transport of mass and tracers by category and vertical layer.
       n = CS%nts
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
-                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,1:n+1), &
+                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:n), &
                              uh_tot=CS%uh_step(:,:,1:n), vh_tot=CS%vh_step(:,:,1:n))
       ! Convert the cell-averaged state back to the ice-state type, adjusting the
       ! category mass distributions, doing ridging, and updating the partition sizes.
@@ -2467,7 +2467,12 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
 
     if (CS%merged_cont) then
-      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, max(CS%max_nts+1,1))
+      if (.not.allocated(CS%mca_step)) then
+        allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:max(CS%max_nts,1)))
+        CS%mca_step(:,:,:) = 0.0
+      endif
+!  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
+!      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, max(CS%max_nts,1))
       call safe_alloc_alloc(CS%uh_step, G%isdB, G%IedB, G%jsd, G%jed, max(CS%max_nts,1))
       call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, max(CS%max_nts,1))
     endif

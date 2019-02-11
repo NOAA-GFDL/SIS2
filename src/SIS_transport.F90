@@ -115,13 +115,13 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [m s-1].
   real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [m s-1].
-  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)), optional, intent(in) :: &
-    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, before each substep [H ~> kg m-2].
+  real, dimension(SZI_(G),SZJ_(G),0:max(nsteps,1)), optional, intent(in) :: &
+    mca_tot    !< The total mass per unit total area of snow and ice summed across thickness
+               !! categories in a cell, after each substep [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)), optional, intent(in) :: &
-    uh_tot     ! Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
+    uh_tot     !< Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)), optional, intent(in) :: &
-    vh_tot     ! Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
+    vh_tot     !< Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
@@ -175,7 +175,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
     enddo ; enddo ; enddo
 
     if (merged_cont) then
-      call proportionate_continuity(mca_tot(:,:,n), uh_tot(:,:,n), vh_tot(:,:,n), &
+      call proportionate_continuity(mca_tot(:,:,n-1), uh_tot(:,:,n), vh_tot(:,:,n), &
                                     dt_adv, G, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
