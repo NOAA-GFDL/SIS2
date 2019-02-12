@@ -49,6 +49,9 @@ type, public :: SIS_transport_CS ; private
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
   logical :: bounds_check     !< If true, check for sensible values of thicknesses,
                               !! temperatures, salinities, tracers, etc.
+  logical :: inconsistent_cover_bug !< If true, omit a recalculation of the fractional ice-free
+                              !! areal coverage after the adjustment of the ice categories.
+                              !! The default should be changed to false and then this option obsoleted.
   type(time_type), pointer :: Time !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
                               !! timing of diagnostic output.
@@ -555,12 +558,15 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     mca0_ice, mca0_snow, mca0_pond, &
     ! Cross-catagory transfers of ice, snow and pond mass [kg m-2].
     trans_ice, trans_snow, trans_pond
-  logical :: do_any, do_j(SZJ_(G))
+  real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
+  logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nCat
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   nCat = IG%CatIce
 
   I_mH_lim1 = 1.0 / IG%mH_cat_bound(1)
+
+  resum_cat(:,:) = .false.
 
   ! Zero out the part_size of any massless categories.
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
@@ -573,6 +579,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     if (mH_pond(i,j,k) > 0.0) then
       call SIS_error(FATAL, "Input to adjust_ice_categories, non-zero pond mass rests atop no ice.")
     endif
+    if (part_sz(i,j,k) > 0.0) resum_cat(i,j) = .true.
     part_sz(i,j,k) = 0.0
   endif ; enddo ; enddo ; enddo
 
@@ -726,11 +733,29 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
           mH_pond(i,j,1) = mH_pond(i,j,1) * (IG%mH_cat_bound(1) / mH_ice(i,j,1))
           ! This is equivalent to mH_snow(i,j,1) = mca_snow(i,1) / part_sz(i,j,1)
           mH_ice(i,j,1) = IG%mH_cat_bound(1)
+          resum_cat(i,j) = .true.
         endif
       enddo
     endif
 
   endif ; enddo  ! j-loop and do_j
+
+  if (.not.CS%inconsistent_cover_bug) then
+    do j=js,je
+      do_any = .false.
+      do i=is,ie
+        ice_cover(i) = 0.0
+        if (resum_cat(i,j)) do_any = .true.
+      enddo
+      if (.not.do_any) cycle
+      do k=1,nCat ; do i=is,ie
+        ice_cover(i) = ice_cover(i) + part_sz(i,j,k)
+      enddo ; enddo
+      do i=is,ie ; if (resum_cat(i,j)) then
+        part_sz(i,j,0) = max(1.0 - ice_cover(i), IG%ocean_part_min)
+      endif ; enddo
+    enddo
+  endif
 
 end subroutine adjust_ice_categories
 
@@ -1137,7 +1162,10 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cov
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-
+  call get_param(param_file, mdl, "INCONSISTENT_COVER_BUG", CS%inconsistent_cover_bug, &
+                 "If true, omit a recalculation of the fractional ice-free \n"//&
+                 "areal coverage after the adjustment of the ice categories.", &
+                 default=.true.)
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
