@@ -368,6 +368,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
     if (CS%merged_cont .and. (CS%nts == 0)) then
       do j=jsd,jed ; do i=isd,ied ; CS%mca_step(i,j,0) = misp_sum(i,j) ; enddo ; enddo
     endif
+    if (.not.CS%Warsaw_sum_order) then
+      do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0) ; enddo ; enddo
+    endif
     call mpp_clock_end(iceClock4)
 
     !
@@ -663,6 +666,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
   integer :: nts_last ! The number of tracer advection steps before updating IST.
+  character(len=256) :: mesg
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
@@ -701,17 +705,25 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       do j=jsd,jed ; do i=isd,ied
         !### This can be merged in above, but it would change answers.
         CS%mca_step(i,j,0) = CS%mca_step(i,j,0) + mi_sum(i,j)
-        ice_free(i,j) = IST%part_size(i,j,0)
+        if ((abs(max(1.0-ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.5)) then
+          write(mesg, '(3(ES13.5))') max(1.0 - ice_cover(i,j), 0.0) - IST%part_size(i,j,0), &
+             max(1.0 - ice_cover(i,j), 0.0), IST%part_size(i,j,0)
+          call SIS_error(FATAL, "Mismatch in ice_free values exceeding roundoff: "//trim(mesg))
+        endif
       enddo ; enddo
 
       !  Determine the whole-cell averaged mass of snow and ice.
       call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
-    else
-      do j=jsd,jed ; do i=isd,ied
-        ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0)
-      enddo ; enddo
     endif
+
+    do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - ice_cover(i,j), 0.0) ; enddo ; enddo
     call mpp_clock_end(iceClock4)
+
+    ! This is the end of the code that might be called as 2-d dynamics.  Only the [uv]_ice_[BC]
+    ! elements of IST are used in this section.
+    !   Variables used here: FIA, ice_cover, ice_free, G, IST%[uv]_ice_[BC]
+    !      CS%mca_step, mi_sum, OSS, dt_slow_dyn, IOF, CS
+
 
     !
     ! Dynamics - update ice velocities.
@@ -861,6 +873,9 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       endif
     enddo
     CS%nts = CS%nts + CS%adv_substeps
+
+    ! This is the end of the code that might be called as 2-d dynamics.  Only the [uv]_ice_[BC]
+    ! elements of IST are used in this section.
 
     if ((CS%nts + CS%adv_substeps > CS%max_nts) .or. (nds==ndyn_steps)) then
       if (CS%nts /= nts_last) call SIS_error(FATAL, "Bad logic in calculating nts_last.")
