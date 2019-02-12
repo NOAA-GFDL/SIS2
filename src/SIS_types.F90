@@ -2315,7 +2315,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
     enddo ; enddo
   endif
   do j=jsc,jec ; do i=isc,iec
-    if (abs(sum_part_sz(i,j) - 1.0) > 1.0e-5) then
+    if (abs(sum_part_sz(i,j) - 1.0) > 2.0*(ncat+1)*epsilon(sum_part_sz(i,j))) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "sum_part_sz" ; endif
     endif
@@ -2367,10 +2367,19 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
         write(mesg2,'("part_size = ",1pe12.4)') IST%part_size(i,j,k)
       endif
     elseif (present(OSS)) then
-      write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
-            OSS%SST_C(i,j), OSS%s_surf(i,j), sum_part_sz(i,j)
+      if (sum_part_sz(i,j) < 0.9999) then
+        write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
+              OSS%SST_C(i,j), OSS%s_surf(i,j), sum_part_sz(i,j)
+      else
+        write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = 1 - ",1pe12.4)') &
+              OSS%SST_C(i,j), OSS%s_surf(i,j), 1.0-sum_part_sz(i,j)
+      endif
     else
-      write(mesg2,'("sum_part_sz = ",1pe12.4)') sum_part_sz(i,j)
+      if (sum_part_sz(i,j) < 0.9999) then
+        write(mesg2,'("sum_part_sz = ",1pe12.4)') sum_part_sz(i,j)
+      else
+        write(mesg2,'("sum_part_sz = 1 - ",1pe12.4)') 1.0-sum_part_sz(i,j)
+      endif
     endif
     call SIS_error(WARNING, "Bad ice state "//trim(err)//" "//trim(msg)//" ; "//trim(mesg1)//&
                             " ; "//trim(mesg2), all_print=.true.)
