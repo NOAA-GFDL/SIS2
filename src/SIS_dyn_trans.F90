@@ -2381,7 +2381,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   character(len=40) :: mdl = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit for ICE_STATS_INTERVAL [s].
   character(len=8) :: nstr
-  integer :: n, nLay
+  integer :: n, nLay, max_nts
   logical :: spec_ice, do_slab_ice
   logical :: debug
   real, parameter :: missing = -1e34
@@ -2431,7 +2431,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "The number of advective iterations for each slow time \n"//&
                  "step.", default=1)
 
-    call get_param(param_file, mdl, "MAX_TRACER_SUBSTEPS", CS%max_nts, &
+    call get_param(param_file, mdl, "MAX_TRACER_SUBSTEPS", max_nts, &
                  "The maximum number of ice tracer transport steps that \n"//&
                  "can be stored before they are carried out.", default=CS%adv_substeps)
 
@@ -2496,16 +2496,10 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     call alloc_cell_average_state_type(CS%CAS, G%HI, IG, CS%SIS_transport_CSp)
 
     if (CS%merged_cont) then
+      CS%nts = 0 ; CS%max_nts = 0
       call safe_alloc_alloc(CS%mi_sum, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc_alloc(CS%ice_cover, G%isd, G%ied, G%jsd, G%jed)
-      if (.not.allocated(CS%mca_step)) then
-        allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:max(CS%max_nts,1)))
-        CS%mca_step(:,:,:) = 0.0
-      endif
-!  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
-!      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, max(CS%max_nts,1))
-      call safe_alloc_alloc(CS%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, max(CS%max_nts,1))
-      call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, max(CS%max_nts,1))
+      call increase_max_tracer_step_memory(CS, G, max_nts)
 
       call safe_alloc_alloc(CS%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
       call safe_alloc_alloc(CS%v_ice_C, G%isd, G%ied, G%JsdB, G%JedB)
@@ -2609,6 +2603,32 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   call callTree_leave("SIS_dyn_trans_init()")
 
 end subroutine SIS_dyn_trans_init
+
+!> Increase the memory available to store total ice and snow masses and mass fluxes for tracer advection.
+!! Any data already stored in the fluxes is simply discarded, so CS%nts must be 0.
+subroutine increase_max_tracer_step_memory(CS, G, max_nts)
+  type(dyn_trans_CS),      pointer       :: CS   !< The control structure for the SIS_dyn_trans module
+  type(SIS_hor_grid_type), intent(in)    :: G    !< The horizontal grid structure
+  integer,                 intent(in)    :: max_nts !< The new maximum number of masses and mass fluxes
+                                                 !! that can be stored for tracer advection.
+
+  if (CS%max_nts >= max(max_nts,1)) return
+  if (CS%nts /= 0) call SIS_error(FATAL, "increase_max_tracer_steps can not be called when CS%nts /= 0.")
+
+  if (allocated(CS%mca_step)) deallocate(CS%mca_step)
+  if (allocated(CS%uh_step)) deallocate(CS%uh_step)
+  if (allocated(CS%vh_step)) deallocate(CS%vh_step)
+
+  CS%max_nts = max(max_nts,1)
+
+  allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:CS%max_nts))
+  CS%mca_step(:,:,:) = 0.0
+!  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
+!      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, CS%max_nts)
+  call safe_alloc_alloc(CS%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, CS%max_nts)
+  call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, CS%max_nts)
+
+end subroutine increase_max_tracer_step_memory
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Allocate an array of integer diagnostic arrays and set them to -1, if they are not already allocated
