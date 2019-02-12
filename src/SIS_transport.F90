@@ -1112,6 +1112,7 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cov
 #include "version_variable.h"
   character(len=40)  :: mdl = "SIS_transport" ! This module's name.
   character(len=80)  :: scheme   ! A string for identifying an advection scheme.
+  logical :: merged_cont
   real, parameter :: missing = -1e34
 
   if (associated(CS)) then
@@ -1162,10 +1163,16 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cov
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
+  call get_param(param_file, mdl, "MERGED_CONTINUITY", merged_cont, &
+               "If true, update the continuity equations for the ice, snow, \n"//&
+               "and melt pond water together summed across categories, with \n"//&
+               "proportionate fluxes for each part. Otherwise the media are \n"//&
+               "updated separately.", default=.false., do_not_log=.true.)
   call get_param(param_file, mdl, "INCONSISTENT_COVER_BUG", CS%inconsistent_cover_bug, &
                  "If true, omit a recalculation of the fractional ice-free \n"//&
                  "areal coverage after the adjustment of the ice categories.", &
-                 default=.true.)
+                 default=.true., do_not_log=merged_cont)
+  if (merged_cont) CS%inconsistent_cover_bug = .false.
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
