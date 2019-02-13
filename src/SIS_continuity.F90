@@ -400,16 +400,19 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
       enddo ; enddo
       !$OMP do
       do j=js,je ; do i=is,ie
-        h_ice(i,j) = h_ice(i,j) - G%IareaT(i,j) * (dt * &
-             ((uh_ice(I,j) - uh_ice(I-1,j)) + (vh_ice(i,J) - vh_ice(i,J-1))))
+        h_ice(i,j) = h_ice(i,j) - (dt * G%IareaT(i,j)) * &
+             ((uh_ice(I,j) - uh_ice(I-1,j)) + (vh_ice(i,J) - vh_ice(i,J-1)))
       enddo ; enddo
     endif
     !$OMP do
     do j=js,je ; do i=is,ie
-      h(i,j) = h_in(i,j) - dt* G%IareaT(i,j) * &
+      h(i,j) = h_in(i,j) - (dt * G%IareaT(i,j)) * &
            ((uh(I,j) - uh(I-1,j)) + (vh(i,J) - vh(i,J-1)))
-      if (h(i,j) < 0.0) call SIS_error(FATAL, &
-        'Negative thickness encountered in ice_total_continuity().')
+      ! if (h(i,j) < 0.0) call SIS_error(FATAL, &
+      !   'Negative thickness encountered in ice_total_continuity().')
+      ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
+      !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() 2d.')
+      ! endif ; endif
     enddo ; enddo
     !$OMP end parallel
   elseif (x_first) then
@@ -421,23 +424,26 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
 
     if (present(h_ice)) then
       !$OMP parallel do default(shared)
-      do j=js,je
-        do I=is-1,ie
+      do j=LB%jsh,LB%jeh
+        do I=LB%ish-1,LB%ieh
           if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h_in(i+1,j))
           elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h_in(i,j))
           else ; uh_ice(I,j) = 0.0 ; endif
         enddo
-        do i=is,ie
-          h_ice(i,j) = h_ice(i,j) - G%IareaT(i,j) * (dt * (uh_ice(I,j) - uh_ice(I-1,j)))
+        do i=LB%ish,LB%ieh
+          h_ice(i,j) = h_ice(i,j) - (dt * G%IareaT(i,j)) * (uh_ice(I,j) - uh_ice(I-1,j))
         enddo
       enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h_in(i,j) - G%IareaT(i,j) * (dt*(uh(I,j) - uh(I-1,j)))
-      if (h(i,j) < 0.0) call SIS_error(FATAL, &
-        'Negative thickness encountered in u-pass of ice_total_continuity().')
+      h(i,j) = h_in(i,j) - (dt * G%IareaT(i,j)) * (uh(I,j) - uh(I-1,j))
+      ! if (h(i,j) < 0.0) call SIS_error(FATAL, &
+      !   'Negative thickness encountered in u-pass of ice_total_continuity().')
+      ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
+      !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() x-1.')
+      ! endif ; endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -448,22 +454,25 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     call cpu_clock_begin(id_clock_update)
     if (present(h_ice)) then
       !$OMP parallel do default(shared)
-      do J=js-1,je ; do i=is,ie
+      do J=LB%jsh-1,LB%jeh ; do i=LB%ish,LB%ieh
         if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h(i,j+1))
         elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h(i,j))
         else ; vh_ice(i,J) = 0.0 ; endif
       enddo ; enddo
       !$OMP parallel do default(shared)
-      do j=js,je ; do i=is,ie
-        h_ice(i,j) = h_ice(i,j) - G%IareaT(i,j) * (dt * (vh_ice(i,J) - vh_ice(i,J-1)))
+      do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+        h_ice(i,j) = h_ice(i,j) - (dt * G%IareaT(i,j)) * (vh_ice(i,J) - vh_ice(i,J-1))
       enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h(i,j) - dt*G%IareaT(i,j) * (vh(i,J) - vh(i,J-1))
+      h(i,j) = h(i,j) - (dt * G%IareaT(i,j)) * (vh(i,J) - vh(i,J-1))
       if (h(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_total_continuity().')
+      ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
+      !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() x-2.')
+      ! endif ; endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -475,24 +484,25 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     call cpu_clock_begin(id_clock_update)
     if (present(h_ice)) then
       !$OMP parallel do default(shared)
-      do J=js-1,je ; do i=is,ie
+      do J=LB%jsh-1,LB%jeh ; do i=LB%ish,LB%ieh
         if (vh(i,J) < 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j+1) / h_in(i,j+1))
         elseif (vh(i,J) > 0.0) then ; vh_ice(i,J) = vh(i,J) * (h_ice(i,j) / h_in(i,j))
         else ; vh_ice(i,J) = 0.0 ; endif
       enddo ; enddo
       !$OMP parallel do default(shared)
-      do j=js,je ; do i=is,ie
-        h_ice(i,j) = h_ice(i,j) - G%IareaT(i,j) * (dt * (vh_ice(i,J) - vh_ice(i,J-1)))
+      do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
+        h_ice(i,j) = h_ice(i,j) - (dt * G%IareaT(i,j)) * (vh_ice(i,J) - vh_ice(i,J-1))
       enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h_in(i,j) - dt*G%IareaT(i,j) * (vh(i,J) - vh(i,J-1))
-      if (h(i,j) < 0.0) then
-        call SIS_error(FATAL, &
-        'Negative thickness encountered in v-pass of ice_total_continuity().')
-      endif
+      h(i,j) = h_in(i,j) - (dt * G%IareaT(i,j)) * (vh(i,J) - vh(i,J-1))
+      ! if (h(i,j) < 0.0) call SIS_error(FATAL, &
+      !   'Negative thickness encountered in v-pass of ice_total_continuity().')
+      ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
+      !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() y-1.')
+      ! endif ; endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
@@ -504,23 +514,26 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
 
     if (present(h_ice)) then
       !$OMP parallel do default(shared)
-      do j=js,je
-        do I=is-1,ie
+      do j=LB%jsh,LB%jeh
+        do I=LB%ish-1,LB%ieh
           if (uh(I,j) < 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i+1,j) / h(i+1,j))
           elseif (uh(I,j) > 0.0) then ; uh_ice(I,j) = uh(I,j) * (h_ice(i,j) / h(i,j))
           else ; uh_ice(I,j) = 0.0 ; endif
         enddo
-        do i=is,ie
-          h_ice(i,j) = h_ice(i,j) - G%IareaT(i,j) * (dt * (uh_ice(I,j) - uh_ice(I-1,j)))
+        do i=LB%ish,LB%ieh
+          h_ice(i,j) = h_ice(i,j) - (dt * G%IareaT(i,j)) * (uh_ice(I,j) - uh_ice(I-1,j))
         enddo
       enddo
     endif
 
-    !$OMP parallel do default(none) shared(LB,h,dt,G,uh)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h(i,j) = h(i,j) - dt* G%IareaT(i,j) * (uh(I,j) - uh(I-1,j))
+      h(i,j) = h(i,j) - (dt * G%IareaT(i,j)) * (uh(I,j) - uh(I-1,j))
       if (h(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
+      ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
+      !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() y-2.')
+      ! endif ; endif
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
