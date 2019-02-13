@@ -83,6 +83,9 @@ type dyn_trans_CS ; private
   logical :: merged_cont  !< If true, update the continuity equations for the ice, snow,
                           !! and melt pond water together with proportionate fluxes.
                           !! Otherwise the three media are updated separately.
+  real    :: dt_advect    !< The time step used for the advecting tracers and masses as
+                          !! partitioned by thickness categories when merged_cont it true [s].
+                          !! If 0 or negative, the coupling time step will be used.
   logical :: do_ridging   !<   If true, apply a ridging scheme to the convergent
                           !! ice.  The original SIS2 implementation is based on
                           !! work by Torge Martin.  Otherwise, ice is compressed
@@ -323,6 +326,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
+  integer :: nadv_cycle      ! The number of tracer advective cycles in this call.
   integer :: nts_last ! The number of tracer advection steps before updating IST.
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -340,12 +344,16 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
 
-  ndyn_steps = 1
+  ndyn_steps = 1 ; nadv_cycle = 1
+  if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
+    nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
-    ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
+    ndyn_steps = nadv_cycle * max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
-  if (CS%merged_cont .and. CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-  nts_last = min(ndyn_steps*CS%adv_substeps, CS%adv_substeps*(CS%max_nts/CS%adv_substeps))
+  if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+  nts_last = (ndyn_steps/nadv_cycle)*CS%adv_substeps
+  if (CS%merged_cont .and. (CS%nts == 0) .and. (nts_last > CS%max_nts)) &
+    call increase_max_tracer_step_memory(CS, G, nts_last)
 
   complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
@@ -671,7 +679,8 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     rdg_rate  ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
-  integer :: ndyn_steps, nds ! The number of dynamic steps.
+  integer :: ndyn_steps, nds ! The number of dynamic steps in this call.
+  integer :: nadv_cycle      ! The number of tracer advective cycles in this call.
   integer :: nts_last ! The number of tracer advection steps before updating IST.
   character(len=256) :: mesg
 
@@ -685,12 +694,16 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
 
-  ndyn_steps = 1
+  ndyn_steps = 1 ; nadv_cycle = 1
+  if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
+    nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
-    ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
+    ndyn_steps = nadv_cycle * max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
   if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-  nts_last = min(ndyn_steps*CS%adv_substeps, CS%adv_substeps*(CS%max_nts/CS%adv_substeps))
+  nts_last = (ndyn_steps/nadv_cycle)*CS%adv_substeps
+  if (CS%merged_cont .and. (CS%nts == 0) .and. (nts_last > CS%max_nts)) &
+    call increase_max_tracer_step_memory(CS, G, nts_last)
 
   complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
@@ -2422,18 +2435,19 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "and melt pond water together summed across categories, with \n"//&
                  "proportionate fluxes for each part. Otherwise the media are \n"//&
                  "updated separately.", default=.false.)
+    call get_param(param_file, mdl, "DT_ICE_ADVECT", CS%dt_advect, &
+                 "The time step used for the advecting tracers and masses as \n"//&
+                 "partitioned by thickness categories when merged_cont it true. \n"//&
+                 "If 0 or negative, the coupling time step will be used.", &
+                 units="seconds", default=-1.0, do_not_log=.not.CS%merged_cont)
     call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
     call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
-                 "The number of advective iterations for each slow time \n"//&
-                 "step.", default=1)
-
-    call get_param(param_file, mdl, "MAX_TRACER_SUBSTEPS", max_nts, &
-                 "The maximum number of ice tracer transport steps that \n"//&
-                 "can be stored before they are carried out.", default=CS%adv_substeps)
+                 "The number of advective iterations for each slow dynamics \n"//&
+                 "time step.", default=1)
 
     call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
@@ -2499,6 +2513,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
       CS%nts = 0 ; CS%max_nts = 0
       call safe_alloc_alloc(CS%mi_sum, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc_alloc(CS%ice_cover, G%isd, G%ied, G%jsd, G%jed)
+      max_nts = max(CS%adv_substeps, 1)
+      if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_advect > CS%dt_ice_dyn)) &
+        max_nts = max(CS%adv_substeps, 1) * max(CEILING(CS%dt_advect/CS%dt_ice_dyn - 1e-6), 1)
       call increase_max_tracer_step_memory(CS, G, max_nts)
 
       call safe_alloc_alloc(CS%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
