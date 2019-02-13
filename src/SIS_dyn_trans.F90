@@ -350,7 +350,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
     ndyn_steps = nadv_cycle * max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
-  if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+  dt_adv = dt_slow_dyn / real(CS%adv_substeps)
   nts_last = (ndyn_steps/nadv_cycle)*CS%adv_substeps
   if (CS%merged_cont .and. (CS%nts == 0) .and. (nts_last > CS%max_nts)) &
     call increase_max_tracer_step_memory(CS, G, nts_last)
@@ -675,13 +675,13 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: dt_adv       ! The advective timestep [s].
   real :: Idt_slow     ! The inverse of dt_slow [s-1].
+  type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_rate  ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   integer :: ndyn_steps, nds ! The number of dynamic steps in this call.
   integer :: nadv_cycle, nac ! The number of tracer advective cycles in this call.
-  integer :: nts_last ! The number of tracer advection steps before updating IST.
   character(len=256) :: mesg
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
@@ -697,24 +697,21 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   ndyn_steps = 1 ; nadv_cycle = 1
   if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
     nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
-  if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
+  if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn*nadv_cycle < dt_slow)) &
     ndyn_steps = max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
   dt_slow_dyn = dt_slow / (nadv_cycle * ndyn_steps)
-  if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-  nts_last = ndyn_steps*CS%adv_substeps
-  if (CS%merged_cont .and. (CS%nts == 0) .and. (nts_last > CS%max_nts)) &
-    call increase_max_tracer_step_memory(CS, G, nts_last)
+  dt_adv = dt_slow_dyn / real(CS%adv_substeps)
 
   complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
-  do nac=0,nadv_cycle-1 ; do nds=1,ndyn_steps
-
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps*(nadv_cycle-nac)-nds)*dt_slow_dyn), CS%diag)
-
+  do nac=1,nadv_cycle
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
     if (CS%nts == 0) then
       call mpp_clock_begin(iceClock4)
+      if (ndyn_steps*CS%adv_substeps > CS%max_nts) &
+        call increase_max_tracer_step_memory(CS, G, ndyn_steps*CS%adv_substeps)
+
       CS%mca_step(:,:,0) = 0.0 ; CS%mi_sum(:,:) = 0.0 ; CS%ice_cover(:,:) = 0.0
       !$OMP parallel do default(shared)
       do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
@@ -745,188 +742,190 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       call mpp_clock_end(iceClock4)
     endif
 
-    ! This is the end of the code that might be called as 2-d dynamics.
-    !   Variables updated here: CS%ice_cover, CS%[uv]_ice_[BC], CS%mca_step, CS%mi_sum,
-    !      IOF (stresses), CS%[uv]h_step, CS%nts, CS%SIS_[BC]_dyn_CSp
-    !   Variables used with intent in here: FIA, G, OSS, dt_slow_dyn, CS
-    !   Local variables: ice_free
+    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*ndyn_steps*dt_slow_dyn)
 
+    do nds=1,ndyn_steps
+      ! This is the start of the code that might be called as 2-d dynamics.
+      !   Variables updated here: CS%ice_cover, CS%[uv]_ice_[BC], CS%mca_step, CS%mi_sum,
+      !      IOF (stresses), CS%[uv]h_step, CS%nts, CS%SIS_[BC]_dyn_CSp
+      !   Variables used with intent in here: FIA, G, OSS, dt_slow_dyn, CS
+      !   Local variables: ice_free
 
-    call mpp_clock_begin(iceClock4)
-    do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - CS%ice_cover(i,j), 0.0) ; enddo ; enddo
+      call mpp_clock_begin(iceClock4)
+      call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+      do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - CS%ice_cover(i,j), 0.0) ; enddo ; enddo
 
-    ! In the dynamics code, only the ice velocities are changed, and the ice-ocean
-    ! stresses are calculated.  The gravity wave dynamics (i.e. the continuity
-    ! equation) are not included in the dynamics (yet).  All of the thickness categories
-    ! are merged together.
-    if (CS%Cgrid_dyn) then
+      ! In the dynamics code, only the ice velocities are changed, and the ice-ocean
+      ! stresses are calculated.  The gravity wave dynamics (i.e. the continuity
+      ! equation) are not included in the dynamics (yet).  All of the thickness categories
+      ! are merged together.
+      if (CS%Cgrid_dyn) then
 
-      ! Correct the wind stresses for changes in the fractional ice-coverage and set
-      ! the wind stresses on the ice and the open ocean for a C-grid staggering.
-      ! This block of code must be executed if ice_cover and ice_free or the various wind
-      ! stresses were updated.
-      call set_wind_stresses_C(FIA, CS%ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
-                               WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, complete_ice_cover)
+        ! Correct the wind stresses for changes in the fractional ice-coverage and set
+        ! the wind stresses on the ice and the open ocean for a C-grid staggering.
+        ! This block of code must be executed if ice_cover and ice_free or the various wind
+        ! stresses were updated.
+        call set_wind_stresses_C(FIA, CS%ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
+                                 WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, complete_ice_cover)
 
-      if (CS%debug) then
-        call uvchksum("Before SIS_C_dynamics [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
-        call hchksum(ice_free, "ice_free before SIS_C_dynamics", G%HI)
-        call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before SIS_C_dynamics", G%HI)
-        call hchksum(CS%mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
-        call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
-        call hchksum(CS%ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
-        call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
-        call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
-!        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
-      endif
+        if (CS%debug) then
+          call uvchksum("Before SIS_C_dynamics [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
+          call hchksum(ice_free, "ice_free before SIS_C_dynamics", G%HI)
+          call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before SIS_C_dynamics", G%HI)
+          call hchksum(CS%mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
+          call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
+          call hchksum(CS%ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
+          call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
+          call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, halos=1)
+  !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
+        endif
 
-      !### Ridging needs to be added with C-grid dynamics.
-      rdg_rate(:,:) = 0.0
-      call mpp_clock_begin(iceClocka)
-      call SIS_C_dynamics(CS%ice_cover, CS%mca_step(:,:,CS%nts), CS%mi_sum, CS%u_ice_C, CS%v_ice_C, &
-                          OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
-      call mpp_clock_end(iceClocka)
+        !### Ridging needs to be added with C-grid dynamics.
+        rdg_rate(:,:) = 0.0
+        call mpp_clock_begin(iceClocka)
+        call SIS_C_dynamics(CS%ice_cover, CS%mca_step(:,:,CS%nts), CS%mi_sum, CS%u_ice_C, CS%v_ice_C, &
+                            OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
+                            str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, CS%SIS_C_dyn_CSp)
+        call mpp_clock_end(iceClocka)
 
-      if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
+        if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
 
-      call mpp_clock_begin(iceClockb)
-      call pass_vector(CS%u_ice_C, CS%v_ice_C, G%Domain, stagger=CGRID_NE)
-      call pass_vector(str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, G%Domain, stagger=CGRID_NE)
-      call mpp_clock_end(iceClockb)
+        call mpp_clock_begin(iceClockb)
+        call pass_vector(CS%u_ice_C, CS%v_ice_C, G%Domain, stagger=CGRID_NE)
+        call pass_vector(str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, G%Domain, stagger=CGRID_NE)
+        call mpp_clock_end(iceClockb)
 
-      ! Dynamics diagnostics
-      call mpp_clock_begin(iceClockc)
-      if (CS%id_fax>0) call post_data(CS%id_fax, WindStr_x_Cu, CS%diag)
-      if (CS%id_fay>0) call post_data(CS%id_fay, WindStr_y_Cv, CS%diag)
-      if (CS%debug) call uvchksum("Before set_ocean_top_stress_Cgrid [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
+        ! Dynamics diagnostics
+        call mpp_clock_begin(iceClockc)
+        if (CS%id_fax>0) call post_data(CS%id_fax, WindStr_x_Cu, CS%diag)
+        if (CS%id_fay>0) call post_data(CS%id_fay, WindStr_y_Cv, CS%diag)
+        if (CS%debug) call uvchksum("Before set_ocean_top_stress_Cgrid [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
 
-      ! Store all mechanical ocean forcing.
-      call set_ocean_top_stress_C2(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
-                                   str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, ice_free, CS%ice_cover, G)
-      call mpp_clock_end(iceClockc)
+        ! Store all mechanical ocean forcing.
+        call set_ocean_top_stress_C2(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
+                                     str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, ice_free, CS%ice_cover, G)
+        call mpp_clock_end(iceClockc)
 
-    else ! B-grid dynamics.
+      else ! B-grid dynamics.
 
-      ! Correct the wind stresses for changes in the fractional ice-coverage and set
-      ! the wind stresses on the ice and the open ocean for a C-grid staggering.
-      ! This block of code must be executed if ice_cover and ice_free or the various wind
-      ! stresses were updated.
+        ! Correct the wind stresses for changes in the fractional ice-coverage and set
+        ! the wind stresses on the ice and the open ocean for a C-grid staggering.
+        ! This block of code must be executed if ice_cover and ice_free or the various wind
+        ! stresses were updated.
 
-      call set_wind_stresses_B(FIA, CS%ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
-                               WindStr_x_ocn_B, WindStr_y_ocn_B, G, complete_ice_cover)
+        call set_wind_stresses_B(FIA, CS%ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
+                                 WindStr_x_ocn_B, WindStr_y_ocn_B, G, complete_ice_cover)
 
-      if (CS%debug) then
-        call Bchksum_pair("[uv]_ice_B before dynamics", CS%u_ice_B, CS%v_ice_B, G)
-        call hchksum(ice_free, "ice_free before ice_dynamics", G%HI)
-        call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before ice_dynamics", G%HI)
-        call hchksum(CS%mi_sum, "mi_sum before ice_dynamics", G%HI)
-        call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
-        call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G)
-        call Bchksum_pair("WindStr_[xy]_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1)
-      endif
+        if (CS%debug) then
+          call Bchksum_pair("[uv]_ice_B before dynamics", CS%u_ice_B, CS%v_ice_B, G)
+          call hchksum(ice_free, "ice_free before ice_dynamics", G%HI)
+          call hchksum(CS%mca_step(:,:,CS%nts), "misp_sum before ice_dynamics", G%HI)
+          call hchksum(CS%mi_sum, "mi_sum before ice_dynamics", G%HI)
+          call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1)
+          call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G)
+          call Bchksum_pair("WindStr_[xy]_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1)
+        endif
 
-      rdg_rate(:,:) = 0.0
-      call mpp_clock_begin(iceClocka)
-      call SIS_B_dynamics(CS%ice_cover, CS%mca_step(:,:,CS%nts), CS%mi_sum, CS%u_ice_B, CS%v_ice_B, &
-                          OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
-                          str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                          rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
-      call mpp_clock_end(iceClocka)
+        rdg_rate(:,:) = 0.0
+        call mpp_clock_begin(iceClocka)
+        call SIS_B_dynamics(CS%ice_cover, CS%mca_step(:,:,CS%nts), CS%mi_sum, CS%u_ice_B, CS%v_ice_B, &
+                            OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
+                            str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
+                            rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, CS%SIS_B_dyn_CSp)
+        call mpp_clock_end(iceClocka)
 
-      if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", CS%u_ice_B, CS%v_ice_B, G)
+        if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", CS%u_ice_B, CS%v_ice_B, G)
 
-      call mpp_clock_begin(iceClockb)
-      call pass_vector(CS%u_ice_B, CS%v_ice_B, G%Domain, stagger=BGRID_NE)
-      call mpp_clock_end(iceClockb)
+        call mpp_clock_begin(iceClockb)
+        call pass_vector(CS%u_ice_B, CS%v_ice_B, G%Domain, stagger=BGRID_NE)
+        call mpp_clock_end(iceClockb)
 
-      ! Dynamics diagnostics
-      call mpp_clock_begin(iceClockc)
-      if ((CS%id_fax>0) .or. (CS%id_fay>0)) then
-        !$OMP parallel do default(shared) private(ps_vel)
-        do J=jsc-1,jec ; do I=isc-1,iec
-          ps_vel = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
-                ((ice_free(i+1,j+1) + ice_free(i,j)) + &
-                 (ice_free(i+1,j) + ice_free(i,j+1)) )
-          diagVarBx(I,J) = ps_vel * WindStr_x_ocn_B(I,J) + (1.0-ps_vel) * WindStr_x_B(I,J)
-          diagVarBy(I,J) = ps_vel * WindStr_y_ocn_B(I,J) + (1.0-ps_vel) * WindStr_y_B(I,J)
+        ! Dynamics diagnostics
+        call mpp_clock_begin(iceClockc)
+        if ((CS%id_fax>0) .or. (CS%id_fay>0)) then
+          !$OMP parallel do default(shared) private(ps_vel)
+          do J=jsc-1,jec ; do I=isc-1,iec
+            ps_vel = (1.0 - G%mask2dBu(I,J)) + 0.25*G%mask2dBu(I,J) * &
+                  ((ice_free(i+1,j+1) + ice_free(i,j)) + &
+                   (ice_free(i+1,j) + ice_free(i,j+1)) )
+            diagVarBx(I,J) = ps_vel * WindStr_x_ocn_B(I,J) + (1.0-ps_vel) * WindStr_x_B(I,J)
+            diagVarBy(I,J) = ps_vel * WindStr_y_ocn_B(I,J) + (1.0-ps_vel) * WindStr_y_B(I,J)
+          enddo ; enddo
+
+          if (CS%id_fax>0) call post_data(CS%id_fax, diagVarBx, CS%diag)
+          if (CS%id_fay>0) call post_data(CS%id_fay, diagVarBy, CS%diag)
+        endif
+
+        if (CS%debug) call Bchksum_pair("Before set_ocean_top_stress_Bgrid [uv]_ice_B", CS%u_ice_B, CS%v_ice_B, G)
+        ! Store all mechanical ocean forcing.
+        call set_ocean_top_stress_B2(IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
+                                     str_x_ice_ocn_B, str_y_ice_ocn_B, ice_free, CS%ice_cover, G)
+        call mpp_clock_end(iceClockc)
+
+        ! Convert the velocities to C-grid points for use in transport.
+        do j=jsc,jec ; do I=isc-1,iec
+          CS%u_ice_C(I,j) = 0.5 * ( CS%u_ice_B(I,J-1) + CS%u_ice_B(I,J) )
         enddo ; enddo
+        do J=jsc-1,jec ; do i=isc,iec
+          CS%v_ice_C(i,J) = 0.5 * ( CS%v_ice_B(I-1,J) + CS%v_ice_B(I,J) )
+        enddo ; enddo
+      endif ! End of B-grid dynamics
 
-        if (CS%id_fax>0) call post_data(CS%id_fax, diagVarBx, CS%diag)
-        if (CS%id_fay>0) call post_data(CS%id_fay, diagVarBy, CS%diag)
-      endif
+      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
+      call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
 
-      if (CS%debug) call Bchksum_pair("Before set_ocean_top_stress_Bgrid [uv]_ice_B", CS%u_ice_B, CS%v_ice_B, G)
-      ! Store all mechanical ocean forcing.
-      call set_ocean_top_stress_B2(IOF, WindStr_x_ocn_B, WindStr_y_ocn_B, &
-                                   str_x_ice_ocn_B, str_y_ice_ocn_B, ice_free, CS%ice_cover, G)
-      call mpp_clock_end(iceClockc)
+      ! Update the integrated ice mass and store the transports in each step.
+      if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
+        "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
+      do n = CS%nts+1, CS%nts+CS%adv_substeps
+        if (n < ndyn_steps*CS%adv_substeps) then
+          ! Some of the work is not needed for the last step before cat_ice_transport.
+          call summed_continuity(CS%u_ice_C, CS%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
+                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
+                                 h_ice=CS%mi_sum)
+          call ice_cover_transport(CS%u_ice_C, CS%v_ice_C, CS%ice_cover, dt_adv, G, IG, CS%cover_trans_CSp)
+          call pass_var(CS%mi_sum, G%Domain, complete=.false.)
+          call pass_var(CS%ice_cover, G%Domain, complete=.false.)
+          call pass_var(CS%mca_step(:,:,n), G%Domain, complete=.true.)
+        else
+          call summed_continuity(CS%u_ice_C, CS%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
+                                 CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
+        endif
+      enddo
+      CS%nts = CS%nts + CS%adv_substeps
+      call mpp_clock_end(iceClock4)
 
-      ! Convert the velocities to C-grid points for use in transport.
-      do j=jsc,jec ; do I=isc-1,iec
-        CS%u_ice_C(I,j) = 0.5 * ( CS%u_ice_B(I,J-1) + CS%u_ice_B(I,J) )
-      enddo ; enddo
-      do J=jsc-1,jec ; do i=isc,iec
-        CS%v_ice_C(i,J) = 0.5 * ( CS%v_ice_B(I-1,J) + CS%v_ice_B(I,J) )
-      enddo ; enddo
-    endif ! End of B-grid dynamics
-
-    if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps*(nadv_cycle-nac)-nds)*dt_slow_dyn), CS%diag)
-
-    ! Update the integrated ice mass and store the transports in each step.
-    if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
-      "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
-    do n = CS%nts+1, CS%nts+CS%adv_substeps
-      if (n < nts_last) then
-        ! Some of the work is not needed for the last step before cat_ice_transport.
-        call summed_continuity(CS%u_ice_C, CS%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
-                               CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
-                               h_ice=CS%mi_sum)
-        call ice_cover_transport(CS%u_ice_C, CS%v_ice_C, CS%ice_cover, dt_adv, G, IG, CS%cover_trans_CSp)
-        call pass_var(CS%mi_sum, G%Domain, complete=.false.)
-        call pass_var(CS%ice_cover, G%Domain, complete=.false.)
-        call pass_var(CS%mca_step(:,:,n), G%Domain, complete=.true.)
-      else
-        call summed_continuity(CS%u_ice_C, CS%v_ice_C, CS%mca_step(:,:,n-1), CS%mca_step(:,:,n), &
-                               CS%uh_step(:,:,n), CS%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp)
-      endif
-    enddo
-    CS%nts = CS%nts + CS%adv_substeps
-    call mpp_clock_end(iceClock4)
-
+    enddo ! nds=1,ndyn_steps
     ! This is the end of the code that might be called as 2-d dynamics.
 
     call mpp_clock_begin(iceClock8)
-    if (nds == ndyn_steps) then
-      ! Do the transport of mass and tracers by category and vertical layer.
-      call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
-                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:CS%nts), &
-                             uh_tot=CS%uh_step(:,:,1:CS%nts), vh_tot=CS%vh_step(:,:,1:CS%nts))
-      ! Convert the cell-averaged state back to the ice-state type, adjusting the
-      ! category mass distributions, doing ridging, and updating the partition sizes.
-      call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
-                                rdg_rate=rdg_rate)
+    ! Do the transport of mass and tracers by category and vertical layer.
+    call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
+                           CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:CS%nts), &
+                           uh_tot=CS%uh_step(:,:,1:CS%nts), vh_tot=CS%vh_step(:,:,1:CS%nts))
+    ! Convert the cell-averaged state back to the ice-state type, adjusting the
+    ! category mass distributions, doing ridging, and updating the partition sizes.
+    call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
+                              rdg_rate=rdg_rate)
 
-      CS%nts = 0 ! There is no outstanding transport to be done.
+    CS%nts = 0 ! There is no outstanding transport to be done.
 
-      ! Copy the velocities back to the ice state type
-      if (CS%Cgrid_dyn) then
-        do j=jsd,jed ; do I=IsdB,IedB ; IST%u_ice_C(I,j) = CS%u_ice_C(I,j) ; enddo ; enddo
-        do J=JsdB,JedB ; do i=isd,ied ; IST%v_ice_C(i,J) = CS%v_ice_C(i,J) ; enddo ; enddo
-      else
-        do J=JsdB,JedB ; do I=IsdB,IedB
-          IST%u_ice_B(I,J) = CS%u_ice_B(I,J) ; IST%v_ice_B(I,J) = CS%v_ice_B(I,J)
-        enddo ; enddo
-      endif
-      if (CS%column_check) &
-        call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_transport")! , check_column=.true.)
+    ! Copy the velocities back to the ice state type
+    if (CS%Cgrid_dyn) then
+      do j=jsd,jed ; do I=IsdB,IedB ; IST%u_ice_C(I,j) = CS%u_ice_C(I,j) ; enddo ; enddo
+      do J=JsdB,JedB ; do i=isd,ied ; IST%v_ice_C(i,J) = CS%v_ice_C(i,J) ; enddo ; enddo
+    else
+      do J=JsdB,JedB ; do I=IsdB,IedB
+        IST%u_ice_B(I,J) = CS%u_ice_B(I,J) ; IST%v_ice_B(I,J) = CS%v_ice_B(I,J)
+      enddo ; enddo
     endif
+    if (CS%column_check) &
+      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                              message="      Post_transport")! , check_column=.true.)
 
     call mpp_clock_end(iceClock8)
 
-  enddo ; enddo ! nds=1,ndyn_steps*nadv_cycle
+  enddo ! nac=0,nadv_cycle-1
   call finish_ocean_top_stresses(IOF, G)
 
   ! Set appropriate surface quantities in categories with no ice.
@@ -2446,6 +2445,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
                  "The number of advective iterations for each slow dynamics \n"//&
                  "time step.", default=1)
+    if (CS%adv_substeps < 1) CS%adv_substeps = 1
 
     call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
@@ -2511,9 +2511,9 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
       CS%nts = 0 ; CS%max_nts = 0
       call safe_alloc_alloc(CS%mi_sum, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc_alloc(CS%ice_cover, G%isd, G%ied, G%jsd, G%jed)
-      max_nts = max(CS%adv_substeps, 1)
+      max_nts = CS%adv_substeps
       if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_advect > CS%dt_ice_dyn)) &
-        max_nts = max(CS%adv_substeps, 1) * max(CEILING(CS%dt_advect/CS%dt_ice_dyn - 1e-6), 1)
+        max_nts = CS%adv_substeps * max(CEILING(CS%dt_advect/CS%dt_ice_dyn - 1e-6), 1)
       call increase_max_tracer_step_memory(CS, G, max_nts)
 
       call safe_alloc_alloc(CS%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
