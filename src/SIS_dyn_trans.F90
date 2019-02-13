@@ -680,7 +680,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   integer :: ndyn_steps, nds ! The number of dynamic steps in this call.
-  integer :: nadv_cycle      ! The number of tracer advective cycles in this call.
+  integer :: nadv_cycle, nac ! The number of tracer advective cycles in this call.
   integer :: nts_last ! The number of tracer advection steps before updating IST.
   character(len=256) :: mesg
 
@@ -698,18 +698,18 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
     nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
-    ndyn_steps = nadv_cycle * max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
-  dt_slow_dyn = dt_slow / ndyn_steps
+    ndyn_steps = max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
+  dt_slow_dyn = dt_slow / (nadv_cycle * ndyn_steps)
   if (CS%adv_substeps > 0) dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-  nts_last = (ndyn_steps/nadv_cycle)*CS%adv_substeps
+  nts_last = ndyn_steps*CS%adv_substeps
   if (CS%merged_cont .and. (CS%nts == 0) .and. (nts_last > CS%max_nts)) &
     call increase_max_tracer_step_memory(CS, G, nts_last)
 
   complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
-  do nds=1,ndyn_steps
+  do nac=0,nadv_cycle-1 ; do nds=1,ndyn_steps
 
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps*(nadv_cycle-nac)-nds)*dt_slow_dyn), CS%diag)
 
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
@@ -872,7 +872,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     endif ! End of B-grid dynamics
 
     if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", CS%u_ice_C, CS%v_ice_C, G)
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps*(nadv_cycle-nac)-nds)*dt_slow_dyn), CS%diag)
 
     ! Update the integrated ice mass and store the transports in each step.
     if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
@@ -898,13 +898,11 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     ! This is the end of the code that might be called as 2-d dynamics.
 
     call mpp_clock_begin(iceClock8)
-    if ((CS%nts + CS%adv_substeps > CS%max_nts) .or. (nds==ndyn_steps)) then
-      if (CS%nts /= nts_last) call SIS_error(FATAL, "Bad logic in calculating nts_last.")
+    if (nds == ndyn_steps) then
       ! Do the transport of mass and tracers by category and vertical layer.
-      n = CS%nts
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
-                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:n), &
-                             uh_tot=CS%uh_step(:,:,1:n), vh_tot=CS%vh_step(:,:,1:n))
+                             CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:CS%nts), &
+                             uh_tot=CS%uh_step(:,:,1:CS%nts), vh_tot=CS%vh_step(:,:,1:CS%nts))
       ! Convert the cell-averaged state back to the ice-state type, adjusting the
       ! category mass distributions, doing ridging, and updating the partition sizes.
       call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
@@ -921,14 +919,14 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
           IST%u_ice_B(I,J) = CS%u_ice_B(I,J) ; IST%v_ice_B(I,J) = CS%v_ice_B(I,J)
         enddo ; enddo
       endif
+      if (CS%column_check) &
+        call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+                                message="      Post_transport")! , check_column=.true.)
     endif
+
     call mpp_clock_end(iceClock8)
 
-    if (CS%column_check .and. (CS%nts==0)) &
-      call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                                message="      Post_transport")! , check_column=.true.)
-
-  enddo ! nds=1,ndyn_steps
+  enddo ; enddo ! nds=1,ndyn_steps*nadv_cycle
   call finish_ocean_top_stresses(IOF, G)
 
   ! Set appropriate surface quantities in categories with no ice.
