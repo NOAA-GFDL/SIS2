@@ -905,7 +905,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
     call mpp_clock_begin(iceClock8)
     ! Do the transport of mass and tracers by category and vertical layer.
-    call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%nts, G, IG, &
+    call ice_cat_transport(CS%CAS, IST%TrReg, dt_adv_cycle, CS%nts, G, IG, &
                            CS%SIS_transport_CSp, mca_tot=CS%mca_step(:,:,0:CS%nts), &
                            uh_tot=CS%uh_step(:,:,1:CS%nts), vh_tot=CS%vh_step(:,:,1:CS%nts))
     ! Convert the cell-averaged state back to the ice-state type, adjusting the
