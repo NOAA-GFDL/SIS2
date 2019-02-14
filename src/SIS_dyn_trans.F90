@@ -672,8 +672,9 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   real :: complete_ice_cover ! The fractional ice coverage that is close enough to 1 to be
                        ! complete for the purpose of calculating wind stresses [nondim].
 
+  real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
-  real :: dt_adv       ! The advective timestep [s].
+  real :: dt_adv       ! The advective subcycle timestep [s].
   real :: Idt_slow     ! The inverse of dt_slow [s-1].
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -694,13 +695,11 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
 
-  ndyn_steps = 1 ; nadv_cycle = 1
-  if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
+  nadv_cycle = 1
+  if ((CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
     nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
-  if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn*nadv_cycle < dt_slow)) &
-    ndyn_steps = max(CEILING(dt_slow/(nadv_cycle*CS%dt_ice_dyn) - 0.000001), 1)
-  dt_slow_dyn = dt_slow / (nadv_cycle * ndyn_steps)
-  dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+  dt_adv_cycle = dt_slow / nadv_cycle
+
 
   complete_ice_cover = 1.0 - 2.0*ncat*epsilon(complete_ice_cover)
 
@@ -709,8 +708,6 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     ! This should be called after a thermodynamic step or if ice_transport was called.
     if (CS%nts == 0) then
       call mpp_clock_begin(iceClock4)
-      if (ndyn_steps*CS%adv_substeps > CS%max_nts) &
-        call increase_max_tracer_step_memory(CS, G, ndyn_steps*CS%adv_substeps)
 
       CS%mca_step(:,:,0) = 0.0 ; CS%mi_sum(:,:) = 0.0 ; CS%ice_cover(:,:) = 0.0
       !$OMP parallel do default(shared)
@@ -742,15 +739,22 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       call mpp_clock_end(iceClock4)
     endif
 
-    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*ndyn_steps*dt_slow_dyn)
+    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
+
+    ! This is the start of the code that might be called as 2-d dynamics.
+    !   Variables updated here: CS%ice_cover, CS%[uv]_ice_[BC], CS%mca_step, CS%mi_sum,
+    !      IOF (stresses), CS%[uv]h_step, CS%nts, CS%SIS_[BC]_dyn_CSp
+    !   Variables used with intent in here: FIA, G, OSS, dt_adv_cycle, CS
+    !   Local variables: ice_free
+    ndyn_steps = 1
+    if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_adv_cycle)) &
+      ndyn_steps = max(CEILING(dt_adv_cycle/CS%dt_ice_dyn - 1e-6), 1)
+    dt_slow_dyn = dt_adv_cycle / ndyn_steps
+    dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+    if (ndyn_steps*CS%adv_substeps > CS%max_nts) &
+      call increase_max_tracer_step_memory(CS, G, ndyn_steps*CS%adv_substeps)
 
     do nds=1,ndyn_steps
-      ! This is the start of the code that might be called as 2-d dynamics.
-      !   Variables updated here: CS%ice_cover, CS%[uv]_ice_[BC], CS%mca_step, CS%mi_sum,
-      !      IOF (stresses), CS%[uv]h_step, CS%nts, CS%SIS_[BC]_dyn_CSp
-      !   Variables used with intent in here: FIA, G, OSS, dt_slow_dyn, CS
-      !   Local variables: ice_free
-
       call mpp_clock_begin(iceClock4)
       call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
       do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - CS%ice_cover(i,j), 0.0) ; enddo ; enddo
@@ -875,8 +879,9 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
       call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
 
       ! Update the integrated ice mass and store the transports in each step.
-      if (CS%nts+CS%adv_substeps > CS%max_nts) call SIS_error(FATAL, &
-        "Attempting to store more advective substeps than allocated space allows.  Increase MAX_NTS.")
+      if (CS%nts+CS%adv_substeps > CS%max_nts) &
+        call increase_max_tracer_step_memory(CS, G, CS%nts+CS%adv_substeps)
+
       do n = CS%nts+1, CS%nts+CS%adv_substeps
         if (n < ndyn_steps*CS%adv_substeps) then
           ! Some of the work is not needed for the last step before cat_ice_transport.
@@ -2620,28 +2625,64 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 end subroutine SIS_dyn_trans_init
 
 !> Increase the memory available to store total ice and snow masses and mass fluxes for tracer advection.
-!! Any data already stored in the fluxes is simply discarded, so CS%nts must be 0.
+!! Any data already stored in the fluxes is copied over to the new arrays.
 subroutine increase_max_tracer_step_memory(CS, G, max_nts)
   type(dyn_trans_CS),      pointer       :: CS   !< The control structure for the SIS_dyn_trans module
   type(SIS_hor_grid_type), intent(in)    :: G    !< The horizontal grid structure
   integer,                 intent(in)    :: max_nts !< The new maximum number of masses and mass fluxes
                                                  !! that can be stored for tracer advection.
 
+  real, allocatable :: tmp_array(:,:,:)
+  integer :: nts_prev
+
   if (CS%max_nts >= max(max_nts,1)) return
-  if (CS%nts /= 0) call SIS_error(FATAL, "increase_max_tracer_steps can not be called when CS%nts /= 0.")
 
-  if (allocated(CS%mca_step)) deallocate(CS%mca_step)
-  if (allocated(CS%uh_step)) deallocate(CS%uh_step)
-  if (allocated(CS%vh_step)) deallocate(CS%vh_step)
-
+  nts_prev = CS%nts
   CS%max_nts = max(max_nts,1)
 
-  allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:CS%max_nts))
-  CS%mca_step(:,:,:) = 0.0
-!  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
-!      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, CS%max_nts)
-  call safe_alloc_alloc(CS%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, CS%max_nts)
-  call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, CS%max_nts)
+  if (allocated(CS%mca_step)) then
+    allocate(tmp_array(G%isd:G%ied, G%jsd:G%jed, 0:nts_prev))
+    tmp_array(:,:,0:nts_prev) = CS%mca_step(:,:,0:nts_prev)
+    deallocate(CS%mca_step)
+    allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:CS%max_nts)) ; CS%mca_step(:,:,:) = 0.0
+    ! Copy over the data that had been set before.
+    CS%mca_step(:,:,0:nts_prev) = tmp_array(:,:,0:nts_prev)
+    deallocate(tmp_array)
+  else
+    allocate(CS%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:CS%max_nts)) ; CS%mca_step(:,:,:) = 0.0
+  !  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
+  !      call safe_alloc_alloc(CS%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, CS%max_nts)
+  endif
+
+  if (allocated(CS%uh_step)) then
+    if (nts_prev > 0) then
+      allocate(tmp_array(G%IsdB:G%IedB, G%jsd:G%jed, nts_prev))
+      if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = CS%uh_step(:,:,1:nts_prev)
+    endif
+    deallocate(CS%uh_step)
+    call safe_alloc_alloc(CS%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, CS%max_nts)
+    if (nts_prev > 0) then ! Copy over the data that had been set before.
+      CS%uh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
+      deallocate(tmp_array)
+    endif
+  else
+    call safe_alloc_alloc(CS%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, CS%max_nts)
+  endif
+
+  if (allocated(CS%vh_step)) then
+    if (nts_prev > 0) then
+      allocate(tmp_array(G%isd:G%ied, G%JsdB:G%JedB, nts_prev))
+      if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = CS%vh_step(:,:,1:nts_prev)
+    endif
+    deallocate(CS%vh_step)
+    call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, CS%max_nts)
+    if (nts_prev > 0) then ! Copy over the data that had been set before.
+      CS%vh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
+      deallocate(tmp_array)
+    endif
+  else
+    call safe_alloc_alloc(CS%vh_step, G%isd, G%ied, G%JsdB, G%JedB, CS%max_nts)
+  endif
 
 end subroutine increase_max_tracer_step_memory
 
