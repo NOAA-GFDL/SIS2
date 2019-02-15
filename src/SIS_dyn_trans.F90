@@ -335,8 +335,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   integer :: nadv_cycle      ! The number of tracer advective cycles in this call.
   integer :: nts_last ! The number of tracer advection steps before updating IST.
 
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
   if (CS%merged_cont .and. .not.CS%Warsaw_sum_order) then
     !### This call is here as a temporary debugging step.
     call SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
@@ -616,34 +614,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
 
-  ! Set appropriate surface quantities in categories with no ice.
-  if (allocated(IST%t_surf)) then
-    !$OMP parallel do default(shared)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
-    enddo ; enddo ; enddo
-  endif
-
-  ! Calculate and output various diagnostics of the ice state.
-  call mpp_clock_begin(iceClock9)
-
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-  call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
-  call disable_SIS_averaging(CS%diag)
-
-  if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
-  if (CS%debug) call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
-
-  if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                              tracer_CSp=tracer_CSp)
-    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
-  elseif (CS%column_check) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-  endif
-
-  call mpp_clock_end(iceClock9)
+  call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
 
 end subroutine SIS_dynamics_trans
 
@@ -667,17 +638,12 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
                                                    !! auxiliary ice tracer packages
 
   ! Local variables
-
   real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
-  type(dyn_state_2d), pointer :: DS2d => NULL()  ! A simplified 2-d description of the ice state
-                                                 ! integrated across thickness categories and layers.
   integer :: nadv_cycle, nac ! The number of tracer advective cycles in this call.
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
   character(len=256) :: mesg
-
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -691,83 +657,96 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
   dt_adv_cycle = dt_slow / nadv_cycle
 
-  DS2d => CS%DS2d
-
   do nac=1,nadv_cycle
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
-    if (DS2d%nts == 0) then
-      call mpp_clock_begin(iceClock4)
-
-      DS2d%mca_step(:,:,0) = 0.0 ; DS2d%mi_sum(:,:) = 0.0 ; DS2d%ice_cover(:,:) = 0.0
-      !$OMP parallel do default(shared)
-      do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
-        DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + IST%part_size(i,j,k) * &
-                        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
-        DS2d%mi_sum(i,j) = DS2d%mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
-        DS2d%ice_cover(i,j) = DS2d%ice_cover(i,j) + IST%part_size(i,j,k)
-      enddo ; enddo ; enddo
-      do j=jsd,jed ; do i=isd,ied
-        DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + DS2d%mi_sum(i,j)
-        if ((abs(max(1.0-DS2d%ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.5)) then
-          write(mesg, '(3(ES13.5))') max(1.0 - DS2d%ice_cover(i,j), 0.0) - IST%part_size(i,j,0), &
-             max(1.0 - DS2d%ice_cover(i,j), 0.0), IST%part_size(i,j,0)
-          call SIS_error(FATAL, "Mismatch in ice_free values exceeding roundoff: "//trim(mesg))
-        endif
-      enddo ; enddo
-      if (CS%Cgrid_dyn) then
-        do j=jsd,jed ; do I=IsdB,IedB ; DS2d%u_ice_C(I,j) = IST%u_ice_C(I,j) ; enddo ; enddo
-        do J=JsdB,JedB ; do i=isd,ied ; DS2d%v_ice_C(i,J) = IST%v_ice_C(i,J) ; enddo ; enddo
-      else
-        do J=JsdB,JedB ; do I=IsdB,IedB
-          DS2d%u_ice_B(I,J) = IST%u_ice_B(I,J) ; DS2d%v_ice_B(I,J) = IST%v_ice_B(I,J)
-        enddo ; enddo
-      endif
-
-      !  Determine the whole-cell averaged mass of snow and ice.
-      call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CS%CAS)
-      call mpp_clock_end(iceClock4)
-    endif
-
-    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
+    call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, IG, CS)
 
     ! Update the category-merged dynamics and use the merged continuity equation.
-    call SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS)
+    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
+    call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS)
 
-    call mpp_clock_begin(iceClock8)
-    ! Do the transport of mass and tracers by category and vertical layer.
-    call ice_cat_transport(CS%CAS, IST%TrReg, dt_adv_cycle, DS2d%nts, G, IG, &
-                           CS%SIS_transport_CSp, mca_tot=DS2d%mca_step(:,:,0:DS2d%nts), &
-                           uh_tot=DS2d%uh_step(:,:,1:DS2d%nts), vh_tot=DS2d%vh_step(:,:,1:DS2d%nts))
-    ! Convert the cell-averaged state back to the ice-state type, adjusting the
-    ! category mass distributions, doing ridging, and updating the partition sizes.
-    if (CS%do_ridging) then
-      call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
-                                rdg_rate=DS2d%avg_ridge_rate)
-      DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
-    else
-      call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp)
-    endif
+    ! Complete the category-resolved mass and tracer transport and update the ice state type.
+    call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
 
-    DS2d%nts = 0 ! There is no outstanding transport to be done.
-
-    ! Copy the velocities back to the ice state type
-    if (CS%Cgrid_dyn) then
-      do j=jsd,jed ; do I=IsdB,IedB ; IST%u_ice_C(I,j) = DS2d%u_ice_C(I,j) ; enddo ; enddo
-      do J=JsdB,JedB ; do i=isd,ied ; IST%v_ice_C(i,J) = DS2d%v_ice_C(i,J) ; enddo ; enddo
-    else
-      do J=JsdB,JedB ; do I=IsdB,IedB
-        IST%u_ice_B(I,J) = DS2d%u_ice_B(I,J) ; IST%v_ice_B(I,J) = DS2d%v_ice_B(I,J)
-      enddo ; enddo
-    endif
     if (CS%column_check) &
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                              message="      Post_transport")! , check_column=.true.)
-
-    call mpp_clock_end(iceClock8)
+                                message="      Post_transport")! , check_column=.true.)
 
   enddo ! nac=0,nadv_cycle-1
   call finish_ocean_top_stresses(IOF, G)
+
+  call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
+
+end subroutine SIS_multi_dyn_trans
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Complete the category-resolved mass and tracer transport and update the ice state type.
+subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, IG, CS)
+  type(ice_state_type),          intent(inout) :: IST !< A type describing the state of the sea ice
+  type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
+                                                   !! integrated across thickness categories and layers.
+  type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
+  real,                          intent(in)    :: dt_adv_cycle !< The time since the last IST transport [s].
+  type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),            pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+
+  integer :: i, j, k, isc, iec, jsc, jec
+  integer :: isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+
+  call mpp_clock_begin(iceClock8)
+  ! Do the transport of mass and tracers by category and vertical layer.
+  call ice_cat_transport(CS%CAS, IST%TrReg, dt_adv_cycle, DS2d%nts, G, IG, &
+                         CS%SIS_transport_CSp, mca_tot=DS2d%mca_step(:,:,0:DS2d%nts), &
+                         uh_tot=DS2d%uh_step(:,:,1:DS2d%nts), vh_tot=DS2d%vh_step(:,:,1:DS2d%nts))
+  ! Convert the cell-averaged state back to the ice-state type, adjusting the
+  ! category mass distributions, doing ridging, and updating the partition sizes.
+  if (CS%do_ridging) then
+    call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
+                              rdg_rate=DS2d%avg_ridge_rate)
+    DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
+  else
+    call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp)
+  endif
+  DS2d%nts = 0 ! There is no outstanding transport to be done and IST is up-to-date.
+
+  ! Copy the velocities back to the ice state type
+  if (CS%Cgrid_dyn) then
+    do j=jsd,jed ; do I=IsdB,IedB ; IST%u_ice_C(I,j) = DS2d%u_ice_C(I,j) ; enddo ; enddo
+    do J=JsdB,JedB ; do i=isd,ied ; IST%v_ice_C(i,J) = DS2d%v_ice_C(i,J) ; enddo ; enddo
+  else
+    do J=JsdB,JedB ; do I=IsdB,IedB
+      IST%u_ice_B(I,J) = DS2d%u_ice_B(I,J) ; IST%v_ice_B(I,J) = DS2d%v_ice_B(I,J)
+    enddo ; enddo
+  endif
+  call mpp_clock_end(iceClock8)
+
+end subroutine complete_IST_transport
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Do final checks to set a consistent ice state and write diagnostics as appropriate.
+subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                   !! the ocean's surface state for the ice model.
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+  type(SIS_tracer_flow_control_CS), optional, pointer :: tracer_CSp !< The structure for controlling
+                                                   !! calls to auxiliary ice tracer packages
+
+  ! Local variables
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  integer :: i, j, k, n, isc, iec, jsc, jec, ncat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   ! Set appropriate surface quantities in categories with no ice.
   if (allocated(IST%t_surf)) then
@@ -798,9 +777,65 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
   call mpp_clock_end(iceClock9)
 
-end subroutine SIS_multi_dyn_trans
+end subroutine ice_state_cleanup
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Convert the category-resolved ice state into the simplified 2-d ice state and a cell averaged state.
+subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, IG, CS)
+  type(ice_state_type),          intent(in)    :: IST !< A type describing the state of the sea ice
+  type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
+                                                   !! integrated across thickness categories and layers.
+  type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
+  type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
+  type(dyn_trans_CS),            pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+
+  ! Local variables
+  integer :: i, j, k, isd, ied, jsd, jed, IsdB, IedB, JsdB, JedB
+
+  if (DS2d%nts /= 0) then
+    call SIS_error(WARNING, "convert_IST_to_simple_state called with incomplete transport.")
+    return
+  endif
+
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
+  IsdB = G%IsdB ; IedB = G%IedB ; JsdB = G%JsdB ; JedB = G%JedB
+
+  call mpp_clock_begin(iceClock4)
+
+  DS2d%mca_step(:,:,0) = 0.0 ; DS2d%mi_sum(:,:) = 0.0 ; DS2d%ice_cover(:,:) = 0.0
+  !$OMP parallel do default(shared)
+  do j=jsd,jed ; do k=1,IG%CatIce ; do i=isd,ied
+    DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + IST%part_size(i,j,k) * &
+                    (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
+    DS2d%mi_sum(i,j) = DS2d%mi_sum(i,j) + (IG%H_to_kg_m2 * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
+    DS2d%ice_cover(i,j) = DS2d%ice_cover(i,j) + IST%part_size(i,j,k)
+  enddo ; enddo ; enddo
+  do j=jsd,jed ; do i=isd,ied
+    DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + DS2d%mi_sum(i,j)
+!    if ((abs(max(1.0-DS2d%ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.5)) then
+!      write(mesg, '(3(ES13.5))') max(1.0 - DS2d%ice_cover(i,j), 0.0) - IST%part_size(i,j,0), &
+!         max(1.0 - DS2d%ice_cover(i,j), 0.0), IST%part_size(i,j,0)
+!      call SIS_error(FATAL, "Mismatch in ice_free values exceeding roundoff: "//trim(mesg))
+!    endif
+  enddo ; enddo
+  if (CS%Cgrid_dyn) then
+    do j=jsd,jed ; do I=IsdB,IedB ; DS2d%u_ice_C(I,j) = IST%u_ice_C(I,j) ; enddo ; enddo
+    do J=JsdB,JedB ; do i=isd,ied ; DS2d%v_ice_C(i,J) = IST%v_ice_C(i,J) ; enddo ; enddo
+  else
+    do J=JsdB,JedB ; do I=IsdB,IedB
+      DS2d%u_ice_B(I,J) = IST%u_ice_B(I,J) ; DS2d%v_ice_B(I,J) = IST%v_ice_B(I,J)
+    enddo ; enddo
+  endif
+
+  !  Determine the whole-cell averaged mass of snow and ice.
+  call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CAS)
+  call mpp_clock_end(iceClock4)
+
+end subroutine convert_IST_to_simple_state
 
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Update the category-merged ice state and call the merged continuity update.
 subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG, CS)
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
@@ -1068,8 +1103,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
 
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = 1
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
@@ -1233,34 +1266,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, IG, tracer_CSp
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
 
-  ! Set appropriate surface quantities in categories with no ice.
-  if (allocated(IST%t_surf)) then
-    !$OMP parallel do default(shared)
-    do j=jsc,jec ; do i=isc,iec ; if (IST%part_size(i,j,1)<=0.0) &
-      IST%t_surf(i,j,1) = T_0degC + OSS%T_fr_ocn(i,j)
-    enddo ; enddo
-  endif
-
-  ! Calculate and output various diagnostics of the ice state.
-  call mpp_clock_begin(iceClock9)
-
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-  call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
-  call disable_SIS_averaging(CS%diag)
-
-  if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
-  if (CS%debug) call IST_chksum("End slab_ice_dyn_trans", IST, G, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of slab_ice_dyn_trans", OSS=OSS)
-
-  if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
-                              tracer_CSp=tracer_CSp)
-    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
-  elseif (CS%column_check) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-  endif
-
-  call mpp_clock_end(iceClock9)
+  call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
 
 end subroutine slab_ice_dyn_trans
 
@@ -2302,17 +2308,6 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
   endif
 
 end subroutine increase_max_tracer_step_memory
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> Allocate an array of integer diagnostic arrays and set them to -1, if they are not already allocated
-subroutine safe_alloc_ids_1d(ids, nids)
-  integer, allocatable, intent(inout) :: ids(:) !< An array of diagnostic IDs to allocate
-  integer,              intent(in)    :: nids   !< The number of IDs to allocate
-
-  if (.not.ALLOCATED(ids)) then
-    allocate(ids(nids)) ; ids(:) = -1
-  endif;
-end subroutine safe_alloc_ids_1d
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_transport_CS returns a pointer to the SIS_transport_CS type that
