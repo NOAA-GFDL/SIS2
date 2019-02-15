@@ -2134,7 +2134,10 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "If true, use the order of sums in the Warsaw version of SIS2. \n"//&
                  "The default is the opposite of MERGED_CONTINUITY. \n"//&
                  "This option exists for backward compatibilty but may \n"//&
-                 "eventually be obsoleted.", default=.not.CS%merged_cont)
+                 "eventually be obsoleted.", &
+                 default=.not.CS%merged_cont, do_not_log=CS%merged_cont)
+  if (CS%merged_cont .and. CS%Warsaw_sum_order) &
+    call SIS_error(FATAL, "WARSAW_SUM_ORDER can not be true if MERGED_CONTINUITY=True.")
 
   call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
