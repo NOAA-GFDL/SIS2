@@ -335,13 +335,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
   integer :: nadv_cycle, nac ! The number of tracer advective cycles in this call.
-  integer :: nts_last ! The number of tracer advection steps before updating IST.
-
-!  if (CS%merged_cont .and. .not.CS%Warsaw_sum_order) then
-!    !### This call is here as a temporary debugging step.
-!    call SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
-!    return
-!  endif
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -352,17 +345,14 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   DS2d => CS%DS2d
 
   ndyn_steps = 1 ; nadv_cycle = 1
-  if (CS%merged_cont .and. (CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
+  if ((CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
     nadv_cycle = max(CEILING(dt_slow/CS%dt_advect - 1e-9), 1)
   dt_adv_cycle = dt_slow / real(nadv_cycle)
 
-  if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
-    ndyn_steps = nadv_cycle * max(CEILING(dt_adv_cycle/CS%dt_ice_dyn - 1e-6), 1)
-  dt_slow_dyn = dt_adv_cycle / ndyn_steps
+  if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_adv_cycle)) &
+    ndyn_steps = max(CEILING(dt_adv_cycle/CS%dt_ice_dyn - 1e-6), 1)
+  dt_slow_dyn = dt_adv_cycle / real(ndyn_steps)
   dt_adv = dt_slow_dyn / real(CS%adv_substeps)
-  nts_last = (ndyn_steps/nadv_cycle)*CS%adv_substeps
-  if (CS%merged_cont .and. (DS2d%nts == 0) .and. (nts_last > DS2d%max_nts)) &
-    call increase_max_tracer_step_memory(DS2d, G, nts_last)
 
   do nac=1,nadv_cycle
     Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
@@ -373,19 +363,21 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
       call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, IG, CS)
 
       ! Update the category-merged dynamics and use the merged continuity equation.
-      Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
       call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS)
 
       ! Complete the category-resolved mass and tracer transport and update the ice state type.
       call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
+
     else !  (.not.CS%merged_cont)
+
       do nds=1,ndyn_steps
 
         call mpp_clock_begin(iceClock4)
+        ! The code timed by iceClock4 is the non-merged-cont equivalent of convert_IST_to_simple_state.
 
         ! Convert the category-resolved ice state into the simplified 2-d ice state.
         ! This should be called after a thermodynamic step or if ice_transport was called.
-        if (DS2d%nts == 0) then
+        if (DS2d%nts == 0) then  ! (This is always true.)
           misp_sum(:,:) = 0.0 ; mi_sum(:,:) = 0.0 ; ice_cover(:,:) = 0.0
           !$OMP parallel do default(shared)
           do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
@@ -395,7 +387,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
             ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
           enddo ; enddo ; enddo
           do j=jsd,jed ; do i=isd,ied
-            !### This can be merged in above, but it would change answers.
             misp_sum(i,j) = misp_sum(i,j) + mi_sum(i,j)
             ice_free(i,j) = IST%part_size(i,j,0)
           enddo ; enddo
@@ -418,9 +409,11 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
         ! stresses are calculated.  The gravity wave dynamics (i.e. the continuity
         ! equation) are not included in the dynamics.  All of the thickness categories
         ! are merged together.
+
+        call mpp_clock_begin(iceClock4)
+        ! The code timed by iceClock4 is the non-merged-cont equivalent of SIS_merged_dyn_cont.
         if (CS%Cgrid_dyn) then
 
-          call mpp_clock_begin(iceClock4)
           ! Correct the wind stresses for changes in the fractional ice-coverage and set
           ! the wind stresses on the ice and the open ocean for a C-grid staggering.
           ! This block of code must be executed if ice_cover and ice_free or the various wind
@@ -480,16 +473,12 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
           call mpp_clock_end(iceClockc)
 
-          call mpp_clock_end(iceClock4)
-
         else ! B-grid dynamics.
 
           ! Correct the wind stresses for changes in the fractional ice-coverage and set
           ! the wind stresses on the ice and the open ocean for a C-grid staggering.
           ! This block of code must be executed if ice_cover and ice_free or the various wind
           ! stresses were updated.
-
-          call mpp_clock_begin(iceClock4)
           call set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_B, &
                                    WindStr_x_ocn_B, WindStr_y_ocn_B, G, CS%complete_ice_cover)
 
@@ -558,7 +547,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
           do J=jsc-1,jec ; do i=isc,iec
             IST%v_ice_C(i,J) = 0.5 * ( IST%v_ice_B(I-1,J) + IST%v_ice_B(I,J) )
           enddo ; enddo
-          call mpp_clock_end(iceClock4)
         endif ! End of B-grid dynamics
 
         if (CS%do_ridging) then ! Accumulate the time-average ridging rate.
@@ -569,26 +557,30 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
           enddo ; enddo
         endif
 
-        ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
-        call mpp_clock_begin(iceClock8)
-        if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
-        call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+        call mpp_clock_begin(iceClock4)
 
-        call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
-                               uc=IST%u_ice_C, vc=IST%v_ice_C)
-
-        if (DS2d%nts==0) then
-          if (CS%do_ridging) then
-            call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
-                                      rdg_rate=DS2d%avg_ridge_rate)
-            DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
-          else
-            call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp)
-          endif
-        endif
-
-        call mpp_clock_end(iceClock8)
       enddo ! nds=1,ndyn_steps
+
+      ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
+      call mpp_clock_begin(iceClock8)
+      ! The code timed by iceClock8 is the non-merged_cont equivalent to complete_IST_transport.
+      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
+      call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+
+      call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, IG, CS%SIS_transport_CSp, &
+                             uc=IST%u_ice_C, vc=IST%v_ice_C)
+
+      if (DS2d%nts==0) then
+        if (CS%do_ridging) then
+          call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp, &
+                                    rdg_rate=DS2d%avg_ridge_rate)
+          DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
+        else
+          call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, IG, CS%SIS_transport_CSp)
+        endif
+      endif
+      call mpp_clock_end(iceClock8)
+
     endif ! (.not.CS%merged_cont)
 
     if (CS%column_check .and. (DS2d%nts==0)) &
@@ -597,15 +589,19 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
 
   enddo ! nac = 1,nadv_cycle
 
+  ! Finalized the streses for use by the ocean.
   call finish_ocean_top_stresses(IOF, G)
 
+  ! Do diagnostics and update some information for the atmosphere.
   call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
 
 end subroutine SIS_dynamics_trans
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_multi_dyn_trans makes the calls to do ice dynamics and mass and tracer transport
+!> SIS_multi_dyn_trans makes the calls to do ice dynamics and mass and tracer transport.  It
+!! repeats code that is in SIS_dyanmics_trans with CS%merged_cont=true, so it mostly serves as a
+!! working template for the separate set of calls that a coupler would need to do.
 subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
@@ -641,19 +637,24 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, IG, CS)
 
     ! Update the category-merged dynamics and use the merged continuity equation.
+    ! This could be called as many times as necessary.
     Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
     call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS)
 
     ! Complete the category-resolved mass and tracer transport and update the ice state type.
+    ! This must be done before the next thermodynamic step.
     call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
 
-    if (CS%column_check) &
+    if (CS%column_check) &  ! This is just here from early debugging exercises,
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
 
   enddo ! nac=0,nadv_cycle-1
+  ! This must be done before returning control to the ocean, but it does not require
+  ! that complete_IST_transport be called.
   call finish_ocean_top_stresses(IOF, G)
 
+  ! This must be done before returning control to the atmosphere and before writing any diagnostics.
   call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
 
 end subroutine SIS_multi_dyn_trans
@@ -2093,6 +2094,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "partitioned by thickness categories when merged_cont it true. \n"//&
                  "If 0 or negative, the coupling time step will be used.", &
                  units="seconds", default=-1.0, do_not_log=.not.CS%merged_cont)
+  if (.not.CS%merged_cont) CS%dt_advect = CS%dt_ice_dyn
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
