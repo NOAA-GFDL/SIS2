@@ -4,14 +4,15 @@ module SIS_ctrl_types
 
 ! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
 ! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
-use mpp_domains_mod,  only: domain2D, CORNER, EAST, NORTH
-! use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-use coupler_types_mod,only: coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod,only: coupler_type_initialized, coupler_type_set_diags
+use mpp_domains_mod,   only : domain2D, CORNER, EAST, NORTH
+! use mpp_parameter_mod, only : CGRID_NE, BGRID_NE, AGRID
+use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_type_initialized, coupler_type_set_diags
 
 use SIS_dyn_trans,   only : dyn_trans_CS
 use SIS_fast_thermo, only : fast_thermo_CS
 use SIS_slow_thermo, only : slow_thermo_CS
+use specified_ice,   only : specified_ice_CS
 
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
@@ -128,6 +129,8 @@ type SIS_slow_CS
                             !! structure for the slow ice thermodynamics.
   type(dyn_trans_CS),   pointer :: dyn_trans_CSp => NULL() !< A pointer to the control
                             !! structure for the ice dynamics and transport.
+  type(specified_ice_CS),   pointer :: specified_ice_CSp => NULL() !< A pointer to the control
+                            !! structure for the specified ice.
   type(fast_thermo_CS), pointer :: fast_thermo_CSp => NULL() !< A pointer to the control
                             !! structure for the fast ice thermodynamics.
   type(SIS_optics_CS), pointer  :: optics_CSp => NULL() !< A pointer to the control

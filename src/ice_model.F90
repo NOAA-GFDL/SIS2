@@ -98,7 +98,7 @@ use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_co
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
 use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
-use SIS_dyn_trans,   only : specified_ice_dynamics, slab_ice_dyn_trans
+use SIS_dyn_trans,   only : slab_ice_dyn_trans
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
@@ -113,6 +113,8 @@ use SIS_optics,      only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS2_ice_thm,    only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,    only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
 use SIS2_ice_thm,    only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
+use specified_ice,   only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
+use specified_ice,   only : specified_ice_end, specified_ice_sum_output_CS
 use ice_bergs,       only : icebergs, icebergs_run, icebergs_init, icebergs_end
 
 implicit none ; private
@@ -330,7 +332,7 @@ subroutine update_ice_dynamics_trans(Ice)
 
   if (Ice%sCS%specified_ice) then ! There is no ice dynamics or transport.
     call specified_ice_dynamics(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
-                                dt_slow, Ice%sCS%dyn_trans_CSp, sG, sIG)
+                                dt_slow, Ice%sCS%specified_ice_CSp, sG, sIG)
   elseif (Ice%sCS%slab_ice) then ! Use a very old slab ice model.
     call slab_ice_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, &
                             Ice%sCS%dyn_trans_CSp, sG, sIG, Ice%sCS%SIS_tracer_flow_CSp)
@@ -2154,8 +2156,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call alloc_ice_rad(Ice%sCS%Rad, sHI, sIG)
     endif
 
-    call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file,&
-                                Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+    if (.not.specified_ice) &
+      call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file, &
+                                           Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
 
     call SIS_diag_mediator_init(sG, sIG, param_file, Ice%sCS%diag, component="SIS", &
                                 doc_file_dir = dirs%output_directory)
@@ -2357,7 +2360,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! the fields that would have been read if symmetric were toggled.
       call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
-      call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
+      if (.not.specified_ice) &
+        call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
 
       ! Approximately initialize state fields that are not present
@@ -2621,19 +2625,25 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call SIS_slow_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
 
-    call SIS_dyn_trans_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
-                            Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
-                            slab_ice=slab_ice, specified_ice=specified_ice)
+    if (specified_ice) then
+      call specified_ice_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
+                              Ice%sCS%specified_ice_CSp, dirs%output_directory, Time_Init)
+      call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
+                   sum_out_CSp=specified_ice_sum_output_CS(Ice%sCS%specified_ice_CSp))
+    else
+      call SIS_dyn_trans_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
+                              Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
+                              slab_ice=slab_ice)
+      call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
+                   transport_CSp=SIS_dyn_trans_transport_CS(Ice%sCS%dyn_trans_CSp), &
+                   sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
+    endif
 
     if (Ice%sCS%redo_fast_update) then
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                                 Ice%sCS%fast_thermo_CSp)
       call SIS_optics_init(param_file, Ice%sCS%optics_CSp, slab_optics=slab_ice)
     endif
-
-    call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
-             transport_CSp=SIS_dyn_trans_transport_CS(Ice%sCS%dyn_trans_CSp), &
-             sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
 
   !   Initialize any tracers that will be handled via tracer flow control.
     call SIS_tracer_flow_control_init(Ice%sCS%Time, sG, sIG, param_file, &
@@ -2699,8 +2709,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     ! Do any error checking here.
     if (Ice%sCS%debug) call ice_grid_chksum(sG, haloshift=1)
 
-    call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
-                   SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
+    if (specified_ice) then
+      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
+               specified_ice_sum_output_CS(Ice%sCS%specified_ice_CSp))
+    else
+      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
+               SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
+    endif
   endif  ! slow_ice_PE
 
 
@@ -2946,7 +2961,12 @@ subroutine ice_model_end(Ice)
   endif
 
   if (slow_ice_PE) then
-    call SIS_dyn_trans_end(Ice%sCS%dyn_trans_CSp)
+
+    if (associated(Ice%sCS%dyn_trans_CSp)) &
+      call SIS_dyn_trans_end(Ice%sCS%dyn_trans_CSp)
+
+    if (associated(Ice%sCS%specified_ice_CSp)) &
+      call specified_ice_end(Ice%sCS%specified_ice_CSp)
 
     call SIS_slow_thermo_end(Ice%sCS%slow_thermo_CSp)
 

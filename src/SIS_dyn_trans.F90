@@ -69,7 +69,7 @@ implicit none ; private
 #include <SIS2_memory.h>
 
 public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
-public :: specified_ice_dynamics, slab_ice_dyn_trans
+public :: slab_ice_dyn_trans
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 public :: SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 public :: SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
@@ -1266,58 +1266,6 @@ end subroutine slab_ice_dyn_trans
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> specified_ice_dynamics does an update of ice dynamic quantities with specified ice.
-subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
-
-  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
-                                                   !! the ocean's surface state for the ice model.
-  type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
-                                                   !! (mostly fluxes) over the fast updates
-  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
-                                                   !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
-  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
-  type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
-
-  ! Local variables
-  integer :: i, j, k, isc, iec, jsc, jec, ncat
-
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-
-  CS%n_calls = CS%n_calls + 1
-
-  IOF%stress_count = 0
-  call set_ocean_top_stress_FIA(FIA, IOF, G)
-  call finish_ocean_top_stresses(IOF, G)
-
-  ! Set appropriate surface quantities in categories with no ice.
-  if (allocated(IST%t_surf)) then
-    !$OMP parallel do default(shared)
-    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
-    enddo ; enddo ; enddo
-  endif
-
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-  call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
-  call disable_SIS_averaging(CS%diag)
-
-  if (CS%debug) call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
-
-  if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
-    CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
-  endif
-
-end subroutine specified_ice_dynamics
-
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Finish setting the ice-ocean stresses by dividing the running sums of the
 !! stresses by the number of times they have been augmented.
 subroutine finish_ocean_top_stresses(IOF, G)
@@ -1325,7 +1273,7 @@ subroutine finish_ocean_top_stresses(IOF, G)
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(in)    :: G   !< The horizontal grid type
 
-  real :: taux2, tauy2  ! squared wind stresses (Pa^2)
+  real :: taux2, tauy2  ! squared wind stresses [Pa2]
   real :: I_count ! The number of times IOF has been incremented.
 
   integer :: i, j, isc, iec, jsc, jec
@@ -1822,94 +1770,6 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
 
 end subroutine set_ocean_top_stress_C2
 
-
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> Calculate the stresses on the ocean integrated across all the thickness categories
-!! with the appropriate staggering, based on the information in a fast_ice_avg_type.
-subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
-  type(fast_ice_avg_type),   intent(inout) :: FIA !< A type containing averages of fields
-                                                  !! (mostly fluxes) over the fast updates
-  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
-                                                  !! the ocean that are calculated by the ice model.
-  type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
-
-  real    :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
-  integer :: i, j, k, isc, iec, jsc, jec
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-
-  if (IOF%stress_count == 0) then
-    IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
-  endif
-
-  !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
-  ! complicated because there are 3 different staggering options supported.
-
-  if (IOF%flux_uv_stagger == AGRID) then
-    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
-    do j=jsc,jec ; do i=isc,iec
-      ps_ocn = G%mask2dT(i,j) * FIA%ice_free(i,j)
-      ps_ice = G%mask2dT(i,j) * FIA%ice_cover(i,j)
-      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + &
-           (ps_ocn * FIA%WindStr_ocn_x(i,j) + ps_ice * FIA%WindStr_x(i,j))
-      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + &
-           (ps_ocn * FIA%WindStr_ocn_y(i,j) + ps_ice * FIA%WindStr_y(i,j))
-    enddo ; enddo
-  elseif (IOF%flux_uv_stagger == BGRID_NE) then
-    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
-    do J=jsc-1,jec ; do I=isc-1,iec
-      ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dBu(I,J)>0.5) then
-        ps_ocn = 0.25 * ((FIA%ice_free(i+1,j+1) + FIA%ice_free(i,j)) + &
-                         (FIA%ice_free(i+1,j) + FIA%ice_free(i,j+1)) )
-        ps_ice = 0.25 * ((FIA%ice_cover(i+1,j+1) + FIA%ice_cover(i,j)) + &
-                         (FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j+1)) )
-      endif
-      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
-          (ps_ocn * 0.25 * ((FIA%WindStr_ocn_x(i,j) + FIA%WindStr_ocn_x(i+1,j+1)) + &
-                            (FIA%WindStr_ocn_x(i,j+1) + FIA%WindStr_ocn_x(i+1,j))) + &
-           ps_ice * 0.25 * ((FIA%WindStr_x(i,j) + FIA%WindStr_x(i+1,j+1)) + &
-                            (FIA%WindStr_x(i,j+1) + FIA%WindStr_x(i+1,J))) )
-      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
-          (ps_ocn * 0.25 * ((FIA%WindStr_ocn_y(i,j) + FIA%WindStr_ocn_y(i+1,j+1)) + &
-                            (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i+1,j))) + &
-           ps_ice * 0.25 * ((FIA%WindStr_y(i,j) + FIA%WindStr_y(i+1,j+1)) + &
-                            (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i+1,J))) )
-    enddo ; enddo
-  elseif (IOF%flux_uv_stagger == CGRID_NE) then
-    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
-    do j=jsc,jec ; do I=Isc-1,iec
-      ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCu(I,j)>0.5) then
-        ps_ocn = 0.5*(FIA%ice_free(i+1,j) + FIA%ice_free(i,j))
-        ps_ice = 0.5*(FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j))
-      endif
-      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + &
-           (ps_ocn * 0.5 * (FIA%WindStr_ocn_x(i+1,j) + FIA%WindStr_ocn_x(i,j)) + &
-            ps_ice * 0.5 * (FIA%WindStr_x(i+1,j) + FIA%WindStr_x(i,j)) )
-    enddo ; enddo
-    !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
-    do J=jsc-1,jec ; do i=isc,iec
-      ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCv(i,J)>0.5) then
-        ps_ocn = 0.5*(FIA%ice_free(i,j+1) + FIA%ice_free(i,j))
-        ps_ice = 0.5*(FIA%ice_cover(i,j+1) + FIA%ice_cover(i,j))
-      endif
-      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + &
-          (ps_ocn * 0.5 * (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i,j)) + &
-           ps_ice * 0.5 * (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i,j)) )
-    enddo ; enddo
-  else
-    call SIS_error(FATAL, "set_ocean_top_stress_C2: Unrecognized flux_uv_stagger.")
-  endif
-
-  IOF%stress_count = IOF%stress_count + 1
-
-end subroutine set_ocean_top_stress_FIA
-
-
-
-
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_wind_stresses_C determines the wind stresses on the ice and open ocean with
 !!   a C-grid staggering of the points.
@@ -2189,7 +2049,7 @@ end subroutine SIS_dyn_trans_read_alt_restarts
 !> SIS_dyn_trans_init initializes ice model data, parameters and diagnostics
 !!   associated with the SIS2 dynamics and transport modules.
 subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init, &
-                              slab_ice, specified_ice)
+                              slab_ice)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
@@ -2199,7 +2059,6 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   type(dyn_trans_CS),          pointer       :: CS   !< The control structure for the SIS_dyn_trans module
   character(len=*),            intent(in)    :: output_dir !< The directory to use for writing output
   type(time_type),             intent(in)    :: Time_Init !< Starting time of the model integration
-  logical,           optional, intent(in)    :: specified_ice !< If present and true, use specified ice.
   logical,           optional, intent(in)    :: slab_ice  !< If true, use the archaic GFDL slab ice dynamics
                                                      !!  and transport.
 
@@ -2208,12 +2067,10 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   character(len=40) :: mdl = "SIS_dyn_trans" ! This module's name.
   real :: Time_unit      ! The time unit for ICE_STATS_INTERVAL [s].
   integer :: max_nts
-  logical :: spec_ice, do_slab_ice
+  logical :: do_slab_ice
   logical :: debug
   real, parameter :: missing = -1e34
 
-!  nLay = IG%NkIce
-  spec_ice = .false. ; if (present(specified_ice)) spec_ice = specified_ice
   do_slab_ice = .false. ; if (present(slab_ice)) do_slab_ice = slab_ice
 
   call callTree_enter("SIS_dyn_trans_init(), SIS_dyn_trans.F90")
@@ -2232,48 +2089,46 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, &
      "This module updates the ice momentum and does ice transport.")
-  if ( .not.spec_ice ) then
-    call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
+  call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice \n"//&
                  "dynamics; if false use a B-grid discretization.", &
                  default=.false.)
-    call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
+  call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
                  "The time step used for the slow ice dynamics, including \n"//&
                  "stepping the continuity equation and interactions \n"//&
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
                  units="seconds", default=-1.0)
-    call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
+  call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
                  "If true, update the continuity equations for the ice, snow, \n"//&
                  "and melt pond water together summed across categories, with \n"//&
                  "proportionate fluxes for each part. Otherwise the media are \n"//&
                  "updated separately.", default=.false.)
-    call get_param(param_file, mdl, "DT_ICE_ADVECT", CS%dt_advect, &
+  call get_param(param_file, mdl, "DT_ICE_ADVECT", CS%dt_advect, &
                  "The time step used for the advecting tracers and masses as \n"//&
                  "partitioned by thickness categories when merged_cont it true. \n"//&
                  "If 0 or negative, the coupling time step will be used.", &
                  units="seconds", default=-1.0, do_not_log=.not.CS%merged_cont)
-    call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
+  call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&
                  "Otherwise, ice is compressed proportionately if the \n"//&
                  "concentration exceeds 1.  The original SIS2 implementation \n"//&
                  "is based on work by Torge Martin.", default=.false.)
-    call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
+  call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
                  "The number of advective iterations for each slow dynamics \n"//&
                  "time step.", default=1)
-    if (CS%adv_substeps < 1) CS%adv_substeps = 1
+  if (CS%adv_substeps < 1) CS%adv_substeps = 1
 
-    call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
+  call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
                  "If true, use older code that applied an old ice-ocean \n"//&
                  "stress to the icebergs in place of the current air-ocean \n"//&
                  "stress.  This option is here for backward compatibility, \n"//&
                  "but should be avoided.", default=.false.)
-    call get_param(param_file, mdl, "WARSAW_SUM_ORDER", CS%Warsaw_sum_order, &
+  call get_param(param_file, mdl, "WARSAW_SUM_ORDER", CS%Warsaw_sum_order, &
                  "If true, use the order of sums in the Warsaw version of SIS2. \n"//&
                  "The default is the opposite of MERGED_CONTINUITY. \n"//&
                  "This option exists for backward compatibilty but may \n"//&
                  "eventually be obsoleted.", default=.not.CS%merged_cont)
-  endif
 
   call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
@@ -2309,7 +2164,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
 
   CS%complete_ice_cover = 1.0 - 2.0*epsilon(CS%complete_ice_cover)
 
-  if (.not.(do_slab_ice .or. spec_ice)) then
+  if (.not.(do_slab_ice)) then
     CS%complete_ice_cover = 1.0 - 2.0*max(1,IG%CatIce)*epsilon(CS%complete_ice_cover)
     if (CS%Cgrid_dyn) then
       call SIS_C_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
@@ -2356,7 +2211,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
       (1 + (Time - Time_init) / CS%ice_stats_interval)
 
   ! Stress dagnostics that are specific to the C-grid or B-grid dynamics of the ice model
-  if (.not.spec_ice) then ; if (CS%Cgrid_dyn) then
+  if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
                'Air stress on ice on C-grid - x component', 'Pa', &
                 missing_value=missing, interp_method='none')
@@ -2370,7 +2225,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
                'air stress on ice - y component', 'Pa', &
                missing_value=missing, interp_method='none')
-  endif ; endif
+  endif
 
   call register_ice_state_diagnostics(Time, IG, param_file, diag, CS%IDs)
 
@@ -2470,7 +2325,7 @@ function SIS_dyn_trans_transport_CS(CS) result(transport_CSp)
 end function SIS_dyn_trans_transport_CS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_dyn_trans_transport_CS returns a pointer to the sum_out_CS type that
+!> SIS_dyn_trans_sum_output_CS returns a pointer to the sum_out_CS type that
 !! the dyn_trans_CS points to.
 function SIS_dyn_trans_sum_output_CS(CS) result(sum_out_CSp)
   type(dyn_trans_CS),   pointer :: CS    !< The control structure for the SIS_dyn_trans module
