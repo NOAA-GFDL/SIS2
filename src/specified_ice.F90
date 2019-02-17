@@ -38,7 +38,7 @@ type, public :: specified_ice_CS ; private
                           !! temperatures, fluxes, etc.
   integer :: ntrunc = 0   !< The number of times the velocity has been truncated
                           !! since the last call to write_ice_statistics.
-  integer :: n_calls = 0  !< The number of times SIS_dynamics_trans has been called.
+  integer :: n_calls = 0  !< The number of times specified_ice_dynamics has been called.
   type(time_type) :: ice_stats_interval !< The interval between writes of the
                           !! globally summed ice statistics and conservation checks.
   type(time_type) :: write_ice_stats_time !< The next time to write out the ice statistics.
@@ -95,8 +95,8 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
-  if (CS%debug) call IST_chksum("End SIS_dynamics_trans", IST, G, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_dynamics_trans", OSS=OSS)
+  if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, IG)
+  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of specified_ice_dynamics", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
