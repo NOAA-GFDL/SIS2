@@ -2269,6 +2269,7 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
   enddo
   call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
+  call hchksum(IST%mH_pond*IG%H_to_kg_m2, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs)

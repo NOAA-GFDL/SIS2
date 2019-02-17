@@ -604,7 +604,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 !  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
 !    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
-!        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
+!        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
 !  enddo ; enddo ; enddo
 
   ! This block of code is probably unneccessary.
@@ -699,7 +699,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
-        (IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k)))
+        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
   enddo ; enddo ; enddo
 
   if (sCS%do_icebergs .and. associated(IOF%mass_berg)) then
@@ -2525,6 +2525,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call pass_var(sIST%part_size, sGD)
       call pass_var(sIST%mH_ice, sGD, complete=.false.)
       call pass_var(sIST%mH_snow, sGD, complete=.false.)
+      call pass_var(sIST%mH_pond, sGD, complete=.false.)
       do l=1,NkIce
         call pass_var(sIST%enth_ice(:,:,:,l), sGD, complete=.false.)
       enddo
@@ -2601,6 +2602,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
             sIST%part_size(i,j,1) = 0.0
             sIST%mH_ice(i,j,k) = sIST%mH_ice(i,j,1) ; sIST%mH_ice(i,j,1) = 0.0
             !  sIST%mH_snow(i,j,k) = sIST%mH_snow(i,j,1) ; sIST%mH_snow(i,j,1) = 0.0
+            !  sIST%mH_pond(i,j,k) = sIST%mH_pond(i,j,1) ; sIST%mH_pond(i,j,1) = 0.0
             exit ! from k-loop
           endif ; enddo
         endif ; enddo ; enddo

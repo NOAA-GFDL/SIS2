@@ -1019,7 +1019,7 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   cell_mass(:,:) = 0.0
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     cell_mass(i,j) = cell_mass(i,j) + IST%part_size(i,j,k) * H_to_units * &
-                          (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
+                          ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine get_cell_mass
@@ -1085,6 +1085,7 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
     sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
               ((H_to_units*IST%mH_snow(i,j,k))*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
+  !### What about sum_enth_pond?
 
   total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
   total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
