@@ -94,6 +94,9 @@ type ice_state_type
     rdg_mice    !< A diagnostic of the ice load that was formed by ridging [H ~> kg m-2].
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
+  logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
+                       !! is in the midst of a dynamics cycle where the evolving state has changes
+                       !! that are not yet reflected here.
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the SIS tracer registry
 
@@ -360,7 +363,11 @@ type ice_ocean_flux_type
     stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
                        !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
-    flux_salt          !< The flux of salt out of the ocean [kg m-2].
+    flux_salt, &       !< The flux of salt out of the ocean [kg m-2].
+    mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [kg m-2].
+    pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
+                       !! snow and ponds, exclusive of atmospheric pressure [Pa].
+                       !### What about pressure from bergs?
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
                        !! at the ocean surface [W m-2].  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency
@@ -426,6 +433,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
+  IST%valid_IST = .true.
   allocate(IST%part_size(isd:ied, jsd:jed, 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
   allocate(IST%mH_pond(  isd:ied, jsd:jed, CatIce)) ; IST%mH_pond(:,:,:) = 0.0
   allocate(IST%mH_snow(  isd:ied, jsd:jed, CatIce)) ; IST%mH_snow(:,:,:) = 0.0
@@ -885,6 +893,8 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
   if (alloc_stress_mag) then
     allocate(IOF%stress_mag(SZI_(HI), SZJ_(HI)))  ;  IOF%stress_mag(:,:) = 0.0
   endif
+  allocate(IOF%pres_ocn_top(SZI_(HI), SZJ_(HI)))  ; IOF%pres_ocn_top(:,:) = 0.0
+  allocate(IOF%mass_ice_sn_p(SZI_(HI), SZJ_(HI))) ; IOF%mass_ice_sn_p(:,:) = 0.0
 
   allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0
   allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0
@@ -2131,8 +2141,8 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_sh_ocn_top, IOF%evap_ocn_top)
   deallocate(IOF%flux_lw_ocn_top, IOF%flux_lh_ocn_top)
   deallocate(IOF%flux_sw_ocn)
-  deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top)
-  deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%flux_salt)
+  deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top, IOF%flux_salt)
+  deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%pres_ocn_top, IOF%mass_ice_sn_p)
   if (allocated(IOF%stress_mag)) deallocate(IOF%stress_mag)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
@@ -2164,6 +2174,8 @@ subroutine IOF_chksum(mesg, IOF, G)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
   call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
   call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI)
+  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI)
+  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI)
   if (allocated(IOF%stress_mag)) &
     call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI)
 
