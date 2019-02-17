@@ -97,7 +97,7 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-use SIS_dyn_trans,   only : SIS_dynamics_trans, update_icebergs
+use SIS_dyn_trans,   only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
 use SIS_dyn_trans,   only : slab_ice_dyn_trans
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
@@ -310,6 +310,7 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
   type(ice_state_type),    pointer :: sIST => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   real :: dt_slow  ! The time step over which to advance the model.
+  logical :: do_multi_trans
 
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_dynamics_trans.")
@@ -329,19 +330,27 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
                    sG%Domain, stagger=AGRID)
   call pass_var(FIA%ice_cover, sG%Domain, complete=.false.)
   call pass_var(FIA%ice_free,  sG%Domain, complete=.true.)
-  call pass_var(sIST%part_size, sG%Domain)
-  call pass_var(sIST%mH_ice, sG%Domain, complete=.false.)
-  call pass_var(sIST%mH_pond, sG%Domain, complete=.false.)
-  call pass_var(sIST%mH_snow, sG%Domain, complete=.true.)
+  if (sIST%valid_IST) then
+    call pass_var(sIST%part_size, sG%Domain)
+    call pass_var(sIST%mH_ice, sG%Domain, complete=.false.)
+    call pass_var(sIST%mH_pond, sG%Domain, complete=.false.)
+    call pass_var(sIST%mH_snow, sG%Domain, complete=.true.)
+  endif
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
     call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG)
   endif
 
+  do_multi_trans = (present(start_cycle) .or. present(end_cycle) .or. present(cycle_length))
+
   if (Ice%sCS%specified_ice) then ! There is no ice dynamics or transport.
     call specified_ice_dynamics(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
                                 dt_slow, Ice%sCS%specified_ice_CSp, sG, sIG)
+  elseif (do_multi_trans) then
+    call SIS_multi_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, &
+                             dt_slow, Ice%sCS%dyn_trans_CSp, Ice%icebergs, sG, &
+                             sIG, Ice%sCS%SIS_tracer_flow_CSp)
   elseif (Ice%sCS%slab_ice) then ! Use a very old slab ice model.
     call slab_ice_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, &
                             Ice%sCS%dyn_trans_CSp, sG, sIG, Ice%sCS%SIS_tracer_flow_CSp)
@@ -352,6 +361,8 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
   endif
 
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
+  if (sIST%valid_IST) call ice_mass_from_IST(sIST, Ice%sCS%IOF, sG, sIG)
+
   call set_ocean_top_dyn_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, sG, sIG, Ice%sCS)
 
   if (Ice%sCS%debug) then
@@ -664,6 +675,28 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
 end subroutine set_ocean_top_fluxes
 
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> ice_mass_from_IST stores the total ice mass determined from IST in the IOF type.
+subroutine ice_mass_from_IST(IST, IOF, G, IG)
+  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
+                                                   !! the ocean that are calculated by the ice model.
+  type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
+
+  integer :: i, j, k, isc, iec, jsc, jec, ncat
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
+
+  ! Sum the concentration weighted mass.
+  IOF%mass_ice_sn_p(:,:) = 0.0
+  !$OMP parallel do default(shared)
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+    IOF%mass_ice_sn_p(i,j) = IOF%mass_ice_sn_p(i,j) + IST%part_size(i,j,k) * &
+        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
+  enddo ; enddo ; enddo
+
+end subroutine ice_mass_from_IST
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ocean_top_dyn_fluxes translates ice-bottom stresses and mass
@@ -696,11 +729,10 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
   Ice%mi(:,:) = 0.0
   i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
   !$OMP parallel do default(shared) private(i2,j2)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
-        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
-  enddo ; enddo ; enddo
+    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IOF%mass_ice_sn_p(i,j)
+  enddo ; enddo
 
   if (sCS%do_icebergs .and. associated(IOF%mass_berg)) then
     ! Note that the IOF berg fields and Ice fields are only allocated on the
