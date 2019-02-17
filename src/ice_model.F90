@@ -293,8 +293,16 @@ end subroutine update_ice_slow_thermo
 
 !-----------------------------------------------------------------------
 !> Update the sea-ice state due to dynamics and ice transport.
-subroutine update_ice_dynamics_trans(Ice)
-  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cycle_length)
+  type(ice_data_type),       intent(inout) :: Ice !< The publicly visible ice data type.
+  type(time_type), optional, intent(in)    :: time_step !< The amount of time to cover in this update.
+  logical, optional, intent(in)    :: start_cycle !< This indicates whether this call is to be treated
+                                                  !! as the first call to update_ice_dynamics_trans
+                                                  !! in a time-stepping cycle; missing is like true.
+  logical, optional, intent(in)    :: end_cycle   !< This indicates whether this call is to be treated
+                                                  !! as the last call to update_ice_dynamics_trans
+                                                  !! in a time-stepping cycle; missing is like true.
+  real,    optional, intent(in)    :: cycle_length !< The duration of a coupled time stepping cycle [s].
 
   ! These pointers are used to simplify the code below.
   type(ice_grid_type),     pointer :: sIG => NULL()
@@ -308,6 +316,7 @@ subroutine update_ice_dynamics_trans(Ice)
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
+  if (present(time_step)) dt_slow = time_type_to_real(time_step)
 
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
