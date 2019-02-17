@@ -68,7 +68,7 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: SIS_dynamics_trans, update_icebergs, dyn_trans_CS
+public :: SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs, dyn_trans_CS
 public :: slab_ice_dyn_trans
 public :: SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 public :: SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
@@ -652,7 +652,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   enddo ! nac=0,nadv_cycle-1
   ! This must be done before returning control to the ocean, but it does not require
   ! that complete_IST_transport be called.
-  call finish_ocean_top_stresses(IOF, G)
+  call finish_ocean_top_stresses(IOF, G, CS%DS2d)
 
   ! This must be done before returning control to the atmosphere and before writing any diagnostics.
   call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
@@ -703,6 +703,8 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, IG, CS)
       IST%u_ice_B(I,J) = DS2d%u_ice_B(I,J) ; IST%v_ice_B(I,J) = DS2d%v_ice_B(I,J)
     enddo ; enddo
   endif
+
+  IST%valid_IST = .true.
   call mpp_clock_end(iceClock8)
 
 end subroutine complete_IST_transport
@@ -761,7 +763,7 @@ end subroutine ice_state_cleanup
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Convert the category-resolved ice state into the simplified 2-d ice state and a cell averaged state.
 subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, IG, CS)
-  type(ice_state_type),          intent(in)    :: IST !< A type describing the state of the sea ice
+  type(ice_state_type),          intent(inout) :: IST !< A type describing the state of the sea ice
   type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
                                                    !! integrated across thickness categories and layers.
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
@@ -809,6 +811,9 @@ subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, IG, CS)
 
   !  Determine the whole-cell averaged mass of snow and ice.
   call ice_state_to_cell_ave_state(IST, G, IG, CS%SIS_transport_CSp, CAS)
+
+  IST%valid_IST = .false.
+
   call mpp_clock_end(iceClock4)
 
 end subroutine convert_IST_to_simple_state
@@ -1252,11 +1257,14 @@ end subroutine slab_ice_dyn_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Finish setting the ice-ocean stresses by dividing the running sums of the
-!! stresses by the number of times they have been augmented.
-subroutine finish_ocean_top_stresses(IOF, G)
-  type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
+!! stresses by the number of times they have been augmented.  It may also record
+!! the current ocean-cell averaged ice, snow and pond mass.
+subroutine finish_ocean_top_stresses(IOF, G, DS2d)
+  type(ice_ocean_flux_type),    intent(inout) :: IOF  !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
-  type(SIS_hor_grid_type),   intent(in)    :: G   !< The horizontal grid type
+  type(SIS_hor_grid_type),      intent(in)    :: G    !< The horizontal grid type
+  type(dyn_state_2d), optional, intent(in)    :: DS2d !< A simplified 2-d description of the ice state
+                                                  !! integrated across thickness categories and layers.
 
   real :: taux2, tauy2  ! squared wind stresses [Pa2]
   real :: I_count ! The number of times IOF has been incremented.
@@ -1287,6 +1295,10 @@ subroutine finish_ocean_top_stresses(IOF, G)
       call SIS_error(FATAL, "finish_ocean_top_stresses: Unrecognized flux_uv_stagger.")
     endif
   endif
+
+  if (present(DS2d)) then ; if (DS2d%nts > 0) then ; do j=jsc,jec ; do i=isc,iec
+    IOF%mass_ice_sn_p(i,j) = DS2d%mca_step(i, j, DS2d%nts)
+  enddo ; enddo ; endif ; endif
 
   if (allocated(IOF%stress_mag)) then
     ! if (IOF%simple_mag) then
