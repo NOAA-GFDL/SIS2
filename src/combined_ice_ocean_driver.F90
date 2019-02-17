@@ -95,7 +95,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   valid_param_files = 0
   do io=1,npf ; if (len_trim(trim(parameter_filename(io))) > 0) then
     call open_param_file(trim(parameter_filename(io)), param_file, &
-                         component="Ice_Ocean_driver", doc_file_dir=output_dir)
+                         component="CIOD", doc_file_dir=output_dir)
     valid_param_files = valid_param_files + 1
   endif ; enddo
   if (valid_param_files == 0) call MOM_error(FATAL, "There must be at least "//&
