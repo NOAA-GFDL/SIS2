@@ -339,6 +339,12 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, I
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
+  !### if (CS%merged_cont) then  !### This is here for debugging only.  Delete it later.
+  !  call SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp, &
+  !                           .true., .true., dt_slow)
+  !  return
+  !endif
+
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
 
@@ -599,10 +605,10 @@ end subroutine SIS_dynamics_trans
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_multi_dyn_trans makes the calls to do ice dynamics and mass and tracer transport.  It
-!! repeats code that is in SIS_dyanmics_trans with CS%merged_cont=true, so it mostly serves as a
-!! working template for the separate set of calls that a coupler would need to do.
-subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp)
+!> SIS_multi_dyn_trans makes the calls to do ice dynamics and mass and tracer transport as
+!! appropriate for a dynamic and advective update cycle with multiple calls.
+subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, IG, tracer_CSp, &
+                               start_cycle, end_cycle, cycle_length)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -617,14 +623,31 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
   type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp !< The structure for controlling calls to
                                                    !! auxiliary ice tracer packages
+  logical,          optional, intent(in)    :: start_cycle !< This indicates whether this call is to be
+                                                   !! treated as the first call to SIS_multi_dyn_trans
+                                                   !! in a time-stepping cycle; missing is like true.
+  logical,          optional, intent(in)    :: end_cycle   !< This indicates whether this call is to be
+                                                   !! treated as the last call to SIS_multi_dyn_trans
+                                                   !! in a time-stepping cycle; missing is like true.
+  real,             optional, intent(in)    :: cycle_length !< The duration of a coupled time stepping cycle [s].
+
 
   ! Local variables
   real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
+  real :: dt_diags     ! The length of time over which the diagnostics are valid [s].
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
-  integer :: nadv_cycle, nac ! The number of tracer advective cycles in this call.
+  integer :: nadv_cycle, nac ! The number of tracer advective cycles within this call.
+  logical :: cycle_start, cycle_end
 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
+
+  cycle_start = .true. ; if (present(start_cycle)) cycle_start = start_cycle
+  cycle_end = .true. ; if (present(end_cycle)) cycle_end = end_cycle
+  dt_diags = dt_slow ; if (present(cycle_length)) dt_diags = cycle_length
+
+  if (.not.CS%merged_cont) call SIS_error(FATAL, &
+          "SIS_multi_dyn_trans should not be called unless MERGED_CONTINUITY=True.")
 
   nadv_cycle = 1
   if ((CS%dt_advect > 0.0) .and. (CS%dt_advect < dt_slow)) &
@@ -634,7 +657,8 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   do nac=1,nadv_cycle
     ! Convert the category-resolved ice state into the simplified 2-d ice state.
     ! This should be called after a thermodynamic step or if ice_transport was called.
-    call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, IG, CS)
+    if ((nac > 1) .or. cycle_start) &
+      call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, IG, CS)
 
     ! Update the category-merged dynamics and use the merged continuity equation.
     ! This could be called as many times as necessary.
@@ -643,9 +667,10 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
     ! Complete the category-resolved mass and tracer transport and update the ice state type.
     ! This must be done before the next thermodynamic step.
-    call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
+    if ((nac < nadv_cycle) .or. cycle_end) &
+      call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
 
-    if (CS%column_check) &  ! This is just here from early debugging exercises,
+    if (CS%column_check .and. IST%valid_IST) &  ! This is just here from early debugging exercises,
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
 
@@ -655,7 +680,8 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   call finish_ocean_top_stresses(IOF, G, CS%DS2d)
 
   ! This must be done before returning control to the atmosphere and before writing any diagnostics.
-  call ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
+  if (cycle_end) &
+    call ice_state_cleanup(IST, OSS, IOF, dt_diags, G, IG, CS, tracer_CSp)
 
 end subroutine SIS_multi_dyn_trans
 
@@ -745,8 +771,8 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, IG, CS, tracer_CSp)
   call disable_SIS_averaging(CS%diag)
 
   if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
-  if (CS%debug) call IST_chksum("End SIS_multi_dyn_trans", IST, G, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of SIS_multi_dyn_trans", OSS=OSS)
+  if (CS%debug) call IST_chksum("End ice_state_cleanup", IST, G, IG)
+  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of ice_state_cleanup", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
