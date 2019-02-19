@@ -40,9 +40,12 @@ type, public :: ice_ocean_driver_type ; private
                               !! step including both dynamics and thermodynamics.
                               !! If false, the two phases are advanced with
                               !! separate calls. The default is true.
-  logical :: intersperse_ice_ocn !< If true, intersperse the ice and ocean thermodynamic
-                              !! and dynamic updates.  This requires the update ocean (MOM6)
-                              !! interfaces used with single_MOM_call=.false. The default is false.
+  logical :: intersperse_ice_ocn !< If true, intersperse the ice and ocean thermodynamic and
+                              !! dynamic updates.  This requires the update ocean (MOM6) interfaces
+                              !! used with single_MOM_call=.false. The default is false.
+  real :: dt_coupled_dyn      !< The time step for coupling the ice and ocean dynamics when
+                              !! INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.
+                              !! The default is -1.
 end type ice_ocean_driver_type
 
 contains
@@ -111,6 +114,10 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   call get_param(param_file, mdl, "INTERSPERSE_ICE_OCEAN", CS%intersperse_ice_ocn, &
                  "If true, intersperse the ice and ocean thermodynamic and \n"//&
                  "and dynamic updates.", default=.false.)
+  call get_param(param_file, mdl, "DT_COUPLED_ICE_OCEAN_DYN", CS%dt_coupled_dyn, &
+                 "The time step for coupling the ice and ocean dynamics when \n"//&
+                 "INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.", &
+                 units="seconds", default=-1.0, do_not_log=.not.CS%intersperse_ice_ocn)
 
 !  OS%is_ocean_pe = Ocean_sfc%is_ocean_pe
 !  if (.not.OS%is_ocean_pe) return
@@ -144,6 +151,7 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
   type(time_type),         intent(in)    :: coupling_time_step !< The amount of time over which to advance
                                                                !! the ocean and ice
 
+  ! Local variables
   type(time_type) :: time_start_step ! The start time within an iterative update cycle.
   real :: dt_coupling        ! The time step of the thermodynamic update calls [s].
   type(time_type) :: dyn_time_step   ! The length of the dynamic call update calls.
@@ -186,10 +194,12 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
                             update_dyn=.false., update_thermo=.true., &
                             start_cycle=.true., end_cycle=.false., cycle_length=dt_coupling)
 
-    ! Now step the ice and ocean dynamics.  This part could have multiple shorter-cycle iterations
+    ! Now step the ice and ocean dynamics.  This part can have multiple shorter-cycle iterations
     ! and the fastest parts of these updates of the ice and ocean could eventually be fused.
-    nstep = 1 !### Alter this to introduce subcycles.
-    dyn_time_step = real_to_time_type(time_type_to_real(coupling_time_step) / real(nstep))
+    nstep = 1
+    if ((CS%dt_coupled_dyn > 0.0) .and. (CS%dt_coupled_dyn < dt_coupling))&
+      nstep = max(CEILING(dt_coupling/CS%dt_coupled_dyn - 1e-6), 1)
+    dyn_time_step = real_to_time_type(dt_coupling / real(nstep))
     time_start_step = time_start_update
     do ns=1,nstep
       if (ns==nstep) then ! Adjust the dyn_time_step to cover uneven fractions of a tick or second.
