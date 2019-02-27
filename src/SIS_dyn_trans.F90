@@ -637,7 +637,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
   real :: dt_diags     ! The length of time over which the diagnostics are valid [s].
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   integer :: nadv_cycle, nac ! The number of tracer advective cycles within this call.
-  logical :: cycle_start, cycle_end
+  logical :: cycle_start, cycle_end, end_of_cycle
 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
@@ -663,11 +663,13 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     ! Update the category-merged dynamics and use the merged continuity equation.
     ! This could be called as many times as necessary.
     Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
-    call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS)
+    end_of_cycle = (nac < nadv_cycle) .or. cycle_end
+    call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, IG, CS, &
+                             end_call=end_of_cycle)
 
     ! Complete the category-resolved mass and tracer transport and update the ice state type.
     ! This must be done before the next thermodynamic step.
-    if ((nac < nadv_cycle) .or. cycle_end) &
+    if (end_of_cycle) &
       call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, IG, CS)
 
     if (CS%column_check .and. IST%valid_IST) &  ! This is just here from early debugging exercises,
@@ -791,7 +793,7 @@ end subroutine ice_state_cleanup
 subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, IG, CS)
   type(ice_state_type),          intent(inout) :: IST !< A type describing the state of the sea ice
   type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
-                                                   !! integrated across thickness categories and layers.
+                                                      !! integrated across thickness categories and layers.
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
@@ -847,7 +849,7 @@ end subroutine convert_IST_to_simple_state
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Update the category-merged ice state and call the merged continuity update.
-subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG, CS)
+subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG, CS, end_call)
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
@@ -861,6 +863,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG,
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
+  logical,          optional, intent(in)    :: end_call !< If present and false, this call is
+                                                   !! the last in the series of advective updates.
 
   ! This subroutine updates the 2-d sea-ice dynamics.
   !   Variables updated here: DS2d%ice_cover, DS2d%[uv]_ice_[BC], DS2d%mca_step, DS2d%mi_sum,
@@ -894,6 +898,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG,
   real :: wt_new, wt_prev ! Weights in an average.
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: dt_adv       ! The advective subcycle timestep [s].
+  logical :: continuing_call ! If true, there are more in the series of advective updates
+                             ! after this call.
   integer :: ndyn_steps, nds ! The number of dynamic steps in this call.
   integer :: i, j, k, n, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed !, IsdB, IedB, JsdB, JedB
@@ -908,6 +914,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG,
   dt_adv = dt_slow_dyn / real(CS%adv_substeps)
   if (ndyn_steps*CS%adv_substeps > DS2d%max_nts) &
     call increase_max_tracer_step_memory(DS2d, G, ndyn_steps*CS%adv_substeps)
+  continuing_call = .false. ; if (present(end_call)) continuing_call = .not.end_call
 
   do nds=1,ndyn_steps
     call mpp_clock_begin(iceClock4)
@@ -1046,7 +1053,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, IG,
       call increase_max_tracer_step_memory(DS2d, G, DS2d%nts+CS%adv_substeps)
 
     do n = DS2d%nts+1, DS2d%nts+CS%adv_substeps
-      if (n < ndyn_steps*CS%adv_substeps) then
+      if ((n < ndyn_steps*CS%adv_substeps) .or. continuing_call) then
         ! Some of the work is not needed for the last step before cat_ice_transport.
         call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
                                DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, IG, CS%continuity_CSp, &
