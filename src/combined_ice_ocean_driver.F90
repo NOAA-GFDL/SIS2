@@ -16,7 +16,8 @@ use MOM_file_parser,   only : param_file_type, open_param_file, close_param_file
 use MOM_file_parser,   only : read_param, get_param, log_param, log_version
 use MOM_io,            only : file_exists, close_file, slasher, ensembler
 use MOM_io,            only : open_namelist_file, check_nml_error
-use MOM_time_manager,  only : time_type, time_type_to_real !, operator(>)
+use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time_type
+use MOM_time_manager,  only : operator(+), operator(-), operator(>)
 
 use ice_model_mod,   only : ice_data_type, ice_model_end
 use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
@@ -39,6 +40,12 @@ type, public :: ice_ocean_driver_type ; private
                               !! step including both dynamics and thermodynamics.
                               !! If false, the two phases are advanced with
                               !! separate calls. The default is true.
+  logical :: intersperse_ice_ocn !< If true, intersperse the ice and ocean thermodynamic and
+                              !! dynamic updates.  This requires the update ocean (MOM6) interfaces
+                              !! used with single_MOM_call=.false. The default is false.
+  real :: dt_coupled_dyn      !< The time step for coupling the ice and ocean dynamics when
+                              !! INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.
+                              !! The default is -1.
 end type ice_ocean_driver_type
 
 contains
@@ -91,7 +98,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   valid_param_files = 0
   do io=1,npf ; if (len_trim(trim(parameter_filename(io))) > 0) then
     call open_param_file(trim(parameter_filename(io)), param_file, &
-                         component="Ice_Ocean_driver", doc_file_dir=output_dir)
+                         component="CIOD", doc_file_dir=output_dir)
     valid_param_files = valid_param_files + 1
   endif ; enddo
   if (valid_param_files == 0) call MOM_error(FATAL, "There must be at least "//&
@@ -104,6 +111,13 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
                  "If true, advance the state of MOM with a single step \n"//&
                  "including both dynamics and thermodynamics.  If false, \n"//&
                  "the two phases are advanced with separate calls.", default=.true.)
+  call get_param(param_file, mdl, "INTERSPERSE_ICE_OCEAN", CS%intersperse_ice_ocn, &
+                 "If true, intersperse the ice and ocean thermodynamic and \n"//&
+                 "and dynamic updates.", default=.false.)
+  call get_param(param_file, mdl, "DT_COUPLED_ICE_OCEAN_DYN", CS%dt_coupled_dyn, &
+                 "The time step for coupling the ice and ocean dynamics when \n"//&
+                 "INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.", &
+                 units="seconds", default=-1.0, do_not_log=.not.CS%intersperse_ice_ocn)
 
 !  OS%is_ocean_pe = Ocean_sfc%is_ocean_pe
 !  if (.not.OS%is_ocean_pe) return
@@ -121,7 +135,7 @@ end subroutine ice_ocean_driver_init
 !>   The subroutine update_slow_ice_and_ocean uses the forcing already stored in
 !! the ice_data_type to advance both the sea-ice (and icebergs) and ocean states
 !! for a time interval coupling_time_step.
-subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary, &
+subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
                                      time_start_update, coupling_time_step)
   type(ice_ocean_driver_type), &
                            pointer       :: CS   !< The control structure for this driver
@@ -129,17 +143,22 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
   type(ocean_state_type),  pointer       :: Ocn  !< The internal ocean state and control structures
   type(ocean_public_type), intent(inout) :: Ocean_sfc !< The publicly visible ocean surface state type
   type(ice_ocean_boundary_type), &
-                           intent(inout) :: Ice_ocean_boundary !< A structure containing the various forcing
-                                                               !! fields going from the ice to the ocean
-                                                               !! The arrays of this type are intent out.
+                           intent(inout) :: IOB  !< A structure containing the various forcing
+                                                 !! fields going from the ice to the ocean
+                                                 !! The arrays of this type are intent out; they are
+                                                 !! used externally for stocks and other diagnostics.
   type(time_type),         intent(in)    :: time_start_update  !< The time at the beginning of the update step
   type(time_type),         intent(in)    :: coupling_time_step !< The amount of time over which to advance
                                                                !! the ocean and ice
 
-  real :: time_step         ! The time step of a call to step_MOM [s].
+  ! Local variables
+  type(time_type) :: time_start_step ! The start time within an iterative update cycle.
+  real :: dt_coupling        ! The time step of the thermodynamic update calls [s].
+  type(time_type) :: dyn_time_step   ! The length of the dynamic call update calls.
+  integer :: ns, nstep
 
   call callTree_enter("update_ice_and_ocean(), combined_ice_ocean_driver.F90")
-  time_step = time_type_to_real(coupling_time_step)
+  dt_coupling = time_type_to_real(coupling_time_step)
 
 !  if (time_start_update /= CS%Time) then
 !    call MOM_error(WARNING, "update_ice_and_ocean: internal clock does not "//&
@@ -165,30 +184,59 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, Ice_ocean_boundary
         "ocean and slow ice layouts and domain sizes are identical.")
 
   !### Add clocks of the various calls.
+  if (CS%intersperse_ice_ocn) then
+    ! First step the ice, then ocean thermodynamics.
+    call update_ice_slow_thermo(Ice)
 
-  call update_ice_slow_thermo(Ice)
+    call direct_flux_ice_to_IOB(time_start_update, Ice, IOB, do_thermo=.true.)
 
-  call update_ice_dynamics_trans(Ice)
+    call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step, &
+                            update_dyn=.false., update_thermo=.true., &
+                            start_cycle=.true., end_cycle=.false., cycle_length=dt_coupling)
+
+    ! Now step the ice and ocean dynamics.  This part can have multiple shorter-cycle iterations
+    ! and the fastest parts of these updates of the ice and ocean could eventually be fused.
+    nstep = 1
+    if ((CS%dt_coupled_dyn > 0.0) .and. (CS%dt_coupled_dyn < dt_coupling))&
+      nstep = max(CEILING(dt_coupling/CS%dt_coupled_dyn - 1e-6), 1)
+    dyn_time_step = real_to_time_type(dt_coupling / real(nstep))
+    time_start_step = time_start_update
+    do ns=1,nstep
+      if (ns==nstep) then ! Adjust the dyn_time_step to cover uneven fractions of a tick or second.
+        dyn_time_step = coupling_time_step - (time_start_step - time_start_update)
+      endif
+
+      call update_ice_dynamics_trans(Ice, time_step=dyn_time_step, &
+                        start_cycle=(ns==1), end_cycle=(ns==nstep), cycle_length=dt_coupling)
+
+      call direct_flux_ice_to_IOB(time_start_step, Ice, IOB, do_thermo=.false.)
+
+      call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_step, dyn_time_step, &
+                              update_dyn=.true., update_thermo=.false., &
+                              start_cycle=.false., end_cycle=(ns==nstep), cycle_length=dt_coupling)
+      time_start_step = time_start_step + dyn_time_step
+    enddo
+  else
+    call update_ice_slow_thermo(Ice)
+
+    call update_ice_dynamics_trans(Ice)
 
 !    call mpp_clock_begin(fluxIceOceanClock)
-  call direct_flux_ice_to_IOB( time_start_update, Ice, Ice_ocean_boundary )
+    call direct_flux_ice_to_IOB(time_start_update, Ice, IOB)
 !    call mpp_clock_end(fluxIceOceanClock)
 
-  if (CS%single_MOM_call) then
-    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, &
-                            time_start_update, coupling_time_step )
-  else
-    !### This is here as a temporary measure to avoid using newer arguments
-    !### to update_ocean_model.
-    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, &
-                            time_start_update, coupling_time_step )
-!### This pair of calls works properly with MOM6 in place of the single call above.
-!    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
-!                            coupling_time_step,  update_dyn=.true., update_thermo=.false., &
-!                            start_cycle=.true., end_cycle=.false., cycle_length=time_step)
-!    call update_ocean_model(Ice_ocean_boundary, Ocn, Ocean_sfc, time_start_update, &
-!                            coupling_time_step,  update_dyn=.false., update_thermo=.true., &
-!                            start_cycle=.false., end_cycle=.true., cycle_length=time_step)
+    if (CS%single_MOM_call) then
+      call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step )
+    else
+    !### This line could be a temporary measure to avoid using newer arguments to update_ocean_model.
+    ! call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step )
+      call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step, &
+                              update_dyn=.true., update_thermo=.false., &
+                              start_cycle=.true., end_cycle=.false., cycle_length=dt_coupling)
+      call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step, &
+                              update_dyn=.false., update_thermo=.true., &
+                              start_cycle=.false., end_cycle=.true., cycle_length=dt_coupling)
+    endif
   endif
 
   call callTree_leave("update_ice_and_ocean()")
@@ -219,61 +267,71 @@ end function same_domain
 
 !> This subroutine does a direct copy of the fluxes from the ice data type into
 !! a ice-ocean boundary type on the same grid.
-subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
+subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
   type(time_type),    intent(in)    :: Time !< Current time
   type(ice_data_type),intent(in)    :: Ice  !< A derived data type to specify ice boundary data
   type(ice_ocean_boundary_type), &
-                      intent(inout) :: IOB !< A derived data type to specify
-                                    !!  properties and fluxes passed from ice to ocean
+                      intent(inout) :: IOB  !< A derived data type to specify properties
+                                            !! and fluxes passed from ice to ocean
+  logical,  optional, intent(in)    :: do_thermo !< If present and false, do not update the
+                                            !! thermodynamic or tracer fluxes.
 
   integer :: i, j, is, ie, js, je, i_off, j_off, n, m
-  logical :: used
+  logical :: used, do_therm
+
+  do_therm = .true. ; if (present(do_thermo)) do_therm = do_thermo
 
   ! Do a direct copy of the ice surface fluxes into the Ice-ocean-boundary type.
+  ! It is inefficient, but there is not a problem if fields are copied more than once.
 
   if (ASSOCIATED(IOB%u_flux)) IOB%u_flux(:,:) = Ice%flux_u(:,:)
   if (ASSOCIATED(IOB%v_flux)) IOB%v_flux(:,:) = Ice%flux_v(:,:)
   if (ASSOCIATED(IOB%p     )) IOB%p(:,:) = Ice%p_surf(:,:)
   if (ASSOCIATED(IOB%mi    )) IOB%mi(:,:) = Ice%mi(:,:)
-  if (ASSOCIATED(IOB%t_flux)) IOB%t_flux(:,:) = Ice%flux_t(:,:)
-  if (ASSOCIATED(IOB%salt_flux)) IOB%salt_flux(:,:) = Ice%flux_salt(:,:)
-  if (ASSOCIATED(IOB%sw_flux_nir_dir)) IOB%sw_flux_nir_dir(:,:) = Ice%flux_sw_nir_dir(:,:)
-  if (ASSOCIATED(IOB%sw_flux_nir_dif)) IOB%sw_flux_nir_dif (:,:) = Ice%flux_sw_nir_dif (:,:)
-  if (ASSOCIATED(IOB%sw_flux_vis_dir)) IOB%sw_flux_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
-  if (ASSOCIATED(IOB%sw_flux_vis_dif)) IOB%sw_flux_vis_dif (:,:) = Ice%flux_sw_vis_dif (:,:)
-  if (ASSOCIATED(IOB%lw_flux)) IOB%lw_flux(:,:) = Ice%flux_lw(:,:)
-  if (ASSOCIATED(IOB%lprec)) IOB%lprec(:,:) = Ice%lprec(:,:)
-  if (ASSOCIATED(IOB%fprec)) IOB%fprec(:,:) = Ice%fprec(:,:)
-  if (ASSOCIATED(IOB%runoff)) IOB%runoff(:,:) = Ice%runoff(:,:)
-  if (ASSOCIATED(IOB%calving)) IOB%calving(:,:) = Ice%calving
   if (ASSOCIATED(IOB%stress_mag)) IOB%stress_mag(:,:) = Ice%stress_mag(:,:)
   if (ASSOCIATED(IOB%ustar_berg)) IOB%ustar_berg(:,:) = Ice%ustar_berg(:,:)
   if (ASSOCIATED(IOB%area_berg)) IOB%area_berg(:,:) = Ice%area_berg(:,:)
   if (ASSOCIATED(IOB%mass_berg)) IOB%mass_berg(:,:) = Ice%mass_berg(:,:)
-  if (ASSOCIATED(IOB%runoff_hflx)) IOB%runoff_hflx(:,:) = Ice%runoff_hflx(:,:)
-  if (ASSOCIATED(IOB%calving_hflx)) IOB%calving_hflx(:,:) = Ice%calving_hflx(:,:)
-  if (ASSOCIATED(IOB%q_flux)) IOB%q_flux(:,:) = Ice%flux_q(:,:)
 
-  ! Extra fluxes
-  call coupler_type_copy_data(Ice%ocean_fluxes, IOB%fluxes)
+  if (do_therm) then
+    if (ASSOCIATED(IOB%t_flux)) IOB%t_flux(:,:) = Ice%flux_t(:,:)
+    if (ASSOCIATED(IOB%salt_flux)) IOB%salt_flux(:,:) = Ice%flux_salt(:,:)
+    if (ASSOCIATED(IOB%sw_flux_nir_dir)) IOB%sw_flux_nir_dir(:,:) = Ice%flux_sw_nir_dir(:,:)
+    if (ASSOCIATED(IOB%sw_flux_nir_dif)) IOB%sw_flux_nir_dif (:,:) = Ice%flux_sw_nir_dif (:,:)
+    if (ASSOCIATED(IOB%sw_flux_vis_dir)) IOB%sw_flux_vis_dir(:,:) = Ice%flux_sw_vis_dir(:,:)
+    if (ASSOCIATED(IOB%sw_flux_vis_dif)) IOB%sw_flux_vis_dif (:,:) = Ice%flux_sw_vis_dif (:,:)
+    if (ASSOCIATED(IOB%lw_flux)) IOB%lw_flux(:,:) = Ice%flux_lw(:,:)
+    if (ASSOCIATED(IOB%lprec)) IOB%lprec(:,:) = Ice%lprec(:,:)
+    if (ASSOCIATED(IOB%fprec)) IOB%fprec(:,:) = Ice%fprec(:,:)
+    if (ASSOCIATED(IOB%runoff)) IOB%runoff(:,:) = Ice%runoff(:,:)
+    if (ASSOCIATED(IOB%calving)) IOB%calving(:,:) = Ice%calving
+    if (ASSOCIATED(IOB%runoff_hflx)) IOB%runoff_hflx(:,:) = Ice%runoff_hflx(:,:)
+    if (ASSOCIATED(IOB%calving_hflx)) IOB%calving_hflx(:,:) = Ice%calving_hflx(:,:)
+    if (ASSOCIATED(IOB%q_flux)) IOB%q_flux(:,:) = Ice%flux_q(:,:)
+
+    ! Extra fluxes
+    call coupler_type_copy_data(Ice%ocean_fluxes, IOB%fluxes)
+  endif
 
   ! These lines allow the data override code to reset the fluxes to the ocean.
   call data_override('OCN', 'u_flux',    IOB%u_flux   , Time )
   call data_override('OCN', 'v_flux',    IOB%v_flux   , Time)
-  call data_override('OCN', 't_flux',    IOB%t_flux   , Time)
-  call data_override('OCN', 'q_flux',    IOB%q_flux   , Time)
-  call data_override('OCN', 'salt_flux', IOB%salt_flux, Time)
-  call data_override('OCN', 'lw_flux',   IOB%lw_flux  , Time)
-  call data_override('OCN', 'sw_flux_nir_dir', IOB%sw_flux_nir_dir, Time)
-  call data_override('OCN', 'sw_flux_nir_dif', IOB%sw_flux_nir_dif, Time)
-  call data_override('OCN', 'sw_flux_vis_dir', IOB%sw_flux_vis_dir, Time)
-  call data_override('OCN', 'sw_flux_vis_dif', IOB%sw_flux_vis_dif, Time)
-  call data_override('OCN', 'lprec',     IOB%lprec    , Time)
-  call data_override('OCN', 'fprec',     IOB%fprec    , Time)
-  call data_override('OCN', 'runoff',    IOB%runoff   , Time)
-  call data_override('OCN', 'calving',   IOB%calving  , Time)
-  call data_override('OCN', 'runoff_hflx',  IOB%runoff_hflx   , Time)
-  call data_override('OCN', 'calving_hflx', IOB%calving_hflx  , Time)
+  if (do_therm) then
+    call data_override('OCN', 't_flux',    IOB%t_flux   , Time)
+    call data_override('OCN', 'q_flux',    IOB%q_flux   , Time)
+    call data_override('OCN', 'salt_flux', IOB%salt_flux, Time)
+    call data_override('OCN', 'lw_flux',   IOB%lw_flux  , Time)
+    call data_override('OCN', 'sw_flux_nir_dir', IOB%sw_flux_nir_dir, Time)
+    call data_override('OCN', 'sw_flux_nir_dif', IOB%sw_flux_nir_dif, Time)
+    call data_override('OCN', 'sw_flux_vis_dir', IOB%sw_flux_vis_dir, Time)
+    call data_override('OCN', 'sw_flux_vis_dif', IOB%sw_flux_vis_dif, Time)
+    call data_override('OCN', 'lprec',     IOB%lprec    , Time)
+    call data_override('OCN', 'fprec',     IOB%fprec    , Time)
+    call data_override('OCN', 'runoff',    IOB%runoff   , Time)
+    call data_override('OCN', 'calving',   IOB%calving  , Time)
+    call data_override('OCN', 'runoff_hflx',  IOB%runoff_hflx   , Time)
+    call data_override('OCN', 'calving_hflx', IOB%calving_hflx  , Time)
+  endif
   call data_override('OCN', 'p',         IOB%p        , Time)
   call data_override('OCN', 'mi',        IOB%mi       , Time)
   if (ASSOCIATED(IOB%stress_mag) ) &
@@ -287,9 +345,11 @@ subroutine direct_flux_ice_to_IOB( Time, Ice, IOB )
     call data_override('OCN', 'mass_berg',  IOB%mass_berg , Time)
 
   ! Override and output extra fluxes of tracers or gasses
-  call coupler_type_data_override('OCN', IOB%fluxes, Time )
-
-  call coupler_type_send_data(IOB%fluxes, Time )
+  if (do_therm) then
+    call coupler_type_data_override('OCN', IOB%fluxes, Time )
+    ! Offer the extra fluxes for diagnostics.  (###Why is this here, unlike other fluxes?)
+    call coupler_type_send_data(IOB%fluxes, Time )
+  endif
 
 end subroutine direct_flux_ice_to_IOB
 

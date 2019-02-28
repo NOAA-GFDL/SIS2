@@ -570,7 +570,7 @@ subroutine ice_stock_pe(Ice, index, value)
     case (ISTOCK_WATER)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + kg_H * (IST%mH_ice(i,j,k) + IST%mH_snow(i,j,k)) * &
+        value = value + kg_H * (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))) * &
                IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
@@ -583,7 +583,7 @@ subroutine ice_stock_pe(Ice, index, value)
                               (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
-      else
+      else !### Should this be changed to raise the temperature to 0 degC?
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           part_wt = (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then

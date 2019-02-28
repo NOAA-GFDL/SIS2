@@ -49,6 +49,9 @@ type, public :: SIS_transport_CS ; private
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
   logical :: bounds_check     !< If true, check for sensible values of thicknesses,
                               !! temperatures, salinities, tracers, etc.
+  logical :: inconsistent_cover_bug !< If true, omit a recalculation of the fractional ice-free
+                              !! areal coverage after the adjustment of the ice categories.
+                              !! The default should be changed to false and then this option obsoleted.
   type(time_type), pointer :: Time !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag !< A structure that is used to regulate the
                               !! timing of diagnostic output.
@@ -115,13 +118,13 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [m s-1].
   real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [m s-1].
-  real, dimension(SZI_(G),SZJ_(G),max(nsteps+1,1)), optional, intent(in) :: &
-    mca_tot    ! The total mass per unit total area of snow and ice summed across thickness
-               ! categories in a cell, before each substep [H ~> kg m-2].
+  real, dimension(SZI_(G),SZJ_(G),0:max(nsteps,1)), optional, intent(in) :: &
+    mca_tot    !< The total mass per unit total area of snow and ice summed across thickness
+               !! categories in a cell, after each substep [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)), optional, intent(in) :: &
-    uh_tot     ! Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
+    uh_tot     !< Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)), optional, intent(in) :: &
-    vh_tot     ! Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
+    vh_tot     !< Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
@@ -175,7 +178,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
     enddo ; enddo ; enddo
 
     if (merged_cont) then
-      call proportionate_continuity(mca_tot(:,:,n), uh_tot(:,:,n), vh_tot(:,:,n), &
+      call proportionate_continuity(mca_tot(:,:,n-1), uh_tot(:,:,n), vh_tot(:,:,n), &
                                     dt_adv, G, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
@@ -211,15 +214,13 @@ end subroutine ice_cat_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> finish_ice_transport completes the ice transport and thickness class redistribution
-subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
+subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZI_(G),SZJ_(G)), &
-                           optional, intent(inout) :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [s-1].
 
   ! Local variables
@@ -231,6 +232,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
     mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [H ~> kg m-2].
     mca0_snow    ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
 !### These will be needed when the ice ridging is properly implemented.
+!  real :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
+!  real :: enth_snow2ocn !< Mass-averaged enthalpy of the now dumped into ocean during ridging [J kg-1]
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
@@ -273,21 +276,29 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, snow2ocn, rdg_rate)
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
 
-!  Niki: TOM does the ridging after redistribute which would need age_ice and IST%rgd_mice below.
-!   !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
-!   !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
-!   if (CS%do_ridging) then
-!     do j=jsc,jec ; do i=isc,iec
-!       snow2ocn(i,j) = 0.0 !TOM> initializing snow2ocean
-!       if (sum(IST%mH_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
-!           sum(IST%part_size(i,j,1:nCat)) > 0.01) &
-!         call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
-!             IST%mH_snow(i,j,:), &
-!             heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
-!             age_ice(i,j,:), snow2ocn(i,j), rdg_rate(i,j), IST%rgd_mice(i,j,:), &
-!             CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
-!     enddo ; enddo
-!   endif   ! do_ridging
+! Niki: TOM does the ridging after redistribute which would need age_ice and IST%rgd_mice below.
+!  !  ### THIS IS HARD-CODED ONLY TO WORK WITH 2 LAYERS.
+!  !  ### heat_snow AND OTHER TRACERS ARE OMITTED.
+!  if (CS%do_ridging) then
+!    do j=jsc,jec ; do i=isc,iec
+!      if (sum(IST%mH_ice(i,j,:)) > 1.e-10*CS%Rho_ice .and. &
+!          sum(IST%part_size(i,j,1:nCat)) > 0.01) then
+!        call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
+!            IST%mH_snow(i,j,:), &
+!            heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
+!            age_ice(i,j,:), snow2ocn, enth_snow2ocn, rdg_rate(i,j), IST%rgd_mice(i,j,:), &
+!            CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
+!        ! Store the snow mass (and related properties?) that will be passed to the ocean at the
+!        ! next opportunity.
+!        if (snow2ocn > 0.0) then
+!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + &
+!                                       enth_snow2ocn * snow2ocn) / &
+!                                      (IST%snow_to_ocn(i,j) + snow2ocn)
+!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
+!        endif
+!      endif
+!    enddo ; enddo
+!  endif   ! do_ridging
 
   !   Recalculate IST%part_size(:,:,0) to ensure that the sum of IST%part_size adds up to 1.
   ! Compress_ice should already have taken care of this within the computational
@@ -547,12 +558,15 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     mca0_ice, mca0_snow, mca0_pond, &
     ! Cross-catagory transfers of ice, snow and pond mass [kg m-2].
     trans_ice, trans_snow, trans_pond
-  logical :: do_any, do_j(SZJ_(G))
+  real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
+  logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nCat
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   nCat = IG%CatIce
 
   I_mH_lim1 = 1.0 / IG%mH_cat_bound(1)
+
+  resum_cat(:,:) = .false.
 
   ! Zero out the part_size of any massless categories.
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
@@ -565,6 +579,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     if (mH_pond(i,j,k) > 0.0) then
       call SIS_error(FATAL, "Input to adjust_ice_categories, non-zero pond mass rests atop no ice.")
     endif
+    if (part_sz(i,j,k) > 0.0) resum_cat(i,j) = .true.
     part_sz(i,j,k) = 0.0
   endif ; enddo ; enddo ; enddo
 
@@ -718,11 +733,29 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
           mH_pond(i,j,1) = mH_pond(i,j,1) * (IG%mH_cat_bound(1) / mH_ice(i,j,1))
           ! This is equivalent to mH_snow(i,j,1) = mca_snow(i,1) / part_sz(i,j,1)
           mH_ice(i,j,1) = IG%mH_cat_bound(1)
+          resum_cat(i,j) = .true.
         endif
       enddo
     endif
 
   endif ; enddo  ! j-loop and do_j
+
+  if (.not.CS%inconsistent_cover_bug) then
+    do j=js,je
+      do_any = .false.
+      do i=is,ie
+        ice_cover(i) = 0.0
+        if (resum_cat(i,j)) do_any = .true.
+      enddo
+      if (.not.do_any) cycle
+      do k=1,nCat ; do i=is,ie
+        ice_cover(i) = ice_cover(i) + part_sz(i,j,k)
+      enddo ; enddo
+      do i=is,ie ; if (resum_cat(i,j)) then
+        part_sz(i,j,0) = max(1.0 - ice_cover(i), IG%ocean_part_min)
+      endif ; enddo
+    enddo
+  endif
 
 end subroutine adjust_ice_categories
 
@@ -986,7 +1019,7 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   cell_mass(:,:) = 0.0
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
     cell_mass(i,j) = cell_mass(i,j) + IST%part_size(i,j,k) * H_to_units * &
-                          (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
+                          ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine get_cell_mass
@@ -1052,6 +1085,7 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
     sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
               ((H_to_units*IST%mH_snow(i,j,k))*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
+  !### What about sum_enth_pond?
 
   total = reproducing_sum(sum_enth_ice, EFP_sum=enth_ice)
   total = reproducing_sum(sum_enth_snow, EFP_sum=enth_snow)
@@ -1060,7 +1094,7 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
+subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
@@ -1070,6 +1104,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
                                                      !! that is allocated and populated here
   type(SIS_continuity_CS), optional, pointer :: continuity_CSp !< The control structure for the
                                                      !!  SIS continuity module
+  type(SIS_continuity_CS), optional, pointer :: cover_trans_CSp !< The control structure for ice cover
+                                                     !!  transport by the SIS continuity module
 !   This subroutine sets the parameters and registers the diagnostics associated
 ! with the ice dynamics.
 
@@ -1077,6 +1113,7 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
 #include "version_variable.h"
   character(len=40)  :: mdl = "SIS_transport" ! This module's name.
   character(len=80)  :: scheme   ! A string for identifying an advection scheme.
+  logical :: merged_cont
   real, parameter :: missing = -1e34
 
   if (associated(CS)) then
@@ -1127,14 +1164,24 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp)
                  "sensible, and issue warnings if they are not.  This \n"//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-
+  call get_param(param_file, mdl, "MERGED_CONTINUITY", merged_cont, &
+               "If true, update the continuity equations for the ice, snow, \n"//&
+               "and melt pond water together summed across categories, with \n"//&
+               "proportionate fluxes for each part. Otherwise the media are \n"//&
+               "updated separately.", default=.false., do_not_log=.true.)
+  call get_param(param_file, mdl, "INCONSISTENT_COVER_BUG", CS%inconsistent_cover_bug, &
+                 "If true, omit a recalculation of the fractional ice-free \n"//&
+                 "areal coverage after the adjustment of the ice categories.", &
+                 default=.true., do_not_log=merged_cont)
+  if (merged_cont) CS%inconsistent_cover_bug = .false.
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)
   call obsolete_real(param_file, "ICE_CHANNEL_CFL_LIMIT", warning_val=0.25)
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
 
-  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp)
+  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp, &
+                           CS_cvr=cover_trans_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
 
   if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp
