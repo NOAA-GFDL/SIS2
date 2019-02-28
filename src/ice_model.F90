@@ -124,7 +124,6 @@ implicit none ; private
 public :: ice_data_type, ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 public :: ice_model_init, share_ice_domains, ice_model_end, ice_stock_pe
 public :: update_ice_model_fast
-public :: update_ice_model_slow_up, update_ice_model_slow_dn ! The old Verona interfaces.
 public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
@@ -144,40 +143,6 @@ integer, parameter :: DIRECT=3 !< Use direct exchange
 
 contains
 
-!-----------------------------------------------------------------------
-!> Update the sea-ice state due to slow processes, including dynamics,
-!! freezing and melting, precipitation, and transport.
-subroutine update_ice_model_slow_dn ( Atmos_boundary, Land_boundary, Ice )
-  type(atmos_ice_boundary_type), &
-    intent(in)    :: Atmos_boundary !< Atmos_boundary is not actually used, and
-                                   !! is still here only for backward compatibilty with the
-                                   !! interface to Verona and earlier couplers.
-  type(land_ice_boundary_type), &
-    intent(in)    :: Land_boundary !< A structure containing information about
-                                   !! the fluxes from the land that is being shared with the
-                                   !! sea-ice.  If this argument is not present, it is assumed
-                                   !! that this information has already been exchanged.
-  type(ice_data_type), &
-    intent(inout) :: Ice           !< The publicly visible ice data type; this must always be
-                                   !! present, but is optional because of an unfortunate
-                                   !! order of arguments.
-
-  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%sCS must be associated in update_ice_model_slow_dn.")
-
-  call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
-
-  call ice_model_fast_cleanup(Ice)
-
-  call unpack_land_ice_boundary(Ice, Land_boundary)
-
-  call exchange_fast_to_slow_ice(Ice)
-
-  call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
-
-  call update_ice_model_slow(Ice)
-
-end subroutine update_ice_model_slow_dn
 
 !-----------------------------------------------------------------------
 !> Update the sea-ice state due to slow processes, including dynamics,
@@ -359,7 +324,7 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
   if (sIST%valid_IST) call ice_mass_from_IST(sIST, Ice%sCS%IOF, sG, sIG)
 
-  call set_ocean_top_dyn_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, sG, sIG, Ice%sCS)
+  call set_ocean_top_dyn_fluxes(Ice, Ice%sCS%IOF, FIA, sG, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_dynamics_trans", Ice, check_slow=.true.)
@@ -681,30 +646,26 @@ end subroutine ice_mass_from_IST
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_ocean_top_dyn_fluxes translates ice-bottom stresses and mass
-!!  from the ice model's internal state to the public ice data type
-!!  for use by the ocean model.
-subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
+!> set_ocean_top_dyn_fluxes translates ice-bottom stresses and massfrom the ice
+!!  model's ice-ocean flux type  and the fast-ice average type to the public
+!!  ice data type for use by the ocean model.
+subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, sCS)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
-  type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
                                                    !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec
-  integer :: i2, j2, i_off, j_off, ind, ncat, NkIce
+  integer :: i2, j2, i_off, j_off, ind
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
-  ncat = IG%CatIce ; NkIce = IG%NkIce
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G)
-    call IST_chksum("Start set_ocean_top_dyn_fluxes", IST, G, IG)
   endif
 
   ! Sum the concentration weighted mass.
@@ -749,54 +710,12 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     enddo ; enddo
   endif
 
-! This extra block is required with the Verona and earlier versions of the coupler.
-  i_off = LBOUND(Ice%part_size,1) - G%isc ; j_off = LBOUND(Ice%part_size,2) - G%jsc
-  if (Ice%shared_slow_fast_PEs) then
-    if ((Ice%fCS%G%iec-Ice%fCS%G%isc==iec-isc) .and. &
-        (Ice%fCS%G%jec-Ice%fCS%G%jsc==jec-jsc)) then
-      ! The fast and slow ice PEs are using the same PEs and layout, so the
-      ! part_size arrays can be copied directly from the fast ice PEs.
-      !$OMP parallel do default(shared) private(i2,j2)
-      do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-        Ice%part_size(i2,j2,k+1) = IST%part_size(i,j,k)
-      enddo ; enddo ; enddo
-    endif
-  endif
-
   if (sCS%debug) then
     call Ice_public_type_chksum("End set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
   endif
 
 end subroutine set_ocean_top_dyn_fluxes
 
-! Coupler interface to provide ocean surface data to atmosphere.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> update_ice_model_slow_up prepares the ice surface data for forcing the atmosphere
-!! and also unpacks the data from the ocean and shares it between the fast and
-!! slow ice structures.
-subroutine update_ice_model_slow_up ( Ocean_boundary, Ice )
-  type(ocean_ice_boundary_type), &
-    intent(inout) :: Ocean_boundary  !< A structure containing information about
-                                   !! the ocean that is being shared with the sea-ice.
-  type(ice_data_type), &
-    intent(inout) :: Ice           !< The publicly visible ice data type.
-
-  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%fCS must be associated in update_ice_model_slow_up.")
-  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%sCS must be associated in update_ice_model_slow_up.")
-
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, &
-                           Ice%sCS%specified_ice, Ice%ocean_fields)
-
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G)
-
-  call exchange_slow_to_fast_ice(Ice)
-
-  call set_ice_surface_fields(Ice)
-
-end subroutine update_ice_model_slow_up
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine copies information from the slow part of the sea-ice to the
@@ -1673,13 +1592,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   type(time_type)    , intent(in)    :: Time           !< The current time
   type(time_type)    , intent(in)    :: Time_step_fast !< The time step for the ice_model_fast
   type(time_type)    , intent(in)    :: Time_step_slow !< The time step for the ice_model_slow
-  logical,   optional, intent(in)    :: Verona_coupler !< If present and false, use the input values
+  logical,   optional, intent(in)    :: Verona_coupler !< If false or not present, use the input values
                                               !! in Ice to determine whether this is a fast or slow
-                                              !! ice processor or both.  Otherwise, carry out all of
-                                              !! the sea ice iniatialization calls so that SIS2 will
-                                              !! work with the Verona and earlier releases of the FMS
-                                              !! coupler code in configurations that use the exchange
-                                              !! grid to communicate with the atmosphere or land.
+                                              !! ice processor or both.  SIS2 will now throw a fatal
+                                              !! error if this is present and true.
   logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
@@ -1838,10 +1754,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! For now, both fast and slow processes occur on all sea-ice PEs.
   fast_ice_PE = .true. ; slow_ice_PE = .true.
-  if (present(Verona_coupler)) then ; if (.not.Verona_coupler) then
-    fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
-  endif ; endif
-  Verona = .true. ; if (present(Verona_coupler)) Verona = Verona_coupler
+  Verona = .false. ; if (present(Verona_coupler)) Verona = Verona_coupler
+  if (Verona) call SIS_error(FATAL, "SIS2 no longer works with pre-Warsaw couplers.")
+  fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
   Concurrent = .false. ; if (present(Concurrent_ice)) Concurrent = Concurrent_ice
 
   ! Open the parameter file.
@@ -1975,12 +1890,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "in parts of the code that use directionally split \n"//&
                  "updates, with even numbers (or 0) used for x- first \n"//&
                  "and odd numbers used for y-first.", default=0)
-  call log_param(param_file, mdl, "! VERONA_COUPLER", Verona, &
-                 "If true, carry out all of the sea ice calls so that SIS2 \n"//&
-                 "will work with the Verona and earlier releases of the \n"//&
-                 "FMS coupler code in configurations that use the exchange \n"//&
-                 "grid to communicate with the atmosphere or land.", &
-                 layoutParam=.true.)
 
   call get_param(param_file, mdl, "ICE_SEES_ATMOS_WINDS", atmos_winds, &
                  "If true, the sea ice is being given wind stresses with \n"//&
@@ -2705,32 +2614,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
 
-    if (Verona) then
-      !   The Verona and earlier versions of the coupler code make calls to set
-      ! up the exchange grid right at the start of the coupled timestep, before
-      ! information about the part_size distribution can be copied from the slow
-      ! processors to the fast processors.  This will cause coupled models with
-
-      if (fast_ice_PE) then
-        write_error_mesg = .not.((sHI%iec-sHI%isc==fHI%iec-fHI%isc) .and. &
-                                 (sHI%jec-sHI%jsc==fHI%jec-fHI%jsc))
-      else ; write_error_mesg = .true.
-      endif
-
-      if (write_error_mesg) call SIS_error(FATAL, &
-          "The Verona coupler will not work unless the fast and slow portions "//&
-          "of SIS2 use the same PEs and layout.")
-
-      ! Set the computational domain sizes using the ice model's indexing convention.
-      isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
-      i_off = LBOUND(Ice%part_size,1) - sHI%isc ; j_off = LBOUND(Ice%part_size,2) - sHI%jsc
-      do k=0,CatIce ; do j=jsc,jec ; do i=isc,iec
-        i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-        Ice%part_size(i2,j2,k2) = sIST%part_size(i,j,k)
-      enddo ; enddo ; enddo
-
-    endif
-
     ! Do any error checking here.
     if (Ice%sCS%debug) call ice_grid_chksum(sG, haloshift=1)
 
@@ -2818,10 +2701,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call nullify_domain()
 
   call close_param_file(param_file)
-
-  ! In the post-Verona coupler, share_ice_domains is called by the coupler
-  ! after it switches the current PE_list to the one with all ice PEs.
-  if (Verona) call share_ice_domains(Ice)
 
   ! Ice%xtype can be REDIST or DIRECT, depending on the relationship between
   ! the fast and slow ice PEs.  REDIST should always work but may be slower.

@@ -125,7 +125,7 @@ type slow_thermo_CS ; private
   real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check [nondim].
   logical :: bounds_check   !< If true, check for sensible values of thicknesses temperatures, fluxes, etc.
 
-  integer :: n_calls = 0    !< The number of times update_ice_model_slow_down has been called.
+  integer :: n_calls = 0    !< The number of times slow_thermodynamics has been called.
 
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
