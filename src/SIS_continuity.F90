@@ -108,21 +108,20 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
-!$OMP parallel default(none) shared(G,is,ie,js,je,u,v,hin,uh,vh,h,dt,nCat) &
-!$OMP                       private(h_up)
-!$OMP do
+    !$OMP parallel default(shared) private(h_up)
+    !$OMP do
     do j=js,je ; do k=1,nCat ; do I=is-1,ie
       if (u(I,j) >= 0.0) then ; h_up = hin(i,j,k)
       else ; h_up = hin(i+1,j,k) ; endif
       uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
     enddo ; enddo ; enddo
-!$OMP do
+    !$OMP do
     do J=js-1,je ; do k=1,nCat ; do i=is,ie
       if (v(i,J) >= 0.0) then ; h_up = hin(i,j,k)
       else ; h_up = hin(i,j+1,k) ; endif
       vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
     enddo ; enddo ; enddo
-!$OMP do
+    !$OMP do
     do j=js,je ; do k=1,nCat ; do i=is,ie
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * &
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
@@ -131,7 +130,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
         call SIS_error(FATAL, 'Negative thickness encountered in ice_continuity().')
       endif
     enddo ; enddo ; enddo
-!$OMP end parallel
+    !$OMP end parallel
   elseif (x_first) then
   !    First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec
@@ -139,7 +138,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
     call zonal_mass_flux(u, dt, G, IG, CS, LB, hin, uh)
 
     call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(LB,nCat,G,uh,hin,dt,h)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
@@ -156,7 +155,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
     call meridional_mass_flux(v, dt, G, IG, CS, LB, h, vh)
 
     call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(nCat,LB,h,dt,G,vh)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
@@ -174,7 +173,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
     call meridional_mass_flux(v, dt, G, IG, CS, LB, hin, vh)
 
     call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(nCat,LB,h,hin,dt,G,vh)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
@@ -190,7 +189,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
     call zonal_mass_flux(u, dt, G, IG, CS, LB, h, uh)
 
     call cpu_clock_begin(id_clock_update)
-!$OMP parallel do default(none) shared(nCat,LB,h,dt,G,uh)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
@@ -301,12 +300,12 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
     enddo ; enddo
     call cpu_clock_end(id_clock_update)
 
-    !  Now advect zonally, using the updated ice covers to determine the fluxes.
+    ! Now advect zonally, using the updated ice covers to determine the fluxes.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
     call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
 
     call cpu_clock_begin(id_clock_update)
-    !$OMP parallel do default(none) shared(LB,h,dt,G,uh)
+    !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       cvr(i,j) = max(1.0, cvr(i,j) - dt* G%IareaT(i,j) * (ucvr(I,j) - ucvr(I-1,j)))
       if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
@@ -616,7 +615,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
     if (present(h1)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
       call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
-     !$OMP parallel do default(shared)
+      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh1(I,j,k) - uh1(I-1,j,k)) + (vh1(i,J,k) - vh1(i,J-1,k))))
@@ -625,7 +624,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
     if (present(h2)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
       call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
-     !$OMP parallel do default(shared)
+      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh2(I,j,k) - uh2(I-1,j,k)) + (vh2(i,J,k) - vh2(i,J-1,k))))
@@ -634,7 +633,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
     if (present(h3)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
       call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
-     !$OMP parallel do default(shared)
+      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh3(I,j,k) - uh3(I-1,j,k)) + (vh3(i,J,k) - vh3(i,J-1,k))))
@@ -685,14 +684,14 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
     endif
     if (present(h2)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
-     !$OMP parallel do default(shared)
+      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
     if (present(h3)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
-     !$OMP parallel do default(shared)
+      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
       enddo ; enddo ; enddo
@@ -1119,8 +1118,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   endif
 
   if (use_2nd) then
-!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r) &
-!$OMP                          private(h_im1,h_ip1)
+    !$OMP parallel do default(shared) private(h_im1,h_ip1)
     do j=jsl,jel ; do i=isl,iel
       h_im1 = G%mask2dT(i-1,j) * h_in(i-1,j) + (1.0-G%mask2dT(i-1,j)) * h_in(i,j)
       h_ip1 = G%mask2dT(i+1,j) * h_in(i+1,j) + (1.0-G%mask2dT(i+1,j)) * h_in(i,j)
@@ -1128,8 +1126,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
       h_r(i,j) = 0.5*( h_ip1 + h_in(i,j) )
     enddo ; enddo
   else
-!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r,slp) &
-!$OMP                          private(dMx,dMn,h_im1,h_ip1)
+    !$OMP parallel do default(shared) private(dMx,dMn,h_im1,h_ip1)
     do j=jsl,jel
       do i=isl-1,iel+1
         if ((G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j)) == 0.0) then
@@ -1213,8 +1210,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   endif
 
   if (use_2nd) then
-!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r) &
-!$OMP                          private(h_jm1,h_jp1)
+    !$OMP parallel do default(shared) private(h_jm1,h_jp1)
     do j=jsl,jel ; do i=isl,iel
       h_jm1 = G%mask2dT(i,j-1) * h_in(i,j-1) + (1.0-G%mask2dT(i,j-1)) * h_in(i,j)
       h_jp1 = G%mask2dT(i,j+1) * h_in(i,j+1) + (1.0-G%mask2dT(i,j+1)) * h_in(i,j)
@@ -1222,8 +1218,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
       h_r(i,j) = 0.5*( h_jp1 + h_in(i,j) )
     enddo ; enddo
   else
-!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,slp) &
-!$OMP                          private(dMx,dMn)
+    !$OMP parallel do default(shared)  private(dMx,dMn)
     do j=jsl-1,jel+1 ; do i=isl,iel
       if ((G%mask2dT(i,j-1) * G%mask2dT(i,j) * G%mask2dT(i,j+1)) == 0.0) then
         slp(i,j) = 0.0
@@ -1237,8 +1232,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
                 ! * (G%mask2dT(i,j-1) * G%mask2dT(i,j) * G%mask2dT(i,j+1))
       endif
     enddo ; enddo
-!$OMP parallel do default(none) shared(isl,iel,jsl,jel,G,h_in,h_l,h_r,slp) &
-!$OMP                          private(h_jm1,h_jp1)
+    !$OMP parallel do default(shared) private(h_jm1,h_jp1)
     do j=jsl,jel ; do i=isl,iel
       ! Neighboring values should take into account any boundaries.
       h_jm1 = G%mask2dT(i,j-1) * h_in(i,j-1) + (1.0-G%mask2dT(i,j-1)) * h_in(i,j)
