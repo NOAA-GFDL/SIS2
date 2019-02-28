@@ -620,7 +620,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 !   It is possible that the ice mass and surface pressure will be needed after
 ! the themodynamic step, in which case this should be uncommented.
 !  if (IOF%slp2ocean) then
-!     Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+!     Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
 !   else
 !     Ice%p_surf(i2,j2) = 0.0
 !   endif
@@ -701,7 +701,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IST, IOF, FIA, G, IG, sCS)
     Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
-      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere, in Pa.
+      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
     else
       Ice%p_surf(i2,j2) = 0.0
     endif
@@ -1033,14 +1033,14 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
                    ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v
   real :: area_pt
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units, in m H-1.
+  real :: H_to_m_snow    ! conversion factor from thickness units [m H-1 ~> m3].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1215,7 +1215,7 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice !< The sea ice skin temperature in deg C.
+                           intent(in)    :: Tskin_ice !< The sea ice skin temperature [degC].
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
                            intent(in)    :: coszen  !< Cosine of the solar zenith angle for this step
   type(ice_rad_type),      intent(inout) :: Rad !< A structure with fields related to the absorption,
@@ -1223,12 +1223,12 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
   real, dimension(IG%NkIce) :: sw_abs_lay
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow ! The nominal density of snow in kg m-3.
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   real :: H_to_m_ice  ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow ! conversion factor from thickness units, in m H-1.
+  real :: H_to_m_snow ! conversion factor from thickness units [m H-1 ~> m3].
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -1369,7 +1369,7 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
-    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo, ND.
+    cosz_alb  ! The cosine of the solar zenith angle for calculating albedo [nondim].
   real :: rad
   real :: rrsun_dt_ice
   type(time_type) :: dT_ice   ! The time interval for this update.
@@ -1416,10 +1416,10 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
   real, dimension(G%isd:G%ied, G%jsd:G%jed,size(FIA%flux_sw_dn,3)) :: &
     sw_dn_bnd  ! The downward shortwave radiation by frequency and angular band
-               ! averaged over all of the ice thickness categories, in W m-2.
+               ! averaged over all of the ice thickness categories [W m-2].
   real, dimension(G%isd:G%ied) :: Tskin_avg, ice_conc
   real :: dt_diag
-  real    :: Stefan ! The Stefan-Boltzmann constant in W m-2 K-4 as used for
+  real    :: Stefan ! The Stefan-Boltzmann constant [W m-2 degK-4] as used for
                     ! strictly diagnostic purposes.
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
@@ -1474,7 +1474,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   if (Rad%id_lwdn > 0) then
     tmp_diag(:,:) = 0.0
-    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant, in W m-2 K-4.
+    Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant [W m-2 degK-4].
     do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
@@ -1693,16 +1693,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Parameters that are read in and used to initialize other modules.  If those
   ! other modules had control states, these would be moved to those modules.
-  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2, in m.
-  real :: heat_rough_ice ! heat roughness length, in m.
-  real :: dt_Rad_real    ! The radiation timestep, in s.
+  real :: mom_rough_ice  ! momentum same, cd10=(von_k/ln(10/z0))^2 [m].
+  real :: heat_rough_ice ! heat roughness length [m].
+  real :: dt_Rad_real    ! The radiation timestep [s].
   type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
   real :: rad            ! The conversion factor from degrees to radians.
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
   ! Parameters that properly belong exclusively to ice_thm.
-  real :: k_snow         ! snow conductivity (W/mK)
-  real :: h_lo_lim       ! The min ice thickness for temp. calc, in m.
+  real :: k_snow         ! snow conductivity [W m degC-1]
+  real :: h_lo_lim       ! The min ice thickness for temp. calc [m].
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion
                          ! factor.
@@ -1720,19 +1720,19 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
   real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  real :: g_Earth        !   The gravitational acceleration in m s-2.
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity, in g/kg
+  real :: g_Earth        !   The gravitational acceleration [m s-2].
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
-                         ! salinity of the water from which it formed, nondim.
+                         ! salinity of the water from which it formed [nondim].
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
-  real :: rho_ice        ! The nominal density of sea ice in kg m-3.
-  real :: rho_snow       ! The nominal density of snow in kg m-3.
-  real :: rho_Ocean      ! The nominal density of seawater, in kg m-3.
+  real :: rho_ice        ! The nominal density of sea ice [kg m-3].
+  real :: rho_snow       ! The nominal density of snow [kg m-3].
+  real :: rho_Ocean      ! The nominal density of seawater [kg m-3].
   real :: kmelt          ! A constant that is used in the calculation of the
-                         ! ocean/ice basal heat flux, in W m-2 K-1.  This could
+                         ! ocean/ice basal heat flux [W m-2 degC-1].  This could
                          ! be changed to reflect the turbulence in the under-ice
                          ! ocean boundary layer and the effective depth of the
                          ! reported value of t_ocn.
@@ -2835,9 +2835,9 @@ end subroutine share_ice_domains
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
-  real,                         intent(in)    :: Rho_ice !< The nominal ice density, in kg m-3.
+  real,                         intent(in)    :: Rho_ice !< The nominal ice density [kg m-3].
   type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
-  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits, in m.
+  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits [m].
 
   ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
   !  ###This subroutine should be extended to add more options.

@@ -115,12 +115,6 @@ subroutine check_redundant_vC3d(mesg, u_comp, v_comp, G, is, ie, js, je, &
   integer,                   optional, intent(in)    :: js   !< The starting j-index to work on
   integer,                   optional, intent(in)    :: je   !< The ending j-index to work on
   integer,                   optional, intent(in)    :: direction !< The direction flag to pass to pass_vector
-! Arguments: u_comp - The u-component of the vector being checked.
-!  (in)      v_comp - The v-component of the vector being checked.
-!  (in)      mesg - A message indicating what is being checked.
-!  (in)      G - The ocean's grid structure.
-!  (in/opt)  is, ie, js, je - the i- and j- range of indices to check.
-!  (in/opt)  direction - the direction flag to be passed to pass_vector.
 
   character(len=24) :: mesg_k
   integer :: k

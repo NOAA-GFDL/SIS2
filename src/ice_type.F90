@@ -63,68 +63,68 @@ type ice_data_type !  ice_public_type
   ! atmosphere, and contain separate values for each ice thickness category.
   real, pointer, dimension(:,:,:) :: &
     part_size => NULL(), &    !< The fractional coverage of a grid cell by each ice
-                              !! thickness category, nondim, 0 to 1.  Category 1 is
+                              !! thickness category [nondim], 0 to 1.  Category 1 is
                               !! open ocean.  The sum of part_size is 1.
     albedo    => NULL(), &    !< The surface albedo averaged across all wavelength
                               !! and orientation bands within each ice-thickness
-                              !! category.  Nondimensional, between 0 and 1.
+                              !! category [nondim], between 0 and 1.
     albedo_vis_dir => NULL(), & !< The surface albedo for direct visible shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_nir_dir => NULL(), & !< The surface albedo for diffuse visible shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_vis_dif => NULL(), & !< The surface albedo for direct near-infrared shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     albedo_nir_dif => NULL(), & !< The surface albedo for diffuse near-infrared shortwave radiation
-                                !! in each ice-thickness category. Nondim, between 0 and 1.
+                                !! in each ice-thickness category [nondim], between 0 and 1.
     rough_mom   => NULL(), &  !< The roughness for momentum at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     rough_heat  => NULL(), &  !< The roughness for heat at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     rough_moist => NULL(), &  !< The roughness for moisture at the ocean surface, as provided by
-                              !! ocean_rough_mod, apparently in m.
+                              !! ocean_rough_mod, apparently [m].
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
-                              !! each ice-thickness category, in Kelvin.
-    u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice, in m s-1.
-    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice, in m s-1.
+                              !! each ice-thickness category [Kelvin].
+    u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
+    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
-    s_surf         =>NULL()   !< The ocean's surface salinity, in g/kg.
+    s_surf         =>NULL()   !< The ocean's surface salinity [gSalt kg-1].
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &
-    SST_C => NULL(), &    !< The ocean surface temperature, in deg C.
-    flux_u => NULL(), &   !< The flux of x-momentum into the ocean, in Pa.
-    flux_v => NULL(), &   !< The flux of y-momentum into the ocean, in Pa.
-    flux_t => NULL(), &   !< The flux of sensible heat out of the ocean, in W m-2.
-    flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean, in kg m-2 s-1.
-    flux_lw => NULL(), &  !< The longwave flux out of the ocean, in W m-2.
-    flux_sw_vis_dir => NULL(), & !< The direct visible shortwave heat flux into the ocean in W m-2.
-    flux_sw_vis_dif => NULL(), & !< The diffuse visible shortwave heat flux into the ocean in W m-2.
-    flux_sw_nir_dir => NULL(), & !< The direct near-infrared heat flux into the ocean in W m-2.
-    flux_sw_nir_dif => NULL(), & !< The diffuse near-infrared heat flux into the ocean in W m-2.
-    flux_lh => NULL(), &  !< The latent heat flux out of the ocean, in W m-2.
-    lprec => NULL(), &    !< The liquid precipitation flux into the ocean, in kg m-2.
-    fprec => NULL(), &    !< The frozen precipitation flux into the ocean, in kg m-2.
-    p_surf => NULL(), &   !< The pressure at the ocean surface, in Pa.  This may
+    SST_C => NULL(), &    !< The ocean surface temperature [degC].
+    flux_u => NULL(), &   !< The flux of x-momentum into the ocean [Pa].
+    flux_v => NULL(), &   !< The flux of y-momentum into the ocean [Pa].
+    flux_t => NULL(), &   !< The flux of sensible heat out of the ocean [W m-2].
+    flux_q => NULL(), &   !< The evaporative moisture flux out of the ocean [kg m-2 s-1].
+    flux_lw => NULL(), &  !< The longwave flux out of the ocean [W m-2].
+    flux_sw_vis_dir => NULL(), & !< The direct visible shortwave heat flux into the ocean [W m-2].
+    flux_sw_vis_dif => NULL(), & !< The diffuse visible shortwave heat flux into the ocean [W m-2].
+    flux_sw_nir_dir => NULL(), & !< The direct near-infrared heat flux into the ocean [W m-2].
+    flux_sw_nir_dif => NULL(), & !< The diffuse near-infrared heat flux into the ocean [W m-2].
+    flux_lh => NULL(), &  !< The latent heat flux out of the ocean [W m-2].
+    lprec => NULL(), &    !< The liquid precipitation flux into the ocean [kg m-2].
+    fprec => NULL(), &    !< The frozen precipitation flux into the ocean [kg m-2].
+    p_surf => NULL(), &   !< The pressure at the ocean surface [Pa].  This may
                           !! or may not include atmospheric pressure.
-    runoff => NULL(), &   !< Liquid runoff into the ocean, in kg m-2.
+    runoff => NULL(), &   !< Liquid runoff into the ocean [kg m-2].
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
-                          !! the ocean, in kg m-2.
-    stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean, in Pa.
-    ustar_berg => NULL(), &  !< ustar contribution below icebergs in m/s
-    area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in m2/m2
-    mass_berg => NULL(),  &  !< mass of icebergs in kg/m^2
+                          !! the ocean [kg m-2].
+    stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean [Pa].
+    ustar_berg => NULL(), &  !< ustar contribution below icebergs [m s-1]
+    area_berg => NULL(),  &  !< fraction of grid cell covered by icebergs in [m2 m-2]
+    mass_berg => NULL(),  &  !< mass of icebergs in [kg m-2]
     runoff_hflx => NULL(), &  !< The heat flux associated with runoff, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean in kg m-2.
+    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
 
   real, pointer, dimension(:,:) :: &
-    area => NULL() , &    !< The area of ocean cells, in m2.  Land cells have
+    area => NULL() , &    !< The area of ocean cells [m2].  Land cells have
                           !! a value of 0, so this could also be used as a mask.
-    mi   => NULL()        !< The total ice+snow mass, in kg m-2.
+    mi   => NULL()        !< The total ice+snow mass [kg m-2].
              ! mi is needed for the wave model. It is introduced here,
              ! because flux_ice_to_ocean cannot handle 3D fields. This may be
              ! removed, if the information on ice thickness can be derived from

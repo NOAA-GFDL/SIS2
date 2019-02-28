@@ -187,7 +187,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
                                                     !! sea ice velocities.  The default is true.
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp_diag ! A temporary diagnostic array
-  real                  :: I_area_Earth ! The inverse of the area of the sphere, in m-2.
+  real                  :: I_area_Earth ! The inverse of the area of the sphere [m-2].
   real, parameter       :: missing = -1e34  ! The fill value for missing data.
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: Cgrid_dyn
