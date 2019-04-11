@@ -95,19 +95,6 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
-  ! Argument:  G - The ice model's horizontal grid structure.
-  !  (in)      IG - The ice model's grid structure.
-  !  (in)      param_file - A structure indicating the open file to parse for
-  !                         model parameter values.
-  !
-  !  (in/out)  CS - A pointer that is set to point to the control structure
-  !                 for the tracer flow control
-  !  (in)      diag - A structure that is used to regulate diagnostic output.
-  !  (in/out)  TrReg - A pointer that is set to point to the control structure
-  !                  for the tracer advection and diffusion module.
-  !  (in/out)  Ice model restart file to be written to
-  !  (in)      Path to the restart file
-  !
   ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mdl = "SIS_tracer_flow_control" ! This module's name.
@@ -147,13 +134,6 @@ subroutine SIS_tracer_flow_control_init(day, G, IG, param_file, CS, is_restart)
                                                          !! segment is being initialized from a restart file
   ! This subroutine calls all registered tracer initialization subroutines.
 
-  ! Arguments:
-  !  (in)      day - Time of the start of the run.
-  !  (in)      G - The ice model's horizontal grid structure.
-  !  (in)      IG - The ice model's vertical grid structure.
-  !  (in)      CS - The control structure returned by a previous call to
-  !                 call_tracer_register.
-  !  (in)      is_restart - flag for whether tracer should be initialized from restart
   if (.not. associated(CS)) call SIS_error(FATAL, "tracer_flow_control_init: "// &
       "Module must be initialized via call_tracer_register before it is used.")
 
@@ -165,17 +145,17 @@ end subroutine SIS_tracer_flow_control_init
 
 !> Call all registered ice-tracer column physics subroutines
 subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
-  real,                    intent(in) :: dt  !< The amount of time covered by this call, in s.
+  real,                    intent(in) :: dt  !< The amount of time covered by this call [s].
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_flow_control_CS), &
                            pointer    :: CS  !< The control structure returned by a
                                              !! previous call to SIS_call_tracer_register.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi  !< Mass of ice in a given category [kg m-2] at the
                                              !! end of the timestep
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi_old  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi_old  !< Mass of ice in a given category [kg m-2] at the
                                              !! beginning of the timestep
 
   ! This subroutine calls all registered ice-tracer column physics subroutines.
@@ -196,7 +176,7 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
   type(SIS_tracer_flow_control_CS), pointer     :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_call_tracer_register.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                    intent(in)  :: mi  !< Mass of ice in a given category in kg m-2, used for summing
+                                    intent(in)  :: mi  !< Mass of ice in a given category [kg m-2], used for summing
   real, dimension(:),               intent(out) :: stock_values !< The values of the summed tracer stocks.
   character(len=*), dimension(:), &
                          optional,  intent(out) :: stock_names !< The names of the summed tracer stocks.
@@ -204,15 +184,7 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
                          optional,  intent(out) :: stock_units !< The units of the tracer stocks
   integer,               optional,  intent(out) :: num_stocks  !< The number of summed tracer stocks.
 
-  ! Arguments:
-  !  (in)      G - The ocean's grid structure.
-  !  (in)      IG - The ocean's vertical grid structure.
-  !  (in)      CS - The control structure returned by a previous call to
-  !                 call_tracer_register.
-  !  (in)      mi - mass of ice in a given category, used for summing
-  !  (out)     stocks - Global integral of tracer
-  !  (out)     nstocks - Number of passive tracer stocks
-
+  ! Local variables
   character(len=200), dimension(MAX_FIELDS_) :: names, units
   character(len=200) :: set_pkg_name
   real, dimension(MAX_FIELDS_) :: values

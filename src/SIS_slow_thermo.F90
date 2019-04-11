@@ -81,10 +81,10 @@ public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
 type slow_thermo_CS ; private
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
-  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity, in g/kg
+  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity [gSalt kg-1]
                             !! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin     !< The initial bulk salinity of sea-ice relative to the
-                            !! salinity of the water from which it formed, nondim.
+                            !! salinity of the water from which it formed [nondim].
 
   logical :: filling_frazil !< If true, apply frazil to fill as many categories
                             !! as possible to fill in a uniform (minimum) amount
@@ -94,7 +94,7 @@ type slow_thermo_CS ; private
   real    :: fraz_fill_time !< A timescale with which the filling frazil causes
                             !! the thinest cells to attain similar thicknesses,
                             !! or a negative number to apply the frazil flux
-                            !! uniformly, in s.
+                            !! uniformly [s].
 
   logical :: do_ridging     !<   If true, apply a ridging scheme to the convergent
                             !! ice.  The original SIS2 implementation is based on
@@ -104,10 +104,10 @@ type slow_thermo_CS ; private
   logical :: do_ice_restore !< If true, restore the sea-ice toward climatology
                             !! by applying a restorative heat flux.
   real    :: ice_restore_timescale !< The time scale for restoring ice when
-                            !! do_ice_restore is true, in days.
+                            !! do_ice_restore is true [days].
 
   logical :: do_ice_limit   !< Limit the sea ice thickness to max_ice_limit.
-  real    :: max_ice_limit  !< The maximum sea ice thickness, in m, when do_ice_limit is true.
+  real    :: max_ice_limit  !< The maximum sea ice thickness [m], when do_ice_limit is true.
 
   logical :: nudge_sea_ice = .false. !< If true, nudge sea ice concentrations towards observations.
   real    :: nudge_sea_ice_rate = 0.0 !< The rate of cooling of ice-free water that should be ice
@@ -122,10 +122,10 @@ type slow_thermo_CS ; private
 
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
   logical :: column_check   !< If true, enable the heat check column by column.
-  real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check, nondim.
+  real    :: imb_tol        !< The tolerance for imbalances to be flagged by column_check [nondim].
   logical :: bounds_check   !< If true, check for sensible values of thicknesses temperatures, fluxes, etc.
 
-  integer :: n_calls = 0    !< The number of times update_ice_model_slow_down has been called.
+  integer :: n_calls = 0    !< The number of times slow_thermodynamics has been called.
 
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
@@ -164,7 +164,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, IG, Idt_slow)
   type(SIS_hor_grid_type),   intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),       intent(in) :: IG  !< The sea-ice specific grid type
   real,                      intent(in) :: Idt_slow !< The inverse of the slow thermodynamic
-                                               !! time step, in s-1
+                                               !! time step [s-1]
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn
   real :: sw_cat
@@ -306,7 +306,7 @@ end subroutine post_flux_diagnostics
 subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -322,10 +322,10 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    h_ice_input    ! The specified ice thickness, with specified_ice, in m.
+    h_ice_input    ! The specified ice thickness, with specified_ice [m].
 
-  real :: rho_ice  ! The nominal density of sea ice in kg m-3.
-  real :: Idt_slow ! The inverse of the slow thermodynamic time step, in s-1
+  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
+  real :: Idt_slow ! The inverse of the slow thermodynamic time step [s-1]
   integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
 
@@ -488,7 +488,7 @@ subroutine add_excess_fluxes(IOF, XSF, G)
                                                   !! those stored in TSF
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
 
-  real :: sw_comb  ! A combination of two downward shortwave fluxes, in W m-2.
+  real :: sw_comb  ! A combination of two downward shortwave fluxes [W m-2].
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
@@ -560,7 +560,7 @@ end subroutine add_excess_fluxes
 !! including freezing or melting, and the accumulation of snow and frazil ice.
 subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step, in s.
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -582,30 +582,30 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   real, dimension(SZI_(G),SZJ_(G))   :: &
     qflx_lim_ice, qflx_res_ice, &
     cool_nudge, &         ! A heat flux out of the sea ice that
-                          ! acts to create sea-ice, in W m-2.
+                          ! acts to create sea-ice [W m-2].
     net_melt              ! The net mass flux from the ice and snow into the
                           ! ocean due to melting and freezing integrated
-                          ! across all categories, in kg m-2 s-1.
+                          ! across all categories [kg m-2 s-1].
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce)   :: heat_in, enth_prev, enth
   real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
 
-  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice, in g/kg.
+  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [gSalt kg-1].
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
-                                          ! layer in g/kg, with the salinity of
+                                          ! layer [gSalt kg-1], with the salinity of
                                           ! newly formed ice in layer NkIce+1.
-  real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow, in kg m-2.
-  real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow, in degC.
-  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow, in g/kg.
-  real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow, in degC.
+  real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow [kg m-2].
+  real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
+  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow [gSalt kg-1].
+  real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
-                          ! and the surface ocean, in enth_units (often J/kg).
+                          ! and the surface ocean [Enth ~> J kg-1].
   real, dimension(IG%CatIce) :: frazil_cat  ! The frazil heating applied to each thickness
-                          ! category, averaged over the area of that category in J m-2.
-  real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters, in Enth_units.
-  real :: heat_fill_val   ! An enthalpy to use for massless categories, in enth_units.
+                          ! category, averaged over the area of that category [J m-2].
+  real :: enthalpy_ocean  ! The enthalpy of the ocean surface waters [Enth ~> J kg-1].
+  real :: heat_fill_val   ! An enthalpy to use for massless categories [Enth ~> J kg-1].
 
-  real :: I_part        ! The inverse of a part_size, nondim.
+  real :: I_part        ! The inverse of a part_size [nondim].
   logical :: spec_thermo_sal  ! If true, use the specified salinities of the
                               ! various sub-layers of the ice for all thermodynamic
                               ! calculations; otherwise use the prognostic
@@ -619,40 +619,40 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   type(EOS_type), pointer :: EOS => NULL()
   real :: Cp_water
   real :: drho_dT(1), drho_dS(1), pres_0(1)
-  real :: rho_ice     ! The nominal density of sea ice in kg m-3.
+  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
 
-  real :: Idt_slow    ! The inverse of the thermodynamic step, in s-1.
+  real :: Idt_slow    ! The inverse of the thermodynamic step [s-1].
   real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
                       ! to change the units of several diagnostics to rate yr-1
   real :: heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, sn2ic, bablt
-  real :: salt_to_ice ! The flux of salt from the ocean to the ice, in kg m-2 s-1.
+  real :: salt_to_ice ! The flux of salt from the ocean to the ice [kg m-2 s-1].
                       ! This may be of either sign; in some places it is an
                       ! average over the whole cell, while in others just a partition.
-  real :: mtot_ice    ! The total mass of ice and snow in a cell, in kg m-2.
-  real :: e2m_tot     ! The total enthalpy required to melt all ice and snow, in J m-2.
+  real :: mtot_ice    ! The total mass of ice and snow in a cell [kg m-2].
+  real :: e2m_tot     ! The total enthalpy required to melt all ice and snow [J m-2].
   real :: enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, enth_snowfall
   real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
   real :: mass_in, mass_here, mass_prev, mass_imb
   real :: enth_units, I_enth_units ! The units of enthaply and their inverse.
-  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove, nd.
-  real :: ice_melt_lay ! The amount of excess ice removed from each layer in kg/m2.
-  real :: snow_melt    ! The amount of excess snow that is melted, in kg/m2.
-  real :: enth_freeze  ! The freezing point enthalpy of a layer, in enth_units.
+  real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove [nondim].
+  real :: ice_melt_lay ! The amount of excess ice removed from each layer [kg m-2].
+  real :: snow_melt    ! The amount of excess snow that is melted [kg m-2].
+  real :: enth_freeze  ! The freezing point enthalpy of a layer [Enth ~> J kg-1].
   real :: enth_to_melt ! The enthalpy addition required to melt the excess ice
-                       ! and snow in enth_unit kg/m2.
-  real :: I_Nk         ! The inverse of the number of layers in the ice, nondim.
+                       ! and snow [Enth kg m-2 ~> J m-2].
+  real :: I_Nk         ! The inverse of the number of layers in the ice [nondim].
   real :: kg_H_Nk      ! The conversion factor from units of H to kg/m2 over Nk.
   real :: part_sum     ! A running sum of partition sizes.
   real :: part_ocn     ! A slightly modified ocean part size.
-  real :: d_enth       ! The change in enthalpy between categories.
+  real :: d_enth       ! The change in enthalpy between categories [Enth ~> J kg-1].
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  real :: sw_tot       ! The total shortwave radiation incident on a category, in W m-2.
+  real :: sw_tot       ! The total shortwave radiation incident on a category [W m-2].
   integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
-  real :: LatHtFus     ! The latent heat of fusion of ice in J/kg.
-  real :: LatHtVap     ! The latent heat of vaporization of water at 0C in J/kg.
+  real :: LatHtFus     ! The latent heat of fusion of ice [J kg-1].
+  real :: LatHtVap     ! The latent heat of vaporization of water at 0C [J kg-1].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
@@ -742,9 +742,24 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       qflx_res_ice(i,j) = -(LatHtFus*Rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2)-e2m_tot) / &
                            (86400.0*CS%ice_restore_timescale)
       if (qflx_res_ice(i,j) < 0.0) then
+        !There is less ice in model than Obs,
+        !so make some ice by increasing frazil heat
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
+        !Note that ice should grow when frazil heat is positive
       elseif (qflx_res_ice(i,j) >  0.0) then
-        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
+        !There is more ice in model than Obs,
+        !so melt ice by increasing heat input to ice from ocean (bheat),
+        !        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
+        !Note that ice should melt when bheat increases.
+        !BUT, here it's too late for the bheat to have a negative feedback on the ice thickness
+        !since thickness is determined by the melting energies calculated in the fast ice
+        !module call ice_temp_SIS2() before this point.
+        !So, we should rather change the bottom melt energy directly here
+        !(as prescribed in ice_temp_SIS2) to have a restoring effect on the ice thickness
+        !later in the call ice_resize_SIS2() in this module.
+        do k=1,ncat
+          FIA%bmelt(i,j,k) = FIA%bmelt(i,j,k) + dt_slow*qflx_res_ice(i,j)
+        enddo
       endif
     enddo ; enddo
   endif
@@ -791,9 +806,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
   bsnk(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,ncat,nb,G,IST,salt_change, &
-!$OMP                               kg_H_Nk,h2o_change,NkIce,IG,CS,IOF,FIA) &
-!$OMP                        private(part_ocn)
+  !$OMP parallel default(shared) private(part_ocn)
   if (CS%ice_rel_salin <= 0.0) then
     !$OMP do
     do j=jsc,jec ; do m=1,NkIce ; do k=1,ncat ; do i=isc,iec
@@ -821,12 +834,25 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
     IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
     IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
   enddo ; enddo
+
 ! mw/new precip will eventually be intercepted by pond eliminating need for next 3 lines
   !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
                              IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
+
+  ! Add fluxes of snow and other properties to the ocean due to recent ridging or drifting events.
+  if (allocated(IST%snow_to_ocn)) then
+    !$OMP do
+    do j=jsc,jec ; do i=isc,iec ; if (IST%snow_to_ocn(i,j) > 0.0) then
+      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + IST%snow_to_ocn(i,j) * Idt_slow
+      IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
+              IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
+      ! h2o_change(i,j) = h2o_change(i,j) - IST%snow_to_ocn(i,j)
+      IST%snow_to_ocn(i,j) = 0.0 ;  IST%enth_snow_to_ocn(i,j) = 0.0
+    endif ; enddo ; enddo
+  endif
 !$OMP end parallel
 
   ! Set up temporary tracer array

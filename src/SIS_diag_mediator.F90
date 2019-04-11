@@ -478,8 +478,8 @@ end subroutine post_data_3d
 
 !> Enable the accumulation of time averages over the specified time interval.
 subroutine enable_SIS_averaging(time_int_in, time_end_in, diag_cs)
-  real,                intent(in)    :: time_int_in !< The time interval in s over which any
-!                                                   !! values that are offered are valid.
+  real,                intent(in)    :: time_int_in !< The time interval over which any values
+!                                                   !! that are offered are valid [s].
   type(time_type),     intent(in)    :: time_end_in !< The end time of the valid interval.
   type(SIS_diag_ctrl), intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 ! This subroutine enables the accumulation of time averages over the
@@ -503,7 +503,7 @@ end subroutine disable_SIS_averaging
 !> Indicate whether averaging diagnostics is currently enabled
 logical function query_SIS_averaging_enabled(diag_cs, time_int, time_end)
   type(SIS_diag_ctrl),           intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
-  real,            optional, intent(out) :: time_int !< The current setting of diag_cs%time_int, in s.
+  real,            optional, intent(out) :: time_int !< The current setting of diag_cs%time_int [s].
   type(time_type), optional, intent(out) :: time_end !< The current setting of diag_cs%time_end.
 
   if (present(time_int)) time_int = diag_cs%time_int

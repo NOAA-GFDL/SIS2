@@ -7,6 +7,7 @@ use MOM_coms,           only : g_sum=>reproducing_sum
 use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler,  only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler,  only : is_root_pe
+use MOM_time_manager,   only : time_type, get_date, get_time, set_date, operator(-)
 use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
 use SIS_debugging,      only : hchksum, Bchksum, uvchksum, hchksum_pair, Bchksum_pair
 use SIS_debugging,      only : check_redundant_B
@@ -77,20 +78,25 @@ end subroutine get_avg
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_line writes out a line with the northern and southern hemisphere ice
 !!            extents and global mean sea surface temperature.
-subroutine ice_line(year, day, second, cn_ocn, sst, G)
-  integer,                 intent(in) :: year !< The current model year
-  integer,                 intent(in) :: day  !< The current model year-day
-  integer,                 intent(in) :: second !< The second of the day
+subroutine ice_line(Time, cn_ocn, sst, G)
+  type(time_type),         intent(in) :: Time !< The ending time of these diagnostics
   type(SIS_hor_grid_type), intent(in) :: G    !< The horizontal grid type
   real, dimension(G%isc:G%iec,G%jsc:G%jec), &
-                           intent(in) :: cn_ocn !< The concentration of ocean in each cell, nondim, 0-1.
+                           intent(in) :: cn_ocn !< The concentration of ocean in each cell [nondim], 0-1.
   real, dimension(G%isc:G%iec,G%jsc:G%jec), &
-                           intent(in) :: sst  !< The sea surface temperature in degC.
+                           intent(in) :: sst  !< The sea surface temperature [degC].
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
   real :: gx(3)
+  integer :: year !< The current model year
+  integer :: day  !< The current model year-day
+  integer :: second !< The second of the day
+  integer :: mon, hr, min
   integer :: n, i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  call get_date(Time, year, mon, day, hr, min, second)
+  call get_time(Time-set_date(year,1,1,0,0,0), second, day)
 
   if (.not.(second==0 .and. mod(day,5)==0) ) return
 

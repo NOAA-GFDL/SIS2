@@ -37,7 +37,7 @@ subroutine ice_ridging_init(km, cn, hi, part_undef, part_undef_sum, &
   integer,               intent(in)  :: km       !< The number of ice thickness categories
   real, dimension(0:  ), intent(in)  :: cn       !< Fractional concentration of each thickness category,
                                                  !! including open water fraction
-  real, dimension(1:  ), intent(in)  :: hi       !< ice volume in each category, in m3
+  real, dimension(1:  ), intent(in)  :: hi       !< ice volume in each category [m3]
   real, dimension(1:km), intent(out) :: hmin     !< minimum ice thickness involved in Hibler's ridged ice distribution
   real, dimension(1:km), intent(out) :: hmax     !< maximum ice thickness involved in Hibler's ridged ice distribution
   real, dimension(1:km), intent(out) :: efold    !< e-folding scale lambda of Lipscomb's ridged ice distribution
@@ -174,8 +174,8 @@ end subroutine ice_ridging_init
 !!   to ridging (Flato and Hibler, 1995, JGR) or the net area loss in riding
 !!   (CICE documentation) depending on the state of the ice drift                         !
 function ridge_rate(del2, div) result (rnet)
-  real, intent(in)  :: del2 !< The magnitude of the shear rates, in s-1.
-  real, intent(in)  :: div  !< The ice flow divergence, in s-1
+  real, intent(in)  :: del2 !< The magnitude of the shear rates [s-1].
+  real, intent(in)  :: div  !< The ice flow divergence [s-1]
 
   ! Local variables
   real              :: del, rnet, rconv, rshear
@@ -196,19 +196,22 @@ end function ridge_rate
 !TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_ridging parameterizes mechanical redistribution of thin (undeformed) ice
 !! into thicker (deformed/ridged) ice categories
-subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rdg, &
+subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, enth_snow_to_ocn, rdg_rate, hi_rdg, &
                        dt, hlim_in, rdg_open, vlev)
   !  Subroutine written by T. Martin, 2008
   integer,             intent(in)    :: km  !< The number of ice thickness categories
   real, dimension(0:), intent(inout) :: cn  !< Fractional concentration of each thickness category,
                                             !! including open water fraction
-  real, dimension(1:), intent(inout) :: hi  !< ice volume in each category, in m3
-  real, dimension(1:), intent(inout) :: hs  !< snow volume in each category, in m3
+  real, dimension(1:), intent(inout) :: hi  !< ice volume in each category [m3]
+  real, dimension(1:), intent(inout) :: hs  !< snow volume in each category [m3]
    ! CAUTION: these quantities are extensive here,
-  real, dimension(1:), intent(inout) :: t1  !< Volume integrated upper layer temperature, in degC m3?
-  real, dimension(1:), intent(inout) :: t2  !< Volume integrated upper layer temperature, in degC m3?
-  real, dimension(1:), intent(inout) :: age !< Volume integrated ice age in m3 years?
-  real,                intent(out)   :: snow_to_ocn !< total snow volume dumped into ocean during ridging
+  real, dimension(1:), intent(inout) :: t1  !< Volume integrated upper layer temperature [degC m3]?
+  real, dimension(1:), intent(inout) :: t2  !< Volume integrated upper layer temperature [degC m3]?
+  real, dimension(1:), intent(inout) :: age !< Volume integrated ice age [m3 years]?
+  real,                intent(out)   :: enth_snow_to_ocn !< average of enthalpy of the snow dumped into
+                                            !! ocean due to this ridging event [J kg-1]
+  real,                intent(out)   :: snow_to_ocn !< total snow mass dumped into ocean due to this
+                                            !! ridging event [kg m-2]
   real,                intent(in)    :: rdg_rate    !< Ridging rate from subroutine ridge_rate
   real, dimension(1:), intent(inout) :: hi_rdg      !< A diagnostic of the ridged ice volume in each category.
   real,                intent(in)    :: dt          !< time step dt has units seconds
@@ -232,6 +235,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   real                  :: ardg, vrdg  ! area and volume of newly formed rdiged (vlev=vrdg!!!)
   real, dimension(1:km) :: hmin, hmax, efold, rdg_ratio, hlim
   real                  :: hl, hr
+  real                  :: snow_dump, enth_dump
   real                  :: cn_tot, part_undef_sum
   real                  :: div_adv, Rnet, Rdiv, Rtot, rdg_area, rdgtmp, hlimtmp
   real                  :: area_frac
@@ -244,7 +248,7 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
   hlimtmp = hlim_in(km)
   hlim(km) = hlim_unlim   ! ensures all ridged ice is smaller than thickest ice allowed
   frac_hs_rdg = 1.0-s2o_frac
-  !snow_to_ocn = 0.0 -> done in subroutine transport
+  snow_to_ocn = 0.0 ; enth_snow_to_ocn = 0.0
   alev=0.0; ardg=0.0; vlev=0.0; vrdg=0.0
   !
   call ice_ridging_init(km, cn, hi, part_undef, part_undef_sum, &
@@ -346,7 +350,12 @@ subroutine ice_ridging(km, cn, hi, hs, t1, t2, age, snow_to_ocn, rdg_rate, hi_rd
         hi_rdg(kd) = max(hi_rdg(kd),0.0)      ! ensure hi_rdg >= 0
 
         ! dump part of the snow in ocean (here, sum volume, transformed to flux in update_ice_model_slow)
-        snow_to_ocn = snow_to_ocn + frac_hs(kd)*(1.0-frac_hs_rdg)
+        snow_dump = frac_hs(kd)*(1.0-frac_hs_rdg)
+        if (snow_to_ocn > 0.0) then
+          enth_dump = t1(kd)  !### THIS IS WRONG, BUT IS A PLACEHOLDER FOR NOW.
+          enth_snow_to_ocn = (enth_snow_to_ocn*snow_to_ocn + enth_dump*snow_dump) / (snow_to_ocn + snow_dump)
+          snow_to_ocn = snow_to_ocn + snow_dump
+        endif
 
       enddo
 

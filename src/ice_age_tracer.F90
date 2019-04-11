@@ -50,11 +50,11 @@ type, public :: ice_age_tracer_CS
                                               ! can be found, or an empty string for internal initialization.
   type(time_type), pointer :: Time            !< A pointer to the ocean model's clock.
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine, in g m-3?
-  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output, in g m-3.
+  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine [g kg-1].
+  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output [g kg-1].
   type(p3d), dimension(NTR_MAX) :: &
-      tr_adx, &                               !< Tracer zonal advective fluxes in g m-3 m3 s-1.
-      tr_ady                                  !< Tracer meridional advective fluxes in g m-3 m3 s-1.
+      tr_adx, &                               !< Tracer zonal advective fluxes [g s-1].
+      tr_ady                                  !< Tracer meridional advective fluxes [g s-1].
 
   real, pointer :: ocean_BC(:,:,:,:)=>NULL()  !< Ocean boundary value of the tracer by category
   real, pointer :: snow_BC(:,:,:,:)=>NULL()   !< Snow boundary value of the tracer by category
@@ -64,7 +64,7 @@ type, public :: ice_age_tracer_CS
       young_val = 0.0, &                      !< The value assigned to tr at the surface.
       land_val = -1.0                         !< The value of tr used where land is masked out.
   real, dimension(NTR_MAX) :: tracer_start_year = 0.0 !< The year in which tracers start aging, or at which the
-                                              !! surface value equals young_val, in years.
+                                              !! surface value equals young_val [year].
   logical :: mask_tracers                     !< If true, tracers are masked out in massless layers.
   logical :: tracers_may_reinit               !< If true, tracers may go through the initialization code
                                               !! if they are not found in the restart files.
@@ -285,16 +285,16 @@ end subroutine initialize_ice_age_tracer
 
 !> Change the ice age tracers due to ice column physics like melting and freezing
 subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
-  real,                    intent(in) :: dt  !< The amount of time covered by this call, in s.
+  real,                    intent(in) :: dt  !< The amount of time covered by this call [s].
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   type(ice_age_tracer_CS), pointer    :: CS  !< The control structure returned by a
                                              !! previous call to register_ideal_age_tracer.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi  !< Mass of ice in a given category [kg m-2] at the
                                              !! end of the timestep
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi_old  !< Mass of ice in a given category in kg m-2 at the
+                           intent(in) :: mi_old  !< Mass of ice in a given category [kg m-2] at the
                                              !! beginning of the timestep
 
   ! Local variables
@@ -302,7 +302,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
   real :: year            ! The time in years.
   real :: dt_year         ! Timestep in units of years
   real :: min_age         ! Minimum age of ice to avoid being set to 0
-  real :: mi_min          ! Minimum mass in ice category
+  real :: mi_min          ! Minimum mass in ice category [kg m-2]
   real :: max_age         ! Maximum age at a grid point
   real, dimension(SZI_(G),SZJ_(G)) :: vertsum_mi, vertsum_mi_old
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: tr_avg
@@ -386,7 +386,7 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
   type(sis_hor_grid_type),        intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                  intent(in)  :: mi  !< Mass of ice in a given category in kg m-2, used for summing
+                                  intent(in)  :: mi  !< Mass of ice in a given category [kg m-2], used for summing
   type(ice_age_tracer_CS),        pointer     :: CS  !< The control structure returned by a
                                                      !! previous call to register_ideal_age_tracer.
   character(len=*), dimension(:), intent(out) :: names !< The names of the summed tracer stocks.

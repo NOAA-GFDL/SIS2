@@ -18,10 +18,10 @@ public :: get_sea_surface
 logical :: module_is_initialized = .false. !< If true, this module has been called before.
 
 logical :: mcm_ice = .false. !< When mcm_ice=.true., ice is handled as in supersource
-real    :: sst_pert = 0.     !< global temperature perturbation used for sensitivity experiments
+real    :: sst_pert = 0.     !< global temperature perturbation used for sensitivity experiments [degC]
 
-real    :: minimum_ice_concentration = 0.2 !< A minimum ice concentration, nondim.
-real    :: minimum_ice_thickness     = 1.0 !< A minimum ice thickness, in m
+real    :: minimum_ice_concentration = 0.2 !< A minimum ice concentration [nondim]
+real    :: minimum_ice_thickness     = 1.0 !< A minimum ice thickness [m]
 logical :: do_leads = .true.   !< when do_leads=false there is no fractional ice concentration
                                !! also you should set the minimum_ice_concentration = 0.5
 logical :: sst_degk = .false.  !< when sst_degk=true the input sst data is in degrees Kelvin
@@ -38,15 +38,15 @@ contains
 !> get_sea_surface obtains SST, ice concentration and thickness from data
 subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in_K)
   type (time_type),         intent(in)  :: Time !< The current model time
-  real, dimension(:, :),    intent(out) :: ts !< The surface temperature in degC or degK
+  real, dimension(:, :),    intent(out) :: ts !< The surface temperature [degC] or [degK]
   real, dimension(size(ts,1),size(ts,2),2), &
-                            intent(out) :: cn !< The fractional ocean and ice concentration
+                            intent(out) :: cn !< The fractional ocean and ice concentration [nondim]
   real, dimension(size(ts,1),size(ts,2)), &
-                            intent(out) :: iceh !< The ice thickness in m
+                            intent(out) :: iceh !< The ice thickness [m]
   type(domain2d), optional, intent(in)  :: ice_domain !< The domain used to read this data
   type(domain2d), optional, intent(in)  :: ice_domain_end !< If present reset the data override ice
                                                    !! domain back to this one at the end of this routine
-  logical,        optional, intent(in)  :: ts_in_K !< If true, return the surface temperature in deg K.
+  logical,        optional, intent(in)  :: ts_in_K !< If true, return the surface temperature in [degK].
                                                    !! The default is true.
 
   real, dimension(size(ts,1),size(ts,2))                :: sst, icec
@@ -155,9 +155,9 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
 
   if (sst_degk .eqv. ts_in_degK) then ! ts and sst have the same units.
     ts(:,:) = sst(:,:)
-  elseif (ts_in_degK) then ! ts is in K and sst in C.
+  elseif (ts_in_degK) then ! ts is in Kelvin and sst is in Celsius.
     ts(:,:) = sst(:,:) + T_0degC
-  else ! ts is in C and sst in K.
+  else ! ts is in Celsius and sst in Kelvin.
     ts(:,:) = sst(:,:) - T_0degC
   endif
 
