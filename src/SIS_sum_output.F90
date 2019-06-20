@@ -573,7 +573,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   if (is_root_pe()) then
     Heat_anom_norm = 0.0 ; if (Heat /= 0.0) Heat_anom_norm = Heat_anom/Heat
     Salt_anom_norm = 0.0 ; if (Salt /= 0.0) Salt_anom_norm = Salt_anom/Salt
-    write(CS%statsfile_ascii,'(A,", Area", 2(ES19.12), ", Ext", 2(es11.4), ", CFL", F6.3, &
+    write(CS%statsfile_ascii,'(A,", Area", 2(ES23.16), ", Ext", 2(es11.4), ", CFL", F6.3, &
                 &", M",2(ES12.5),", Enth",2(ES13.5),", S ",2(f8.4),", Me ",ES9.2,&
                 &", Te ",ES9.2,", Se ",ES9.2)') &
           trim(msg_start), Area_NS(1:2), Extent_NS(1:2), max_CFL, mass_NS(1:2), &
