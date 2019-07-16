@@ -1220,7 +1220,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         qflx_lim_ice(i,j) = enth_to_melt * I_enth_units * Idt_slow
         IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (CS%ice_rel_salin > 0.0) then
-          salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
+          salt_change(i,j) = salt_change(i,j) + salt_to_ice
         endif
       endif
 
