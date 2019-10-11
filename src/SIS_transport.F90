@@ -10,6 +10,7 @@ use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,   only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_continuity, only : SIS_continuity_init, SIS_continuity_end
 use SIS_continuity, only : continuity=>ice_continuity, SIS_continuity_CS
 use SIS_continuity, only : summed_continuity, proportionate_continuity
@@ -106,7 +107,7 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_cat_transport does ice transport of mass and tracers by thickness category
-subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca_tot, uh_tot, vh_tot)
+subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc, mca_tot, uh_tot, vh_tot)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
@@ -115,6 +116,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
                                                           !! ice dynamics are to be advanced [s].
   integer,                           intent(in)    :: nsteps  !< The number of advective iterations
                                                           !! to use within this time step.
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [m s-1].
   real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [m s-1].
@@ -179,20 +181,20 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, IG, CS, uc, vc, mca
 
     if (merged_cont) then
       call proportionate_continuity(mca_tot(:,:,n-1), uh_tot(:,:,n), vh_tot(:,:,n), &
-                                    dt_adv, G, IG, CS%continuity_CSp, &
+                                    dt_adv, G, US, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
-      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, G, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, G, US, IG, CS%continuity_CSp)
     endif
 
-    call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, CS%SIS_thick_adv_CSp)
-    call advect_SIS_tracers(mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, IG, &
+    call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%SIS_thick_adv_CSp)
+    call advect_SIS_tracers(mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
-    call advect_SIS_tracers(mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, IG, &
+    call advect_SIS_tracers(mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, US, IG, &
                             CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
 
     ! Accumulated diagnostics
@@ -214,12 +216,13 @@ end subroutine ice_cat_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> finish_ice_transport completes the ice transport and thickness class redistribution
-subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
+subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [s-1].
 
@@ -249,7 +252,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
 
   !  Convert the ocean-cell averaged properties back into the ice_state_type.
-  call cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
+  call cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
 
   ! Compress the ice where the fractional coverage exceeds 1, starting with the
   ! thinnest category, in what amounts to a minimalist version of a sea-ice
@@ -321,8 +324,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
   call pass_var(IST%mH_ice, G%Domain, complete=.true.)
 
   if (CS%check_conservation) then
-    call get_total_mass(IST, G, IG, tot_ice, tot_snow, scale=IG%H_to_kg_m2)
-    call get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale=IG%H_to_kg_m2)
+    call get_total_mass(IST, G, US, IG, tot_ice, tot_snow, scale=IG%H_to_kg_m2)
+    call get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale=IG%H_to_kg_m2)
 
     if (is_root_pe()) then
       I_tot_ice  = abs(EFP_to_real(CAS%tot_ice))
@@ -373,7 +376,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, IG, CS, rdg_rate)
 !    if (CS%id_rdgo>0) call post_SIS_data(CS%id_rdgo, rdg_open, diag)
 !    if (CS%id_rdgv>0) then
 !      do j=jsc,jec ; do i=isc,iec
-!        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
+!        tmp2d(i,j) = rdg_vosh(i,j) * US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
 !      enddo ; enddo
 !      call post_SIS_data(CS%id_rdgv, tmp2d, diag)
 !    endif
@@ -386,9 +389,10 @@ end subroutine finish_ice_transport
 
 !>  Determine the whole-cell averaged mass of snow and ice by thickness category based
 !! on the information in the ice state type.
-subroutine ice_state_to_cell_ave_state(IST, G, IG, CS, CAS)
+subroutine ice_state_to_cell_ave_state(IST, G, US, IG, CS, CAS)
   type(ice_state_type),          intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_transport_CS),        pointer       :: CS  !< A pointer to the control structure for this module
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
@@ -447,16 +451,17 @@ subroutine ice_state_to_cell_ave_state(IST, G, IG, CS, CAS)
   if (allocated(CAS%vh_sum)) CAS%vh_sum(:,:) = 0.0
 
   if (CS%check_conservation) then ! mw/new - need to update this for pond ?
-    call get_total_mass(IST, G, IG, CAS%tot_ice, CAS%tot_snow, scale=IG%H_to_kg_m2)
-    call get_total_enthalpy(IST, G, IG, CAS%enth_ice, CAS%enth_snow, scale=IG%H_to_kg_m2)
+    call get_total_mass(IST, G, US, IG, CAS%tot_ice, CAS%tot_snow, scale=IG%H_to_kg_m2)
+    call get_total_enthalpy(IST, G, US, IG, CAS%enth_ice, CAS%enth_snow, scale=IG%H_to_kg_m2)
   endif
 
 end subroutine ice_state_to_cell_ave_state
 
 !> Convert the ocean-cell averaged properties back into the ice_state_type.
-subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
+subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
   type(cell_average_state_type),  intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),          intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),            intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_transport_CS),         pointer       :: CS  !< A pointer to the control structure for this module
   type(ice_state_type),           intent(inout) :: IST !< A type describing the state of the sea ice
@@ -482,7 +487,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (CAS%m_ice(i,j,k) > 0.0) then
       if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
-          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*G%areaT(i,j)) then
+          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*US%L_to_m**2*G%areaT(i,j)) then
         ! This ice is thicker than it is wide even if all the ice in a grid
         ! cell is collected into a single cube, so it will roll.  Any snow on
         ! top will simply be redistributed into a thinner layer, although it
@@ -490,7 +495,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, IG, CS, IST, TrReg)
         ! thinner so that it melts faster, but it should never be made thinner
         ! than IG%mH_cat_bound(1).
         CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
-             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
+             sqrt((CAS%m_ice(i,j,k)*US%L_to_m**2*G%areaT(i,j)) / &
                   (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
       endif
 
@@ -967,9 +972,10 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
 end subroutine compress_ice
 
 !> get_total_mass determines the globally integrated mass of snow and ice
-subroutine get_total_mass(IST, G, IG, tot_ice, tot_snow, tot_pond, scale)
+subroutine get_total_mass(IST, G, US, IG, tot_ice, tot_snow, tot_pond, scale)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: tot_ice  !< The globally integrated total ice [kg].
   type(EFP_type),          intent(out)   :: tot_snow !< The globally integrated total snow [kg].
@@ -987,12 +993,12 @@ subroutine get_total_mass(IST, G, IG, tot_ice, tot_snow, tot_pond, scale)
   sum_ice(:,:) = 0.0
   sum_snow(:,:) = 0.0
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_ice(i,j) = sum_ice(i,j) + G%areaT(i,j) * &
+    sum_ice(i,j) = sum_ice(i,j) + US%L_to_m**2*G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_ice(i,j,k)))
-    sum_snow(i,j) = sum_snow(i,j) + G%areaT(i,j) * &
+    sum_snow(i,j) = sum_snow(i,j) + US%L_to_m**2*G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_snow(i,j,k)))
     if (present(tot_pond)) &
-      sum_pond(i,j) = sum_pond(i,j) + G%areaT(i,j) * &
+      sum_pond(i,j) = sum_pond(i,j) + US%L_to_m**2*G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_pond(i,j,k)))
   enddo ; enddo ; enddo
 
@@ -1047,9 +1053,10 @@ subroutine cell_mass_from_CAS(CAS, G, IG, mca, scale)
 end subroutine cell_mass_from_CAS
 
 !> get_total_enthalpy determines the globally integrated enthalpy of snow and ice
-subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
+subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: enth_ice !< The globally integrated total ice enthalpy [J].
   type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy [J].
@@ -1078,11 +1085,11 @@ subroutine get_total_enthalpy(IST, G, IG, enth_ice, enth_snow, scale)
 
   I_Nk = 1.0 / IG%NkIce
   do m=1,IG%NkIce ; do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
+    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (US%L_to_m**2*G%areaT(i,j) * &
               (((H_to_units*IST%mH_ice(i,j,k))*IST%part_size(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
+    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (US%L_to_m**2*G%areaT(i,j) * &
               ((H_to_units*IST%mH_snow(i,j,k))*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
   !### What about sum_enth_pond?

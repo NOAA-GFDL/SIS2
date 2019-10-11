@@ -27,6 +27,7 @@ use MOM_hor_index,    only : hor_index_type
 use MOM_io,           only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use MOM_time_manager, only : time_type, real_to_time, operator(+), operator(-)
 use MOM_time_manager, only : set_date, get_time, get_date
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use fms_io_mod,       only : restore_state, query_initialized
@@ -433,7 +434,7 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dynamics takes a single dynamics timestep with EVP subcycles
 subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
-                          fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, CS)
+                          fxat, fyat, sea_lev, fxoc, fyoc, dt_slow, G, US, CS)
 
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: ci  !< Sea ice concentration [nondim]
@@ -453,6 +454,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
   real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
                                                             !! dynamics are to be advanced [s].
+  type(unit_scale_type),             intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
 
   ! Local variables
@@ -514,7 +516,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
              ! divided by the sum of the ocean areas around a point [m-2].
     q, &     ! A potential-vorticity-like field for the ice, the Coriolis parameter
              ! divided by a spatially averaged mass per unit area [s-1 m2 kg-1].
-    dx2B, dy2B, &   ! dx^2 or dy^2 at B points [m2].
+    dx2B, dy2B, &   ! dx^2 or dy^2 at B points [L2 ~> m2].
     dx_dyB, dy_dxB  ! dx/dy or dy_dx at B points [nondim].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     azon, bzon, & !  _zon & _mer are the values of the Coriolis force which
@@ -528,7 +530,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: fxic_now, fyic_now  ! ice internal stress convergence [kg m-1 s-2].
   real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points [kg m-2 s-1].
   real :: drag_max  ! A maximum drag rate allowed in the ocean [kg m-2 s-1].
-  real :: tot_area  ! The sum of the area of the four neighboring cells [m2].
+  real :: tot_area  ! The sum of the area of the four neighboring cells [L2 ~> m2].
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings [m].
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
                       ! area surrounding a vorticity point [kg2 m-4].
@@ -568,7 +570,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: m_neglect  ! A tiny mass per unit area [kg m-2].
   real :: m_neglect2 ! A tiny mass per unit area squared [kg2 m-4].
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power [kg4 m-8].
-  real :: sum_area   ! The sum of ocean areas around a vorticity point [m2].
+  real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iteratve steps.
@@ -661,8 +663,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
     do j=jsc,jec
       do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
-        ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
-        ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
+        ui_min_trunc(I,j) = (-CS%CFL_trunc) * US%L_to_m*G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
+        ui_max_trunc(I,j) = CS%CFL_trunc * US%L_to_m*G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
       endif ; enddo
       do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo
     enddo
@@ -670,8 +672,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
     do J=jsc-1,jec
       do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
-        vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
-        vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
+        vi_min_trunc(i,J) = (-CS%CFL_trunc) * US%L_to_m*G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
+        vi_max_trunc(i,J) = CS%CFL_trunc * US%L_to_m*G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
       endif ; enddo
       do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo
     enddo
@@ -684,7 +686,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     ! Precompute pres_mice and the minimum value of del_sh for stability.
     pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
 
-    dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
+    dxharm = 2.0*US%L_to_m*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
     ! stability of the overall time-stepping for the velocities and stresses.
     ! Setting a minimum value of the shear magnitudes is equivalent to setting
@@ -700,7 +702,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   ! Ensure that the input stresses are not larger than could be justified by
   ! the ice pressure now, as the ice might have melted or been advected away
   ! during the thermodynamic and transport phases.
-  call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, CS)
+  call limit_stresses(pres_mice, mice, CS%str_d, CS%str_t, CS%str_s, G, US, CS)
 
   ! Zero out ice velocities with no mass.
 !$OMP do
@@ -732,10 +734,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
-      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
+      sum_area = US%L_to_m**2*((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j)))
     else
-      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
-                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
+      sum_area = US%L_to_m**2*((G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j)))
     endif
     if (sum_area <= 0.0) then
       ! This is a land point.
@@ -783,7 +785,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP end do nowait
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
-    tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
+    tot_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1)))
     q(I,J) = G%CoriolisBu(I,J) * tot_area / &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
@@ -801,7 +803,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     I1_f2dt2_u(I,j) = 1.0 / ( 1.0 + dt * f2dt_u(I,j) )
 
     ! Calculate the zonal acceleration due to the sea level slope.
-    PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j)
+    PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * US%m_to_L*G%IdxCu(I,j)
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
@@ -817,7 +819,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     I1_f2dt2_v(i,J) = 1.0 / ( 1.0 + dt * f2dt_v(i,J) )
 
     ! Calculate the meridional acceleration due to the sea level slope.
-    PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J)
+    PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * US%m_to_L*G%IdyCv(i,J)
   enddo ; enddo
 !$OMP end parallel
 
@@ -852,21 +854,21 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP                                  dx_dyB,dy_dxB,ui,vi)
     do J=jsc-halo_sh_Ds,jec+halo_sh_Ds-1 ; do I=isc-halo_sh_Ds,iec+halo_sh_Ds-1
       ! This uses a no-slip boundary condition.
-      sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * &
+      sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * US%m_to_L * &
           (dx_dyB(I,J)*(ui(I,j+1)*G%IdxCu(I,j+1) - ui(I,j)*G%IdxCu(I,j)) + &
            dy_dxB(I,J)*(vi(i+1,J)*G%IdyCv(i+1,J) - vi(i,J)*G%IdyCv(i,J)))
     enddo ; enddo
     if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=CORNER)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,sh_Dt,sh_Dd,dy_dxT,dx_dyT,G,ui,vi)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-      sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
-                                 G%IdyCu(I-1,j)*ui(I-1,j)) - &
+      sh_Dt(i,j) = US%m_to_L*(dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
+                                           G%IdyCu(I-1,j)*ui(I-1,j)) - &
                     dx_dyT(i,j)*(G%IdxCv(i,J) * vi(i,J) - &
                                  G%IdxCv(i,J-1)*vi(i,J-1)))
-      sh_Dd(i,j) = (G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
-                                   G%dyCu(I-1,j)*ui(I-1,j)) + &
-                    G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
-                                   G%dxCv(i,J-1)*vi(i,J-1)))
+      sh_Dd(i,j) = US%m_to_L*(G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
+                                             G%dyCu(I-1,j)*ui(I-1,j)) + &
+                              G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
+                                             G%dxCv(i,J-1)*vi(i,J-1)))
     enddo ; enddo
 
    if (CS%project_ci) then
@@ -931,8 +933,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     do J=jsc-1,jec ; do I=isc-1,iec
       ! zeta is already set to 0 over land.
       CS%str_s(I,J) = I_1pdt_T * ( CS%str_s(I,J) + (I_EC2 * dt_2Tdamp) * &
-                  ( ((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
-                     (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
+                  ( US%L_to_m**2*((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
+                                  (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
                    mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
     enddo ; enddo
 
@@ -958,7 +960,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fxic_now = G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
+      fxic_now = US%m_to_L*G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + US%m_to_L * &
             (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
                            dy2T(i,j)  *CS%str_t(i,j)) + &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
@@ -1010,12 +1012,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now
 
-      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * &
+      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
                  G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j))
-      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * &
+      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
                   G%IdyCu(I,j)*(dy2T(i+1,j)* CS%str_t(i+1,j) - &
                                 dy2T(i,j)  * CS%str_t(i,j) ) * G%IareaCu(I,j)
-      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * &
+      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
                   G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                                 dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
 
@@ -1040,7 +1042,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fyic_now = G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
+      fyic_now = US%m_to_L*G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + US%m_to_L * &
             (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
                             dx2T(i,j)  *CS%str_t(i,j)) + &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
@@ -1094,11 +1096,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       fyic(i,J) = fyic(i,J) + fyic_now
 
       if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * &
-               G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
-      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * &
+               US%m_to_L*G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
+      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * US%m_to_L * &
                  (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
                                 dx2T(i,j)  *(-CS%str_t(i,j))) ) * G%IareaCv(i,J)
-      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * &
+      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * US%m_to_L * &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
 
@@ -1127,7 +1129,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
         call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag)
       endif
       if (CS%id_sigii_hifreq>0) then
-        call find_sigII(mice, ci_proj, CS%str_t, CS%str_s, diag_val, G, CS)
+        call find_sigII(mice, ci_proj, CS%str_t, CS%str_s, diag_val, G, US, CS)
         call post_SIS_data(CS%id_sigii_hifreq, diag_val, CS%diag)
       endif
       if (CS%id_ci_hifreq>0) call post_SIS_data(CS%id_ci_hifreq, ci_proj, CS%diag)
@@ -1197,7 +1199,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
           if (mi_u(I,j) > m_neglect) then
             CS%ntrunc = CS%ntrunc + 1
             call write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, &
-                               PFu, fxat, dt_slow, G, CS)
+                               PFu, fxat, dt_slow, G, US, CS)
           endif
           if (ui(I,j) < ui_min_trunc(I,j)) then
             ui(I,j) = 0.95 * ui_min_trunc(I,j)
@@ -1223,7 +1225,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
           if (mi_v(i,J) > m_neglect) then
             CS%ntrunc = CS%ntrunc + 1
             call write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, &
-                               PFv, fyat, dt_slow, G, CS)
+                               PFv, fyat, dt_slow, G, US, CS)
           endif
           if (vi(i,J) < vi_min_trunc(i,J)) then
             vi(i,J) = 0.95 * vi_min_trunc(i,J)
@@ -1286,7 +1288,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       call post_SIS_data(CS%id_sigi, diag_val, CS%diag)
     endif
     if (CS%id_sigii>0) then
-      call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, CS)
+      call find_sigII(mice, ci, CS%str_t, CS%str_s, diag_val, G, US, CS)
       call post_SIS_data(CS%id_sigii, diag_val, CS%diag)
     endif
     if (CS%id_stren>0) then
@@ -1348,7 +1350,7 @@ end subroutine SIS_C_dynamics
 !> limit_stresses ensures that the input stresses are not larger than could be justified by the ice
 !! pressure now, as the ice might have melted or been advected away during the thermodynamic and
 !! transport phases, or the ice flow convergence or divergence may have altered the ice concentration.
-subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
+subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit)
   type(SIS_hor_grid_type),            intent(in)    :: G     !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice !< The ice internal pressure per
                                                              !! unit column mass [N m kg-1].
@@ -1357,6 +1359,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component [Pa m].
   real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component [Pa m].
   real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component [Pa m].
+  type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
   real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
 
@@ -1368,7 +1371,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, CS, limit)
   ! Local variables
   real :: pressure  ! The internal ice pressure at a point [Pa].
   real :: pres_avg  ! The average of the internal ice pressures around a point [Pa].
-  real :: sum_area  ! The sum of ocean areas around a vorticity point [m2].
+  real :: sum_area  ! The sum of ocean areas around a vorticity point [L2 ~> m2].
   real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
   real :: lim       ! A local copy of the factor by which the limits are changed.
   real :: lim_2     ! The limit divided by 2.
@@ -1493,21 +1496,22 @@ end subroutine find_sigI
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_sigII finds the second stress invariant
-subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, CS)
+subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, US, CS)
   type(SIS_hor_grid_type),            intent(in)  :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component, [Pa m]
   real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component [Pa m].
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII !< The second stress invariant [nondim].
+  type(unit_scale_type),              intent(in)  :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     strength ! The ice strength [Pa m].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
-  real :: strength_sum  ! The sum of the 4 neighboring strengths [Pa m].
-  real :: sum_area   ! The sum of ocean areas around a vorticity point [m2].
+  real :: strength_sum  ! The sum of the 4 neighboring strengths [L2 Pa m-1 ~> Pa m].
+  real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1647,7 +1651,7 @@ end subroutine SIS_C_dyn_read_alt_restarts
 !> write_u_trunc is used to record the location of any pseudo-zonal velocity
 !! truncations and related fields.
 subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, &
-                         dt_slow, G, CS)
+                         dt_slow, G, US, CS)
   integer,                           intent(in) :: I    !< The i-index of the column to report on
   integer,                           intent(in) :: j    !< The j-index of the column to report on
   type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
@@ -1661,6 +1665,7 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration [m s-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [s].
+  type(unit_scale_type),             intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
@@ -1685,9 +1690,9 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
     file = CS%u_file
 
     if (ui(I,j) > 0.0) then
-      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i,j)
+      CFL = (ui(I,j) * (dt_slow*US%m_to_L*G%dy_Cu(I,j))) / G%areaT(i,j)
     else
-      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i+1,j)
+      CFL = (ui(I,j) * (dt_slow*US%m_to_L*G%dy_Cu(I,j))) / G%areaT(i+1,j)
     endif
 
 
@@ -1717,7 +1722,7 @@ end subroutine write_u_trunc
 !> write_v_trunc is used to record the location of any pseudo-meridional velocity
 !! truncations and related fields.
 subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, &
-                         dt_slow, G, CS)
+                         dt_slow, G, US, CS)
   integer,                           intent(in) :: i    !< The i-index of the column to report on
   integer,                           intent(in) :: J    !< The j-index of the column to report on
   type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
@@ -1731,6 +1736,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force accleration [m s-2].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress [Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [s].
+  type(unit_scale_type),             intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
   real :: dt_mi, CFL
@@ -1756,9 +1762,9 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
     file = CS%v_file
 
     if (vi(i,J) > 0.0) then
-      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j)
+      CFL = (vi(i,J) * (dt_slow*US%m_to_L*G%dx_Cv(i,J))) / G%areaT(i,j)
     else
-      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j+1)
+      CFL = (vi(i,J) * (dt_slow*US%m_to_L*G%dx_Cv(i,J))) / G%areaT(i,j+1)
     endif
 
     call get_date(CS%Time, yr, mo, day, hr, minute, sec)

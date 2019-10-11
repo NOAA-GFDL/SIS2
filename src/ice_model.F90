@@ -46,6 +46,8 @@ use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling, only : unit_scale_type, unit_scaling_init
+use MOM_unit_scaling, only : unit_scaling_end, fix_restart_unit_scaling
 
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
@@ -170,6 +172,7 @@ subroutine update_ice_slow_thermo(Ice)
   type(ice_state_type),    pointer :: sIST => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   type(ice_rad_type),      pointer :: Rad => NULL()
+  type(unit_scale_type),   pointer :: US => NULL()
   real :: dt_slow  ! The time step over which to advance the model.
   integer :: i, j, i2, j2, i_off, j_off
 
@@ -177,7 +180,7 @@ subroutine update_ice_slow_thermo(Ice)
       "The pointer to Ice%sCS must be associated in update_ice_slow_thermo.")
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
-  Rad => Ice%sCS%Rad
+  Rad => Ice%sCS%Rad ; US => Ice%sCS%US
   call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
@@ -239,7 +242,7 @@ subroutine update_ice_slow_thermo(Ice)
   endif
 
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
-                           Ice%sCS%XSF, Ice%sCS%IOF, sG, sIG)
+                           Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
@@ -270,13 +273,14 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
   type(SIS_hor_grid_type), pointer :: sG => NULL()
   type(ice_state_type),    pointer :: sIST => NULL()
   type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(unit_scale_type),   pointer :: US => NULL()
   real :: dt_slow  ! The time step over which to advance the model.
   logical :: do_multi_trans, cycle_start
 
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_dynamics_trans.")
 
-  sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
+  sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA ; US => Ice%sCS%US
   dt_slow = time_type_to_real(Ice%sCS%Time_step_slow)
   if (present(time_step)) dt_slow = time_type_to_real(time_step)
   cycle_start = .true. ; if (present(start_cycle)) cycle_start = start_cycle
@@ -308,17 +312,17 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
 
   if (Ice%sCS%specified_ice) then ! There is no ice dynamics or transport.
     call specified_ice_dynamics(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, &
-                                Ice%sCS%specified_ice_CSp, sG, sIG)
+                                Ice%sCS%specified_ice_CSp, sG, US, sIG)
   elseif (do_multi_trans) then
     call SIS_multi_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                             Ice%icebergs, sG, sIG, Ice%sCS%SIS_tracer_flow_CSp, &
+                             Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, &
                              start_cycle, end_cycle, cycle_length)
   elseif (Ice%sCS%slab_ice) then ! Use a very old slab ice model.
     call slab_ice_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            sG, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
   else ! This is the typical branch used by SIS2.
     call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            Ice%icebergs, sG, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
   endif
 
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
@@ -1612,8 +1616,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! tracer fluxes, and can be used to spawn related
                                               !! internal variables in the ice model.
 
-! This include declares and sets the variable "version".
-#include "version_variable.h"
+  ! This include declares and sets the variable "version".
+# include "version_variable.h"
   real :: enth_spec_snow, enth_spec_ice
   real, allocatable :: S_col(:)
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
@@ -1631,6 +1635,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   type(hor_index_type)  :: sHI  !  A hor_index_type for array extents on slow_ice_PEs.
 
   type(dyn_horgrid_type),  pointer :: dG => NULL()
+  type(unit_scale_type),   pointer :: US => NULL()
   ! These pointers are used only for coding convenience on slow PEs.
   type(SIS_hor_grid_type), pointer :: sG => NULL()
   type(MOM_domain_type),   pointer :: sGD => NULL()
@@ -1770,6 +1775,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
+
+  ! Determining the internal unit scaling factors for this run.
+  call unit_scaling_init(param_file, US)
+
   call get_param(param_file, mdl, "SPECIFIED_ICE", specified_ice, &
                  "If true, the ice is specified and there is no dynamics.", &
                  default=.false.)
@@ -2007,6 +2016,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.associated(Ice%sCS)) allocate(Ice%sCS)
     if (.not.associated(Ice%sCS%IG)) allocate(Ice%sCS%IG)
     if (.not.associated(Ice%sCS%IST)) allocate(Ice%sCS%IST)
+    Ice%sCS%US => US
     Ice%sCS%Time = Time
 
     ! Set some pointers for convenience.
@@ -2054,11 +2064,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call clone_MOM_domain(sGD, dG%Domain)
 
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-    call SIS_initialize_fixed(dG, param_file, write_geom_files, dirs%output_directory)
+    call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory)
 
     call set_hor_grid(sG, param_file, global_indexing=global_indexing)
     call copy_dyngrid_to_SIS_horgrid(dG, sG)
     call destroy_dyn_horgrid(dG)
+    Ice%sCS%G%US => US
 
   ! Allocate and register fields for restarts.
 
@@ -2132,7 +2143,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     isc = sHI%isc ; iec = sHI%iec ; jsc = sHI%jsc ; jec = sHI%jec
     i_off = LBOUND(Ice%area,1) - sHI%isc ; j_off = LBOUND(Ice%area,2) - sHI%jsc
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%area(i2,j2) = sG%areaT(i,j) * sG%mask2dT(i,j)
+      Ice%area(i2,j2) = US%L_to_m**2 * sG%areaT(i,j) * sG%mask2dT(i,j)
     enddo ; enddo
 
   endif ! slow_ice_PE
@@ -2153,6 +2164,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     else
       if (.not.associated(Ice%fCS%IST)) allocate(Ice%fCS%IST)
     endif
+
+    Ice%fCS%US => US
 
     if (single_IST) then
       Ice%fCS%G => Ice%sCS%G
@@ -2181,11 +2194,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, dG%Domain)
 
       ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-      call SIS_initialize_fixed(dG, param_file, .false., dirs%output_directory)
+      call SIS_initialize_fixed(dG, US, param_file, .false., dirs%output_directory)
 
       call set_hor_grid(Ice%fCS%G, param_file, global_indexing=global_indexing)
       call copy_dyngrid_to_SIS_horgrid(dG, Ice%fCS%G)
       call destroy_dyn_horgrid(dG)
+      Ice%fCS%G%US => US
     endif
 
     Ice%fCS%bounds_check = bounds_check
@@ -2550,7 +2564,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! in the restart files have been initialized.  Now call the initialization
   ! routines for any dependent sub-modules.
 
-    call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, sIG, &
+    call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, US, sIG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=sIST%Cgrid_dyn)
     Ice%axes(1:3) = Ice%sCS%diag%axesTc0%handles(1:3)
 
@@ -2599,7 +2613,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                 sGD%X_flags, sGD%Y_flags, time_type_to_real(Time_step_slow), &
                 Time, sG%geoLonBu(isc:iec,jsc:jec), sG%geoLatBu(isc:iec,jsc:jec), &
                 sG%mask2dT(isc-1:iec+1,jsc-1:jec+1), &
-                sG%dxCv(isc-1:iec+1,jsc-1:jec+1), sG%dyCu(isc-1:iec+1,jsc-1:jec+1), &
+                US%L_to_m*sG%dxCv(isc-1:iec+1,jsc-1:jec+1), US%L_to_m*sG%dyCu(isc-1:iec+1,jsc-1:jec+1), &
                 Ice%area,  sG%cos_rot(isc-1:iec+1,jsc-1:jec+1), &
                 sG%sin_rot(isc-1:iec+1,jsc-1:jec+1), maskmap=sGD%maskmap )
       else
@@ -2608,20 +2622,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  sGD%X_flags, sGD%Y_flags, time_type_to_real(Time_step_slow), &
                  Time, sG%geoLonBu(isc:iec,jsc:jec), sG%geoLatBu(isc:iec,jsc:jec), &
                  sG%mask2dT(isc-1:iec+1,jsc-1:jec+1), &
-                 sG%dxCv(isc-1:iec+1,jsc-1:jec+1), sG%dyCu(isc-1:iec+1,jsc-1:jec+1), &
+                 US%L_to_m*sG%dxCv(isc-1:iec+1,jsc-1:jec+1), US%L_to_m*sG%dyCu(isc-1:iec+1,jsc-1:jec+1), &
                  Ice%area, sG%cos_rot(isc-1:iec+1,jsc-1:jec+1), &
                  sG%sin_rot(isc-1:iec+1,jsc-1:jec+1) )
       endif
     endif
 
     ! Do any error checking here.
-    if (Ice%sCS%debug) call ice_grid_chksum(sG, haloshift=1)
+    if (Ice%sCS%debug) call ice_grid_chksum(sG, US, haloshift=1)
 
     if (specified_ice) then
-      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
+      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, US, sIG, &
                specified_ice_sum_output_CS(Ice%sCS%specified_ice_CSp))
     else
-      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, sIG, &
+      call write_ice_statistics(sIST, Ice%sCS%Time, 0, sG, US, sIG, &
                SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
     endif
   endif  ! slow_ice_PE

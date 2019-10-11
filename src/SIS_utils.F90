@@ -8,6 +8,7 @@ use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All
 use MOM_error_handler,  only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler,  only : is_root_pe
 use MOM_time_manager,   only : time_type, get_date, get_time, set_date, operator(-)
+use MOM_unit_scaling,   only : unit_scale_type
 use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
 use SIS_debugging,      only : hchksum, Bchksum, uvchksum, hchksum_pair, Bchksum_pair
 use SIS_debugging,      only : check_redundant_B
@@ -104,12 +105,12 @@ subroutine ice_line(Time, cn_ocn, sst, G)
     do j=jsc,jec ; do i=isc,iec
       x(i,j) = 0.0
       if (cn_ocn(i,j)<0.85 .and. n*G%geoLatT(i,j)>0.0) &
-        x(i,j) = G%mask2dT(i,j)*G%areaT(i,j)
+        x(i,j) = G%mask2dT(i,j)*G%US%L_to_m**2*G%areaT(i,j)
     enddo ; enddo
     gx((n+3)/2) = g_sum(x(isc:iec,jsc:jec))/1e12
   enddo
   gx(3) = g_sum(sst(isc:iec,jsc:jec)*G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) / &
-         (g_sum(G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) + 1e-10)
+         (g_sum(G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) + G%US%m_to_L**2*1e-10)
   !
   ! print info every 5 days
   !
@@ -288,9 +289,10 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
 end subroutine post_avg_4d
 
 !> Write checksums of the elements of the sea-ice grid
-subroutine ice_grid_chksum(G, haloshift)
-  type(SIS_hor_grid_type), optional, intent(inout) :: G   !< The horizontal grid type
-  integer,                 optional, intent(in)    :: haloshift !< The size of the halo to check
+subroutine ice_grid_chksum(G, US, haloshift)
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
+  integer,       optional, intent(in)    :: haloshift !< The size of the halo to check
 
   integer :: isc, iec, jsc, jec, hs
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -301,10 +303,10 @@ subroutine ice_grid_chksum(G, haloshift)
   call hchksum(G%geoLatT, "G%geoLatT", G%HI, haloshift=hs)
   call hchksum(G%geoLonT, "G%geoLonT", G%HI, haloshift=hs)
 
-  call hchksum_pair("G%d[xy]T", G%dxT, G%dyT, G, halos=hs)
-  call hchksum_pair("G%Id[xy]T", G%IdxT, G%IdyT, G, halos=hs)
-  call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs)
-  call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs)
+  call hchksum_pair("G%d[xy]T", G%dxT, G%dyT, G, halos=hs, scale=US%L_to_m)
+  call hchksum_pair("G%Id[xy]T", G%IdxT, G%IdyT, G, halos=hs, scale=US%m_to_L)
+  call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs, scale=US%L_to_m**2)
+  call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs, scale=US%m_to_L**2)
   call hchksum(G%mask2dT, "G%mask2dT", G%HI, haloshift=hs)
   call hchksum(G%cos_rot, "G%cos_rot", G%HI)
   call hchksum(G%sin_rot, "G%sin_rot", G%HI)
@@ -314,11 +316,11 @@ subroutine ice_grid_chksum(G, haloshift)
   call Bchksum(G%geoLatBu, "G%geoLatBu", G%HI, haloshift=hs)
   call Bchksum(G%geoLonBu, "G%geoLonBu", G%HI, haloshift=hs)
 
-  call Bchksum_pair("G%d[xy]Bu", G%dxBu, G%dyBu, G, halos=hs, scalars=.true.)
-  call Bchksum_pair("G%Id[xy]Bu", G%IdxBu, G%IdyBu, G, halos=hs, scalars=.true.)
+  call Bchksum_pair("G%d[xy]Bu", G%dxBu, G%dyBu, G, halos=hs, scalars=.true., scale=US%L_to_m)
+  call Bchksum_pair("G%Id[xy]Bu", G%IdxBu, G%IdyBu, G, halos=hs, scalars=.true., scale=US%m_to_L)
 
-  call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs)
-  call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs)
+  call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs, scale=US%L_to_m**2)
+  call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs, scale=US%m_to_L**2)
 
   call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1)
   call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1)
@@ -328,17 +330,17 @@ subroutine ice_grid_chksum(G, haloshift)
   call uvchksum("G%geoLatC[uv]", G%geoLatCu, G%geoLatCv, G, halos=hs)
   call uvchksum("G%geolonC[uv]", G%geoLonCu, G%geoLonCv, G, halos=hs)
 
-  call uvchksum("G%d[xy]C[uv]", G%dxCu, G%dyCv, G, halos=hs, scalars=.true.)
-  call uvchksum("G%d[yx]C[uv]", G%dyCu, G%dxCv, G, halos=hs, scalars=.true.)
-  call uvchksum("G%Id[xy]C[uv]", G%IdxCu, G%IdyCv, G, halos=hs, scalars=.true.)
-  call uvchksum("G%Id[yx]C[uv]", G%IdyCu, G%IdxCv, G, halos=hs, scalars=.true.)
+  call uvchksum("G%d[xy]C[uv]", G%dxCu, G%dyCv, G, halos=hs, scalars=.true., scale=US%L_to_m)
+  call uvchksum("G%d[yx]C[uv]", G%dyCu, G%dxCv, G, halos=hs, scalars=.true., scale=US%L_to_m)
+  call uvchksum("G%Id[xy]C[uv]", G%IdxCu, G%IdyCv, G, halos=hs, scalars=.true., scale=US%m_to_L)
+  call uvchksum("G%Id[yx]C[uv]", G%IdyCu, G%IdxCv, G, halos=hs, scalars=.true., scale=US%m_to_L)
 
-  call uvchksum("G%areaC[uv]", G%areaCu, G%areaCv, G, halos=hs)
-  call uvchksum("G%IareaC[uv]", G%IareaCu, G%IareaCv, G, halos=hs)
+  call uvchksum("G%areaC[uv]", G%areaCu, G%areaCv, G, halos=hs, scale=US%L_to_m**2)
+  call uvchksum("G%IareaC[uv]", G%IareaCu, G%IareaCv, G, halos=hs, scale=US%m_to_L**2)
 
   call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs)
   call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs)
-  call hchksum_pair("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs)
+  call hchksum_pair("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs, scale=US%m_to_L)
 
 end subroutine ice_grid_chksum
 

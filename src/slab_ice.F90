@@ -10,6 +10,7 @@ use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 ! use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,   only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
+use MOM_unit_scaling,   only : unit_scale_type
 ! use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 ! use SIS_diag_mediator, only : safe_alloc_alloc
@@ -27,7 +28,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Advect an ice tracer or the thickness using a very old slab-ice algorithm
 !! dating back to the Manabe model.
-subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
+subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, US, part_sz, nsteps)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity [m s-1]
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity [m s-1]
@@ -37,6 +38,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr [Conc]
   real,                              intent(in   ) :: dt_slow !< The time covered by this call [s].
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
                                                           !! whether trc (which may be mass) exceeds 0.
   integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
@@ -60,9 +62,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
       if ( avg > stop_lim .and. uc(I,j) * dif > 0.0) then
         uflx(I,j) = 0.0
       elseif ( uc(i,j) > 0.0 ) then
-        uflx(I,j) = uc(I,j) * trc(i,j) * G%dy_Cu(I,j)
+        uflx(I,j) = uc(I,j) * trc(i,j) * US%L_to_m*G%dy_Cu(I,j)
       else
-        uflx(I,j) = uc(I,j) * trc(i+1,j) * G%dy_Cu(I,j)
+        uflx(I,j) = uc(I,j) * trc(i+1,j) * US%L_to_m*G%dy_Cu(I,j)
       endif
     enddo ; enddo
 
@@ -72,15 +74,15 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
       if (avg > stop_lim .and. vc(i,J) * dif > 0.0) then
         vflx(i,J) = 0.0
       elseif ( vc(i,J) > 0.0 ) then
-        vflx(i,J) = vc(i,J) * trc(i,j) * G%dx_Cv(i,J)
+        vflx(i,J) = vc(i,J) * trc(i,j) * US%L_to_m*G%dx_Cv(i,J)
       else
-        vflx(i,J) = vc(i,J) * trc(i,j+1) * G%dx_Cv(i,J)
+        vflx(i,J) = vc(i,J) * trc(i,j+1) * US%L_to_m*G%dx_Cv(i,J)
       endif
     enddo ; enddo
 
     do j=jsc,jec ; do i=isc,iec
       trc(i,j) = trc(i,j) + dt_adv * ((uflx(I-1,j) - uflx(I,j)) + &
-                                      (vflx(i,J-1) - vflx(i,J)) ) * G%IareaT(i,j)
+                                      (vflx(i,J-1) - vflx(i,J)) ) * US%m_to_L**2*G%IareaT(i,j)
     enddo ; enddo
 
     call pass_var(trc, G%Domain)

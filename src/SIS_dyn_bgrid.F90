@@ -18,6 +18,7 @@ use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,    only : hor_index_type
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use mpp_domains_mod,  only : domain2D
@@ -245,7 +246,7 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dynamics takes a single dynamics timestep with EVP subcycles
 subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
-     fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
+     fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, US, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration [nondim]
@@ -267,6 +268,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate !< ridging rate from drift state in UNITS?
   real,                               intent(in   ) :: dt_slow !< The amount of time over which the ice
                                                              !! dynamics are to be advanced [s].
+  type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),                 pointer       :: CS    !< The control structure for this module
 
   ! Local variables
@@ -340,15 +342,15 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   dt_Rheo = dt_slow/EVP_steps
 
   do J=jsc-1,jec ; do I=isc-1,iec
-    dydx(I,J) = 0.5*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
-    dxdy(I,J) = 0.5*((G%dxT(i+1,j+1) - G%dxT(i+1,j)) + (G%dxT(i,j+1) - G%dxT(i,j)))
+    dydx(I,J) = 0.5*US%L_to_m*((G%dyT(i+1,j+1) - G%dyT(i,j+1)) + (G%dyT(i+1,j) - G%dyT(i,j)))
+    dxdy(I,J) = 0.5*US%L_to_m*((G%dxT(i+1,j+1) - G%dxT(i+1,j)) + (G%dxT(i,j+1) - G%dxT(i,j)))
   enddo ; enddo
 
   do j=jsc,jec ; do i=isc,iec
-    grid_fac1(i,j) = (G%dxCv(i,J)-G%dxCv(i,J-1))*G%IdyT(i,j)
-    grid_fac2(i,j) = (G%dyCu(I,j)-G%dyCu(I-1,j))*G%IdxT(i,j)
-    grid_fac3(i,j) = 0.5*G%dyT(i,j) * G%IdxT(i,j)
-    grid_fac4(i,j) = 0.5*G%dxT(i,j) * G%IdyT(i,j)
+    grid_fac1(i,j) = US%L_to_m*(G%dxCv(i,J)-G%dxCv(i,J-1))*US%m_to_L*G%IdyT(i,j)
+    grid_fac2(i,j) = US%L_to_m*(G%dyCu(I,j)-G%dyCu(I-1,j))*US%m_to_L*G%IdxT(i,j)
+    grid_fac3(i,j) = 0.5*US%L_to_m*G%dyT(i,j) * US%m_to_L*G%IdxT(i,j)
+    grid_fac4(i,j) = 0.5*US%L_to_m*G%dxT(i,j) * US%m_to_L*G%IdyT(i,j)
   enddo ; enddo
 
   !TOM> check where ice is present
@@ -359,9 +361,9 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   ! sea level slope force
   do J=jsc-1,jec ; do I=isc-1,iec
     sldx(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
-         + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
+         + (sea_lev(i+1,j)-sea_lev(i,j)))) * US%m_to_L*G%IdxBu(i,J)
     sldy(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
-         + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
+         + (sea_lev(i,j+1)-sea_lev(i,j)))) * US%m_to_L*G%IdyBu(I,J)
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
@@ -386,10 +388,10 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     ! This is H&D97, Eq. 44, with their E_0 = 0.25.
     I_2dt_Rheo = 1.0 / (2.0*dt_Rheo)
     do j=jsc,jec ; do i=isc,iec
-      if (G%dxT(i,j) < G%dyT(i,j) ) then
-        edt(i,j) = I_2dt_Rheo * (G%dxT(i,j)**2 * mice(i,j))
+      if (US%L_to_m*G%dxT(i,j) < US%L_to_m*G%dyT(i,j) ) then
+        edt(i,j) = I_2dt_Rheo * (US%L_to_m**2*G%dxT(i,j)**2 * mice(i,j))
       else
-        edt(i,j) = I_2dt_Rheo * (G%dyT(i,j)**2 * mice(i,j))
+        edt(i,j) = I_2dt_Rheo * (US%L_to_m**2*G%dyT(i,j)**2 * mice(i,j))
       endif
     enddo ; enddo
   endif
@@ -425,14 +427,14 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     do j=jsc,jec ; do i=isc,iec
       strn11(i,j) = (0.5*((ui(I,J)-ui(I-1,J)) + (ui(I,J-1)-ui(I-1,J-1))) + &
            0.25*((vi(I,J)+vi(I-1,J-1)) + (vi(I,J-1)+vi(I-1,J))) * &
-           grid_fac1(i,j)) * G%IdxT(i,j)
+           grid_fac1(i,j)) * US%m_to_L*G%IdxT(i,j)
       strn22(i,j) = (0.5*((vi(I,J)-vi(I,J-1)) + (vi(I-1,J)-vi(I-1,J-1))) + &
            0.25*((ui(I,J)+ui(I,J-1)) + (ui(I-1,J)+ui(I-1,J-1))) * &
-           grid_fac2(i,j)) * G%IdyT(i,j)
-      strn12(i,j) = 0.5*grid_fac3(i,j) * &
+           grid_fac2(i,j)) * US%m_to_L*G%IdyT(i,j)
+      strn12(i,j) = 0.5*grid_fac3(i,j) * US%m_to_L*&
            ( (vi(I,J)*G%IdyBu(I,J) - vi(I-1,J)*G%IdyBu(I-1,J)) + &
            (vi(I,J-1)*G%IdyBu(I,J-1) - vi(I-1,J-1)*G%IdyBu(I-1,J-1)) ) + &
-           0.5*grid_fac4(i,j) * &
+           0.5*grid_fac4(i,j) * US%m_to_L*&
            ( (ui(I,J)*G%IdxBu(I,J) - ui(I,J-1)*G%IdxBu(I,J-1)) + &
            (ui(I-1,J)*G%IdxBu(I-1,J) - ui(I-1,J-1)*G%IdxBu(I-1,J-1)) )
     enddo ; enddo
@@ -513,20 +515,20 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
-        tmp1 = 0.5*((CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j)) + &
+        tmp1 = 0.5*US%L_to_m*((CS%sig12(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig12(i+1,j)*G%dxT(i+1,j)) + &
              (CS%sig12(i,j+1)*G%dxT(i,j+1) - CS%sig12(i,j)*G%dxT(i,j)) )
-        tmp2 = 0.5*((CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1)) + &
+        tmp2 = 0.5*US%L_to_m*((CS%sig11(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig11(i,j+1)*G%dyT(i,j+1)) + &
              (CS%sig11(i+1,j)*G%dyT(i+1,j) - CS%sig11(i,j)*G%dyT(i,j)) )
-        tmp6 = 0.5*((CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1)) + &
+        tmp6 = 0.5*US%L_to_m*((CS%sig12(i+1,j+1)*G%dyT(i+1,j+1) - CS%sig12(i,j+1)*G%dyT(i,j+1)) + &
              (CS%sig12(i+1,j)*G%dyT(i+1,j) - CS%sig12(i,j)*G%dyT(i,j)) )
-        tmp7 = 0.5*((CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j)) + &
+        tmp7 = 0.5*US%L_to_m*((CS%sig22(i+1,j+1)*G%dxT(i+1,j+1) - CS%sig22(i+1,j)*G%dxT(i+1,j)) + &
              (CS%sig22(i,j+1)*G%dxT(i,j+1) - CS%sig22(i,j)*G%dxT(i,j)))
         tmp3 = 0.25*((CS%sig12(i+1,j+1)+CS%sig12(i,j)) + (CS%sig12(i+1,j)+CS%sig12(i,j+1)) )
         tmp4 = 0.25*((CS%sig22(i+1,j+1)+CS%sig22(i,j)) + (CS%sig22(i+1,j)+CS%sig22(i,j+1)) )
         tmp5 = 0.25*((CS%sig11(i+1,j+1)+CS%sig11(i,j)) + (CS%sig11(i+1,j)+CS%sig11(i,j+1)) )
 
-        fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * G%IareaBu(I,J)
-        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * G%IareaBu(I,J)
+        fxic_now = ( (tmp1 + tmp2) + (tmp3*dxdy(I,J) - tmp4*dydx(I,J)) ) * US%m_to_L**2*G%IareaBu(I,J)
+        fyic_now = ( (tmp6 + tmp7) + (tmp3*dydx(I,J) - tmp5*dxdy(I,J)) ) * US%m_to_L**2*G%IareaBu(I,J)
 
         !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
         ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &

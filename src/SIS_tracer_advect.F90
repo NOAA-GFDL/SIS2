@@ -10,6 +10,7 @@ use SIS_diag_mediator, only : register_SIS_diag_field, safe_alloc_ptr, time_type
 use MOM_domains, only : pass_var, pass_vector, sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_version, param_file_type
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, SIS_tracer_chksum
@@ -44,7 +45,7 @@ integer :: id_clock_advect, id_clock_pass, id_clock_sync
 contains
 
 !> advect_SIS_tracers manages the advection of either the snow or ice tracers
-subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, snow_tr ) ! (, OBC)
+subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS, TrReg, snow_tr ) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -60,6 +61,7 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, s
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces [H m2 s-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [s].
+  type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
   type(SIS_tracer_registry_type), pointer    :: TrReg !< A pointer to the SIS tracer registry.
@@ -80,15 +82,15 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, IG, CS, TrReg, s
   call cpu_clock_begin(id_clock_advect)
   if (snow_tr) then
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
+      call advect_upwind_2d(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG)
     else
-      call advect_tracer(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
+      call advect_tracer(TrReg%Tr_snow, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS)
     endif
   else
     if (CS%use_upwind2d) then
-      call advect_upwind_2d(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
+      call advect_upwind_2d(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG)
     else
-      call advect_tracer(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS)
+      call advect_tracer(TrReg%Tr_ice, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS)
     endif
   endif
   call cpu_clock_end(id_clock_advect)
@@ -97,7 +99,7 @@ end subroutine advect_SIS_tracers
 
 !> This subroutine time steps the tracer concentrations using a monotonic, conservative,
 !! weakly diffusive scheme.
-subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (, OBC)
+subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) ! (, OBC)
   type(SIS_tracer_type), dimension(ntr), &
                                intent(inout) :: Tr    !< The tracer concentrations being advected
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
@@ -116,6 +118,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
                                                       !! meridional faces [H m2 s-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
+  type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
 ! type(ocean_OBC_type),        pointer       :: OBC   ! < This open boundary condition type specifies
@@ -192,10 +195,10 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
     ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
     ! lead rarely to a very slight non-conservation of tracers, but not mass.
     do j=js,je; do i=is,ie
-      hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
+      hprev(i,j,k) = US%L_to_m**2*G%areaT(i,j) * (h_prev(i,j,k) + &
                        max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
       if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
-                            (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
+                            (vhr(i,J,k) - vhr(i,J-1,k))) * US%m_to_L**2*G%IareaT(i,j) > &
           1e-10*(h_end(i,j,k) + h_prev(i,j,k))) then
 !$OMP critical
         call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
@@ -206,12 +209,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
 !$OMP end do nowait
 !$OMP do
   do j=jsd,jed ; do I=isd,ied-1
-    uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
+    uh_neglect(I,j) = US%L_to_m**2*h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
   do J=jsd,jed-1 ; do i=isd,ied
-    vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
+    vh_neglect(i,J) = US%L_to_m**2*h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
@@ -304,12 +307,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
       if (x_first) then
   !    First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, IG, &
+                      isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, &
                       CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -317,12 +320,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
       else
   !    First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, IG, &
+                      isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, &
                       CS%usePPM, CS%usePCM) !(, OBC)
 
   !    Next, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                      isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -349,7 +352,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG, CS) ! (,
 end subroutine advect_tracer
 
 !> advect_scalar does advection of a single scalar tracer field.
-subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, OBC)
+subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -367,6 +370,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
                                intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
                                                       !! meridional faces [H m2 s-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !< Time increment [s].
+  type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
 
@@ -428,9 +432,9 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
       enddo ; enddo
 
       do j=js,je ; do i=is,ie
-        vol_end = (G%areaT(i,j) * h_end(i,j,k))
+        vol_end = (US%L_to_m**2*G%areaT(i,j) * h_end(i,j,k))
         Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
-        scalar(i,j,k) = ( (G%areaT(i,j)*h_prev(i,j,k))*scalar(i,j,k) - &
+        scalar(i,j,k) = ( (US%L_to_m**2*G%areaT(i,j)*h_prev(i,j,k))*scalar(i,j,k) - &
                          ((flux_U2d_x(I,j) - flux_U2d_x(I-1,j)) + &
                           (flux_U2d_y(i,J) - flux_U2d_y(i,J-1))) ) * Ivol_end
       enddo ; enddo
@@ -472,10 +476,10 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
       ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
       ! lead rarely to a very slight non-conservation of tracers, but not mass.
       do i=is,ie ; do j=js,je
-        hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
+        hprev(i,j,k) = US%L_to_m**2*G%areaT(i,j) * (h_prev(i,j,k) + &
                          max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
         if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
-                              (vhr(i,J,k) - vhr(i,J-1,k))) * G%IareaT(i,j) > &
+                              (vhr(i,J,k) - vhr(i,J-1,k))) * US%m_to_L**2*G%IareaT(i,j) > &
             1e-10*(h_end(i,j,k) + h_prev(i,j,k))) then
 !$OMP critical
           call SIS_error(WARNING, "Apparently inconsistent h_prev, h_end, uhr and vhr in advect_tracer.")
@@ -486,12 +490,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
 !$OMP end do nowait
 !$OMP do
     do j=jsd,jed ; do I=isd,ied-1
-      uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
+      uh_neglect(I,j) = US%L_to_m**2*h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
     enddo ; enddo
 !$OMP end do nowait
 !$OMP do
     do J=jsd,jed-1 ; do i=isd,ied
-      vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
+      vh_neglect(i,J) = US%L_to_m**2*h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
     enddo ; enddo
 !$OMP end parallel
 
@@ -552,11 +556,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
         if (x_first) then
     !    First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv-stensil, jev+stensil, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -564,11 +568,11 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, IG, CS) ! (, 
         else
     !    First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv-stensil, iev+stensil, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
     !    Next, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv, jev, k, G, IG, CS%usePPM, CS%usePCM) !(, OBC)
+                        isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -598,7 +602,7 @@ end subroutine advect_scalar
 !> advect_scalar_x does 1-d flux-form advection in the x-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
 subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                           is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+                           is, ie, js, je, k, G, US, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -622,6 +626,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   integer,                     intent(in)    :: js  !< The starting tracer j-index to work on
   integer,                     intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                     intent(in)    :: k   !< The thickness category to work on
+  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
   logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   !   This subroutine does 1-d flux-form advection in the zonal direction using
@@ -710,17 +715,17 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
         haddW(i) = 0.0 ; haddE(i) = 0.0
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
-        elseif (hnew < h_neglect*G%areaT(i,j)) then
+        elseif (hnew < h_neglect*US%L_to_m**2*G%areaT(i,j)) then
           ! Add a bit of thickness with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
-          h_add = h_neglect*G%areaT(i,j) - hnew
+          h_add = h_neglect*US%L_to_m**2*G%areaT(i,j) - hnew
           I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
           haddE(i) = h_add * (abs(uhh(I))*I_htot)
 
-          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+          Ihnew(i) = 1.0 / (h_neglect*US%L_to_m**2*G%areaT(i,j))
         else
           Ihnew(i) = 1.0 / hnew
         endif
@@ -743,7 +748,7 @@ end subroutine advect_scalar_x
 !> advect_x does 1-d flux-form advection of multiple tracers in the x-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
 subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+                    is, ie, js, je, k, G, US, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
@@ -769,6 +774,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   integer,                     intent(in)    :: js  !< The starting tracer j-index to work on
   integer,                     intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                     intent(in)    :: k   !< The thickness category to work on
+  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
   logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   !   This subroutine does 1-d flux-form advection in the zonal direction using
@@ -865,17 +871,17 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
         haddW(i) = 0.0 ; haddE(i) = 0.0
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
-        elseif (hnew < h_neglect*G%areaT(i,j)) then
+        elseif (hnew < h_neglect*US%L_to_m**2*G%areaT(i,j)) then
           ! Add a bit of thickness with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
-          h_add = h_neglect*G%areaT(i,j) - hnew
+          h_add = h_neglect*US%L_to_m**2*G%areaT(i,j) - hnew
           I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
           haddE(i) = h_add * (abs(uhh(I))*I_htot)
 
-          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+          Ihnew(i) = 1.0 / (h_neglect*US%L_to_m**2*G%areaT(i,j))
         else
           Ihnew(i) = 1.0 / hnew
         endif
@@ -1071,7 +1077,7 @@ end subroutine kernel_PPMH3_Tr_x
 !> advect_scalar_y does 1-d flux-form advection in the y-direction using a
 !! monotonic piecewise constant, linear, or parabolic scheme.
 subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+                    is, ie, js, je, k, G, US, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1095,6 +1101,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   integer,                 intent(in)    :: js  !< The starting tracer j-index to work on
   integer,                 intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                 intent(in)    :: k   !< The thickness category to work on
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   ! This subroutine does 1-d flux-form advection using a monotonic piecewise linear scheme.
@@ -1192,17 +1199,17 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
         haddS(i) = 0.0 ; haddN(i) = 0.0
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
-        elseif (hnew < h_neglect*G%areaT(i,j)) then
+        elseif (hnew < h_neglect*US%L_to_m**2*G%areaT(i,j)) then
           ! Add a tiny bit of thickness with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
-          h_add = h_neglect*G%areaT(i,j) - hnew
+          h_add = h_neglect*US%L_to_m**2*G%areaT(i,j) - hnew
           I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
           haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
 
-          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+          Ihnew(i) = 1.0 / (h_neglect*US%L_to_m**2*G%areaT(i,j))
         else
           Ihnew(i) = 1.0 / hnew
         endif
@@ -1224,7 +1231,7 @@ end subroutine advect_scalar_y
 !> advect_y does 1-d flux-form advection of multiple tracers in the y-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
 subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, IG, usePPM, usePCM) ! (, OBC)
+                    is, ie, js, je, k, G, US, IG, usePPM, usePCM) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
@@ -1250,6 +1257,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   integer,                 intent(in)    :: js  !< The starting tracer j-index to work on
   integer,                 intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                 intent(in)    :: k   !< The thickness category to work on
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   !   This subroutine does 1-d flux-form advection using a monotonic piecewise
@@ -1350,17 +1358,17 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
         haddS(i) = 0.0 ; haddN(i) = 0.0
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
-        elseif (hnew < h_neglect*G%areaT(i,j)) then
+        elseif (hnew < h_neglect*US%L_to_m**2*G%areaT(i,j)) then
           ! Add a tiny bit of thickness with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
-          h_add = h_neglect*G%areaT(i,j) - hnew
+          h_add = h_neglect*US%L_to_m**2*G%areaT(i,j) - hnew
           I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
           haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
 
-          Ihnew(i) = 1.0 / (h_neglect*G%areaT(i,j))
+          Ihnew(i) = 1.0 / (h_neglect*US%L_to_m**2*G%areaT(i,j))
         else
           Ihnew(i) = 1.0 / hnew
         endif
@@ -1572,7 +1580,7 @@ end subroutine kernel_PPMH3_Tr_y
 
 
 !> Advect tracers laterally within their categories using 2-d upwind advection.
-subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
+subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
@@ -1591,6 +1599,7 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
                                                       !! meridional faces [H m2 s-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
+  type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
 
   real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes [Conc kg]
   real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes [Conc kg]
@@ -1604,7 +1613,7 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
 
   ! Reconstruct the old value of h ???
   ! if (h_prev(i,j,k) > 0.0) then
-  ! h_last(i,j,k) = h_end(i,j,k) + dt * G%IareaT(i,j) * &
+  ! h_last(i,j,k) = h_end(i,j,k) + dt * US%m_to_L**2*G%IareaT(i,j) * &
   !        ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
   ! For now this is just non-directionally split upwind advection.
@@ -1622,9 +1631,9 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, IG)
     enddo ; enddo
 
     do j=js,je ; do i=is,ie
-      vol_end = (G%areaT(i,j) * h_end(i,j,k))
+      vol_end = (US%L_to_m**2*G%areaT(i,j) * h_end(i,j,k))
       Ivol_end = 0.0 ; if (vol_end > 0.0) Ivol_end = 1.0 / vol_end
-      Tr(m)%t(i,j,k,l) = ( (G%areaT(i,j)*h_prev(i,j,k))*Tr(m)%t(i,j,k,l) - &
+      Tr(m)%t(i,j,k,l) = ( (US%L_to_m**2*G%areaT(i,j)*h_prev(i,j,k))*Tr(m)%t(i,j,k,l) - &
                        ((flux_x(I,j) - flux_x(I-1,j)) + &
                         (flux_y(i,J) - flux_y(i,J-1))) ) * Ivol_end
     enddo ; enddo

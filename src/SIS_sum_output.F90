@@ -24,6 +24,7 @@ use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
 use MOM_time_manager, only : time_type, get_time, operator(>), operator(-)
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -205,11 +206,12 @@ end subroutine SIS_sum_output_end
 
 !> Write out the sea ice statistics of the total sea-ice mass, heat and salt by
 !! hemisphere and other globally integrated quantities.
-subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_column, tracer_CSp)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(time_type),            intent(inout) :: day !< The current model time.
   integer,                    intent(in)    :: n   !< The time step number of the current execution
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_sum_out_CS),       pointer       :: CS  !< The control structure returned by a previous
                                                    !! call to SIS_sum_output_init
@@ -428,7 +430,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
+      area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
@@ -446,11 +448,11 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
       enddo
     endif ; enddo
     if (allocated(IST%snow_to_ocn)) then ; if (IST%snow_to_ocn(i,j) > 0.0) then
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j)
+      area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IST%snow_to_ocn(i,j)
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
     endif ; endif
-    if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)
+    if (ice_area(i,j,hem) > 0.1*US%L_to_m**2*G%areaT(i,j)) ice_extent(i,j,hem) = US%L_to_m**2*G%areaT(i,j)
 
   enddo ; enddo
   Area = reproducing_sum(ice_area, sums=Area_NS)
@@ -471,24 +473,24 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   if (IST%Cgrid_dyn) then
     if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
       if (IST%u_ice_C(I,j) < 0.0) then
-        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * US%m_to_L*G%IareaT(i+1,j))
       else
-        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * US%m_to_L*G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
     if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
       if (IST%v_ice_C(i,J) < 0.0) then
-        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * US%m_to_L*G%IareaT(i,j+1))
       else
-        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * US%m_to_L*G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
   elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     do J=js-1,je ; do I=is-1,ie
-      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
-      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
+      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * US%m_to_L * G%IdxBu(I,J)
+      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * US%m_to_L * G%IdyBu(I,J)
       max_CFL = max(max_CFL, CFL_u, CFL_v)
     enddo ; enddo
   endif
@@ -507,7 +509,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     CS%heat_prev_EFP = heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0)
   else
     do j=js,je ; do i=is,ie
-      area_h = G%areaT(i,j) * G%mask2dT(i,j)
+      area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       CS%water_in_col(i,j) = area_h * CS%water_in_col(i,j)
       CS%heat_in_col(i,j) = area_h * CS%heat_in_col(i,j)
       CS%salt_in_col(i,j) = area_h * CS%salt_in_col(i,j)

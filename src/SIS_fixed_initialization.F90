@@ -20,6 +20,7 @@ use MOM_shared_initialization, only : set_rotation_planetary, set_rotation_beta_
 use MOM_shared_initialization, only : reset_face_lengths_named, reset_face_lengths_file, reset_face_lengths_list
 use MOM_shared_initialization, only : read_face_length_list, set_velocity_depth_max, set_velocity_depth_min
 use MOM_shared_initialization, only : compute_global_grid_integrals, write_ocean_geometry_file
+use MOM_unit_scaling, only : unit_scale_type
 
 use netcdf
 
@@ -32,8 +33,9 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
 !!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
-subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
+subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
   type(dyn_horgrid_type),  intent(inout) :: G    !< The ocean's grid structure.
+  type(unit_scale_type),   intent(in)    :: US   !< A dimensional unit scaling type
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
   logical,                 intent(in)    :: write_geom !< If true, write grid geometry files.
@@ -60,7 +62,7 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   inputdir = slasher(inputdir)
 
 ! Set up the parameters of the physical domain (i.e. the grid), G
-  call set_grid_metrics(G, PF)
+  call set_grid_metrics(G, PF, US)
 
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
@@ -95,9 +97,9 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
                  default="none")
   select case ( trim(config) )
     case ("none")
-    case ("list") ; call reset_face_lengths_list(G, PF)
-    case ("file") ; call reset_face_lengths_file(G, PF)
-    case ("global_1deg") ; call reset_face_lengths_named(G, PF, trim(config))
+    case ("list") ; call reset_face_lengths_list(G, PF, US)
+    case ("file") ; call reset_face_lengths_file(G, PF, US)
+    case ("global_1deg") ; call reset_face_lengths_named(G, PF, trim(config), US)
     case default ; call MOM_error(FATAL, "SIS_initialize_fixed: "// &
       "Unrecognized channel configuration "//trim(config))
   end select
@@ -110,8 +112,8 @@ subroutine SIS_initialize_fixed(G, PF, write_geom, output_dir)
   call MOM_calculate_grad_Coriolis(G%dF_dx, G%dF_dy, G)
   if (debug) then
     call Bchksum(G%CoriolisBu, "SIS_initialize_fixed: f ", G%HI)
-    call hchksum(G%dF_dx, "SIS_initialize_fixed: dF_dx ", G%HI)
-    call hchksum(G%dF_dy, "SIS_initialize_fixed: dF_dy ", G%HI)
+    call hchksum(G%dF_dx, "SIS_initialize_fixed: dF_dx ", G%HI, scale=US%m_to_L)
+    call hchksum(G%dF_dy, "SIS_initialize_fixed: dF_dy ", G%HI, scale=US%m_to_L)
   endif
 
   call initialize_grid_rotation_angle(G, PF)
