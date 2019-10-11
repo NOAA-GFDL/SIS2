@@ -511,7 +511,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
         rr = CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-             exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+             exp(sign(CS%blturn*pi/180,US%s_to_T*G%CoriolisBu(i,j))*(0.0,1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
@@ -540,7 +540,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
         ! second, timestep implicit parts (Coriolis and ice part of water stress)
         !
         newuv = cmplx(ui(I,J),vi(I,J)) / &
-             (1 + dt_Rheo*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
+             (1 + dt_Rheo*(0.0,1.0)*US%s_to_T*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
         ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
         !
         ! sum for averages
@@ -549,8 +549,8 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
         fyic(I,J) = fyic(I,J) + fyic_now
         fxoc(I,J) = fxoc(I,J) +  real(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
-        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
-        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
+        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*US%s_to_T*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
+        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*US%s_to_T*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
 
       endif
     enddo ; enddo

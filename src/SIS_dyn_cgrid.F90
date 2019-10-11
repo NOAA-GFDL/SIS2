@@ -786,7 +786,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     tot_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1)))
-    q(I,J) = G%CoriolisBu(I,J) * tot_area / &
+    q(I,J) = US%s_to_T*G%CoriolisBu(I,J) * tot_area / &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
   enddo ; enddo
