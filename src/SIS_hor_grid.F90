@@ -142,7 +142,7 @@ type, public :: SIS_hor_grid_type
     ! Except on a Cartesian grid, these are usually  some variant of "degrees".
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
-    bathyT        !< Ocean bottom depth at tracer points [m].
+    bathyT        !< Ocean bottom depth at tracer points [Z ~> m].
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     CoriolisBu    !< The Coriolis parameter at corner points [T-1 ~> s-1].
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &

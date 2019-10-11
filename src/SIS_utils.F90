@@ -338,7 +338,7 @@ subroutine ice_grid_chksum(G, US, haloshift)
   call uvchksum("G%areaC[uv]", G%areaCu, G%areaCv, G, halos=hs, scale=US%L_to_m**2)
   call uvchksum("G%IareaC[uv]", G%IareaCu, G%IareaCv, G, halos=hs, scale=US%m_to_L**2)
 
-  call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs)
+  call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs, scale=US%Z_to_m)
   call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs, scale=US%s_to_T)
   call hchksum_pair("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs, scale=US%s_to_T*US%m_to_L)
 

@@ -65,17 +65,17 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
   call set_grid_metrics(G, PF, US)
 
 ! Set up the bottom depth, G%bathyT, either analytically or from a file
-  call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF)
+  call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF, US)
 
   ! To initialize masks, the bathymetry in halo regions must be filled in
   call pass_var(G%bathyT, G%Domain)
 
 ! Initialize the various masks and any masked metrics.
-  call initialize_masks(G, PF)
+  call initialize_masks(G, PF, US)
 
   if (debug) then
     call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, &
-                 haloshift=min(1, G%ied-G%iec, G%jed-G%jec))
+                 haloshift=min(1, G%ied-G%iec, G%jed-G%jec), scale=US%Z_to_m)
     call hchksum(G%mask2dT, 'SIS_initialize_fixed: mask2dT ', G%HI)
     call uvchksum('SIS_initialize_fixed: mask2dC[uv] ', &
                   G%mask2dCu, G%mask2dCv, G)
@@ -120,7 +120,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
 
 ! Write out all of the grid data used by this run.
   if (write_geom) call write_ocean_geometry_file(G, PF, output_dir, &
-                                                 geom_file="sea_ice_geometry")
+                                                 geom_file="sea_ice_geometry", US=US)
 
   call callTree_leave('SIS_initialize_fixed()')
 
@@ -128,12 +128,13 @@ end subroutine SIS_initialize_fixed
 
 !> SIS_initialize_topography makes the appropriate call to set up the bathymetry.
 !! It is very similar to MOM_initialize_topography, but with fewer options.
-subroutine SIS_initialize_topography(D, max_depth, G, PF)
+subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
   type(dyn_horgrid_type),           intent(in)  :: G  !< The dynamic horizontal grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
                                     intent(out) :: D  !< Ocean bottom depth in m
   type(param_file_type),            intent(in)  :: PF !< Parameter file structure
-  real,                             intent(out) :: max_depth !< Maximum depth of model in m
+  real,                             intent(out) :: max_depth !< Maximum depth of model [m or Z ~> m]
+  type(unit_scale_type),  optional, intent(in)  :: US   !< A dimensional unit scaling type
 
 !  This subroutine makes the appropriate call to set up the bottom depth.
 !  This is a separate subroutine so that it can be made public and shared with
@@ -141,6 +142,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
 ! Set up the bottom depth, G%bathyT either analytically or from file
   character(len=40)  :: mdl = "SIS_initialize_topography" ! This subroutine's name.
   character(len=200) :: config
+  real :: Z_to_m
 
   call get_param(PF, mdl, "TOPO_CONFIG", config, &
                  "This specifies how bathymetry is specified: \n"//&
@@ -166,24 +168,26 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF)
 !                 fail_if_missing=.true.)
   max_depth = -1.e9; call read_param(PF, "MAXIMUM_DEPTH", max_depth)
   select case ( trim(config) )
-    case ("file");      call initialize_topography_from_file(D, G, PF)
-    case ("flat");      call initialize_topography_named(D, G, PF, config, max_depth)
-    case ("spoon");     call initialize_topography_named(D, G, PF, config, max_depth)
-    case ("bowl");      call initialize_topography_named(D, G, PF, config, max_depth)
-    case ("halfpipe");  call initialize_topography_named(D, G, PF, config, max_depth)
+    case ("file");      call initialize_topography_from_file(D, G, PF, US)
+    case ("flat");      call initialize_topography_named(D, G, PF, config, max_depth, US)
+    case ("spoon");     call initialize_topography_named(D, G, PF, config, max_depth, US)
+    case ("bowl");      call initialize_topography_named(D, G, PF, config, max_depth, US)
+    case ("halfpipe");  call initialize_topography_named(D, G, PF, config, max_depth, US)
     case default ;      call MOM_error(FATAL,"SIS_initialize_topography: "// &
       "Unrecognized topography setup '"//trim(config)//"'")
   end select
+
+  Z_to_m = 1.0 ; if (present(US)) Z_to_m = US%Z_to_m
   if (max_depth>0.) then
-    call log_param(PF, mdl, "MAXIMUM_DEPTH", max_depth, &
+    call log_param(PF, mdl, "MAXIMUM_DEPTH", max_depth*Z_to_m, &
                    "The maximum depth of the ocean.", units="m")
   else
     max_depth = diagnoseMaximumDepth(D,G)
-    call log_param(PF, mdl, "!MAXIMUM_DEPTH", max_depth, &
+    call log_param(PF, mdl, "!MAXIMUM_DEPTH", max_depth*Z_to_m, &
                    "The (diagnosed) maximum depth of the ocean.", units="m")
   endif
   if (trim(config) .ne. "DOME") then
-    call limit_topography(D, G, PF, max_depth)
+    call limit_topography(D, G, PF, max_depth, US)
   endif
 
 end subroutine SIS_initialize_topography
