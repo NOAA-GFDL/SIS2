@@ -2579,7 +2579,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
                    sum_out_CSp=specified_ice_sum_output_CS(Ice%sCS%specified_ice_CSp))
     else
-      call SIS_dyn_trans_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
+      call SIS_dyn_trans_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
                               slab_ice=slab_ice)
       call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &

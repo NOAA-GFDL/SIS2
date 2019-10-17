@@ -445,14 +445,30 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           !### Ridging needs to be added with C-grid dynamics.
           call mpp_clock_begin(iceClocka)
           if (CS%do_ridging) rdg_rate(:,:) = 0.0
+          !### Remove this later.
+          if ((US%L_to_m /= 1.0) .or. (US%T_to_s /= 1.0)) then
+            IST%u_ice_C(:,:) = US%m_s_to_L_T*IST%u_ice_C
+            IST%v_ice_C(:,:) = US%m_s_to_L_T*IST%v_ice_C
+          endif
           if (CS%Warsaw_sum_order) then
             call SIS_C_dynamics(1.0-ice_free(:,:), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                                OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                                US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
+                                US%m_s_to_L_T*US%T_to_s*WindStr_x_Cu, US%m_s_to_L_T*US%T_to_s*WindStr_y_Cv, &
+                                OSS%sea_lev, &
+                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
           else
             call SIS_C_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                                OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                                US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
+                                US%m_s_to_L_T*US%T_to_s*WindStr_x_Cu, US%m_s_to_L_T*US%T_to_s*WindStr_y_Cv, &
+                                OSS%sea_lev, &
+                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+          endif
+          !### Remove this later.
+          if ((US%L_to_m /= 1.0) .or. (US%T_to_s /= 1.0)) then
+            IST%u_ice_C(:,:) = US%L_T_to_m_s*IST%u_ice_C
+            IST%v_ice_C(:,:) = US%L_T_to_m_s*IST%v_ice_C
+            str_x_ice_ocn_Cu(:,:) = US%L_T_to_m_s*US%s_to_T*str_x_ice_ocn_Cu(:,:)
+            str_y_ice_ocn_Cv(:,:) = US%L_T_to_m_s*US%s_to_T*str_y_ice_ocn_Cv(:,:)
           endif
           call mpp_clock_end(iceClocka)
 
@@ -956,9 +972,21 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
+      !### Remove this later.
+      DS2d%u_ice_C(:,:) = US%m_s_to_L_T*DS2d%u_ice_C
+      DS2d%v_ice_C(:,:) = US%m_s_to_L_T*DS2d%v_ice_C
       call SIS_C_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, DS2d%u_ice_C, DS2d%v_ice_C, &
-                          OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                          US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
+                          US%m_s_to_L_T*US%T_to_s*WindStr_x_Cu, US%m_s_to_L_T*US%T_to_s*WindStr_y_Cv, OSS%sea_lev, &
+                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+      !### Remove this later.
+      if ((US%L_to_m /= 1.0) .or. (US%T_to_s /= 1.0)) then
+        DS2d%u_ice_C(:,:) = US%L_T_to_m_s*DS2d%u_ice_C
+        DS2d%v_ice_C(:,:) = US%L_T_to_m_s*DS2d%v_ice_C
+        str_x_ice_ocn_Cu(:,:) = US%L_T_to_m_s*US%s_to_T*str_x_ice_ocn_Cu(:,:)
+        str_y_ice_ocn_Cv(:,:) = US%L_T_to_m_s*US%s_to_T*str_y_ice_ocn_Cv(:,:)
+      endif
+
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", DS2d%u_ice_C, DS2d%v_ice_C, G)
@@ -1280,8 +1308,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G)
     call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
-    call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
-                         dt_slow_dyn, G, US, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
+    call slab_ice_advect(US%m_s_to_L_T*IST%u_ice_C, US%m_s_to_L_T*IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
+                         US%s_to_T*dt_slow_dyn, G, US, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
     call mpp_clock_end(iceClock8)
 
     if (CS%column_check) &
@@ -2088,11 +2116,12 @@ end subroutine SIS_dyn_trans_read_alt_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_init initializes ice model data, parameters and diagnostics
 !!   associated with the SIS2 dynamics and transport modules.
-subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Time_init, &
+subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir, Time_init, &
                               slab_ice)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
+  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
@@ -2211,7 +2240,7 @@ subroutine SIS_dyn_trans_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   if (.not.(do_slab_ice)) then
     CS%complete_ice_cover = 1.0 - 2.0*max(1,IG%CatIce)*epsilon(CS%complete_ice_cover)
     if (CS%Cgrid_dyn) then
-      call SIS_C_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
+      call SIS_C_dyn_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
     else
       call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
     endif

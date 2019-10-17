@@ -43,20 +43,20 @@ public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
 !> The control structure with parameters regulating C-grid ice dynamics
 type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
-    str_t, &  !< The tension stress tensor component [Pa m].
+    str_t, &  !< The tension stress tensor component [Pa m] will become [kg m-2 L2 T-2 ~> Pa m].
     str_d, &  !< The divergence stress tensor component [Pa m].
     str_s     !< The shearing stress tensor component (cross term) [Pa m].
 
   ! parameters for calculating water drag and internal ice stresses
-  real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology (Pa)
-  real :: p0_rho              !< The pressure constant divided by ice density, N m kg-1.
+  real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology [Pa]
+  real :: p0_rho              !< The pressure constant divided by ice density [N m kg-1].
   real :: c0 = 20.0           !< another pressure constant
   real :: cdw = 3.24e-3       !< ice/water drag coef. [nondim]
   real :: EC = 2.0            !< yield curve axis ratio
   real :: Rho_ocean = 1030.0  !< The nominal density of sea water [kg m-3].
   real :: Rho_ice = 905.0     !< The nominal density of sea ice [kg m-3].
   real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag
-                              !< with the ocean squared [m2 s-2].
+                              !< with the ocean squared [L2 T-2 ~> m2 s-2].
   real :: min_ocn_inertial_h = 0. !< A minimum ocean thickness used to limit the viscous coupling
                               !! rate implied for the ocean by the ice-ocean stress.
   real :: Tdamp               !< The damping timescale of the stress tensor components toward
@@ -87,7 +87,7 @@ type, public :: SIS_C_dyn_CS ; private
                               !! Otherwise they go to -P_ice.  This setting is temporary.
   integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
                               !! for each slow time step.
-  real    :: dt_Rheo          !< The maximum sub-cycling time step for the EVP dynamics.
+  real    :: dt_Rheo          !< The maximum sub-cycling time step for the EVP dynamics [T ~> s].
   type(time_type), pointer :: Time => NULL() !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                               !! timing of diagnostic output.
@@ -132,10 +132,11 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_init initializes the ice dynamics, sets parameters, and registers diagnostics
-subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
+subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
+  type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_C_dyn_CS),          pointer       :: CS   !< The control structure for this module
@@ -169,7 +170,7 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", &
-                 default=-1.0)
+                 default=-1.0, scale=US%s_to_T)
   CS%evp_sub_steps = -1
   if (CS%dt_Rheo <= 0.0) &
     call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
@@ -281,47 +282,55 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time, &
             'ice strength at start of rheology', 'Pa*m', missing_value=missing)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
-            'ice internal stress - x component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice internal stress - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,   &
-            'ice internal stress - y component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice internal stress - y component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesCu1, Time,   &
-            'Coriolis force - x component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'Coriolis force - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesCv1, Time,   &
-            'Coriolis force - y component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'Coriolis force - y component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_Coru   = register_diag_field('ice_model', 'Cor_ui', diag%axesCu1, Time,&
-            'Coriolis ice acceleration - x component', 'm s-2',                &
+            'Coriolis ice acceleration - x component', &
+            'm s-2', conversion=US%L_T_to_m_s*US%s_to_T, &
             missing_value=missing, interp_method='none')
   CS%id_Corv   = register_diag_field('ice_model', 'Cor_vi', diag%axesCv1, Time,&
-            'Coriolis ice acceleration - y component', 'm s-2',                &
+            'Coriolis ice acceleration - y component', &
+            'm s-2', conversion=US%L_T_to_m_s*US%s_to_T, &
             missing_value=missing, interp_method='none')
   CS%id_fpx   = register_diag_field('ice_model', 'FP_X', diag%axesCu1, Time,   &
-            'Pressure force - x component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'Pressure force - x component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fpy   = register_diag_field('ice_model', 'FP_Y', diag%axesCv1, Time,   &
-            'Pressure force - y component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'Pressure force - y component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_PFu   = register_diag_field('ice_model', 'Pfa_ui', diag%axesCu1, Time, &
-            'Pressure-force ice acceleration - x component', 'm s-2',          &
+            'Pressure-force ice acceleration - x component', &
+            'm s-2',  conversion=US%L_T_to_m_s*US%s_to_T, &
             missing_value=missing, interp_method='none')
   CS%id_PFv   = register_diag_field('ice_model', 'Pfa_vi', diag%axesCv1, Time, &
-            'Pressure-force ice acceleration - y component', 'm s-2',          &
+            'Pressure-force ice acceleration - y component', &
+            'm s-2',  conversion=US%L_T_to_m_s*US%s_to_T, &
             missing_value=missing,  interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesCu1, Time,   &
-            'water stress on ice - x component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'water stress on ice - x component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,   &
-            'water stress on ice - y component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'water stress on ice - y component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesCu1, Time,     &
             'ice velocity - x component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,     &
             'ice velocity - y component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,  &
             'Mass of ice and snow at t-points', 'kg m-2', missing_value=missing)
   CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,   &
@@ -338,23 +347,29 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
             missing_value=missing, interp_method='none')
 
   CS%id_fix_d   = register_diag_field('ice_model', 'FI_d_X', diag%axesCu1, Time,         &
-            'ice divergence internal stress - x component', 'Pa', missing_value=missing, &
-            interp_method='none')
+            'ice divergence internal stress - x component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fiy_d   = register_diag_field('ice_model', 'FI_d_Y', diag%axesCv1, Time,         &
-            'ice divergence internal stress - y component', 'Pa', missing_value=missing, &
-            interp_method='none')
+            'ice divergence internal stress - y component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fix_t   = register_diag_field('ice_model', 'FI_t_X', diag%axesCu1, Time,        &
-            'ice tension internal stress - x component', 'Pa', missing_value=missing,   &
-            interp_method='none')
+            'ice tension internal stress - x component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fiy_t   = register_diag_field('ice_model', 'FI_t_Y', diag%axesCv1, Time,        &
-            'ice tension internal stress - y component', 'Pa', missing_value=missing,   &
-            interp_method='none')
+            'ice tension internal stress - y component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fix_s   = register_diag_field('ice_model', 'FI_s_X', diag%axesCu1, Time,        &
-            'ice shearing internal stress - x component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice shearing internal stress - x component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fiy_s   = register_diag_field('ice_model', 'FI_s_Y', diag%axesCv1, Time,        &
-            'ice shearing internal stress - y component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice shearing internal stress - y component', &
+            'Pa',  conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
 
   CS%id_str_d   = register_diag_field('ice_model', 'str_d', diag%axesT1, Time, &
             'ice divergence internal stress', 'Pa', missing_value=missing)
@@ -363,22 +378,22 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
             'ice shearing internal stress', 'Pa', missing_value=missing)
   CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time,   &
-            'ice divergence strain rate', 's-1', missing_value=missing)
+            'ice divergence strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time,   &
-            'ice tension strain rate', 's-1', missing_value=missing)
+            'ice tension strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_s   = register_diag_field('ice_model', 'sh_s', diag%axesB1, Time,   &
-            'ice shearing strain rate', 's-1', missing_value=missing)
+            'ice shearing strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_del_sh = register_diag_field('ice_model', 'del_sh', diag%axesT1, Time, &
-            'ice strain rate magnitude', 's-1', missing_value=missing)
+            'ice strain rate magnitude', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_del_sh_min = register_diag_field('ice_model', 'del_sh_min', diag%axesT1, Time, &
-            'minimum ice strain rate magnitude', 's-1', missing_value=missing)
+            'minimum ice strain rate magnitude', 's-1', conversion=US%s_to_T, missing_value=missing)
 
   CS%id_ui_hifreq = register_diag_field('ice_model', 'ui_hf', diag%axesCu1, Time, &
             'ice velocity - x component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_vi_hifreq = register_diag_field('ice_model', 'vi_hf', diag%axesCv1, Time, &
             'ice velocity - y component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            interp_method='none, conversion=US%L_T_to_m_s')
   CS%id_str_d_hifreq = register_diag_field('ice_model', 'str_d_hf', diag%axesT1, Time, &
             'ice divergence internal stress', 'Pa', missing_value=missing)
   CS%id_str_t_hifreq = register_diag_field('ice_model', 'str_t_hf', diag%axesT1, Time, &
@@ -386,11 +401,11 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
   CS%id_str_s_hifreq = register_diag_field('ice_model', 'str_s_hf', diag%axesB1, Time, &
             'ice shearing internal stress', 'Pa', missing_value=missing)
   CS%id_sh_d_hifreq = register_diag_field('ice_model', 'sh_d_hf', diag%axesT1, Time, &
-            'ice divergence rate', 's-1', missing_value=missing)
+            'ice divergence rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t_hifreq = register_diag_field('ice_model', 'sh_t_hf', diag%axesT1, Time, &
-            'ice tension rate', 's-1', missing_value=missing)
+            'ice tension rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_s_hifreq = register_diag_field('ice_model', 'sh_s_hf', diag%axesB1, Time, &
-            'ice shearing rate', 's-1', missing_value=missing)
+            'ice shearing rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sigi_hifreq  = register_diag_field('ice_model','sigI_hf' ,diag%axesT1, Time, &
             'first stress invariant', 'none', missing_value=missing)
   CS%id_sigii_hifreq = register_diag_field('ice_model','sigII_hf' ,diag%axesT1, Time, &
@@ -402,12 +417,12 @@ subroutine SIS_C_dyn_init(Time, G, param_file, diag, CS, ntrunc)
 
   CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time, &
             'ice velocity - x component', 'm/s', missing_value=missing,  &
-            interp_method='none')
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_siv = register_diag_field('ice_model', 'siv', diag%axesT1, Time, &
             'ice velocity - y component', 'm/s', missing_value=missing,  &
-            interp_method='none')
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_sispeed = register_diag_field('ice_model', 'sispeed', diag%axesT1, Time, &
-            'ice speed', 'm/s', missing_value=missing)
+            'ice speed', 'm/s', missing_value=missing, conversion=US%L_T_to_m_s)
 
 end subroutine SIS_C_dyn_init
 
@@ -441,97 +456,98 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mis   !< Mass per unit ocean area of sea ice,
                                                             !! snow and melt pond water [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: mice  !< Mass per unit ocean area of sea ice [kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui    !< Zonal ice velocity [m s-1]
-  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity [m s-1]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo    !< Zonal ocean velocity [m s-1]
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity [m s-1]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
+  real, dimension(SZIB_(G),SZJ_(G)), intent(inout) :: ui    !< Zonal ice velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uo    !< Zonal ocean velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [kg m-2 L T-2 ~> Pa]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [kg m-2 L T-2 ~> Pa]
   real, dimension(SZI_(G),SZJ_(G)),  intent(in   ) :: sea_lev !< The height of the sea level, including
                                                             !! contributions from non-levitating ice from
                                                             !! an earlier time step [m].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
-  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
+  real, dimension(SZIB_(G),SZJ_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [kg m-2 L T-2 ~> Pa]
+  real, dimension(SZI_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [kg m-2 L T-2 ~> Pa]
   real,                              intent(in   ) :: dt_slow !< The amount of time over which the ice
-                                                            !! dynamics are to be advanced [s].
+                                                            !! dynamics are to be advanced [T ~> s].
   type(unit_scale_type),             intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer       :: CS    !< The control structure for this module
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
     sh_Dt, &    ! sh_Dt is the horizontal tension (du/dx - dv/dy) including
-                ! all metric terms [s-1].
+                ! all metric terms [T-1 ~> s-1].
     sh_Dd       ! sh_Dd is the flow divergence (du/dx + dv/dy) including all
-                ! metric terms [s-1].
+                ! metric terms [T-1 ~> s-1].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     sh_Ds       ! sh_Ds is the horizontal shearing strain (du/dy + dv/dx)
-                ! including all metric terms [s-1].
+                ! including all metric terms [T-1 ~> s-1].
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
     pres_mice, & ! The ice internal pressure per unit column mass [N m kg-1].
     ci_proj, &  ! The projected ice concentration [nondim].
-    zeta, &     ! The ice bulk viscosity [Pa m s] (i.e., [N s m-1]).
-    del_sh, &   ! The magnitude of the shear rates [s-1].
+    zeta, &     ! The ice bulk viscosity [Pa m T ~> Pa m s] (i.e., [N s m-1]).
+    del_sh, &   ! The magnitude of the shear rates [T-1 ~> s-1].
     diag_val, & ! A temporary diagnostic array.
     del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
-                ! value of del_sh that is used in the calculation of zeta [s-1].
+                ! value of del_sh that is used in the calculation of zeta [T-1 ~> s-1].
                 ! This is set based on considerations of numerical stability,
                 ! and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points [m2].
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points [nondim].
-    siu, siv, sispeed  ! diagnostics on T points [m s-1].
+    siu, siv, sispeed  ! diagnostics on T points [L T-1 ~> m s-1].
 
   real, dimension(SZIB_(G),SZJ_(G)) :: &
-    fxic, &  ! Zonal force due to internal stresses [Pa].
+    fxic, &  ! Zonal force due to internal stresses [kg m-2 L T-2 ~> Pa].
     fxic_d, fxic_t, fxic_s, &
     ui_min_trunc, &  ! The range of v-velocities beyond which the velocities
-    ui_max_trunc, &  ! are truncated [m s-1], or 0 for land cells.
-    Cor_u, & ! Zonal Coriolis acceleration [m s-2].
-    PFu, &   ! Zonal hydrostatic pressure driven acceleration [m s-2].
+    ui_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
+    Cor_u, & ! Zonal Coriolis acceleration [L T-2 ~> m s-2].
+    PFu, &   ! Zonal hydrostatic pressure driven acceleration [L T-2 ~> m s-2].
     diag_val_u, & ! A temporary diagnostic array.
-    u_tmp, & ! A temporary copy of the old values of ui [m s-1].
-    u_IC, &  ! The initial zonal ice velocities [m s-1].
+    u_tmp, & ! A temporary copy of the old values of ui [L T-1 ~> m s-1].
+    u_IC, &  ! The initial zonal ice velocities [L T-1 ~> m s-1].
     mi_u, &  ! The total ice and snow mass interpolated to u points [kg m-2].
     f2dt_u, &! The squared effective Coriolis parameter at u-points times a
-             ! time step [s-1].
+             ! time step [T-1 ~> s-1].
     I1_f2dt2_u  ! 1 / ( 1 + f^2 dt^2) at u-points [nondim].
   real, dimension(SZI_(G),SZJB_(G)) :: &
-    fyic, &  ! Meridional force due to internal stresses [Pa].
+    fyic, &  ! Meridional force due to internal stresses [kg m-2 L T-2 ~> Pa].
     fyic_d, fyic_t, fyic_s, &
     vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
     vi_max_trunc, &  ! are truncated [m s-1], or 0 for land cells.
-    Cor_v, &  ! Meridional Coriolis acceleration [m s-2].
-    PFv, &   ! Meridional hydrostatic pressure driven acceleration [m s-2].
+    Cor_v, &  ! Meridional Coriolis acceleration [L T-2 ~> m s-2].
+    PFv, &   ! Meridional hydrostatic pressure driven acceleration [L T-2 ~> m s-2].
     diag_val_v, & ! A temporary diagnostic array.
-    v_IC, &  ! The initial meridional ice velocities [m s-1].
+    v_IC, &  ! The initial meridional ice velocities [L T-1 ~> m s-1].
     mi_v, &  ! The total ice and snow mass interpolated to v points [kg m-2].
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
-             ! time step [s-1].
+             ! time step [T-1 ~> s-1].
     I1_f2dt2_v  ! 1 / ( 1 + f^2 dt^2) at v-points [nondim].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     mi_ratio_A_q, & ! A ratio of the masses interpolated to the faces around a
              ! vorticity point that ranges between (4 mi_min/mi_max) and 1,
-             ! divided by the sum of the ocean areas around a point [m-2].
+             ! divided by the sum of the ocean areas around a point [L-2 ~> m-2].
     q, &     ! A potential-vorticity-like field for the ice, the Coriolis parameter
-             ! divided by a spatially averaged mass per unit area [s-1 m2 kg-1].
+             ! divided by a spatially averaged mass per unit area [T-1 m2 kg-1 ~> s-1 m2 kg-1].
     dx2B, dy2B, &   ! dx^2 or dy^2 at B points [L2 ~> m2].
     dx_dyB, dy_dxB  ! dx/dy or dy_dx at B points [nondim].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     azon, bzon, & !  _zon & _mer are the values of the Coriolis force which
     czon, dzon, & ! are applied to the neighboring values of vi & ui,
     amer, bmer, & ! respectively to get the barotropic inertial rotation,
-    cmer, dmer    ! in units of s-1.  azon and amer couple the same pair of
+    cmer, dmer    ! in units of [T-1 ~> s-1].  azon and amer couple the same pair of
                   ! velocities, but with the influence going in opposite
                   ! directions.
 
-  real :: Cor       ! A Coriolis accleration [m s-2].
-  real :: fxic_now, fyic_now  ! ice internal stress convergence [kg m-1 s-2].
-  real :: drag_u, drag_v      ! Drag rates with the ocean at u & v points [kg m-2 s-1].
-  real :: drag_max  ! A maximum drag rate allowed in the ocean [kg m-2 s-1].
+  real :: Cor       ! A Coriolis accleration [L T-2 ~> m s-2].
+  real :: fxic_now  ! Zonal ice internal stress convergence [kg m-2 L T-2 ~> kg m-1 s-2].
+  real :: fyic_now  ! Meridional ice internal stress convergence [kg m-2 L T-2 ~> kg m-1 s-2].
+  real :: drag_u, drag_v ! Drag rates with the ocean at u & v points [kg m-2 T-1 ~> kg m-2 s-1].
+  real :: drag_max  ! A maximum drag rate allowed in the ocean [kg m-2 T-1 ~> kg m-2 s-1].
   real :: tot_area  ! The sum of the area of the four neighboring cells [L2 ~> m2].
-  real :: dxharm    ! The harmonic mean of the x- and y- grid spacings [m].
+  real :: dxharm    ! The harmonic mean of the x- and y- grid spacings [L ~> m].
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
                       ! area surrounding a vorticity point [kg2 m-4].
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
@@ -541,23 +557,29 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp) [nondim].
   real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp) [nondim].
 
-  real :: v2_at_u     ! The squared v-velocity interpolated to u points [m s-1].
-  real :: u2_at_v     ! The squared u-velocity interpolated to v points [m s-1].
-  real :: uio_init, m_uio_explicit, uio_pred ! , uio
-  real :: vio_init, m_vio_explicit, vio_pred ! , vio
-  real :: I_cdRhoDt, cdRho
+  real :: v2_at_u     ! The squared v-velocity interpolated to u points [L2 T-2 ~> m2 s-2].
+  real :: u2_at_v     ! The squared u-velocity interpolated to v points [L2 T-2 ~> m2 s-2].
+  real :: uio_init    ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: vio_init    ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: m_uio_explicit ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: m_vio_explicit ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: uio_pred    ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: vio_pred    ! Ice-ocean velocity differences [L T-1 ~> m s-1]
+  real :: I_cdRhoDt   ! The inverse of the product of the drag coefficient, ocean density and
+                      ! timestep [m3 kg-1 s=1].
+  real :: cdRho       ! The ice density times the drag coefficient and rescaling factors [kg m-2 L-1 ~> kg m-3]
   real :: b_vel0      ! The initial difference between the velocity magnitude
                       ! and the absolute value of the u- or v- component, plus
                       ! the ice thickness divided by the time step and the drag
-                      ! coefficient [m s-1].
-  real :: uio_C   ! A u-velocity difference between the ocean and ice [m s-1].
-  real :: vio_C   ! A v-velocity difference between the ocean and ice [m s-1].
+                      ! coefficient [L T-1 ~> m s-1].
+  real :: uio_C   ! A u-velocity difference between the ocean and ice [L T-1 ~> m s-1].
+  real :: vio_C   ! A v-velocity difference between the ocean and ice [L T-1 ~> m s-1].
 
   real :: Tdamp   ! The damping timescale of the stress tensor components
-                  ! toward their equilibrium solution due to the elastic terms [s].
-  real :: dt      ! The short timestep associated with the EVP dynamics [s].
-  real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale.
-  real :: dt_cumulative ! The elapsed time within this call to EVP dynamics [s].
+                  ! toward their equilibrium solution due to the elastic terms [T ~> s].
+  real :: dt      ! The short timestep associated with the EVP dynamics [T ~> s].
+  real :: dt_2Tdamp ! The ratio of the timestep to the elastic damping timescale [nondim].
+  real :: dt_cumulative ! The elapsed time within this call to EVP dynamics [T ~> s].
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps  ! The number inverse of the number of EVP time steps per
                   ! slow time step.
@@ -616,7 +638,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   dt = dt_slow/EVP_steps
 
   drag_max = CS%Rho_ocean * CS%min_ocn_inertial_h / dt_slow
-  I_cdRhoDt = 1.0 / (CS%cdw * CS%Rho_ocean * dt)
+  I_cdRhoDt = 1.0 / (CS%cdw * US%L_to_m*CS%Rho_ocean * dt)
   do_trunc_its = (CS%CFL_check_its .and. (CS%CFL_trunc > 0.0) .and. (dt_slow > 0.0))
 
   EC2 = CS%EC**2
@@ -632,10 +654,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       (CS%id_ci_hifreq > 0) .or. (CS%id_stren_hifreq > 0)) then
     do_hifreq_output = query_SIS_averaging_enabled(CS%diag, time_int_in, time_end_in)
     if (do_hifreq_output) &
-      time_it_start = time_end_in - real_to_time(dt_slow)
+      time_it_start = time_end_in - real_to_time(US%T_to_s*dt_slow)
   endif
 
-  Tdamp = CS%Tdamp
+  Tdamp = US%s_to_T*CS%Tdamp
   if (CS%Tdamp == 0.0) then
     ! Hunke (2001) chooses a specified multiple (0.36) of dt_slow for Tdamp, and shows that
     ! stability requires Tdamp > 2*dt.  Here 0.2 is used instead for greater stability.
@@ -663,8 +685,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
     do j=jsc,jec
       do I=isc-1,iec ; if (G%dy_Cu(I,j) > 0.0) then
-        ui_min_trunc(I,j) = (-CS%CFL_trunc) * US%L_to_m*G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
-        ui_max_trunc(I,j) = CS%CFL_trunc * US%L_to_m*G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
+        ui_min_trunc(I,j) = (-CS%CFL_trunc) * G%areaT(i+1,j) / (dt_slow*G%dy_Cu(I,j))
+        ui_max_trunc(I,j) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dy_Cu(I,j))
       endif ; enddo
       do I=isc-1,iec ; u_IC(I,j) = ui(I,j) ; enddo
     enddo
@@ -672,8 +694,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
     do J=jsc-1,jec
       do i=isc,iec ; if (G%dx_Cv(i,J) > 0.0) then
-        vi_min_trunc(i,J) = (-CS%CFL_trunc) * US%L_to_m*G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
-        vi_max_trunc(i,J) = CS%CFL_trunc * US%L_to_m*G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
+        vi_min_trunc(i,J) = (-CS%CFL_trunc) * G%areaT(i,j+1) / (dt_slow*G%dx_Cv(i,J))
+        vi_max_trunc(i,J) = CS%CFL_trunc * G%areaT(i,j) / (dt_slow*G%dx_Cv(i,J))
       endif ; enddo
       do i=isc,iec ; v_IC(i,J) = vi(i,j) ; enddo
     enddo
@@ -686,14 +708,14 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     ! Precompute pres_mice and the minimum value of del_sh for stability.
     pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
 
-    dxharm = 2.0*US%L_to_m*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
+    dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
     ! stability of the overall time-stepping for the velocities and stresses.
     ! Setting a minimum value of the shear magnitudes is equivalent to setting
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
     if (dxharm > 0.) then
-      del_sh_min_pr(i,j) = (2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
+      del_sh_min_pr(i,j) = US%m_s_to_L_T**2*(2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
     else
       del_sh_min_pr(i,j) = 0.
     endif
@@ -734,9 +756,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
-      sum_area = US%L_to_m**2*((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j)))
+      sum_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j)))
     else
-      sum_area = US%L_to_m**2*((G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+      sum_area = ((G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
                  (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j)))
     endif
     if (sum_area <= 0.0) then
@@ -769,7 +791,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     else
       ! This is a straight coastline or all neighboring velocity points are
       ! masked out.  In any case, with just 1 point, the ratio is always 1.
-      mi_ratio_A_q(I,J) = 1.0 / sum_area
+      mi_ratio_A_q(I,J) = 1.0 / (sum_area)
     endif
   enddo ; enddo
 !$OMP end do nowait
@@ -786,7 +808,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     tot_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1)))
-    q(I,J) = US%s_to_T*G%CoriolisBu(I,J) * tot_area / &
+    q(I,J) = G%CoriolisBu(I,J) * tot_area / &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
   enddo ; enddo
@@ -803,7 +825,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     I1_f2dt2_u(I,j) = 1.0 / ( 1.0 + dt * f2dt_u(I,j) )
 
     ! Calculate the zonal acceleration due to the sea level slope.
-    PFu(I,j) = -G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * US%m_to_L*G%IdxCu(I,j)
+    PFu(I,j) = -US%m_s_to_L_T**2*G%g_Earth*(sea_lev(i+1,j)-sea_lev(i,j)) * G%IdxCu(I,j)
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
@@ -819,15 +841,15 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     I1_f2dt2_v(i,J) = 1.0 / ( 1.0 + dt * f2dt_v(i,J) )
 
     ! Calculate the meridional acceleration due to the sea level slope.
-    PFv(i,J) = -G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * US%m_to_L*G%IdyCv(i,J)
+    PFv(i,J) = -US%m_s_to_L_T**2*G%g_Earth*(sea_lev(i,j+1)-sea_lev(i,j)) * G%IdyCv(i,J)
   enddo ; enddo
 !$OMP end parallel
 
   if (CS%debug .or. CS%debug_redundant) then
-    call uvchksum("PF[uv] in SIS_C_dynamics", PFu, PFv, G)
-    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G)
-    call uvchksum("[uv]i pre-steps SIS_C_dynamics", ui, vi, G)
-    call uvchksum("[uv]o in SIS_C_dynamics", uo, vo, G)
+    call uvchksum("PF[uv] in SIS_C_dynamics", PFu, PFv, G, scale=US%L_T_to_m_s*US%s_to_T)
+    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G, scale=US%L_T_to_m_s*US%s_to_T)
+    call uvchksum("[uv]i pre-steps SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
+    call uvchksum("[uv]o in SIS_C_dynamics", uo, vo, G, scale=US%L_T_to_m_s)
   endif
 
   dt_cumulative = 0.0
@@ -854,18 +876,18 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP                                  dx_dyB,dy_dxB,ui,vi)
     do J=jsc-halo_sh_Ds,jec+halo_sh_Ds-1 ; do I=isc-halo_sh_Ds,iec+halo_sh_Ds-1
       ! This uses a no-slip boundary condition.
-      sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * US%m_to_L * &
+      sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * &
           (dx_dyB(I,J)*(ui(I,j+1)*G%IdxCu(I,j+1) - ui(I,j)*G%IdxCu(I,j)) + &
            dy_dxB(I,J)*(vi(i+1,J)*G%IdyCv(i+1,J) - vi(i,J)*G%IdyCv(i,J)))
     enddo ; enddo
     if (halo_sh_Ds < 2) call pass_var(sh_Ds, G%Domain, position=CORNER)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,sh_Dt,sh_Dd,dy_dxT,dx_dyT,G,ui,vi)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-      sh_Dt(i,j) = US%m_to_L*(dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
+      sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
                                            G%IdyCu(I-1,j)*ui(I-1,j)) - &
                     dx_dyT(i,j)*(G%IdxCv(i,J) * vi(i,J) - &
                                  G%IdxCv(i,J-1)*vi(i,J-1)))
-      sh_Dd(i,j) = US%m_to_L*(G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
+      sh_Dd(i,j) = (G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
                                              G%dyCu(I-1,j)*ui(I-1,j)) + &
                               G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
                                              G%dxCv(i,J-1)*vi(i,J-1)))
@@ -933,13 +955,13 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     do J=jsc-1,jec ; do I=isc-1,iec
       ! zeta is already set to 0 over land.
       CS%str_s(I,J) = I_1pdt_T * ( CS%str_s(I,J) + (I_EC2 * dt_2Tdamp) * &
-                  ( US%L_to_m**2*((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
-                                  (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
+                  (((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
+                    (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
                    mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
     enddo ; enddo
 
 
-    cdRho = CS%cdw * CS%Rho_ocean
+    cdRho = CS%cdw * US%L_to_m*CS%Rho_ocean
     ! Save the current values of u for later use in updating v.
     do I=isc-1,iec
       u_tmp(I,jsc-1) = ui(I,jsc-1) ; u_tmp(I,jec+1) = ui(I,jec+1) ;
@@ -960,11 +982,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fxic_now = US%m_to_L*G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + US%m_to_L * &
+      fxic_now = US%m_s_to_L_T**2* (G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
             (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
                            dy2T(i,j)  *CS%str_t(i,j)) + &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
-                           dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j)
+                           dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j) )
       v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
                      (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                       ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
@@ -972,7 +994,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       uio_init = (ui(I,j)-uo(I,j))
 
       ! Determine the Coriolis acceleration and sum for averages...
-      Cor_u(I,j) = Cor_u(I,j) + (Cor  - f2dt_u(I,j) * ui(I,j)) * I1_f2dt2_u(I,j)
+      Cor_u(I,j) = Cor_u(I,j) + (Cor - f2dt_u(I,j) * ui(I,j)) * I1_f2dt2_u(I,j)
 
       if (CS%project_drag_vel) then
       ! Project the new u-velocity using a quasi-analytic implicit treatment for
@@ -988,8 +1010,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
           if (b_vel0**2 > 1e8*I_cdRhoDt*abs(m_uio_explicit)) then
             uio_pred = m_uio_explicit * I_cdRhoDt / b_vel0
           else
-            uio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_uio_explicit)) - &
-                              b_vel0)
+            uio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_uio_explicit)) - b_vel0)
           endif
           drag_u = cdRho * sqrt(max(uio_init**2, uio_pred**2) + v2_at_u )
         endif
@@ -1012,12 +1033,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now
 
-      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
+      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
                  G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j))
-      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
+      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
                   G%IdyCu(I,j)*(dy2T(i+1,j)* CS%str_t(i+1,j) - &
                                 dy2T(i,j)  * CS%str_t(i,j) ) * G%IareaCu(I,j)
-      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * US%m_to_L * &
+      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
                   G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                                 dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
 
@@ -1042,11 +1063,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fyic_now = US%m_to_L*G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + US%m_to_L * &
+      fyic_now = US%m_s_to_L_T**2 * (G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
             (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
                             dx2T(i,j)  *CS%str_t(i,j)) + &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
-                            dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J)
+                            dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J) )
       u2_at_v = CS%drag_bg_vel2 + 0.25 * &
                 (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                  ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
@@ -1066,13 +1087,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
         if (G%mask2dCv(i,J) > 0.0) then
           m_vio_explicit = vio_init*mi_v(i,J) + dt * &
                ((Cor + PFv(i,J))*mi_v(i,J) + (fyic_now + fyat(i,J)))
-          b_vel0 = mi_v(i,J) * I_cdRhoDt + &
-                   (sqrt(vio_init**2 + u2_at_v) - abs(vio_init))
+          b_vel0 = mi_v(i,J) * I_cdRhoDt + (sqrt(vio_init**2 + u2_at_v) - abs(vio_init))
           if (b_vel0**2 > 1e8*I_cdRhoDt*abs(m_vio_explicit)) then
             vio_pred = m_vio_explicit * I_cdRhoDt / b_vel0
           else
-            vio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_vio_explicit)) - &
-                              b_vel0)
+            vio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_vio_explicit)) - b_vel0)
           endif
           drag_v = cdRho * sqrt(max(vio_init**2, vio_pred**2) + u2_at_v )
         endif
@@ -1095,12 +1114,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now
 
-      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * &
-               US%m_to_L*G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
-      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * US%m_to_L * &
+      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
+                 G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
+      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
                  (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
                                 dx2T(i,j)  *(-CS%str_t(i,j))) ) * G%IareaCv(i,J)
-      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * US%m_to_L * &
+      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
 
@@ -1114,8 +1133,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
     if (do_hifreq_output) then
-      time_step_end = time_it_start + real_to_time(n*dt)
-      call enable_SIS_averaging(dt, time_step_end, CS%diag)
+      time_step_end = time_it_start + real_to_time(n*US%T_to_s*dt)
+      call enable_SIS_averaging(US%T_to_s*dt, time_step_end, CS%diag)
       if (CS%id_ui_hifreq > 0) call post_SIS_data(CS%id_ui_hifreq, ui, CS%diag)
       if (CS%id_vi_hifreq > 0) call post_SIS_data(CS%id_vi_hifreq, vi, CS%diag)
       if (CS%id_str_d_hifreq > 0) call post_SIS_data(CS%id_str_d_hifreq, CS%str_d, CS%diag)
@@ -1148,16 +1167,16 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                    haloshift=0, symmetric=.true.)
     endif
     if (CS%debug_EVP .and. (CS%debug .or. CS%debug_redundant)) then
-      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G)
-      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G)
-      call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G)
-      call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G)
+      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%L_T_to_m_s*US%s_to_T)
+      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, scale=US%L_T_to_m_s*US%s_to_T)
+      call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
+      call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     endif
 
   enddo ! l=1,EVP_steps
 
   if (CS%debug .or. CS%debug_redundant) &
-    call uvchksum("[uv]i end SIS_C_dynamics", ui, vi, G)
+    call uvchksum("[uv]i end SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
 
   ! Reset the time information in the diag type.
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
@@ -1259,8 +1278,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       do J=jsc-1,jec ; do i=isc,iec ; diag_val_v(i,J) = Cor_v(i,J)*mi_v(i,J) ; enddo ; enddo
       call post_SIS_data(CS%id_fcy, diag_val_v, CS%diag)
     endif
-    if (CS%id_Coru>0) call post_SIS_data(CS%id_fcx, Cor_u, CS%diag)
-    if (CS%id_Corv>0) call post_SIS_data(CS%id_fcy, Cor_v, CS%diag)
+    if (CS%id_Coru>0) call post_SIS_data(CS%id_Coru, Cor_u, CS%diag)
+    if (CS%id_Corv>0) call post_SIS_data(CS%id_Corv, Cor_v, CS%diag)
     if (CS%id_PFu>0) call post_SIS_data(CS%id_PFu, PFu, CS%diag)
     if (CS%id_PFv>0) call post_SIS_data(CS%id_PFv, PFv, CS%diag)
     if (CS%id_fpx>0) then
@@ -1327,7 +1346,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       enddo ; enddo
       call post_SIS_data(CS%id_del_sh_min, diag_val, CS%diag)
     endif
-    if (Cs%id_siu>0 .or. Cs%id_siv>0 .or. Cs%id_sispeed>0) then
+    if (CS%id_siu>0 .or. CS%id_siv>0 .or. CS%id_sispeed>0) then
 
       do j=jsc-1,jec+1 ; do i=isc-1,iec+1
         if (mis(i,j) > 0.0) then
@@ -1338,9 +1357,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
           siu(i,j) = 0.0; siv(i,j) = 0.0; sispeed(i,j) = 0.0;
         endif
       enddo ; enddo
-      if (Cs%id_siu>0) call post_SIS_data(CS%id_siu, siu, CS%diag)
-      if (Cs%id_siv>0) call post_SIS_data(CS%id_siv, siv, CS%diag)
-      if (Cs%id_sispeed>0) call post_SIS_data(CS%id_sispeed, sispeed, CS%diag)
+      if (CS%id_siu>0) call post_SIS_data(CS%id_siu, siu, CS%diag)
+      if (CS%id_siv>0) call post_SIS_data(CS%id_siv, siv, CS%diag)
+      if (CS%id_sispeed>0) call post_SIS_data(CS%id_sispeed, sispeed, CS%diag)
     endif
 
   endif
@@ -1509,7 +1528,7 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, US, CS)
   real, dimension(SZI_(G),SZJ_(G)) :: &
     strength ! The ice strength [Pa m].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    str_s_ss ! Str_s divided by the sum of the neighboring ice strengths.
+    str_s_ss ! Str_s divided by the sum of the neighboring ice strengths [nondim].
   real :: strength_sum  ! The sum of the 4 neighboring strengths [L2 Pa m-1 ~> Pa m].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
   integer :: i, j, isc, iec, jsc, jec
@@ -1655,20 +1674,20 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   integer,                           intent(in) :: I    !< The i-index of the column to report on
   integer,                           intent(in) :: j    !< The j-index of the column to report on
   type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velicity [m s-1].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity [m s-1].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity [m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velicity [L T-1 ~> m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity [L T-1 ~> m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice an snow per unit ocean area [kg m-2]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force [Pa].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force [Pa].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration [m s-2].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration [m s-2].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [Pa].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force [kg m-2 L T-2 ~> Pa].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force [kg m-2 L T-2 ~> Pa].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration [L T-2 ~> m s-2].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration [L T-2 ~> m s-2].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [kg m-2 L T-2 ~> Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [s].
   type(unit_scale_type),             intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
-  real :: dt_mi, CFL
+  real :: dt_mi, dt_usc, u_scale, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness [m], that
                                            ! can be cubed without underflow.
   integer :: file
@@ -1690,11 +1709,13 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
     file = CS%u_file
 
     if (ui(I,j) > 0.0) then
-      CFL = (ui(I,j) * (dt_slow*US%m_to_L*G%dy_Cu(I,j))) / G%areaT(i,j)
+      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i,j)
     else
-      CFL = (ui(I,j) * (dt_slow*US%m_to_L*G%dy_Cu(I,j))) / G%areaT(i+1,j)
+      CFL = (ui(I,j) * (dt_slow*G%dy_Cu(I,j))) / G%areaT(i+1,j)
     endif
 
+    u_scale = US%L_T_to_m_s
+    dt_usc = dt_slow * u_scale
 
     call get_date(CS%Time, yr, mo, day, hr, minute, sec)
     call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
@@ -1702,16 +1723,16 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
     write (file,'("Time ",i5,i4,F6.2," U-trunc at ",I4,": ",2(I3), &
         & " (",F7.2," E "F7.2," N) u = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
         yr, yearday, (REAL(sec)/3600.0), pe_here(), I, j, &
-        G%geoLonCu(I,j), G%geoLatCu(I,j), ui(I,j), CFL, u_IC(I,j), dt_slow
+        G%geoLonCu(I,j), G%geoLatCu(I,j), u_scale*ui(I,j), CFL, u_scale*u_IC(I,j), US%T_to_s*dt_slow
 
-    dt_mi = dt_slow / (0.5*(mis(i,j) + mis(i+1,j)) + H_subroundoff*CS%Rho_ice)
+    dt_mi = dt_usc / (0.5*(mis(i,j) + mis(i+1,j)) + H_subroundoff*CS%Rho_ice)
 
     write (file, '("ui, uo, dui = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
-      ui(I,j), uo(I,j), ui(I,j) - u_IC(I,j), mis(i,j), mis(i+1,j)
+      u_scale*ui(I,j), u_scale*uo(I,j), u_scale*(ui(I,j) - u_IC(I,j)), mis(i,j), mis(i+1,j)
 
     write (file, '("U change due to fxat, fxoc, fxic, Cor_u, PFu = ", 5ES11.3, " sum = ",ES11.3)') &
-      fxat(I,j)*dt_mi, -fxoc(I,j)*dt_mi, fxic(I,j)*dt_mi, Cor_u(I,j)*dt_slow, PFu(I,j)*dt_slow, &
-      (fxat(I,j) - fxoc(I,j) + fxic(I,j))*dt_mi + (Cor_u(I,j) + PFu(I,j))*dt_slow
+      fxat(I,j)*dt_mi, -fxoc(I,j)*dt_mi, fxic(I,j)*dt_mi, Cor_u(I,j)*dt_usc, PFu(I,j)*dt_usc, &
+      (fxat(I,j) - fxoc(I,j) + fxic(I,j))*dt_mi + (Cor_u(I,j) + PFu(I,j))*dt_usc
 
     call flush(file)
   endif
@@ -1739,7 +1760,7 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   type(unit_scale_type),             intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
-  real :: dt_mi, CFL
+  real :: dt_mi, dt_usc, u_scale, CFL
   real, parameter :: H_subroundoff = 1e-30 ! A negligible thickness [m], that
                                            ! can be cubed without underflow.
   integer :: file
@@ -1762,10 +1783,13 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
     file = CS%v_file
 
     if (vi(i,J) > 0.0) then
-      CFL = (vi(i,J) * (dt_slow*US%m_to_L*G%dx_Cv(i,J))) / G%areaT(i,j)
+      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j)
     else
-      CFL = (vi(i,J) * (dt_slow*US%m_to_L*G%dx_Cv(i,J))) / G%areaT(i,j+1)
+      CFL = (vi(i,J) * (dt_slow*G%dx_Cv(i,J))) / G%areaT(i,j+1)
     endif
+
+    u_scale = US%L_T_to_m_s
+    dt_usc = dt_slow * u_scale
 
     call get_date(CS%Time, yr, mo, day, hr, minute, sec)
     call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
@@ -1773,16 +1797,16 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
     write (file,'("Time ",i5,i4,F6.2," V-trunc at ",I4,": ",2(I3), &
         & " (",F7.2," E ",F7.2," N) v = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
         yr, yearday, (REAL(sec)/3600.0), pe_here(), i, J, &
-        G%geoLonCv(i,J), G%geoLatCv(i,J), vi(i,J), CFL, v_IC(i,J), dt_slow
+        G%geoLonCv(i,J), G%geoLatCv(i,J), u_scale*vi(i,J), CFL, u_scale*v_IC(i,J), US%T_to_s*dt_slow
 
-    dt_mi = dt_slow / (0.5*(mis(i,j) + mis(i,j+1)) + H_subroundoff*CS%Rho_ice)
+    dt_mi = dt_usc / (0.5*(mis(i,j) + mis(i,j+1)) + H_subroundoff*CS%Rho_ice)
 
     write (file, '("vi, vo, dvi = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
-      vi(i,J), vo(i,J), vi(i,J) - v_IC(i,J), mis(i,j), mis(i,j+1)
+      u_scale*vi(i,J), u_scale*vo(i,J), u_scale*(vi(i,J) - v_IC(i,J)), mis(i,j), mis(i,j+1)
 
     write (file, '("V change due to fyat, fyoc, fyic, Cor_v, PFv = ", 5ES11.3, " sum = ",ES11.3)') &
-      fyat(i,J)*dt_mi, -fyoc(i,J)*dt_mi, fyic(i,J)*dt_mi, Cor_v(i,J)*dt_slow, PFv(i,J)*dt_slow, &
-      (fyat(i,J) - fyoc(i,J) + fyic(i,J))*dt_mi + (Cor_v(i,J) + PFv(i,J))*dt_slow
+      fyat(i,J)*dt_mi, -fyoc(i,J)*dt_mi, fyic(i,J)*dt_mi, Cor_v(i,J)*dt_usc, PFv(i,J)*dt_usc, &
+      (fyat(i,J) - fyoc(i,J) + fyic(i,J))*dt_mi + (Cor_v(i,J) + PFv(i,J))*dt_usc
 
     call flush(file)
   endif
