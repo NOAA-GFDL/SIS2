@@ -2098,16 +2098,17 @@ end subroutine SIS_dyn_trans_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_read_alt_restarts(CS, G, Ice_restart, &
+subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
                                            restart_file, restart_dir)
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
+  type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, Ice_restart, &
+    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, Ice_restart, &
                                      restart_file, restart_dir)
   endif
 

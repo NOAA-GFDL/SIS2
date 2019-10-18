@@ -2311,7 +2311,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
       if (.not.specified_ice) &
-        call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, Ice%Ice_restart, &
+        call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
 
       ! Approximately initialize state fields that are not present
@@ -2713,6 +2713,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
     endif
   endif ! fast_ice_PE
+
+  call fix_restart_unit_scaling(US)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
   !but it should be called after restore_state() otherwise it causes a restart mismatch

@@ -1609,9 +1609,10 @@ end subroutine SIS_C_dyn_register_restarts
 !!   SIS C-grid dynamics module that might have been in the restart file,
 !!   specifically dealing with changing between symmetric and non-symmetric
 !!   memory restart files.
-subroutine SIS_C_dyn_read_alt_restarts(CS, G, Ice_restart, restart_file, restart_dir)
+subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, restart_dir)
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
