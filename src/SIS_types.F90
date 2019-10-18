@@ -22,6 +22,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
+use MOM_unit_scaling,  only : unit_scale_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,     only : chksum, Bchksum, Bchksum_pair, hchksum, uvchksum
@@ -38,7 +39,7 @@ public :: ice_state_read_alt_restarts, register_fast_to_slow_restarts
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
-public :: IOF_chksum, FIA_chksum
+public :: IOF_chksum, FIA_chksum, register_unit_conversion_restarts
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
@@ -541,6 +542,29 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
   endif
 
 end subroutine ice_state_register_restarts
+
+subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file)
+  type(unit_scale_type),   intent(inout) :: US    !< A structure with unit conversion factors
+  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
+
+  integer :: idr
+
+  ! Register scalar unit conversion factors.
+  idr = register_restart_field(Ice_restart, restart_file, "m_to_Z", US%m_to_Z_restart, &
+                                 longname="The conversion factor from m to SIS2 height units.", &
+                                 units= "Z meter-1", no_domain=.true., mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, "m_to_L", US%m_to_L_restart, &
+                                 longname="The conversion factor from m to SIS2 length units.", &
+                                 units="L meter-1", no_domain=.true., mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, "s_to_T", US%s_to_T_restart, &
+                                 longname="The conversion factor from s to SIS2 time units.", &
+                                 units="T second-1", no_domain=.true., mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, "kg_m3_to_R", US%kg_m3_to_R_restart, &
+                                 longname="The conversion factor from kg m-3 to SIS2 density units.", &
+                                 units="R m3 kg-1", no_domain=.true., mandatory=.false.)
+
+end subroutine register_unit_conversion_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_read_alt_restarts reads in alternative variables that might have
