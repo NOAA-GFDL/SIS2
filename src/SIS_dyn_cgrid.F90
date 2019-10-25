@@ -43,13 +43,13 @@ public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
 !> The control structure with parameters regulating C-grid ice dynamics
 type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
-    str_t, &  !< The tension stress tensor component [Pa m] will become [kg m-2 L2 T-2 ~> Pa m].
-    str_d, &  !< The divergence stress tensor component [Pa m].
-    str_s     !< The shearing stress tensor component (cross term) [Pa m].
+    str_t, &  !< The tension stress tensor component [kg m-2 L2 T-2 ~> Pa m].
+    str_d, &  !< The divergence stress tensor component [kg m-2 L2 T-2 ~> Pa m].
+    str_s     !< The shearing stress tensor component (cross term) [kg m-2 L2 T-2 ~> Pa m].
 
   ! parameters for calculating water drag and internal ice stresses
   real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology [Pa]
-  real :: p0_rho              !< The pressure constant divided by ice density [N m kg-1].
+  real :: p0_rho              !< The pressure constant divided by ice density [L2 T-2 ~> N m kg-1].
   real :: c0 = 20.0           !< another pressure constant
   real :: cdw = 3.24e-3       !< ice/water drag coef. [nondim]
   real :: EC = 2.0            !< yield curve axis ratio
@@ -200,7 +200,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 
   call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
-                 "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
+                 "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4, scale=US%m_s_to_L_T**2)
   call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
                  "A constant in the exponent of the expression for the \n"//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
@@ -278,9 +278,9 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
             'second stress invariant', 'none', missing_value=missing)
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
-            'ice strength', 'Pa*m', missing_value=missing)
+            'ice strength', 'Pa*m', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time, &
-            'ice strength at start of rheology', 'Pa*m', missing_value=missing)
+            'ice strength at start of rheology', 'Pa*m', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
             'ice internal stress - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
             missing_value=missing, interp_method='none')
@@ -372,11 +372,11 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             missing_value=missing, interp_method='none')
 
   CS%id_str_d   = register_diag_field('ice_model', 'str_d', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa', missing_value=missing)
+            'ice divergence internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_t   = register_diag_field('ice_model', 'str_t', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa', missing_value=missing)
+            'ice tension internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa', missing_value=missing)
+            'ice shearing internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time,   &
             'ice divergence strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time,   &
@@ -395,11 +395,11 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             'ice velocity - y component', 'm/s', missing_value=missing,        &
             interp_method='none, conversion=US%L_T_to_m_s')
   CS%id_str_d_hifreq = register_diag_field('ice_model', 'str_d_hf', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa', missing_value=missing)
+            'ice divergence internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_t_hifreq = register_diag_field('ice_model', 'str_t_hf', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa', missing_value=missing)
+            'ice tension internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_s_hifreq = register_diag_field('ice_model', 'str_s_hf', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa', missing_value=missing)
+            'ice shearing internal stress', 'Pa', conversion=US%L_T_to_m_s**2, missing_value=missing)
   CS%id_sh_d_hifreq = register_diag_field('ice_model', 'sh_d_hf', diag%axesT1, Time, &
             'ice divergence rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t_hifreq = register_diag_field('ice_model', 'sh_t_hf', diag%axesT1, Time, &
@@ -413,7 +413,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
             'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
   CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time, &
-            'ice strength', 'Pa*m', missing_value=missing)
+            'ice strength', 'Pa*m', conversion=US%L_T_to_m_s**2, missing_value=missing)
 
   CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time, &
             'ice velocity - x component', 'm/s', missing_value=missing,  &
@@ -429,12 +429,13 @@ end subroutine SIS_C_dyn_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_ice_strength returns the magnitude of force on ice in plastic deformation
-subroutine find_ice_strength(mi, ci, ice_strength, G, CS, halo_sz) ! ??? may change to do loop
+subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS, halo_sz) ! ??? may change to do loop
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength in N m-1.
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength [kg m-2 L2 T-2 ~> N m-1].
   type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
+  type(unit_scale_type),            intent(in)  :: US    !< A structure with unit conversion factors
   integer,                optional, intent(in)  :: halo_sz !< The halo size to work on
   integer :: i, j, isc, iec, jsc, jec, halo
   halo = 0 ; if (present(halo_sz)) halo = halo_sz
@@ -484,16 +485,16 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    pres_mice, & ! The ice internal pressure per unit column mass [N m kg-1].
+    pres_mice, & ! The ice internal pressure per unit column mass [L2 T-2 ~> N m kg-1].
     ci_proj, &  ! The projected ice concentration [nondim].
-    zeta, &     ! The ice bulk viscosity [Pa m T ~> Pa m s] (i.e., [N s m-1]).
+    zeta, &     ! The ice bulk viscosity [kg m-2 L2 T-1 ~> Pa m s] (i.e., [N s m-1]).
     del_sh, &   ! The magnitude of the shear rates [T-1 ~> s-1].
     diag_val, & ! A temporary diagnostic array.
     del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
                 ! value of del_sh that is used in the calculation of zeta [T-1 ~> s-1].
                 ! This is set based on considerations of numerical stability,
                 ! and varies with the grid spacing.
-    dx2T, dy2T, &   ! dx^2 or dy^2 at T points [m2].
+    dx2T, dy2T, &   ! dx^2 or dy^2 at T points [L2 ~> m2].
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points [nondim].
     siu, siv, sispeed  ! diagnostics on T points [L T-1 ~> m s-1].
 
@@ -715,7 +716,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     ! a maximum value of the effective lateral viscosities.
     ! I think that this is stable when CS%del_sh_min_scale >= 1.  -RWH
     if (dxharm > 0.) then
-      del_sh_min_pr(i,j) = US%m_s_to_L_T**2*(2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
+      del_sh_min_pr(i,j) = (2.0*CS%del_sh_min_scale * dt**2) / (Tdamp * dxharm**2)
     else
       del_sh_min_pr(i,j) = 0.
     endif
@@ -982,7 +983,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fxic_now = US%m_s_to_L_T**2* (G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
+      fxic_now = (G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
             (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
                            dy2T(i,j)  *CS%str_t(i,j)) + &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
@@ -1033,12 +1034,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now
 
-      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
+      if (CS%id_fix_d>0) fxic_d(I,j) = fxic_d(I,j) + G%mask2dCu(I,j) * &
                  G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j))
-      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
+      if (CS%id_fix_t>0) fxic_t(I,j) = fxic_t(I,j) + G%mask2dCu(I,j) * &
                   G%IdyCu(I,j)*(dy2T(i+1,j)* CS%str_t(i+1,j) - &
                                 dy2T(i,j)  * CS%str_t(i,j) ) * G%IareaCu(I,j)
-      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * US%m_s_to_L_T**2 * &
+      if (CS%id_fix_s>0) fxic_s(I,j) = fxic_s(I,j) + G%mask2dCu(I,j) * &
                   G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                                 dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
 
@@ -1063,7 +1064,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fyic_now = US%m_s_to_L_T**2 * (G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
+      fyic_now =  (G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
             (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
                             dx2T(i,j)  *CS%str_t(i,j)) + &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
@@ -1114,12 +1115,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now
 
-      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
+      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) *  &
                  G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
-      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
+      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) *  &
                  (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
                                 dx2T(i,j)  *(-CS%str_t(i,j))) ) * G%IareaCv(i,J)
-      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * US%m_s_to_L_T**2 * &
+      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) *  &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
 
@@ -1144,7 +1145,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       if (CS%id_sh_t_hifreq > 0) call post_SIS_data(CS%id_sh_t_hifreq, sh_Dt, CS%diag)
       if (CS%id_sh_s_hifreq > 0) call post_SIS_data(CS%id_sh_s_hifreq, sh_Ds, CS%diag)
       if (CS%id_sigi_hifreq>0) then
-        call find_sigI(mice, ci_proj, CS%str_d, diag_val, G, CS)
+        call find_sigI(mice, ci_proj, CS%str_d, diag_val, G, US, CS)
         call post_SIS_data(CS%id_sigi_hifreq, diag_val, CS%diag)
       endif
       if (CS%id_sigii_hifreq>0) then
@@ -1161,10 +1162,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     endif
 
     if (CS%debug_EVP .and. CS%debug) then
-      call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1, scale=US%L_T_to_m_s**2)
+      call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1, scale=US%L_T_to_m_s**2)
       call Bchksum(CS%str_s, "str_s in SIS_C_dynamics", G%HI, &
-                   haloshift=0, symmetric=.true.)
+                   haloshift=0, symmetric=.true., scale=US%L_T_to_m_s**2)
     endif
     if (CS%debug_EVP .and. (CS%debug .or. CS%debug_redundant)) then
       call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%L_T_to_m_s*US%s_to_T)
@@ -1303,7 +1304,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     if (CS%id_fiy_s>0) call post_SIS_data(CS%id_fiy_s, fyic_s, CS%diag)
 
     if (CS%id_sigi>0) then
-      call find_sigI(mice, ci, CS%str_d, diag_val, G, CS)
+      call find_sigI(mice, ci, CS%str_d, diag_val, G, US, CS)
       call post_SIS_data(CS%id_sigi, diag_val, CS%diag)
     endif
     if (CS%id_sigii>0) then
@@ -1312,14 +1313,14 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     endif
     if (CS%id_stren>0) then
       if (CS%project_ci) then
-        call find_ice_strength(mice, ci_proj, diag_val, G, CS)
+        call find_ice_strength(mice, ci_proj, diag_val, G, US, CS)
       else
-        call find_ice_strength(mice, ci, diag_val, G, CS)
+        call find_ice_strength(mice, ci, diag_val, G, US, CS)
       endif
       call post_SIS_data(CS%id_stren, diag_val, CS%diag)
     endif
     if (CS%id_stren0>0) then
-      call find_ice_strength(mice, ci, diag_val, G, CS)
+      call find_ice_strength(mice, ci, diag_val, G, US, CS)
       call post_SIS_data(CS%id_stren0, diag_val, CS%diag)
     endif
 
@@ -1372,12 +1373,15 @@ end subroutine SIS_C_dynamics
 subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit)
   type(SIS_hor_grid_type),            intent(in)    :: G     !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: pres_mice !< The ice internal pressure per
-                                                             !! unit column mass [N m kg-1].
+                                                             !! unit column mass [L2 T-2 ~> N m kg-1].
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)    :: mice  !< The mass per unit total area (ice
                                                              !! covered and ice free) of the ice [kg m-2].
-  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component [Pa m].
-  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component [Pa m].
-  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component [Pa m].
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_d !< The divergence stress tensor component
+                                                             !! [kg m-2 L2 T-2 ~> Pa m].
+  real, dimension(SZI_(G),SZJ_(G)),   intent(inout) :: str_t !< The tension stress tensor component
+                                                             !! [kg m-2 L2 T-2 ~> Pa m].
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: str_s !< The shearing stress tensor component
+                                                             !! [kg m-2 L2 T-2 ~> Pa m].
   type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
   real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
@@ -1388,17 +1392,17 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit
 ! ice flow convergence or divergence may have altered the ice concentration.
 
   ! Local variables
-  real :: pressure  ! The internal ice pressure at a point [Pa].
-  real :: pres_avg  ! The average of the internal ice pressures around a point [Pa].
+  real :: pressure  ! The internal ice pressure at a point [kg m-3 L2 T-2 ~> Pa].
+  real :: pres_avg  ! The average of the internal ice pressures around a point [kg m-3 L2 T-2 ~> Pa].
   real :: sum_area  ! The sum of ocean areas around a vorticity point [L2 ~> m2].
   real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
   real :: lim       ! A local copy of the factor by which the limits are changed.
   real :: lim_2     ! The limit divided by 2.
 !  real :: EC2       ! EC^2, where EC is the yield curve axis ratio.
 !  real :: rescale_str ! A factor by which to rescale the internal stresses [nondim].
-!  real :: stress_mag  ! The magnitude of the stress at a point.
-!  real :: str_d_q     ! CS%str_d interpolated to a vorticity point [Pa m].
-!  real :: str_t_q     ! CS%str_t interpolated to a vorticity point [Pa m].
+!  real :: stress_mag  ! The magnitude of the stress at a point [kg m-2 L2 T-2 ~> Pa m].
+!  real :: str_d_q     ! CS%str_d interpolated to a vorticity point [kg m-2 L2 T-2 ~> Pa m].
+!  real :: str_t_q     ! CS%str_t interpolated to a vorticity point [kg m-2 L2 T-2 ~> Pa m].
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1491,20 +1495,22 @@ end subroutine limit_stresses
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_sigI finds the first stress invariant
-subroutine find_sigI(mi, ci, str_d, sigI, G, CS)
+subroutine find_sigI(mi, ci, str_d, sigI, G, US, CS)
   type(SIS_hor_grid_type),          intent(in)  :: G  !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: str_d !< The divergence stress tensor component [Pa m].
+  real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: str_d !< The divergence stress tensor component
+                                                      !! [kg m-2 L2 T-2 ~> Pa m].
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: sigI  !< The first stress invariant [nondim]
+  type(unit_scale_type),            intent(in)  :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength [Pa m].
+    strength ! The ice strength [kg m-2 L2 T-2 ~> Pa m = N m-1].
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call find_ice_strength(mi, ci, strength, G, CS)
+  call find_ice_strength(mi, ci, strength, G, US, CS)
 
   do j=jsc,jec ; do i=isc,iec
     sigI(i,j) = 0.0
@@ -1519,17 +1525,19 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, US, CS)
   type(SIS_hor_grid_type),            intent(in)  :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component, [Pa m]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component [Pa m].
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: str_t !< The tension stress tensor component
+                                                         !! [kg m-2 L2 T-2 ~> Pa m].
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in)  :: str_s !< The shearing stress tensor component
+                                                         !! [kg m-2 L2 T-2 ~> Pa m].
   real, dimension(SZI_(G),SZJ_(G)),   intent(out) :: sigII !< The second stress invariant [nondim].
   type(unit_scale_type),              intent(in)  :: US  !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength [Pa m].
+    strength ! The ice strength [kg m-2 L2 T-2 ~> Pa m].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     str_s_ss ! Str_s divided by the sum of the neighboring ice strengths [nondim].
-  real :: strength_sum  ! The sum of the 4 neighboring strengths [L2 Pa m-1 ~> Pa m].
+  real :: strength_sum  ! The sum of the 4 neighboring strengths times areas [L2 Pa m ~> Pa m3].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1605,10 +1613,11 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
 end subroutine SIS_C_dyn_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_C_dyn_read_alt_restarts reads in alternative variables for the
-!!   SIS C-grid dynamics module that might have been in the restart file,
-!!   specifically dealing with changing between symmetric and non-symmetric
-!!   memory restart files.
+!> SIS_C_dyn_read_alt_restarts reads in alternative variables for the SIS C-grid dynamics module
+!!   that might have been in the restart file, specifically dealing with changing between symmetric
+!!   and non-symmetric memory restart files.  It also handles any changes in dimensional rescaling
+!!   of these variables between what is stored in the restart file and what is done for the current
+!!   run segment.
 subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, restart_dir)
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
@@ -1621,11 +1630,11 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
   ! then discarded.
   real, allocatable, target, dimension(:,:) :: str_tmp
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
+  real :: stress_rescale
   integer :: i, j, id
 
   if (.not.associated(Ice_restart)) return
-  if (G%symmetric) then
-    if (query_initialized(Ice_restart, 'sym_str_s')) return
+  if (G%symmetric .and. (.not.query_initialized(Ice_restart, 'sym_str_s'))) then
 
     call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
                           domain_name="ice temporary domain")
@@ -1643,8 +1652,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
       enddo ; enddo
     endif
 
-  else ! .not. symmetric
-    if (query_initialized(Ice_restart, 'str_s')) return
+  elseif ((.not.G%symmetric) .and. (.not.query_initialized(Ice_restart, 'str_s'))) then
 
     call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
                           domain_name="ice temporary domain")
@@ -1662,8 +1670,21 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
     endif
   endif
 
-  deallocate(str_tmp)
-  deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp)
+  if (allocated(str_tmp)) deallocate(str_tmp)
+  if (associated(domain_tmp)) then ; deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp) ; endif
+
+  ! Now redo the dimionsal rescaling of the stresses if necessary.
+  if ((US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
+      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) then
+    stress_rescale = (US%m_to_L*US%s_to_T_restart)**2 / (US%m_to_L_restart*US%s_to_T)**2
+    do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+      CS%str_s(I,J) = stress_rescale * CS%str_s(I,J)
+    enddo ; enddo
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      CS%str_d(i,j) = stress_rescale * CS%str_d(i,j)
+      CS%str_t(i,j) = stress_rescale * CS%str_t(i,j)
+    enddo ; enddo
+  endif
 
 end subroutine SIS_C_dyn_read_alt_restarts
 
