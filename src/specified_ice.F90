@@ -215,7 +215,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
       IOF%stress_mag(i,j) = wt_prev * IOF%stress_mag(i,j) + wt_now * sqrt(taux2 + tauy2)
     enddo ; enddo ; endif
   else
-    call SIS_error(FATAL, "set_ocean_top_stress_C2: Unrecognized flux_uv_stagger.")
+    call SIS_error(FATAL, "set_ocean_top_stress_FIA: Unrecognized flux_uv_stagger.")
   endif
 
   IOF%stress_count = IOF%stress_count + 1
