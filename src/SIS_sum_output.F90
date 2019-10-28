@@ -81,7 +81,7 @@ type, public :: SIS_sum_out_CS ; private
   type(EFP_type) :: heat_prev_EFP !< An extended fixed point version of heat_prev
   type(EFP_type) :: salt_prev_EFP !< An extended fixed point version of salt_prev
   type(EFP_type) :: mass_prev_EFP !< An extended fixed point version of mass_prev
-  real    :: dt                 !< The baroclinic dynamics time step [s].
+  real    :: dt                 !< The baroclinic dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90
@@ -110,11 +110,12 @@ end type SIS_sum_out_CS
 contains
 
 !> Initialize the SIS_sum_output control structure, allocate memory and store runtime parameters.
-subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, ntrunc)
+subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, CS, ntrunc)
   type(SIS_hor_grid_type),  intent(in)    :: G      !< The horizontal grid type
   type(param_file_type),    intent(in)    :: param_file !< A structure to parse for run-time parameters
   character(len=*),         intent(in)    :: directory  !<  The directory where the statistics file goes
   type(time_type),          intent(in)    :: Input_start_time !< The start time of the simulation
+  type(unit_scale_type),    intent(in)    :: US     !< A structure with unit conversion factors
   type(SIS_sum_out_CS),     pointer       :: CS     !< A pointer that is set to point to the control
                                                     !! structure for this module
   integer, target, optional,intent(inout) :: ntrunc !< The integer that stores the number of times
@@ -148,7 +149,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, n
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
-                 "the ice mass field and velocities.", units="s", &
+                 "the ice mass field and velocities.", units="s", scale=US%s_to_T, &
                  default=-1.0, do_not_log=.true.)
   call get_param(param_file, mdl, "MAXTRUNC", CS%maxtrunc, &
                  "The run will be stopped, and the day set to a very \n"//&
@@ -288,7 +289,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 
   real :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection [nondim].
-  real :: dt_CFL       ! The timestep for calculating the CFL number [s].
+  real :: dt_CFL       ! The timestep for calculating the CFL number [T ~> s].
   real :: max_CFL      ! The maximum of the CFL numbers [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int
@@ -473,24 +474,24 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   if (IST%Cgrid_dyn) then
     if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
       if (IST%u_ice_C(I,j) < 0.0) then
-        CFL_trans = (-IST%u_ice_C(I,j) * US%s_to_T*dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
       else
-        CFL_trans = (IST%u_ice_C(I,j) * US%s_to_T*dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
     if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
       if (IST%v_ice_C(i,J) < 0.0) then
-        CFL_trans = (-IST%v_ice_C(i,J) * US%s_to_T*dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
       else
-        CFL_trans = (IST%v_ice_C(i,J) * US%s_to_T*dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
   elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     do J=js-1,je ; do I=is-1,ie
-      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * US%m_to_L * G%IdxBu(I,J)
-      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * US%m_to_L * G%IdyBu(I,J)
+      CFL_u = abs(US%m_s_to_L_T*IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
+      CFL_v = abs(US%m_s_to_L_T*IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
       max_CFL = max(max_CFL, CFL_u, CFL_v)
     enddo ; enddo
   endif
@@ -716,7 +717,7 @@ end subroutine write_ice_statistics
 
 !> Accumulate the net input of fresh water and heat through the bottom of the
 !! sea-ice for conservation checks.
-subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
+subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
   type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
   type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
@@ -727,6 +728,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
   type(ice_ocean_flux_type),  intent(in) :: IOF !< A structure containing fluxes from the ice to
                                                 !! the ocean that are calculated by the ice model.
   real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
 
@@ -740,7 +742,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
-  if (CS%dt < 0.0) CS%dt = dt
+  if (CS%dt < 0.0) CS%dt = US%s_to_T*dt
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &

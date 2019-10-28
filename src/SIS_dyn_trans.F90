@@ -2273,7 +2273,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
 
   endif
 
-  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
+  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, US, &
                            CS%sum_output_CSp, CS%ntrunc)
 
   CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &

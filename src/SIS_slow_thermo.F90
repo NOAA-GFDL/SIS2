@@ -463,7 +463,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
   call disable_SIS_averaging(CS%diag)
 
-  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
+  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
 
   ! This needs to go after accumulate_bottom_input.
   if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G)
