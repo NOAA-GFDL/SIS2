@@ -186,9 +186,26 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
-      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
+                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
+                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, &
+                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+
+      if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
+        do k=1,nCat ; do j=jsc,jec ; do I=isc-1,iec
+          uh_ice(I,j,k) = US%L_to_m**2*US%s_to_T*uh_ice(I,j,k)
+          uh_snow(I,j,k) = US%L_to_m**2*US%s_to_T*uh_snow(I,j,k)
+          uh_pond(I,j,k) = US%L_to_m**2*US%s_to_T*uh_pond(I,j,k)
+        enddo ; enddo ; enddo
+        do k=1,nCat ; do J=jsc-1,jec ; do i=isc,iec
+          vh_ice(i,J,k) = US%L_to_m**2*US%s_to_T*vh_ice(i,J,k)
+          vh_snow(i,J,k) = US%L_to_m**2*US%s_to_T*vh_snow(i,J,k)
+          vh_pond(i,J,k) = US%L_to_m**2*US%s_to_T*vh_pond(i,J,k)
+        enddo ; enddo ; enddo
+      endif
+
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%SIS_thick_adv_CSp)

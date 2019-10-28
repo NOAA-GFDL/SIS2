@@ -1070,19 +1070,27 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     do n = DS2d%nts+1, DS2d%nts+CS%adv_substeps
       if ((n < ndyn_steps*CS%adv_substeps) .or. continuing_call) then
         ! Some of the work is not needed for the last step before cat_ice_transport.
-        call summed_continuity(US%L_T_to_m_s*DS2d%u_ice_C, US%L_T_to_m_s*DS2d%v_ice_C, &
+        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
                                DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
-                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, CS%continuity_CSp, &
-                               h_ice=DS2d%mi_sum)
-        call ice_cover_transport(US%L_T_to_m_s*DS2d%u_ice_C, US%L_T_to_m_s*DS2d%v_ice_C, DS2d%ice_cover, dt_adv, &
+                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), US%s_to_T*dt_adv, G, US, IG, &
+                               CS%continuity_CSp, h_ice=DS2d%mi_sum)
+        call ice_cover_transport(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%ice_cover, US%s_to_T*dt_adv, &
                                  G, US, IG, CS%cover_trans_CSp)
         call pass_var(DS2d%mi_sum, G%Domain, complete=.false.)
         call pass_var(DS2d%ice_cover, G%Domain, complete=.false.)
         call pass_var(DS2d%mca_step(:,:,n), G%Domain, complete=.true.)
       else
-        call summed_continuity(US%L_T_to_m_s*DS2d%u_ice_C, US%L_T_to_m_s*DS2d%v_ice_C, &
+        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
                                DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
-                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, CS%continuity_CSp)
+                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+      endif
+      if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
+        do j=jsc,jec ; do I=isc-1,iec
+          DS2d%uh_step(I,j,n) = US%L_to_m**2*US%s_to_T*DS2d%uh_step(I,j,n)
+        enddo ; enddo
+        do J=jsc-1,jec ; do i=isc,iec
+          DS2d%vh_step(i,J,n) = US%L_to_m**2*US%s_to_T*DS2d%vh_step(i,J,n)
+        enddo ; enddo
       endif
     enddo
     DS2d%nts = DS2d%nts + CS%adv_substeps
