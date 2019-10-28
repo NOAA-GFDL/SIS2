@@ -346,7 +346,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   CS%n_calls = CS%n_calls + 1
 
   if (CS%debug) then
-    call IST_chksum("Start update_ice_model_slow", IST, G, IG)
+    call IST_chksum("Start update_ice_model_slow", IST, G, US, IG)
   endif
 
   if (CS%bounds_check) &

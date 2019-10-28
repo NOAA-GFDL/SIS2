@@ -67,10 +67,10 @@ type ice_state_type
   real, allocatable, dimension(:,:) :: v_ice_B  !< The pseudo-meridional ice velocity along the
                 !! along the grid directions on a B-grid [m s-1].
   real, allocatable, dimension(:,:) :: u_ice_C  !< The pseudo-zonal ice velocity along the
-                !! along the grid directions on a C-grid [m s-1].
+                !! along the grid directions on a C-grid [L T-1 ~> m s-1].
                 !! All thickness categories are assumed to have the same velocities.
   real, allocatable, dimension(:,:) :: v_ice_C  !< The pseudo-meridional ice velocity along the
-                !! along the grid directions on a C-grid [m s-1].
+                !! along the grid directions on a C-grid [L T-1 ~> m s-1].
 
   real, allocatable, dimension(:,:,:) :: &
     mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
@@ -567,21 +567,23 @@ subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file)
 end subroutine register_unit_conversion_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_state_read_alt_restarts reads in alternative variables that might have
-!! been in the restart file, specifically dealing with changing between
-!! symmetric and non-symmetric memory restart files.
-subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
+!> ice_state_read_alt_restarts reads in alternative variables that might have been in the restart
+!! file, specifically dealing with changing between symmetric and non-symmetric memory restart
+!! files. It also handles any changes in dimensional rescaling of these variables between what is
+!! stored in the restart file and what is done for the current run segment.
+subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
                                        restart_file, restart_dir)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
   character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
-  ! These are temporary variables that will be used only here for reading and
-  ! then discarded.
+  ! These are temporary variables that will be used only here for reading and then discarded.
   real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp
+  real :: vel_rescale
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
   logical :: u_set, v_set
   integer :: i, j, id_u, id_v
@@ -712,6 +714,18 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
 
   deallocate(u_tmp, v_tmp)
   deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp)
+
+  ! Now redo the dimensional rescaling of the velocities if necessary.
+  if (IST%Cgrid_dyn .and. (US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
+      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) then
+    vel_rescale = (US%m_to_L*US%s_to_T_restart) / (US%m_to_L_restart*US%s_to_T)
+    do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
+      IST%u_ice_C(I,j) = vel_rescale * IST%u_ice_C(I,j)
+    enddo ; enddo
+    do J=G%jsc-1,G%jec ; do i=G%isc,G%iec
+      IST%v_ice_C(i,J) = vel_rescale * IST%v_ice_C(i,J)
+    enddo ; enddo
+  endif
 
 end subroutine ice_state_read_alt_restarts
 
@@ -1159,12 +1173,13 @@ end subroutine redistribute_IST_to_IST
 !> translate_OSS_to_sOSS translates the full ocean surface state, as seen by the slow
 !! ice processors into a simplified version with the fields that are shared with
 !! the atmosphere and the fast ice thermodynamics.
-subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
+subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, US)
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(ice_state_type),       intent(in)    :: IST !< A type describing the state of the sea ice
   type(simple_OSS_type),      intent(inout) :: sOSS !< The simple ocean surface state type that is being copied into
   type(SIS_hor_grid_type),    intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
   integer :: isd, ied, jsd, jed
@@ -1191,8 +1206,8 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G)
                                   (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
       endif
       if (IST%Cgrid_dyn) then
-        sOSS%u_ice_A(i,j) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
-        sOSS%v_ice_A(i,j) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
+        sOSS%u_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
+        sOSS%v_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
       else
         sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
                                   (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
@@ -2267,10 +2282,11 @@ end subroutine FIA_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in an ice_state_type.
-subroutine IST_chksum(mesg, IST, G, IG, haloshift)
+subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_state_type),    intent(in) :: IST   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(unit_scale_type),   intent(in)    :: US !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in) :: IG    !< The sea-ice grid type.
   integer, optional,       intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
 
@@ -2300,7 +2316,7 @@ subroutine IST_chksum(mesg, IST, G, IG, haloshift)
     call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   endif
   if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
-    call uvchksum(mesg//" IST%[uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, halos=hs)
+    call uvchksum(mesg//" IST%[uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, halos=hs, scale=US%L_T_to_m_s)
     call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)
   endif
 

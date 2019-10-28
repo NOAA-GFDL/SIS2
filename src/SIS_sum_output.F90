@@ -473,17 +473,17 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   if (IST%Cgrid_dyn) then
     if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
       if (IST%u_ice_C(I,j) < 0.0) then
-        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * US%m_to_L*G%IareaT(i+1,j))
+        CFL_trans = (-IST%u_ice_C(I,j) * US%s_to_T*dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
       else
-        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * US%m_to_L*G%IareaT(i,j))
+        CFL_trans = (IST%u_ice_C(I,j) * US%s_to_T*dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
     if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
       if (IST%v_ice_C(i,J) < 0.0) then
-        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * US%m_to_L*G%IareaT(i,j+1))
+        CFL_trans = (-IST%v_ice_C(i,J) * US%s_to_T*dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
       else
-        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * US%m_to_L*G%IareaT(i,j))
+        CFL_trans = (IST%v_ice_C(i,J) * US%s_to_T*dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif

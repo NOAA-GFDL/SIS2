@@ -247,7 +247,7 @@ subroutine update_ice_slow_thermo(Ice)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
-    call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, sIG)
+    call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, US, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
   call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, sIG, Ice%sCS)
@@ -811,7 +811,7 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
   call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
 
-  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G)
+  call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%US)
 
 end subroutine unpack_ocean_ice_boundary
 
@@ -1012,7 +1012,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   if (fCS%debug) then
-    call IST_chksum("Start set_ice_surface_state", IST, G, IG)
+    call IST_chksum("Start set_ice_surface_state", IST, G, fCS%US, IG)
     call Ice_public_type_chksum("Start set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
@@ -1154,7 +1154,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   call coupler_type_copy_data(OSS%tr_fields, Ice%ocean_fields, ind3_start=1, ind3_end=1)
 
   if (fCS%debug) then
-    call IST_chksum("End set_ice_surface_state", IST, G, IG)
+    call IST_chksum("End set_ice_surface_state", IST, G, fCS%US, IG)
     call Ice_public_type_chksum("End set_ice_surface_state", Ice, check_fast=.true.)
   endif
 
@@ -2308,7 +2308,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
-      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
+      call ice_state_read_alt_restarts(sIST, sG, US, sIG, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
       if (.not.specified_ice) &
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &

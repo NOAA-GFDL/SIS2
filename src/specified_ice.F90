@@ -97,7 +97,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
-  if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, IG)
+  if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, US, IG)
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of specified_ice_dynamics", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
