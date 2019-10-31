@@ -114,8 +114,8 @@ type ocean_sfc_state_type
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [m s-1].
     v_ocn_B, &  !< The ocean's meridional velocity on B-grid points [m s-1].
-    u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [m s-1].
-    v_ocn_C     !< The ocean's meridional velocity on C-grid points [m s-1].
+    u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [L T-1 ~> m s-1].
+    v_ocn_C     !< The ocean's meridional velocity on C-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
                 !! to the ice at the base of the ice [W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
@@ -1197,8 +1197,8 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, US)
       sOSS%bheat(i,j) = OSS%bheat(i,j)
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
-        sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
-        sOSS%v_ocn_A(i,j) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
+        sOSS%u_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
+        sOSS%v_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
       else
         sOSS%u_ocn_A(i,j) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
                                   (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )

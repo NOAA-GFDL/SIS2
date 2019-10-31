@@ -190,7 +190,7 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> update_icebergs calls icebergs_run and offers diagnostics of some of the
 !! iceberg fields that might drive the sea ice or ocean
-subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
+subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, CS)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -201,6 +201,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
   real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
   type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
@@ -242,13 +243,13 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, IG, CS)
 
   if (IST%Cgrid_dyn) then
     call icebergs_run( icebergs_CS, CS%Time, &
-            FIA%calving(isc:iec,jsc:jec), OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
-            OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), G%US%L_T_to_m_s*IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
-            G%US%L_T_to_m_s*IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
+            FIA%calving(isc:iec,jsc:jec), US%L_T_to_m_s*OSS%u_ocn_C(isc-2:iec+1,jsc-1:jec+1), &
+            US%L_T_to_m_s*OSS%v_ocn_C(isc-1:iec+1,jsc-2:jec+1), US%L_T_to_m_s*IST%u_ice_C(isc-2:iec+1,jsc-1:jec+1), &
+            US%L_T_to_m_s*IST%v_ice_C(isc-1:iec+1,jsc-2:jec+1), windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
             FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=stress_stagger,sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   else
@@ -437,7 +438,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
             call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
             call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
-            call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
+            call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
             call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
                           halos=1, scale=US%L_T_to_m_s*US%s_to_T)
     !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
@@ -448,13 +449,11 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           if (CS%do_ridging) rdg_rate(:,:) = 0.0
           if (CS%Warsaw_sum_order) then
             call SIS_C_dynamics(1.0-ice_free(:,:), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                                US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
-                                WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
+                                OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
                                 str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
           else
             call SIS_C_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
-                                US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
-                                WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
+                                OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
                                 str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
           endif
           call mpp_clock_end(iceClocka)
@@ -952,7 +951,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
         call hchksum(DS2d%mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(DS2d%ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
-        call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
+        call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
         call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
                       halos=1, scale=US%L_T_to_m_s*US%s_to_T)
 !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
@@ -962,8 +961,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       !### Ridging needs to be added with C-grid dynamics.
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
       call SIS_C_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, DS2d%u_ice_C, DS2d%v_ice_C, &
-                          US%m_s_to_L_T*OSS%u_ocn_C, US%m_s_to_L_T*OSS%v_ocn_C, &
-                          WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
+                          OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
                           str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
 
       call mpp_clock_end(iceClocka)
@@ -1188,7 +1186,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
         call hchksum(mi_sum, "mi_sum before SIS_C_dynamics", G%HI)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(IST%part_size(:,:,1), "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
-        call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1)
+        call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
         call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
                       halos=1, scale=US%L_T_to_m_s*US%s_to_T)
 !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
@@ -1197,8 +1195,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
       call mpp_clock_begin(iceClocka)
       call slab_ice_dynamics(IST%u_ice_C, IST%v_ice_C, OSS%u_ocn_C, OSS%v_ocn_C, &
                              WindStr_x_Cu, WindStr_y_Cv, str_x_ice_ocn_Cu, str_y_ice_ocn_Cv)
-      IST%u_ice_C(:,:) = US%m_s_to_L_T*IST%u_ice_C(:,:)
-      IST%v_ice_C(:,:) = US%m_s_to_L_T*IST%v_ice_C(:,:)
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, scale=US%L_T_to_m_s)

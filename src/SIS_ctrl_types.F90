@@ -324,11 +324,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
   if (Cgrid_dyn) then
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
-               'surface current - x component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - x component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
     OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
-               'surface current - y component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - y component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
   else
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
                'surface current - x component', 'm/s', missing_value=missing, &

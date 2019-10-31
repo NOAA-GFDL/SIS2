@@ -229,7 +229,7 @@ subroutine update_ice_slow_thermo(Ice)
 
     call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
     call update_icebergs(sIST, Ice%sCS%OSS, Ice%sCS%IOF, FIA, Ice%icebergs, &
-                         dt_slow, sG, sIG, Ice%sCS%dyn_trans_CSp)
+                         dt_slow, sG, US, sIG, Ice%sCS%dyn_trans_CSp)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
     if (Ice%sCS%debug) then
@@ -808,7 +808,7 @@ subroutine unpack_ocean_ice_boundary(Ocean_boundary, Ice)
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary.")
 
-  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, &
+  call unpack_ocn_ice_bdry(Ocean_boundary, Ice%sCS%OSS, Ice%sCS%IST%ITV, Ice%sCS%G, Ice%sCS%US, &
                            Ice%sCS%specified_ice, Ice%ocean_fields)
 
   call translate_OSS_to_sOSS(Ice%sCS%OSS, Ice%sCS%IST, Ice%sCS%sOSS, Ice%sCS%G, Ice%sCS%US)
@@ -819,13 +819,14 @@ end subroutine unpack_ocean_ice_boundary
 !> This subroutine converts the information in a publicly visible
 !! ocean_ice_boundary_type into an internally visible ocean_sfc_state_type
 !! variable.
-subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
+subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB !< A type containing ocean surface fields that
                                                       !! aare used to drive the sea ice
   type(ocean_sfc_state_type),    intent(inout) :: OSS !< A structure containing the arrays that describe
                                                       !! the ocean's surface state for the ice model.
   type(ice_thermo_type),         intent(in)    :: ITV !< The ice themodynamics parameter structure.
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   logical,                       intent(in)    :: specified_ice !< If true, use specified ice properties.
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  !< A structure of ocean fields, often
                                                                 !! related to passive tracers.
@@ -873,10 +874,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
 
     if (Cgrid_ocn) then
       do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
+        OSS%u_ocn_C(I,j) = US%m_s_to_L_T*0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
+        OSS%v_ocn_C(i,J) = US%m_s_to_L_T*0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
       enddo ; enddo
     else
       do J=jsc-1,jec ; do I=isc-1,iec
@@ -896,10 +897,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
 
       do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
+        OSS%u_ocn_C(I,j) = US%m_s_to_L_T*0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
+        OSS%v_ocn_C(i,J) = US%m_s_to_L_T*0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
       enddo ; enddo
     else
       do J=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
@@ -913,10 +914,10 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, specified_ice, ocean_fields)
   elseif (OIB%stagger == CGRID_NE) then
     if (Cgrid_ocn) then
       do j=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-        OSS%u_ocn_C(I,j) = OIB%u(i2,j2)
+        OSS%u_ocn_C(I,j) = US%m_s_to_L_T*OIB%u(i2,j2)
       enddo ; enddo
       do J=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-        OSS%v_ocn_C(i,J) = OIB%v(i2,j2)
+        OSS%v_ocn_C(i,J) = US%m_s_to_L_T*OIB%v(i2,j2)
       enddo ; enddo
       if (G%symmetric) &
         call fill_symmetric_edges(OSS%u_ocn_C, OSS%v_ocn_C, G%Domain, stagger=CGRID_NE)
@@ -1122,7 +1123,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
 !   if (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C)) &
 !     call uvchksum(OSS%u_ocn_C, "OSS%u_ocn_C", &
-!                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1)
+!                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1, scale=US%L_T_to_m_s)
 !   if (allocated(OSS%u_ocn_B)) &
 !     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1)
 !   if (allocated(OSS%v_ocn_B)) &
