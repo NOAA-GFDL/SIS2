@@ -554,10 +554,10 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: h_tot_in !< Initial total ice and snow mass per unit
                                                        !! cell area [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
-                                                       !! [H m2 s-1 ~> kg s-1].
-  real,                           intent(in)    :: dt  !< Time increment [s]
+                                                       !! [H L2 T-1 ~> kg s-1].
+  real,                           intent(in)    :: dt  !< Time increment [T ~> s]
   type(unit_scale_type),          intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS),        pointer       :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_continuity_init.
@@ -566,28 +566,28 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh1 !< Zonal mass flux of medium 1 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh1 !< Meridional mass flux of medium 1 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(inout) :: h2  !< Updated mass of medium 2 (often snow) by
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh2 !< Zonal mass flux of medium 2 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh2 !< Meridional mass flux of medium 2 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(inout) :: h3  !< Updated mass of medium 3 (pond water?) by
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh3 !< Zonal mass flux of medium 3 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! Total thicknesses [H ~> kg m-2].
@@ -622,7 +622,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h1(i,j,k) = h1(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * &
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh1(I,j,k) - uh1(I-1,j,k)) + (vh1(i,J,k) - vh1(i,J-1,k))))
       enddo ; enddo ; enddo
     endif
@@ -631,7 +631,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h2(i,j,k) = h2(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * &
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh2(I,j,k) - uh2(I-1,j,k)) + (vh2(i,J,k) - vh2(i,J-1,k))))
       enddo ; enddo ; enddo
     endif
@@ -640,7 +640,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h3(i,j,k) = h3(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * &
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * &
              ((uh3(I,j,k) - uh3(I-1,j,k)) + (vh3(i,J,k) - vh3(i,J-1,k))))
       enddo ; enddo ; enddo
     endif
@@ -652,27 +652,27 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h1(i,j,k) = h1(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
     if (present(h2)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h2(i,j,k) = h2(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
     if (present(h3)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h3(i,j,k) = h3(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h_tot(i,j) = h_tot_in(i,j) - dt* US%m_to_L**2*G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
+      h_tot(i,j) = h_tot_in(i,j) - dt* G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
       if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of proportionate_continuity().')
       I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
@@ -684,27 +684,27 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h1(i,j,k) = h1(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
     if (present(h2)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h2(i,j,k) = h2(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
     if (present(h3)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h3(i,j,k) = h3(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h_tot(i,j) = h_tot(i,j) - dt* US%m_to_L**2*G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
+      h_tot(i,j) = h_tot(i,j) - dt* G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
       if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of proportionate_continuity().')
       ! I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
@@ -718,27 +718,27 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call merid_proportionate_fluxes(vh_tot, I_htot, h1, vh1, G, IG, LB)
      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h1(i,j,k) = h1(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (vh1(i,J,k) - vh1(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
     if (present(h2)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h2, vh2, G, IG, LB)
      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h2(i,j,k) = h2(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (vh2(i,J,k) - vh2(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
     if (present(h3)) then
       call merid_proportionate_fluxes(vh_tot, I_htot, h3, vh3, G, IG, LB)
      !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
-        h3(i,j,k) = h3(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h_tot(i,j) = h_tot(i,j) - dt* US%m_to_L**2*G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
+      h_tot(i,j) = h_tot(i,j) - dt* G%IareaT(i,j) * (vh_tot(i,J) - vh_tot(i,J-1))
       if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of proportionate_continuity().')
       I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
@@ -751,27 +751,27 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       call zonal_proportionate_fluxes(uh_tot, I_htot, h1, uh1, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h1(i,j,k) = h1(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
+        h1(i,j,k) = h1(i,j,k) - G%IareaT(i,j) * (dt * (uh1(I,j,k) - uh1(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
     if (present(h2)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h2, uh2, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h2(i,j,k) = h2(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
+        h2(i,j,k) = h2(i,j,k) - G%IareaT(i,j) * (dt * (uh2(I,j,k) - uh2(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
     if (present(h3)) then
       call zonal_proportionate_fluxes(uh_tot, I_htot, h3, uh3, G, IG, LB)
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
-        h3(i,j,k) = h3(i,j,k) - US%m_to_L**2*G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+        h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
-      h_tot(i,j) = h_tot_in(i,j) - dt* US%m_to_L**2*G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
+      h_tot(i,j) = h_tot_in(i,j) - dt* G%IareaT(i,j) * (uh_tot(I,j) - uh_tot(I-1,j))
       if (h_tot(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of proportionate_continuity().')
       ! I_htot(i,j) = 0.0 ; if (h_tot(i,j) > 0.0) I_htot(i,j) = 1.0 / h_tot(i,j)
@@ -786,14 +786,14 @@ subroutine zonal_proportionate_fluxes(uh_tot, I_htot, h, uh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
                                                 !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(out)   :: uh  !< Category mass flux through zonal faces = u*h*dy.
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables
@@ -814,14 +814,14 @@ subroutine merid_proportionate_fluxes(vh_tot, I_htot, h, vh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
                                                 !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                            intent(out)   :: vh  !< Category mass flux through meridional faces = v*h*dx
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables

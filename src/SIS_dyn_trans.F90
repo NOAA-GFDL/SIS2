@@ -175,9 +175,9 @@ type, public :: dyn_state_2d ; private
                           !! and pond water summed across thickness categories in a cell, after each
                           !! transportation substep, with a 0 starting 3rd index [H ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: uh_step !< The total zonal mass fluxes during each
-                          !! transportation substep [H m2 s-1 ~> kg s-1].
+                          !! transportation substep [H L2 T-1 ~> kg s-1].
   real, allocatable, dimension(:,:,:) :: vh_step !< The total meridional mass fluxes during each
-                          !! transportation substep [H m2 s-1 ~> kg s-1].
+                          !! transportation substep [H L2 T-1 ~> kg s-1].
 
 end type dyn_state_2d
 
@@ -580,7 +580,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
       call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
 
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, US, IG, CS%SIS_transport_CSp, &
-                             uc=US%L_T_to_m_s*IST%u_ice_C, vc=US%L_T_to_m_s*IST%v_ice_C)
+                             uc=IST%u_ice_C, vc=IST%v_ice_C)
 
       if (DS2d%nts==0) then
         if (CS%do_ridging) then
@@ -703,7 +703,7 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   real,                          intent(in)    :: dt_adv_cycle !< The time since the last IST transport [s].
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
-  type(unit_scale_type),         intent(in)   :: US    !< A structure with unit conversion factors
+  type(unit_scale_type),         intent(in)    :: US    !< A structure with unit conversion factors
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),            pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
@@ -1083,14 +1083,6 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
         call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
                                DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
                                DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
-      endif
-      if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
-        do j=jsc,jec ; do I=isc-1,iec
-          DS2d%uh_step(I,j,n) = US%L_to_m**2*US%s_to_T*DS2d%uh_step(I,j,n)
-        enddo ; enddo
-        do J=jsc-1,jec ; do i=isc,iec
-          DS2d%vh_step(i,J,n) = US%L_to_m**2*US%s_to_T*DS2d%vh_step(i,J,n)
-        enddo ; enddo
       endif
     enddo
     DS2d%nts = DS2d%nts + CS%adv_substeps

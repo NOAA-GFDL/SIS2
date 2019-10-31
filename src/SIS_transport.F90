@@ -118,15 +118,15 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
                                                           !! to use within this time step.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [m s-1].
-  real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), optional, intent(in)    :: uc  !< The zonal ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), optional, intent(in)    :: vc  !< The meridional ice velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G),0:max(nsteps,1)), optional, intent(in) :: &
     mca_tot    !< The total mass per unit total area of snow and ice summed across thickness
                !! categories in a cell, after each substep [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),max(nsteps,1)), optional, intent(in) :: &
-    uh_tot     !< Total zonal fluxes during each substep [H m2 s-1 ~> kg s-1].
+    uh_tot     !< Total zonal fluxes during each substep [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),max(nsteps,1)), optional, intent(in) :: &
-    vh_tot     !< Total meridional fluxes during each substep [H m2 s-1 ~> kg s-1].
+    vh_tot     !< Total meridional fluxes during each substep [H L2 T-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
@@ -142,7 +142,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
     mca0_snow, & ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
     mca0_pond    ! The initial mass of melt pond water per unit ocean area
                  ! in a cell [H ~> kg m-2].
-  real :: dt_adv
+  real :: dt_adv ! An advective timestep [s]
   logical :: merged_cont
   character(len=200) :: mesg
   integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
@@ -181,31 +181,30 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
 
     if (merged_cont) then
       call proportionate_continuity(mca_tot(:,:,n-1), uh_tot(:,:,n), vh_tot(:,:,n), &
-                                    dt_adv, G, US, IG, CS%continuity_CSp, &
+                                    US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
-      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
+      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
                       US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
+      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
                       US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(US%m_s_to_L_T*uc, US%m_s_to_L_T*vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, &
+      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, &
                       US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+    endif
 
-      if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
-        do k=1,nCat ; do j=jsc,jec ; do I=isc-1,iec
-          uh_ice(I,j,k) = US%L_to_m**2*US%s_to_T*uh_ice(I,j,k)
-          uh_snow(I,j,k) = US%L_to_m**2*US%s_to_T*uh_snow(I,j,k)
-          uh_pond(I,j,k) = US%L_to_m**2*US%s_to_T*uh_pond(I,j,k)
-        enddo ; enddo ; enddo
-        do k=1,nCat ; do J=jsc-1,jec ; do i=isc,iec
-          vh_ice(i,J,k) = US%L_to_m**2*US%s_to_T*vh_ice(i,J,k)
-          vh_snow(i,J,k) = US%L_to_m**2*US%s_to_T*vh_snow(i,J,k)
-          vh_pond(i,J,k) = US%L_to_m**2*US%s_to_T*vh_pond(i,J,k)
-        enddo ; enddo ; enddo
-      endif
-
+    if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
+      do k=1,nCat ; do j=jsc,jec ; do I=isc-1,iec
+        uh_ice(I,j,k) = US%L_to_m**2*US%s_to_T*uh_ice(I,j,k)
+        uh_snow(I,j,k) = US%L_to_m**2*US%s_to_T*uh_snow(I,j,k)
+        uh_pond(I,j,k) = US%L_to_m**2*US%s_to_T*uh_pond(I,j,k)
+      enddo ; enddo ; enddo
+      do k=1,nCat ; do J=jsc-1,jec ; do i=isc,iec
+        vh_ice(i,J,k) = US%L_to_m**2*US%s_to_T*vh_ice(i,J,k)
+        vh_snow(i,J,k) = US%L_to_m**2*US%s_to_T*vh_snow(i,J,k)
+        vh_pond(i,J,k) = US%L_to_m**2*US%s_to_T*vh_pond(i,J,k)
+      enddo ; enddo ; enddo
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%SIS_thick_adv_CSp)
