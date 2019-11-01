@@ -2237,10 +2237,10 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
       call SIS_B_dyn_init(CS%Time, G, param_file, CS%diag, CS%SIS_B_dyn_CSp)
     endif
     if (CS%merged_cont) then
-      call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
+      call SIS_transport_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_transport_CSp, &
                               continuity_CSp=CS%continuity_CSp, cover_trans_CSp=CS%cover_trans_CSp)
     else
-      call SIS_transport_init(CS%Time, G, param_file, CS%diag, CS%SIS_transport_CSp, &
+      call SIS_transport_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_transport_CSp, &
                               continuity_CSp=CS%continuity_CSp)
     endif
 

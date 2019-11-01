@@ -88,15 +88,15 @@ type, public :: cell_average_state_type ; private
                                                 !! still are given plausible values of mH_ice.
 
   ! The following fields are used for diagnostics.
-  real :: dt_sum = 0.0 !< The accumulated time since the fields were populated from an ice state type.
+  real :: dt_sum = 0.0 !< The accumulated time since the fields were populated from an ice state type [T ~> s].
   real, allocatable, dimension(:,:) :: mass0    !< The total mass of ice, snow and melt pond water
                                                 !! when the fields were populated [H ~> kg m-2].
   real, allocatable, dimension(:,:) :: uh_sum   !< The accumulated zonal mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
-                                                !! since the fields were populated [H m2 ~> kg].
+                                                !! since the fields were populated [H L2 ~> kg].
   real, allocatable, dimension(:,:) :: vh_sum   !< The accumulated meridional mass fluxes of ice, snow
                                                 !! and melt pond water, summed acrosss categories,
-                                                !! since the fields were populated [H m2 ~> kg].
+                                                !! since the fields were populated [H L2 ~> kg].
   type(EFP_type) :: tot_ice                     !< The globally integrated mass of sea ice [kg].
   type(EFP_type) :: tot_snow                    !< The globally integrated mass of snow [kg].
   type(EFP_type) :: enth_ice                    !< The globally integrated sea ice enthalpy [J].
@@ -130,19 +130,19 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
-    uh_ice, &  ! Zonal fluxes of ice [H m2 s-1 ~> kg s-1].
-    uh_snow, & ! Zonal fluxes of snow [H m2 s-1 ~> kg s-1].
-    uh_pond    ! Zonal fluxes of melt pond water [H m2 s-1 ~> kg s-1].
+    uh_ice, &  ! Zonal fluxes of ice [H L2 T-1 ~> kg s-1].
+    uh_snow, & ! Zonal fluxes of snow [H L2 T-1 ~> kg s-1].
+    uh_pond    ! Zonal fluxes of melt pond water [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
-    vh_ice, &  ! Meridional fluxes of ice [H m2 s-1 ~> kg s-1].
-    vh_snow, & ! Meridional fluxes of snow [H m2 s-1 ~> kg s-1].
-    vh_pond    ! Meridional fluxes of melt pond water [H m2 s-1 ~> kg s-1].
+    vh_ice, &  ! Meridional fluxes of ice [H L2 T-1 ~> kg s-1].
+    vh_snow, & ! Meridional fluxes of snow [H L2 T-1 ~> kg s-1].
+    vh_pond    ! Meridional fluxes of melt pond water [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
     mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [H ~> kg m-2].
     mca0_snow, & ! The initial mass of snow per unit ocean area in a cell [H ~> kg m-2].
     mca0_pond    ! The initial mass of melt pond water per unit ocean area
                  ! in a cell [H ~> kg m-2].
-  real :: dt_adv ! An advective timestep [s]
+  real :: dt_adv ! An advective timestep [T ~> s]
   logical :: merged_cont
   character(len=200) :: mesg
   integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
@@ -165,7 +165,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
 
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
-  if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
+  if (nsteps > 0) dt_adv = US%s_to_T*dt_slow / real(nsteps)
   do n = 1, nsteps
     call update_SIS_tracer_halos(TrReg, G, complete=.false.)
     call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
@@ -181,37 +181,25 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
 
     if (merged_cont) then
       call proportionate_continuity(mca_tot(:,:,n-1), uh_tot(:,:,n), vh_tot(:,:,n), &
-                                    US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp, &
+                                    dt_adv, G, US, IG, CS%continuity_CSp, &
                                     h1=CAS%m_ice,  uh1=uh_ice,  vh1=vh_ice, &
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
       call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
-                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+                      dt_adv, G, US, IG, CS%continuity_CSp)
       call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
-                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+                      dt_adv, G, US, IG, CS%continuity_CSp)
       call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, &
-                      US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+                      dt_adv, G, US, IG, CS%continuity_CSp)
     endif
 
-    if (US%L_to_m**2*US%s_to_T /= 1.0 ) then
-      do k=1,nCat ; do j=jsc,jec ; do I=isc-1,iec
-        uh_ice(I,j,k) = US%L_to_m**2*US%s_to_T*uh_ice(I,j,k)
-        uh_snow(I,j,k) = US%L_to_m**2*US%s_to_T*uh_snow(I,j,k)
-        uh_pond(I,j,k) = US%L_to_m**2*US%s_to_T*uh_pond(I,j,k)
-      enddo ; enddo ; enddo
-      do k=1,nCat ; do J=jsc-1,jec ; do i=isc,iec
-        vh_ice(i,J,k) = US%L_to_m**2*US%s_to_T*vh_ice(i,J,k)
-        vh_snow(i,J,k) = US%L_to_m**2*US%s_to_T*vh_snow(i,J,k)
-        vh_pond(i,J,k) = US%L_to_m**2*US%s_to_T*vh_pond(i,J,k)
-      enddo ; enddo ; enddo
-    endif
-
-    call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, CS%SIS_thick_adv_CSp)
-    call advect_SIS_tracers(mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, G, US, IG, &
-                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
-    call advect_SIS_tracers(mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, G, US, IG, &
-                            CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
+    call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
+                            dt_adv, G, US, IG, CS%SIS_thick_adv_CSp)
+    call advect_SIS_tracers(mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
+                            dt_adv, G, US, IG, CS%SIS_tr_adv_CSp, TrReg, snow_tr=.false.)
+    call advect_SIS_tracers(mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
+                            dt_adv, G, US, IG, CS%SIS_tr_adv_CSp, TrReg, snow_tr=.true.)
 
     ! Accumulated diagnostics
     CAS%dt_sum = CAS%dt_sum + dt_adv
@@ -371,7 +359,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
   ! Calculate and send transport-related diagnostics.
   Idt = 0.0 ; if (CAS%dt_sum > 0.0) Idt = IG%H_to_kg_m2 / CAS%dt_sum
   if (CS%id_xprt>0) then
-    yr_dt = (8.64e4 * 365.0) * Idt
+    yr_dt = (8.64e4 * 365.0) * US%s_to_T * Idt
     call get_cell_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * yr_dt
@@ -392,7 +380,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
 !    if (CS%id_rdgo>0) call post_SIS_data(CS%id_rdgo, rdg_open, diag)
 !    if (CS%id_rdgv>0) then
 !      do j=jsc,jec ; do i=isc,iec
-!        tmp2d(i,j) = rdg_vosh(i,j) * US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
+!        tmp2d(i,j) = rdg_vosh(i,j) * G%areaT(i,j) * G%mask2dT(i,j)
 !      enddo ; enddo
 !      call post_SIS_data(CS%id_rdgv, tmp2d, diag)
 !    endif
@@ -510,8 +498,8 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
         ! should probably be dumped into the ocean.  Rolling makes the ice
         ! thinner so that it melts faster, but it should never be made thinner
         ! than IG%mH_cat_bound(1).
-        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * &
-             sqrt((CAS%m_ice(i,j,k)*US%L_to_m**2*G%areaT(i,j)) / &
+        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * US%L_to_m * &
+             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
                   (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
       endif
 
@@ -1004,17 +992,17 @@ subroutine get_total_mass(IST, G, US, IG, tot_ice, tot_snow, tot_pond, scale)
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  H_to_units = IG%H_to_kg_m2 ; if (present(scale)) H_to_units = scale
+  H_to_units = IG%H_to_kg_m2*US%L_to_m**2 ; if (present(scale)) H_to_units = scale*US%L_to_m**2
 
   sum_ice(:,:) = 0.0
   sum_snow(:,:) = 0.0
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_ice(i,j) = sum_ice(i,j) + US%L_to_m**2*G%areaT(i,j) * &
+    sum_ice(i,j) = sum_ice(i,j) + G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_ice(i,j,k)))
-    sum_snow(i,j) = sum_snow(i,j) + US%L_to_m**2*G%areaT(i,j) * &
+    sum_snow(i,j) = sum_snow(i,j) + G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_snow(i,j,k)))
     if (present(tot_pond)) &
-      sum_pond(i,j) = sum_pond(i,j) + US%L_to_m**2*G%areaT(i,j) * &
+      sum_pond(i,j) = sum_pond(i,j) + G%areaT(i,j) * &
                        (IST%part_size(i,j,k) * (H_to_units*IST%mH_pond(i,j,k)))
   enddo ; enddo ; enddo
 
@@ -1093,7 +1081,7 @@ subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
   integer :: i, j, k, m, isc, iec, jsc, jec, nLay
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  H_to_units = IG%H_to_kg_m2 ; if (present(scale)) H_to_units = scale
+  H_to_units = IG%H_to_kg_m2*US%L_to_m**2 ; if (present(scale)) H_to_units = scale*US%L_to_m**2
 
   call get_SIS_tracer_pointer("enth_ice", IST%TrReg, heat_ice, nLay)
   call get_SIS_tracer_pointer("enth_snow", IST%TrReg, heat_snow, nLay)
@@ -1101,11 +1089,11 @@ subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
 
   I_Nk = 1.0 / IG%NkIce
   do m=1,IG%NkIce ; do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (US%L_to_m**2*G%areaT(i,j) * &
+    sum_enth_ice(i,j) = sum_enth_ice(i,j) + (G%areaT(i,j) * &
               (((H_to_units*IST%mH_ice(i,j,k))*IST%part_size(i,j,k))*I_Nk)) * heat_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
   do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
-    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (US%L_to_m**2*G%areaT(i,j) * &
+    sum_enth_snow(i,j) = sum_enth_snow(i,j) + (G%areaT(i,j) * &
               ((H_to_units*IST%mH_snow(i,j,k))*IST%part_size(i,j,k))) * heat_snow(i,j,k,1)
   enddo ; enddo ; enddo
   !### What about sum_enth_pond?
@@ -1117,10 +1105,11 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
+subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
+  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_transport_CS),      pointer       :: CS   !< The control structure for this module
@@ -1212,11 +1201,11 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cov
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
-               'x-direction ice transport', 'kg/s', missing_value=missing, &
-               interp_method='none')
+               'x-direction ice transport', 'kg/s', conversion=US%L_to_m**2*US%s_to_T, &
+               missing_value=missing, interp_method='none')
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
-               'y-direction ice transport', 'kg/s', missing_value=missing, &
-               interp_method='none')
+               'y-direction ice transport', 'kg/s', conversion=US%L_to_m**2*US%s_to_T, &
+               missing_value=missing, interp_method='none')
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', missing_value=missing)
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
@@ -1225,7 +1214,8 @@ subroutine SIS_transport_init(Time, G, param_file, diag, CS, continuity_CSp, cov
 !  CS%id_rdgo    = register_diag_field('ice_model','RDG_OPEN' ,diag%axesT1, Time, &
 !               'rate of opening due to ridging', '1/s', missing_value=missing)
 !  CS%id_rdgv    = register_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
-!               'volume shifted from level to ridged ice', 'm^3/s', missing_value=missing)
+!               'volume shifted from level to ridged ice', 'm^3/s', conversion=US%L_to_m**2, &
+!                missing_value=missing)
 
 end subroutine SIS_transport_init
 
