@@ -490,8 +490,8 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     enddo ; enddo ; endif
   elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     do J=js-1,je ; do I=is-1,ie
-      CFL_u = abs(US%m_s_to_L_T*IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
-      CFL_v = abs(US%m_s_to_L_T*IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
+      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
+      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
       max_CFL = max(max_CFL, CFL_u, CFL_v)
     enddo ; enddo
   endif

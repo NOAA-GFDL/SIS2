@@ -831,7 +831,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
   type(coupler_3d_bc_type),      intent(inout) :: ocean_fields  !< A structure of ocean fields, often
                                                                 !! related to passive tracers.
 
-  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym
+  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym ! Nonsymmetric velocities [L T-1 ~> m s-1]
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: Cgrid_ocn
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, index
@@ -868,16 +868,16 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
   if (OIB%stagger == AGRID) then
     u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
+      u_nonsym(i,j) = US%m_s_to_L_T*OIB%u(i2,j2) ; v_nonsym(i,j) = US%m_s_to_L_T*OIB%v(i2,j2)
     enddo ; enddo
     call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=AGRID)
 
     if (Cgrid_ocn) then
       do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = US%m_s_to_L_T*0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(i,j) + u_nonsym(i+1,j))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = US%m_s_to_L_T*0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(i,j) + v_nonsym(i,j+1))
       enddo ; enddo
     else
       do J=jsc-1,jec ; do I=isc-1,iec
@@ -892,20 +892,20 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
     if (Cgrid_ocn) then
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-        u_nonsym(i,j) = OIB%u(i2,j2) ; v_nonsym(i,j) = OIB%v(i2,j2)
+        u_nonsym(i,j) = US%m_s_to_L_T*OIB%u(i2,j2) ; v_nonsym(i,j) = US%m_s_to_L_T*OIB%v(i2,j2)
       enddo ; enddo
       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=BGRID_NE)
 
       do j=jsc,jec ; do I=isc-1,iec
-        OSS%u_ocn_C(I,j) = US%m_s_to_L_T*0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
+        OSS%u_ocn_C(I,j) = 0.5*(u_nonsym(I,J) + u_nonsym(I,J-1))
       enddo ; enddo
       do J=jsc-1,jec ; do i=isc,iec
-        OSS%v_ocn_C(i,J) = US%m_s_to_L_T*0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
+        OSS%v_ocn_C(i,J) = 0.5*(v_nonsym(I,J) + v_nonsym(I-1,J))
       enddo ; enddo
     else
       do J=jsc,jec ; do I=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-        OSS%u_ocn_B(I,J) = OIB%u(i2,j2)
-        OSS%v_ocn_B(I,J) = OIB%v(i2,j2)
+        OSS%u_ocn_B(I,J) = US%m_s_to_L_T*OIB%u(i2,j2)
+        OSS%v_ocn_B(I,J) = US%m_s_to_L_T*OIB%v(i2,j2)
       enddo ; enddo
       if (G%symmetric) &
         call fill_symmetric_edges(OSS%u_ocn_B, OSS%v_ocn_B, G%Domain, stagger=BGRID_NE)
@@ -924,7 +924,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
     else
       u_nonsym(:,:) = 0.0 ; v_nonsym(:,:) = 0.0
       do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-        u_nonsym(I,j) = OIB%u(i2,j2) ; v_nonsym(i,J) = OIB%v(i2,j2)
+        u_nonsym(I,j) = US%m_s_to_L_T*OIB%u(i2,j2) ; v_nonsym(i,J) = US%m_s_to_L_T*OIB%v(i2,j2)
       enddo ; enddo
       call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, stagger=CGRID_NE)
       do J=jsc-1,jec ; do I=isc-1,iec
@@ -1125,7 +1125,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
 !     call uvchksum(OSS%u_ocn_C, "OSS%u_ocn_C", &
 !                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1, scale=US%L_T_to_m_s)
 !   if (allocated(OSS%u_ocn_B)) &
-!     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1)
+!     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1, scale=US%L_T_to_m_s)
 !   if (allocated(OSS%v_ocn_B)) &
 !     call Bchksum(OSS%v_ocn_B, "OSS%v_ocn_B", G%HI, haloshift=1)
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")

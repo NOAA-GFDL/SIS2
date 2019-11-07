@@ -62,10 +62,10 @@ type ice_state_type
                 !!  The sum of part_size is 1.
   ! These velocities are only used on the slow ice processors
   real, allocatable, dimension(:,:) :: u_ice_B  !< The pseudo-zonal ice velocity along the
-                !! along the grid directions on a B-grid [m s-1].
+                !! along the grid directions on a B-grid [L T-1 ~> m s-1].
                 !! All thickness categories are assumed to have the same velocities.
   real, allocatable, dimension(:,:) :: v_ice_B  !< The pseudo-meridional ice velocity along the
-                !! along the grid directions on a B-grid [m s-1].
+                !! along the grid directions on a B-grid [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: u_ice_C  !< The pseudo-zonal ice velocity along the
                 !! along the grid directions on a C-grid [L T-1 ~> m s-1].
                 !! All thickness categories are assumed to have the same velocities.
@@ -112,8 +112,8 @@ type ocean_sfc_state_type
     s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
-    u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [m s-1].
-    v_ocn_B, &  !< The ocean's meridional velocity on B-grid points [m s-1].
+    u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [L T-1 ~> m s-1].
+    v_ocn_B, &  !< The ocean's meridional velocity on B-grid points [L T-1 ~> m s-1].
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [L T-1 ~> m s-1].
     v_ocn_C     !< The ocean's meridional velocity on C-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
@@ -726,6 +726,14 @@ subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
       IST%v_ice_C(i,J) = vel_rescale * IST%v_ice_C(i,J)
     enddo ; enddo
   endif
+  if (.not.IST%Cgrid_dyn .and. (US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
+      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) then
+    vel_rescale = (US%m_to_L*US%s_to_T_restart) / (US%m_to_L_restart*US%s_to_T)
+    do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+      IST%u_ice_B(I,J) = vel_rescale * IST%u_ice_B(I,J)
+      IST%v_ice_B(I,J) = vel_rescale * IST%v_ice_B(I,J)
+    enddo ; enddo
+  endif
 
 end subroutine ice_state_read_alt_restarts
 
@@ -1200,18 +1208,18 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, US)
         sOSS%u_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
         sOSS%v_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
       else
-        sOSS%u_ocn_A(i,j) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
+        sOSS%u_ocn_A(i,j) = US%L_T_to_m_s*0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
                                   (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )
-        sOSS%v_ocn_A(i,j) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
+        sOSS%v_ocn_A(i,j) = US%L_T_to_m_s*0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
                                   (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
       endif
       if (IST%Cgrid_dyn) then
         sOSS%u_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
         sOSS%v_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
       else
-        sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
+        sOSS%u_ice_A(i,j) = US%L_T_to_m_s*0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
                                   (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
-        sOSS%v_ice_A(i,j) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
+        sOSS%v_ice_A(i,j) = US%L_T_to_m_s*0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
                                   (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
       endif
     else ! This is a land point.
@@ -2312,7 +2320,7 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
   call hchksum(IST%mH_pond*IG%H_to_kg_m2, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
-    call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs)
+    call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, scale=US%L_T_to_m_s)
     call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
   endif
   if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
