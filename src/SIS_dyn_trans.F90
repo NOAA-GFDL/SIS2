@@ -229,8 +229,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     ! This code reproduces a long-standing bug, in that the old ice-ocean
     ! stresses are being passed in place of the wind stresses on the icebergs.
     do j=jsc,jec ; do i=isc,iec
-      windstr_x(i,j) = IOF%flux_u_ocn(i,j)
-      windstr_y(i,j) = IOF%flux_v_ocn(i,j)
+      windstr_x(i,j) = US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
+      windstr_y(i,j) = US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
     enddo ; enddo
     stress_stagger = IOF%flux_uv_stagger
   else
@@ -1475,18 +1475,18 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.25 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.25 * &
             ((windstr_x_water(I,J) + windstr_x_water(I-1,J-1)) + &
              (windstr_x_water(I-1,J) + windstr_x_water(I,J-1)))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.25 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.25 * &
             ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
              (windstr_y_water(I-1,J) + windstr_y_water(I,J-1)))
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + part_size(i,j,k) * 0.25 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
              (str_ice_oce_x(I-1,J) + str_ice_oce_x(I,J-1)))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.25 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J-1)) + &
              (str_ice_oce_y(I-1,J) + str_ice_oce_y(I,J-1)))
       endif ; enddo ; enddo
@@ -1498,14 +1498,14 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
         ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
-        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* windstr_x_water(I,J) * ps_vel
-        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* windstr_y_water(I,J) * ps_vel
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + windstr_x_water(I,J) * ps_vel
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + windstr_y_water(I,J) * ps_vel
       enddo
       do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* str_ice_oce_x(I,J) * ps_vel
-        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* str_ice_oce_y(I,J) * ps_vel
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + str_ice_oce_x(I,J) * ps_vel
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + str_ice_oce_y(I,J) * ps_vel
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
@@ -1514,12 +1514,12 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
       do I=isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
                 0.5 * (windstr_x_water(I,J) + windstr_x_water(I,J-1))
       enddo
       do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
         ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
             0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
       endif ; enddo ; enddo
     enddo
@@ -1528,12 +1528,12 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
       do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
                 0.5 * (windstr_y_water(I,J) + windstr_y_water(I-1,J))
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
         ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
                 0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
       endif ; enddo ; enddo
     enddo
@@ -1585,16 +1585,16 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_x_water(I,j) + windstr_x_water(I-1,j))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_y_water(i,J) + windstr_y_water(i,J-1))
       enddo
       !### SIMPLIFY THIS TO USE THAT sum(part_size(i,j,1:ncat)) = 1.0-part_size(i,j,0) ?
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
-        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j))
-        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_y(i,J) + str_ice_oce_y(i,J-1))
       endif ; enddo ; enddo
     enddo
@@ -1606,17 +1606,17 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
                            0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
                                  (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         !### Consider deleting the masks here?  They probably do not change answers.
-        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_x_water(I,j) + windstr_x_water(I,j+1))
-        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_y_water(i,J) + windstr_y_water(i+1,J))
       enddo
       do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
-        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I,j+1))
-        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * 0.5 * US%L_T_to_m_s*US%s_to_T* &
+        IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * 0.5 * &
                             (str_ice_oce_y(i,J) + str_ice_oce_y(i+1,J))
       endif ; enddo ; enddo
     enddo
@@ -1626,11 +1626,11 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
       do I=Isc-1,iec
         ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
                            0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * US%L_T_to_m_s*US%s_to_T*windstr_x_water(I,j)
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
       enddo
       do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
         ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * US%L_T_to_m_s*US%s_to_T*str_ice_oce_x(I,j)
+        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
       endif ; enddo ; enddo
     enddo
     !$OMP parallel do default(shared) private(ps_vel)
@@ -1638,11 +1638,11 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
       do i=isc,iec
         ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
                            0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * US%L_T_to_m_s*US%s_to_T*windstr_y_water(i,J)
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
       enddo
       do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
         ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * US%L_T_to_m_s*US%s_to_T*str_ice_oce_y(i,J)
+        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
       endif ; enddo ; enddo
     enddo
   else
@@ -1695,12 +1695,12 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
     do j=jsc,jec ; do i=isc,iec
       ps_ocn = G%mask2dT(i,j) * ice_free(i,j)
       ps_ice = G%mask2dT(i,j) * ice_cover(i,j)
-      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + 0.25 * US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + 0.25 * &
             (ps_ocn * ((windstr_x_water(I,J) + windstr_x_water(I-1,J-1)) + &
                        (windstr_x_water(I-1,J) + windstr_x_water(I,J-1))) + &
              ps_ice * ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
                        (str_ice_oce_x(I-1,J) + str_ice_oce_x(I,J-1))) )
-      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + 0.25 * US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + 0.25 * &
             (ps_ocn * ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
                        (windstr_y_water(I-1,J) + windstr_y_water(I,J-1))) + &
              ps_ice * ((str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J-1)) + &
@@ -1716,9 +1716,9 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
                          (ice_cover(i+1,j) + ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
                               (ps_ocn * windstr_x_water(I,J) + ps_ice * str_ice_oce_x(I,J))
-      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
                               (ps_ocn * windstr_y_water(I,J) + ps_ice * str_ice_oce_y(I,J))
     enddo ; enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
@@ -1729,7 +1729,7 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
         ps_ocn = 0.5*(ice_free(i+1,j) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i+1,j) + ice_cover(i,j))
       endif
-      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + 0.5 * US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + 0.5 * &
             (ps_ocn * (windstr_x_water(I,J) + windstr_x_water(I,J-1)) + &
              ps_ice * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1)) )
     enddo ; enddo
@@ -1740,7 +1740,7 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
         ps_ocn = 0.5*(ice_free(i,j+1) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i,j+1) + ice_cover(i,j))
       endif
-      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + 0.5 * US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + 0.5 * &
             (ps_ocn * (windstr_y_water(I,J) + windstr_y_water(I-1,J)) + &
              ps_ice * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J)) )
     enddo ; enddo
@@ -1792,10 +1792,10 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
     do j=jsc,jec ; do i=isc,iec
       ps_ocn = G%mask2dT(i,j) * ice_free(i,j)
       ps_ice = G%mask2dT(i,j) * ice_cover(i,j)
-      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + &
            (ps_ocn * 0.5 * (windstr_x_water(I,j) + windstr_x_water(I-1,j)) + &
             ps_ice * 0.5 * (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j)) )
-      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + &
            (ps_ocn * 0.5 * (windstr_y_water(i,J) + windstr_y_water(i,J-1)) + &
             ps_ice * 0.5 * (str_ice_oce_y(i,J) + str_ice_oce_y(i,J-1)) )
     enddo ; enddo
@@ -1809,10 +1809,10 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
                          (ice_cover(i+1,j) + ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
           (ps_ocn * 0.5 * (windstr_x_water(I,j) + windstr_x_water(I,j+1)) + &
            ps_ice * 0.5 * (str_ice_oce_x(I,j) + str_ice_oce_x(I,j+1)) )
-      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
           (ps_ocn * 0.5 * (windstr_y_water(i,J) + windstr_y_water(i+1,J)) + &
            ps_ice * 0.5 * (str_ice_oce_y(i,J) + str_ice_oce_y(i+1,J)) )
     enddo ; enddo
@@ -1824,7 +1824,7 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
         ps_ocn = 0.5*(ice_free(i+1,j) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i+1,j) + ice_cover(i,j))
       endif
-      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + &
           (ps_ocn * windstr_x_water(I,j) + ps_ice * str_ice_oce_x(I,j))
     enddo ; enddo
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
@@ -1834,7 +1834,7 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
         ps_ocn = 0.5*(ice_free(i,j+1) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i,j+1) + ice_cover(i,j))
       endif
-      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + US%L_T_to_m_s*US%s_to_T* &
+      IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + &
           (ps_ocn * windstr_y_water(i,J) + ps_ice * str_ice_oce_y(i,J))
     enddo ; enddo
   else

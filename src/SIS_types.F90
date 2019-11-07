@@ -357,11 +357,13 @@ type ice_ocean_flux_type
     flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [W m-2].
     lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
     fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
-    flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by flux_uv_stagger [Pa].
+    flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by
+                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
-    flux_v_ocn, &      !< The flux of y-momentum into the ocean at locations given by flux_uv_stagger [Pa].
+    flux_v_ocn, &      !< The flux of y-momentum into the ocean at locations given by
+                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
-    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [Pa].
+    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [kg m-2 L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
                        !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
     flux_salt, &       !< The flux of salt out of the ocean [kg m-2].
@@ -2205,10 +2207,11 @@ end subroutine dealloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in an ice_ocean_flux_type.
-subroutine IOF_chksum(mesg, IOF, G)
+subroutine IOF_chksum(mesg, IOF, G, US)
   character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_ocean_flux_type), intent(in) :: IOF   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
 
   call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI)
 
@@ -2219,12 +2222,12 @@ subroutine IOF_chksum(mesg, IOF, G)
   call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
   call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
-  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI)
-  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI)
+  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
+  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
   call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI)
   call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI)
   if (allocated(IOF%stress_mag)) &
-    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI)
+    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
 
   call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
   call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)

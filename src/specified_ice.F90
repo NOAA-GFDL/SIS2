@@ -83,7 +83,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
   CS%n_calls = CS%n_calls + 1
 
   IOF%stress_count = 0
-  call set_ocean_top_stress_FIA(FIA, IOF, G)
+  call set_ocean_top_stress_FIA(FIA, IOF, G, US)
 
   ! Set appropriate surface quantities in categories with no ice.
   if (allocated(IST%t_surf)) then
@@ -111,16 +111,17 @@ end subroutine specified_ice_dynamics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Calculate the stresses on the ocean integrated across all the thickness categories
 !! with the appropriate staggering, based on the information in a fast_ice_avg_type.
-subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
+subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
   type(fast_ice_avg_type),   intent(inout) :: FIA !< A type containing averages of fields
                                                   !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),     intent(in)    :: US  !< A structure with unit conversion factors
 
   real :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
   real :: wt_prev, wt_now ! Relative weights of the previous average and the current step [nondim].
-  real :: taux2, tauy2  ! squared wind stresses [Pa2]
+  real :: taux2, tauy2  ! squared wind stresses [kg2 m-4 L2 T-4 ~> Pa2]
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -139,9 +140,9 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
     do j=jsc,jec ; do i=isc,iec
       ps_ocn = G%mask2dT(i,j) * FIA%ice_free(i,j)
       ps_ice = G%mask2dT(i,j) * FIA%ice_cover(i,j)
-      IOF%flux_u_ocn(i,j) = wt_prev * IOF%flux_u_ocn(i,j) + wt_now * &
+      IOF%flux_u_ocn(i,j) = wt_prev * IOF%flux_u_ocn(i,j) + wt_now * US%m_s_to_L_T*US%T_to_s* &
            (ps_ocn * FIA%WindStr_ocn_x(i,j) + ps_ice * FIA%WindStr_x(i,j))
-      IOF%flux_v_ocn(i,j) = wt_prev * IOF%flux_v_ocn(i,j) + wt_now * &
+      IOF%flux_v_ocn(i,j) = wt_prev * IOF%flux_v_ocn(i,j) + wt_now * US%m_s_to_L_T*US%T_to_s* &
            (ps_ocn * FIA%WindStr_ocn_y(i,j) + ps_ice * FIA%WindStr_y(i,j))
       if (allocated(IOF%stress_mag)) &
         IOF%stress_mag(i,j) = wt_prev * IOF%stress_mag(i,j) + wt_now * &
@@ -157,12 +158,12 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ice = 0.25 * ((FIA%ice_cover(i+1,j+1) + FIA%ice_cover(i,j)) + &
                          (FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(I,J) = wt_prev * IOF%flux_u_ocn(I,J) + wt_now * &
+      IOF%flux_u_ocn(I,J) = wt_prev * IOF%flux_u_ocn(I,J) + wt_now * US%m_s_to_L_T*US%T_to_s* &
           (ps_ocn * 0.25 * ((FIA%WindStr_ocn_x(i,j) + FIA%WindStr_ocn_x(i+1,j+1)) + &
                             (FIA%WindStr_ocn_x(i,j+1) + FIA%WindStr_ocn_x(i+1,j))) + &
            ps_ice * 0.25 * ((FIA%WindStr_x(i,j) + FIA%WindStr_x(i+1,j+1)) + &
                             (FIA%WindStr_x(i,j+1) + FIA%WindStr_x(i+1,J))) )
-      IOF%flux_v_ocn(I,J) = wt_prev * IOF%flux_v_ocn(I,J) + wt_now * &
+      IOF%flux_v_ocn(I,J) = wt_prev * IOF%flux_v_ocn(I,J) + wt_now * US%m_s_to_L_T*US%T_to_s* &
           (ps_ocn * 0.25 * ((FIA%WindStr_ocn_y(i,j) + FIA%WindStr_ocn_y(i+1,j+1)) + &
                             (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i+1,j))) + &
            ps_ice * 0.25 * ((FIA%WindStr_y(i,j) + FIA%WindStr_y(i+1,j+1)) + &
@@ -189,7 +190,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ocn = 0.5*(FIA%ice_free(i+1,j) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j))
       endif
-      IOF%flux_u_ocn(I,j) = wt_prev * IOF%flux_u_ocn(I,j) + wt_now * &
+      IOF%flux_u_ocn(I,j) = wt_prev * IOF%flux_u_ocn(I,j) + wt_now * US%m_s_to_L_T*US%T_to_s* &
            (ps_ocn * 0.5 * (FIA%WindStr_ocn_x(i+1,j) + FIA%WindStr_ocn_x(i,j)) + &
             ps_ice * 0.5 * (FIA%WindStr_x(i+1,j) + FIA%WindStr_x(i,j)) )
     enddo ; enddo
@@ -200,7 +201,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ocn = 0.5*(FIA%ice_free(i,j+1) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i,j+1) + FIA%ice_cover(i,j))
       endif
-      IOF%flux_v_ocn(i,J) = wt_prev * IOF%flux_v_ocn(i,J) + wt_now * &
+      IOF%flux_v_ocn(i,J) = wt_prev * IOF%flux_v_ocn(i,J) + wt_now * US%m_s_to_L_T*US%T_to_s* &
           (ps_ocn * 0.5 * (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i,j)) + &
            ps_ice * 0.5 * (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i,j)) )
     enddo ; enddo

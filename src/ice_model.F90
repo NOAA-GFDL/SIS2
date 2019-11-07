@@ -195,7 +195,7 @@ subroutine update_ice_slow_thermo(Ice)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_slow_thermo", Ice, check_slow=.true.)
     call FIA_chksum("Start update_ice_slow_thermo", FIA, sG)
-    call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG)
+    call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG, US)
   endif
 
   ! Store some diagnostic fluxes...
@@ -222,8 +222,8 @@ subroutine update_ice_slow_thermo(Ice)
       !$OMP parallel do default(none) shared(Ice,sG,i_off,j_off) private(i2,j2)
       do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
-        Ice%sCS%IOF%flux_u_ocn(i,j) = Ice%flux_u(i2,j2)
-        Ice%sCS%IOF%flux_v_ocn(i,j) = Ice%flux_v(i2,j2)
+        Ice%sCS%IOF%flux_u_ocn(i,j) = US%m_s_to_L_T*US%T_to_s*Ice%flux_u(i2,j2)
+        Ice%sCS%IOF%flux_v_ocn(i,j) = US%m_s_to_L_T*US%T_to_s*Ice%flux_v(i2,j2)
       enddo ; enddo
     endif
 
@@ -239,14 +239,14 @@ subroutine update_ice_slow_thermo(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before slow_thermodynamics", Ice, check_slow=.true.)
-    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG)
+    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG, US)
   endif
 
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
                            Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG, US)
     call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, US, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
@@ -306,7 +306,7 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
-    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG)
+    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG, US)
   endif
 
   do_multi_trans = (present(start_cycle) .or. present(end_cycle) .or. present(cycle_length))
@@ -329,7 +329,7 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
   if (sIST%valid_IST) call ice_mass_from_IST(sIST, Ice%sCS%IOF, sG, sIG)
 
-  call set_ocean_top_dyn_fluxes(Ice, Ice%sCS%IOF, FIA, sG, Ice%sCS)
+  call set_ocean_top_dyn_fluxes(Ice, Ice%sCS%IOF, FIA, sG, US, Ice%sCS)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("End update_ice_dynamics_trans", Ice, check_slow=.true.)
@@ -554,7 +554,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G)
+    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G, sCS%US)
     call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
   endif
 
@@ -654,13 +654,14 @@ end subroutine ice_mass_from_IST
 !> set_ocean_top_dyn_fluxes translates ice-bottom stresses and massfrom the ice
 !!  model's ice-ocean flux type  and the fast-ice average type to the public
 !!  ice data type for use by the ocean model.
-subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, sCS)
+subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
   type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
                                                    !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
   real :: I_count
@@ -670,7 +671,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, sCS)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G)
+    call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G, US)
   endif
 
   ! Sum the concentration weighted mass.
@@ -697,8 +698,8 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, sCS)
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = IOF%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = IOF%flux_v_ocn(i,j)
+    Ice%flux_u(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
@@ -711,7 +712,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, sCS)
     i_off = LBOUND(Ice%stress_mag,1) - G%isc ; j_off = LBOUND(Ice%stress_mag,2) - G%jsc
     !$OMP parallel do default(shared) private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%stress_mag(i2,j2) = IOF%stress_mag(i,j)
+      Ice%stress_mag(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%stress_mag(i,j)
     enddo ; enddo
   endif
 
