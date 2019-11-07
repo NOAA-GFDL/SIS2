@@ -326,8 +326,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
-  real :: dt_slow_dyn  ! The slow dynamics timestep [s].
-  real :: dt_adv       ! The advective timestep [s].
+  real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
+  real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
   real :: wt_new, wt_prev ! Weights in an average.
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -360,8 +360,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
 
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_adv_cycle)) &
     ndyn_steps = max(CEILING(dt_adv_cycle/CS%dt_ice_dyn - 1e-6), 1)
-  dt_slow_dyn = dt_adv_cycle / real(ndyn_steps)
-  dt_adv = dt_slow_dyn / real(CS%adv_substeps)
+  dt_slow_dyn_sec = dt_adv_cycle / real(ndyn_steps)
+  dt_slow_dyn = US%s_to_T*dt_slow_dyn_sec
 
   do nac=1,nadv_cycle
     Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
@@ -412,7 +412,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
         ! Dynamics - update ice velocities.
         !
 
-        call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+        call enable_SIS_averaging(dt_slow_dyn_sec, Time_cycle_start + real_to_time(nds*dt_slow_dyn_sec), CS%diag)
 
         ! In the dynamics code, only the ice velocities are changed, and the ice-ocean
         ! stresses are calculated.  The gravity wave dynamics (i.e. the continuity
@@ -450,11 +450,11 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           if (CS%Warsaw_sum_order) then
             call SIS_C_dynamics(1.0-ice_free(:,:), misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                                 OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
           else
             call SIS_C_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_C, IST%v_ice_C, &
                                 OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                                str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
           endif
           call mpp_clock_end(iceClocka)
 
@@ -510,12 +510,12 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             call SIS_B_dynamics(1.0-ice_free(:,:), misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                                 OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                                 str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                                rdg_rate(isc:iec,jsc:jec), US%s_to_T*dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                                rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
           else
             call SIS_B_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                                 OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                                 str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                                rdg_rate(isc:iec,jsc:jec), US%s_to_T*dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                                rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
           endif
           call mpp_clock_end(iceClocka)
 
@@ -578,7 +578,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
       call mpp_clock_begin(iceClock8)
       ! The code timed by iceClock8 is the non-merged_cont equivalent to complete_IST_transport.
       if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, scale=US%L_T_to_m_s)
-      call enable_SIS_averaging(dt_slow_dyn, Time_cycle_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+      call enable_SIS_averaging(dt_slow_dyn_sec, Time_cycle_start + real_to_time(nds*dt_slow_dyn_sec), CS%diag)
 
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, US, IG, CS%SIS_transport_CSp, &
                              uc=IST%u_ice_C, vc=IST%v_ice_C)
@@ -717,7 +717,7 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
 
   call mpp_clock_begin(iceClock8)
   ! Do the transport of mass and tracers by category and vertical layer.
-  call ice_cat_transport(CS%CAS, IST%TrReg, dt_adv_cycle, DS2d%nts, G, US, IG, &
+  call ice_cat_transport(CS%CAS, IST%TrReg, US%s_to_T*dt_adv_cycle, DS2d%nts, G, US, IG, &
                          CS%SIS_transport_CSp, mca_tot=DS2d%mca_step(:,:,0:DS2d%nts), &
                          uh_tot=DS2d%uh_step(:,:,1:DS2d%nts), vh_tot=DS2d%vh_step(:,:,1:DS2d%nts))
   ! Convert the cell-averaged state back to the ice-state type, adjusting the
@@ -908,8 +908,9 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
 
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
   real :: wt_new, wt_prev ! Weights in an average.
-  real :: dt_slow_dyn  ! The slow dynamics timestep [s].
-  real :: dt_adv       ! The advective subcycle timestep [s].
+  real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
+  real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
+  real :: dt_adv       ! The advective subcycle timestep [T ~> s].
   logical :: continuing_call ! If true, there are more in the series of advective updates
                              ! after this call.
   integer :: ndyn_steps, nds ! The number of dynamic steps in this call.
@@ -922,7 +923,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
   ndyn_steps = 1
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_cycle)) &
     ndyn_steps = max(CEILING(dt_cycle/CS%dt_ice_dyn - 1e-6), 1)
-  dt_slow_dyn = dt_cycle / ndyn_steps
+  dt_slow_dyn_sec = dt_cycle / ndyn_steps
+  dt_slow_dyn = US%s_to_T*dt_slow_dyn_sec
   dt_adv = dt_slow_dyn / real(CS%adv_substeps)
   if (ndyn_steps*CS%adv_substeps > DS2d%max_nts) &
     call increase_max_tracer_step_memory(DS2d, G, ndyn_steps*CS%adv_substeps)
@@ -930,7 +932,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
 
   do nds=1,ndyn_steps
     call mpp_clock_begin(iceClock4)
-    call enable_SIS_averaging(dt_slow_dyn, Time_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn_sec, Time_start + real_to_time(nds*dt_slow_dyn_sec), CS%diag)
     do j=jsd,jed ; do i=isd,ied ; ice_free(i,j) = max(1.0 - DS2d%ice_cover(i,j), 0.0) ; enddo ; enddo
 
     ! In the dynamics code, only the ice velocities are changed, and the ice-ocean
@@ -964,7 +966,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
       call SIS_C_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, DS2d%u_ice_C, DS2d%v_ice_C, &
                           OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
-                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, US%s_to_T*dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
+                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
 
       call mpp_clock_end(iceClocka)
 
@@ -1014,7 +1016,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
                           OSS%u_ocn_B, OSS%v_ocn_B, &
                           WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                           str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                          rdg_rate(isc:iec,jsc:jec), US%s_to_T*dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                          rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", DS2d%u_ice_B, DS2d%v_ice_B, G, scale=US%L_T_to_m_s)
@@ -1064,7 +1066,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     endif
 
     if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", DS2d%u_ice_C, DS2d%v_ice_C, G, scale=US%L_T_to_m_s)
-    call enable_SIS_averaging(dt_slow_dyn, Time_start + real_to_time(nds*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn_sec, Time_start + real_to_time(nds*dt_slow_dyn_sec), CS%diag)
 
     ! Update the integrated ice mass and store the transports in each step.
     if (DS2d%nts+CS%adv_substeps > DS2d%max_nts) &
@@ -1075,9 +1077,9 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
         ! Some of the work is not needed for the last step before cat_ice_transport.
         call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
                                DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
-                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), US%s_to_T*dt_adv, G, US, IG, &
+                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, &
                                CS%continuity_CSp, h_ice=DS2d%mi_sum)
-        call ice_cover_transport(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%ice_cover, US%s_to_T*dt_adv, &
+        call ice_cover_transport(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%ice_cover, dt_adv, &
                                  G, US, IG, CS%cover_trans_CSp)
         call pass_var(DS2d%mi_sum, G%Domain, complete=.false.)
         call pass_var(DS2d%ice_cover, G%Domain, complete=.false.)
@@ -1085,7 +1087,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       else
         call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
                                DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
-                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), US%s_to_T*dt_adv, G, US, IG, CS%continuity_CSp)
+                               DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, CS%continuity_CSp)
       endif
     enddo
     DS2d%nts = DS2d%nts + CS%adv_substeps

@@ -113,7 +113,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   real,                              intent(in)    :: dt_slow !< The amount of time over which the
-                                                          !! ice dynamics are to be advanced [s].
+                                                          !! ice dynamics are to be advanced [T ~> s].
   integer,                           intent(in)    :: nsteps  !< The number of advective iterations
                                                           !! to use within this time step.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
@@ -165,7 +165,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
 
   ! Do the transport via the continuity equations and tracer conservation equations
   ! for CAS%mH_ice and tracers, inverting for the fractional size of each partition.
-  if (nsteps > 0) dt_adv = US%s_to_T*dt_slow / real(nsteps)
+  if (nsteps > 0) dt_adv = dt_slow / real(nsteps)
   do n = 1, nsteps
     call update_SIS_tracer_halos(TrReg, G, complete=.false.)
     call pass_var(CAS%m_ice,  G%Domain, complete=.false.)
