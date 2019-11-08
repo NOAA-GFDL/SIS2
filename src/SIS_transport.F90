@@ -474,6 +474,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   real :: mass_neglect    ! A negligible mass per unit area [H ~> kg m-2].
+  real :: L_to_H
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
@@ -487,20 +488,21 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
 
   ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
   ice_cover(:,:) = 0.0
+  L_to_H = US%L_to_m * CS%Rho_ice * IG%kg_m2_to_H
   !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (CAS%m_ice(i,j,k) > 0.0) then
-      if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)**3 > &
-          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/CS%Rho_Ice)*US%L_to_m**2*G%areaT(i,j)) then
-        ! This ice is thicker than it is wide even if all the ice in a grid
-        ! cell is collected into a single cube, so it will roll.  Any snow on
-        ! top will simply be redistributed into a thinner layer, although it
-        ! should probably be dumped into the ocean.  Rolling makes the ice
-        ! thinner so that it melts faster, but it should never be made thinner
+      !### This is a simplified version of the test, but it could rarely change answers at roundoff.
+      ! if (CS%roll_factor * CAS%mH_ice(i,j,k)**3 > L_to_H**2 * (CAS%m_ice(i,j,k)*G%areaT(i,j))) then
+      if (CS%roll_factor * (CAS%mH_ice(i,j,k)*IG%H_to_kg_m2/(US%L_to_m*CS%Rho_Ice))**3 > &
+          (CAS%m_ice(i,j,k)*IG%H_to_kg_m2/(US%L_to_m*CS%Rho_Ice))*G%areaT(i,j)) then
+        ! This ice is thicker than it is wide even if all the ice in a grid cell is collected
+        ! into a single cube, so it will roll.  Any snow on top will simply be redistributed
+        ! into a thinner layer, although it should probably be dumped into the ocean.  Rolling
+        ! makes the ice thinner so that it melts faster, but it should never be made thinner
         ! than IG%mH_cat_bound(1).
-        CAS%mH_ice(i,j,k) = max((CS%Rho_ice*IG%kg_m2_to_H) * US%L_to_m * &
-             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / &
-                  (CS%roll_factor * CAS%mH_ice(i,j,k)) ), IG%mH_cat_bound(1))
+        CAS%mH_ice(i,j,k) = max(IG%mH_cat_bound(1), L_to_H * &
+             sqrt((CAS%m_ice(i,j,k)*G%areaT(i,j)) / (CS%roll_factor * CAS%mH_ice(i,j,k)) ))
       endif
 
       ! Make sure that CAS%mH_ice(i,j,k) > IG%mH_cat_bound(1).
