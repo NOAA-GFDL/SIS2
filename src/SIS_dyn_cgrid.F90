@@ -757,10 +757,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
     if (CS%weak_coast_stress) then
-      sum_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j)))
+      sum_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i,j+1) + G%areaT(i+1,j))
     else
-      sum_area = ((G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
-                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j)))
+      sum_area = (G%mask2dT(i,j)*G%areaT(i,j) + G%mask2dT(i+1,j+1)*G%areaT(i+1,j+1)) + &
+                 (G%mask2dT(i,j+1)*G%areaT(i,j+1) + G%mask2dT(i+1,j)*G%areaT(i+1,j))
     endif
     if (sum_area <= 0.0) then
       ! This is a land point.
@@ -792,7 +792,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     else
       ! This is a straight coastline or all neighboring velocity points are
       ! masked out.  In any case, with just 1 point, the ratio is always 1.
-      mi_ratio_A_q(I,J) = 1.0 / (sum_area)
+      mi_ratio_A_q(I,J) = 1.0 / sum_area
     endif
   enddo ; enddo
 !$OMP end do nowait
@@ -808,7 +808,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP end do nowait
 !$OMP do
   do J=jsc-1,jec ; do I=isc-1,iec
-    tot_area = ((G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1)))
+    tot_area = (G%areaT(i,j) + G%areaT(i+1,j+1)) + (G%areaT(i+1,j) + G%areaT(i,j+1))
     q(I,J) = G%CoriolisBu(I,J) * tot_area / &
          (((G%areaT(i,j) * mis(i,j) + G%areaT(i+1,j+1) * mis(i+1,j+1)) + &
            (G%areaT(i+1,j) * mis(i+1,j) + G%areaT(i,j+1) * mis(i,j+1))) + tot_area * m_neglect)
@@ -885,13 +885,13 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,sh_Dt,sh_Dd,dy_dxT,dx_dyT,G,ui,vi)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
       sh_Dt(i,j) = (dy_dxT(i,j)*(G%IdyCu(I,j) * ui(I,j) - &
-                                           G%IdyCu(I-1,j)*ui(I-1,j)) - &
+                                 G%IdyCu(I-1,j)*ui(I-1,j)) - &
                     dx_dyT(i,j)*(G%IdxCv(i,J) * vi(i,J) - &
                                  G%IdxCv(i,J-1)*vi(i,J-1)))
       sh_Dd(i,j) = (G%IareaT(i,j)*(G%dyCu(I,j) * ui(I,j) - &
-                                             G%dyCu(I-1,j)*ui(I-1,j)) + &
-                              G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
-                                             G%dxCv(i,J-1)*vi(i,J-1)))
+                                   G%dyCu(I-1,j)*ui(I-1,j)) + &
+                    G%IareaT(i,j)*(G%dxCv(i,J) * vi(i,J) - &
+                                   G%dxCv(i,J-1)*vi(i,J-1)))
     enddo ; enddo
 
    if (CS%project_ci) then
@@ -956,8 +956,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     do J=jsc-1,jec ; do I=isc-1,iec
       ! zeta is already set to 0 over land.
       CS%str_s(I,J) = I_1pdt_T * ( CS%str_s(I,J) + (I_EC2 * dt_2Tdamp) * &
-                  (((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
-                    (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
+                  ( ((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
+                     (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
                    mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
     enddo ; enddo
 
@@ -983,11 +983,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fxic_now = (G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
+      fxic_now = G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
             (G%IdyCu(I,j)*(dy2T(i+1,j)*CS%str_t(i+1,j) - &
                            dy2T(i,j)  *CS%str_t(i,j)) + &
              G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
-                           dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j) )
+                           dx2B(I,J-1)*CS%str_s(I,J-1)) ) * G%IareaCu(I,j)
       v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
                      (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                       ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
@@ -1064,11 +1064,11 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
-      fyic_now =  (G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
+      fyic_now = G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
             (-G%IdxCv(i,J)*(dx2T(i,j+1)*CS%str_t(i,j+1) - &
                             dx2T(i,j)  *CS%str_t(i,j)) + &
               G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
-                            dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J) )
+                            dy2B(I-1,J)*CS%str_s(I-1,J)) )*G%IareaCv(i,J)
       u2_at_v = CS%drag_bg_vel2 + 0.25 * &
                 (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                  ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
@@ -1115,12 +1115,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now
 
-      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) *  &
+      if (CS%id_fiy_d>0) fyic_d(i,J) = fyic_d(i,J) + G%mask2dCv(i,J) * &
                  G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j))
-      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) *  &
+      if (CS%id_fiy_t>0) fyic_t(i,J) = fyic_t(i,J) + G%mask2dCv(i,J) * &
                  (G%IdxCv(i,J)*(dx2T(i,j+1)*(-CS%str_t(i,j+1)) - &
                                 dx2T(i,j)  *(-CS%str_t(i,j))) ) * G%IareaCv(i,J)
-      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) *  &
+      if (CS%id_fiy_s>0) fyic_s(i,J) = fyic_s(i,J) + G%mask2dCv(i,J) * &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
 

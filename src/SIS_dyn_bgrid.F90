@@ -468,7 +468,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
           mp4z(i,j) = -prs(i,j)/(4*zeta)
           t0(i,j)   = 2*eta / (2*eta + edt(i,j))
           tmp       = 1/(4*eta*zeta)
-          a         = 1/(edt(i,j)) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
+          a         = 1/edt(i,j) + (zeta+eta)*tmp ! = 1/edt(i,j) + (1+EC2I)/(4*eta)
           b         = (zeta-eta)*tmp              ! = (1-EC2I)/(4*eta)
           t1(i,j)   = b/a                         ! = (1-EC2I)*edt(i,j) / (4*eta + (1+EC2I)*edt(i,j))
           It2(i,j)  = a / (a**2 - b**2)           ! 1/t2 = a / (a*a - b*b)
@@ -479,8 +479,8 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
       if( (G%mask2dT(i,j)>0.5) .and. (misp(i,j) > CS%MIV_MIN) ) then
-        f11   = mp4z(i,j) + CS%sig11(i,j)/(edt(i,j)) + strn11(i,j)
-        f22   = mp4z(i,j) + CS%sig22(i,j)/(edt(i,j)) + strn22(i,j)
+        f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
+        f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
         CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
         CS%sig22(i,j) = (t1(i,j)*f11 + f22) * It2(i,j)
         CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
@@ -509,14 +509,14 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     !
 
 
-    ! ### SIG11 and SIG22 SHOULD BE PAIRED ON A CUBED SPHERE.
+    ! ### SIG11 and SIG22  SHOULD BE PAIRED ON A CUBED SPHERE.
     call pass_var(CS%sig11, G%Domain, complete=.false.)
     call pass_var(CS%sig22, G%Domain, complete=.false.)
     call pass_var(CS%sig12, G%Domain, complete=.true.)
 
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-        rr = US%L_to_m*CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+        rr = CS%cdw*US%L_to_m*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
              exp(sign(CS%blturn*pi/180,US%s_to_T*G%CoriolisBu(i,j))*(0.0,1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)

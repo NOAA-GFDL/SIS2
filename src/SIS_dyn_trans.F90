@@ -1030,8 +1030,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       call mpp_clock_begin(iceClocka)
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
       call SIS_B_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, DS2d%u_ice_B, DS2d%v_ice_B, &
-                          OSS%u_ocn_B, OSS%v_ocn_B, &
-                          WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
+                          OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                           str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
                           rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
@@ -1092,18 +1091,15 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     do n = DS2d%nts+1, DS2d%nts+CS%adv_substeps
       if ((n < ndyn_steps*CS%adv_substeps) .or. continuing_call) then
         ! Some of the work is not needed for the last step before cat_ice_transport.
-        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
-                               DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
+        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
                                DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, &
                                CS%continuity_CSp, h_ice=DS2d%mi_sum)
-        call ice_cover_transport(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%ice_cover, dt_adv, &
-                                 G, US, IG, CS%cover_trans_CSp)
+        call ice_cover_transport(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%ice_cover, dt_adv, G, US, IG, CS%cover_trans_CSp)
         call pass_var(DS2d%mi_sum, G%Domain, complete=.false.)
         call pass_var(DS2d%ice_cover, G%Domain, complete=.false.)
         call pass_var(DS2d%mca_step(:,:,n), G%Domain, complete=.true.)
       else
-        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, &
-                               DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
+        call summed_continuity(DS2d%u_ice_C, DS2d%v_ice_C, DS2d%mca_step(:,:,n-1), DS2d%mca_step(:,:,n), &
                                DS2d%uh_step(:,:,n), DS2d%vh_step(:,:,n), dt_adv, G, US, IG, CS%continuity_CSp)
       endif
     enddo
@@ -1735,10 +1731,8 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
                          (ice_cover(i+1,j) + ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + &
-                              (ps_ocn * windstr_x_water(I,J) + ps_ice * str_ice_oce_x(I,J))
-      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + &
-                              (ps_ocn * windstr_y_water(I,J) + ps_ice * str_ice_oce_y(I,J))
+      IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + (ps_ocn * windstr_x_water(I,J) + ps_ice * str_ice_oce_x(I,J))
+      IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + (ps_ocn * windstr_y_water(I,J) + ps_ice * str_ice_oce_y(I,J))
     enddo ; enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
