@@ -966,14 +966,14 @@ subroutine set_ice_surface_fields(Ice)
       "The pointer to Ice%fCS must be associated in set_ice_surface_fields.")
 
   call set_ice_surface_state(Ice, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
-                             Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS )
+                             Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG, Ice%fCS )
 
   call mpp_clock_end(ice_clock_fast) ; call mpp_clock_end(iceClock)
 end subroutine set_ice_surface_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_surface_state prepares the surface state for atmosphere fast physics
-subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
+subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
   type(ice_state_type),       intent(in)    :: IST !< A type describing the state of the sea ice
   type(simple_OSS_type),      intent(in)    :: OSS !< A structure containing the arrays that describe
@@ -983,6 +983,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
                                                    !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_fast_CS),          intent(inout) :: fCS !< The fast ice thermodynamics control structure
 
@@ -1108,11 +1109,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, IG, fCS)
   enddo
 
   ! Put ocean salinity and ocean and ice velocities into Ice%u_surf/v_surf on t-cells.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,G,i_off,j_off,OSS) &
-!$OMP                          private(i2,j2)
+  !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    Ice%u_surf(i2,j2,1) = OSS%u_ocn_A(i,j) ; Ice%v_surf(i2,j2,1) = OSS%v_ocn_A(i,j)
-    Ice%u_surf(i2,j2,2) = OSS%u_ice_A(i,j) ; Ice%v_surf(i2,j2,2) = OSS%v_ice_A(i,j)
+    Ice%u_surf(i2,j2,1) = US%L_T_to_m_s*OSS%u_ocn_A(i,j)
+    Ice%v_surf(i2,j2,1) = US%L_T_to_m_s*OSS%v_ocn_A(i,j)
+    Ice%u_surf(i2,j2,2) = US%L_T_to_m_s*OSS%u_ice_A(i,j)
+    Ice%v_surf(i2,j2,2) = US%L_T_to_m_s*OSS%v_ice_A(i,j)
     Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
   enddo ; enddo
 

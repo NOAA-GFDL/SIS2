@@ -152,10 +152,10 @@ type simple_OSS_type
     s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
-    u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [m s-1].
-    v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points [m s-1].
-    u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [m s-1].
-    v_ice_A     !< The sea ice's meridional velocity on A-grid points [m s-1].
+    u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [L T-1 ~> m s-1].
+    v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points [L T-1 ~> m s-1].
+    u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [L T-1 ~> m s-1].
+    v_ice_A     !< The sea ice's meridional velocity on A-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
                 !! from the ocean to the ice at the base of the ice [W m-2].
 
@@ -1207,21 +1207,21 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, US)
       sOSS%bheat(i,j) = OSS%bheat(i,j)
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
-        sOSS%u_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
-        sOSS%v_ocn_A(i,j) = US%L_T_to_m_s*0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
+        sOSS%u_ocn_A(i,j) = 0.5*(OSS%u_ocn_C(I,j) + OSS%u_ocn_C(I-1,j))
+        sOSS%v_ocn_A(i,j) = 0.5*(OSS%v_ocn_C(i,J) + OSS%v_ocn_C(i,J-1))
       else
-        sOSS%u_ocn_A(i,j) = US%L_T_to_m_s*0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
+        sOSS%u_ocn_A(i,j) = 0.25*((OSS%u_ocn_B(I,J) + OSS%u_ocn_B(I-1,J-1)) + &
                                   (OSS%u_ocn_B(I,J-1) + OSS%u_ocn_B(I-1,J)) )
-        sOSS%v_ocn_A(i,j) = US%L_T_to_m_s*0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
+        sOSS%v_ocn_A(i,j) = 0.25*((OSS%v_ocn_B(I,J) + OSS%v_ocn_B(I-1,J-1)) + &
                                   (OSS%v_ocn_B(I,J-1) + OSS%v_ocn_B(I-1,J)) )
       endif
       if (IST%Cgrid_dyn) then
-        sOSS%u_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
-        sOSS%v_ice_A(i,j) = US%L_T_to_m_s*0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
+        sOSS%u_ice_A(i,j) = 0.5*(IST%u_ice_C(I,j) + IST%u_ice_C(I-1,j))
+        sOSS%v_ice_A(i,j) = 0.5*(IST%v_ice_C(i,J) + IST%v_ice_C(i,J-1))
       else
-        sOSS%u_ice_A(i,j) = US%L_T_to_m_s*0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
+        sOSS%u_ice_A(i,j) = 0.25*((IST%u_ice_B(I,J) + IST%u_ice_B(I-1,J-1)) + &
                                   (IST%u_ice_B(I,J-1) + IST%u_ice_B(I-1,J)) )
-        sOSS%v_ice_A(i,j) = US%L_T_to_m_s*0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
+        sOSS%v_ice_A(i,j) = 0.25*((IST%v_ice_B(I,J) + IST%v_ice_B(I-1,J-1)) + &
                                   (IST%v_ice_B(I,J-1) + IST%v_ice_B(I-1,J)) )
       endif
     else ! This is a land point.
