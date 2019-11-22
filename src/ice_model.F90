@@ -1732,7 +1732,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: redo_fast_update ! If true, recalculate the thermal updates from the fast
                               ! dynamics on the slowly evolving ice state, rather than
                               ! copying over the slow ice state to the fast ice state.
-  logical :: do_mask_restart  ! If true, apply the scaling and masks to mH_snow, mH_ice and part_size
+  logical :: do_mask_restart  ! If true, apply the scaling and masks to mH_snow, mH_ice, part_size
+                              ! mH_pond, t_surf, t_skin, sal_ice, enth_ice and enth_snow
                               ! after a restart. However this may cause answers to diverge
                               ! after a restart.Provide a switch to turn this option off.
   logical :: Verona
@@ -2404,9 +2405,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
-      if (allocated(sIST%t_surf) .and. &
-          .not.query_initialized(Ice%Ice_restart, 't_surf_ice')) then
-        sIST%t_surf(:,:,:) = T_0degC
+      if (allocated(sIST%t_surf)) then
+        if (.not.query_initialized(Ice%Ice_restart, 't_surf_ice')) then
+          sIST%t_surf(:,:,:) = T_0degC
+        elseif (do_mask_restart) then
+          do j=jsc,jec ; do i=isc,iec
+            if (sG%mask2dT(i,j) < 0.5) sIST%t_surf(i,j,:) = T_0degC
+          enddo ; enddo
+        endif
       endif
 
       H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
@@ -2428,9 +2434,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! because these state variables are changed only after a restart and
       ! not at each timestep. Provide a switch to turn this option off.
       if (do_mask_restart) then
+        do n=1,NkIce
+            do k=1,CatIce
+              sIST%sal_ice(:,:,k,n) = sIST%sal_ice(:,:,k,n) * sG%mask2dT(:,:)
+              sIST%enth_ice(:,:,k,n) = sIST%enth_ice(:,:,k,n) * sG%mask2dT(:,:)
+            enddo
+        enddo
         do k=1,CatIce
           sIST%mH_snow(:,:,k) = sIST%mH_snow(:,:,k) * H_rescale_snow * sG%mask2dT(:,:)
+          sIST%enth_snow(:,:,k,1) = sIST%enth_snow(:,:,k,1) * sG%mask2dT(:,:)
           sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
+          sIST%mH_pond(:,:,k) = sIST%mH_pond(:,:,k) * sG%mask2dT(:,:)
           sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
         enddo
         ! Since we masked out the part_size on land we should set
@@ -2669,6 +2683,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
     if (init_Tskin) then
       Ice%fCS%Rad%t_skin(:,:,:) = 0.0
+    elseif (do_mask_restart) then
+      do k=1,CatIce
+        Ice%fCS%Rad%t_skin(:,:,k) = Ice%fCS%Rad%t_skin(:,:,k) * sG%mask2dT(:,:)
+      enddo
     endif
     if (init_rough) then
       Ice%rough_mom(:,:,:)   = mom_rough_ice
