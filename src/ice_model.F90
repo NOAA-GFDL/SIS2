@@ -2500,11 +2500,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       !However it is not an ice state variable and hence is not in ice restarts.
       !Updating it from specified_ice data avoids restart issues for such models.
       if (specified_ice) then
-        allocate(dummy2d(sG%isc:sG%iec,sG%jsc:sG%jec))
+        allocate(dummy2d(isc:iec,jsc:jec))
         allocate(dummy3d(isc:iec,jsc:jec,2))
         call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_C(isc:iec,jsc:jec), &
-                             dummy3d(isc:iec,jsc:jec,:), &
-                             dummy2d(sG%isc:sG%iec,sG%jsc:sG%jec), ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
+                             dummy3d,dummy2d, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
         deallocate(dummy2d,dummy3d)
       endif
 
