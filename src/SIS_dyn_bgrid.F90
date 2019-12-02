@@ -18,6 +18,7 @@ use MOM_domains,      only : pass_var, pass_vector, BGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,    only : hor_index_type
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_hor_grid,     only : SIS_hor_grid_type
 use fms_io_mod,       only : register_restart_field, restart_file_type
 use mpp_domains_mod,  only : domain2D
@@ -32,17 +33,17 @@ public :: SIS_B_dyn_init, SIS_B_dynamics, SIS_B_dyn_end, SIS_B_dyn_register_rest
 !> The control structure with parameters regulating B-grid ice dynamics
 type, public :: SIS_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
-    sig11 => NULL(), &  !< The xx component of the stress tensor [Pa m] (or N m-1).
-    sig12 => NULL(), &  !< The xy and yx component of the stress tensor [Pa m] (or N m-1).
-    sig22 => NULL()     !< The yy component of the stress tensor [Pa m] (or N m-1).
+    sig11 => NULL(), &  !< The xx component of the stress tensor [kg m-2 L2 T-2 ~> Pa m] (or N m-1).
+    sig12 => NULL(), &  !< The xy and yx component of the stress tensor [kg m-2 L2 T-2 ~> Pa m] (or N m-1).
+    sig22 => NULL()     !< The yy component of the stress tensor [kg m-2 L2 T-2 ~> Pa m] (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
-  real :: p0 = 2.75e4         !< Hibbler rheology pressure constant [Pa]
-  real :: p0_rho              !< The pressure constant divided by ice density [N m kg-1].
-  real :: c0 = 20.0           !< another pressure constant
+  real :: p0 = 2.75e4         !< Hibbler rheology pressure constant [kg m-3 L2 T-2 ~> Pa]
+  real :: p0_rho              !< The pressure constant divided by ice density [L2 T-2 ~> N m kg-1].
+  real :: c0 = 20.0           !< another pressure constant [nondim]
   real :: cdw = 3.24e-3       !< ice/water drag coef. [nondim]
   real :: blturn = 0.0        !< air/water surf. turning angle (degrees)
-  real :: EC = 2.0            !< yield curve axis ratio
+  real :: EC = 2.0            !< yield curve axis ratio [nondim]
   real :: MIV_MIN =  1.0      !< min ice mass to do dynamics [kg m-2]
   real :: Rho_ocean = 1030.0  !< The nominal density of sea water [kg m-3].
   real :: Rho_ice = 905.0     !< The nominal density of sea ice [kg m-3].
@@ -51,7 +52,7 @@ type, public :: SIS_B_dyn_CS ; private
   integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
                               !! for each slow time step.
   real    :: dt_Rheo          !< The maximum sub-cycling time step for the rheology
-                              !! and momentum equations.
+                              !! and momentum equations [T ~> s].
   type(time_type), pointer :: Time => NULL() !< A pointer to the ice model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                              !! timing of diagnostic output.
@@ -66,10 +67,11 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dyn_init initializes the ice dynamics and sets parameters.
-subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
+subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
+  type(unit_scale_type),       intent(in)    :: US   !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_B_dyn_CS),          pointer       :: CS   !< The control structure for this module
@@ -97,7 +99,7 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology \n"//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
-                 "the time step is set via NSTEPS_DYN.", units="seconds", &
+                 "the time step is set via NSTEPS_DYN.", units="seconds", scale=US%s_to_T, &
                  default=-1.0)
   CS%evp_sub_steps = -1
   if (CS%dt_Rheo <= 0.0) &
@@ -107,7 +109,7 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
 
   call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, \n"//&
-                 "P* in Hunke & Dukowicz 1997.", units="Pa", default=2.75e4)
+                 "P* in Hunke & Dukowicz 1997.", units="Pa", scale=US%m_s_to_L_T**2, default=2.75e4)
   call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
                  "A constant in the exponent of the expression for the \n"//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
@@ -146,40 +148,41 @@ subroutine SIS_B_dyn_init(Time, G, param_file, diag, CS)
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
             'ice strength', 'Pa*m', missing_value=missing)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,    &
-            'ice internal stress - x component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice internal stress - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesB1, Time,    &
-            'ice internal stress - y component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'ice internal stress - y component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesB1, Time,    &
-            'coriolis force - x component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'coriolis force - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesB1, Time,    &
-            'coriolis force - y component', 'Pa', missing_value=missing,       &
-            interp_method='none')
+            'coriolis force - y component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesB1, Time,    &
-            'water stress on ice - x component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'water stress on ice - x component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesB1, Time,    &
-            'water stress on ice - y component', 'Pa', missing_value=missing,  &
-            interp_method='none')
+            'water stress on ice - y component', 'Pa', conversion=US%L_T_to_m_s*US%s_to_T, &
+            missing_value=missing, interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesB1, Time,      &
-            'ice velocity - x component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            'ice velocity - x component', 'm/s', conversion=US%L_T_to_m_s,     &
+            missing_value=missing, interp_method='none')
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesB1, Time,      &
-            'ice velocity - y component', 'm/s', missing_value=missing,        &
-            interp_method='none')
+            'ice velocity - y component', 'm/s', conversion=US%L_T_to_m_s,     &
+            missing_value=missing, interp_method='none')
 
 end subroutine SIS_B_dyn_init
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_ice_strength determines the magnitude of force on ice in plastic deformation
-subroutine find_ice_strength(mi, ci, ice_strength, G, CS) !, nCat)
+subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS) !, nCat)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
+  type(unit_scale_type),            intent(in)  :: US   !< A structure with unit conversion factors
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength in N m-1
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength [kg m-2 L2 T-2 ~> N m-1]
   type(SIS_B_dyn_CS),               pointer     :: CS  !< The control structure for this module
   ! integer, intent(in) :: nCat !< The number of sea ice categories.
 
@@ -244,44 +247,45 @@ end subroutine find_ice_strength
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dynamics takes a single dynamics timestep with EVP subcycles
-subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
-     fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, CS)
+subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
+     fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, US, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: misp  !< Mass per unit ocean area of sea ice,
                                                              !! snow and melt pond water [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: mice  !< Mass per unit ocean area of sea ice [kg m-2]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui    !< Zonal ice velocity [m s-1]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity [m s-1]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: uo    !< Zonal ocean velocity [m s-1]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity [m s-1]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: ui    !< Zonal ice velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(inout) :: vi    !< Meridional ice velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: uo    !< Zonal ocean velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: vo    !< Meridional ocean velocity [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fxat  !< Zonal air stress on ice [kg m-2 L T-2 ~> Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [kg m-2 L T-2 ~> Pa]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: sea_lev !< The height of the sea level, including
                                                              !! contributions from non-levitating ice from
                                                              !! an earlier time step [m].
-  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
-  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [kg m-2 L T-2 ~> Pa]
+  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [kg m-2 L T-2 ~> Pa]
   logical,                            intent(in   ) :: do_ridging !< If true, the ice can ridge
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate !< ridging rate from drift state in UNITS?
   real,                               intent(in   ) :: dt_slow !< The amount of time over which the ice
-                                                             !! dynamics are to be advanced [s].
+                                                             !! dynamics are to be advanced [T ~> s].
+  type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),                 pointer       :: CS    !< The control structure for this module
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice int. stress
-  real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! coriolis force
+  real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice internal stresses [kg m-2 L2 T-2 ~> Pa m]
+  real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! Coriolis force [kg m-2 L T-2 ~> kg m-1 s-2 = Pa]
 
-  real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! ice internal pressure
-  real                             :: zeta, eta              ! bulk/shear viscosities
-  real, dimension(SZI_(G),SZJ_(G)) :: strn11, strn12, strn22 ! strain tensor
+  real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! Ice internal pressure [kg m-2 L2 T-2 ~> N m-1]
+  real                             :: zeta, eta              ! bulk/shear viscosities [kg m-2 L2 T-1 ~> N m-1]
+  real, dimension(SZI_(G),SZJ_(G)) :: strn11, strn12, strn22 ! strain tensor [T-1 ~> s-1]
 
   real, dimension(SZIB_(G),SZJB_(G)) :: miv                 ! mass on v-points
   real, dimension(SZIB_(G),SZJB_(G)) :: civ                 ! conc. on v-points
   real, dimension(SZI_(G),SZJ_(G))   :: diag_val            ! A temporary diagnostic array
-  complex                            :: rr                  ! linear drag coefficient
-  real                               :: fxic_now, fyic_now  ! ice internal stress
+  complex                            :: rr                  ! linear drag rate [T-1 ~> s-1]
+  real                               :: fxic_now, fyic_now  ! ice internal stresses [kg m-2 L2 T-2 ~> Pa m]
 
   logical, dimension(SZI_(G),SZJ_(G))   :: ice_present
   logical :: evp_new = .false.
@@ -291,18 +295,23 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
        grid_fac1, grid_fac2, grid_fac3, grid_fac4
 
   ! temporaries for ice stress calculation
-  real                             :: del2, a, b, tmp
-  real, dimension(SZI_(G),SZJ_(G)) :: edt   ! The elasticity (E) times a time-step [Pa m s].
-  real, dimension(SZI_(G),SZJ_(G)) :: mp4z, t0, t1, It2
-  real                             :: f11, f22
-  real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy
-  real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy
+  real                             :: del2  ! The squared magnitude of the strain rate ellipse [T-2 ~> s-2]
+  real, dimension(SZI_(G),SZJ_(G)) :: edt   ! The elasticity (E) times a time-step [kg m-2 L2 T-1 ~> Pa m s]
+  real, dimension(SZI_(G),SZJ_(G)) :: mp4z  ! [T-1 ~> s-1]
+  real, dimension(SZI_(G),SZJ_(G)) :: t0, t1 ! Ratios of viscosities [nondim]
+  real, dimension(SZI_(G),SZJ_(G)) :: It2   ! A scaled viscosity [kg L2 m-2 T-1 ~> Pa m s]
+  real                             :: a, b  ! Temporary inverse elasticity variables [m2 kg-1 T L-2 ~> Pa-1 m-1 s-1]
+  real                             :: tmp   ! An squared viscosity [kg2 m-4 L4 T-2 ~> m4 s-2]
+  real                             :: f11, f22 ! Temporary variables [T-1 ~> s-1]
+  real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy  ! Pressure accelerations due to the sloping
+                                                    ! sea surface integrated over a timestep [L T-1 ~> m s-1]
+  real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy  ! Differences in grid spacings between adjacent points [L ~> m].
   real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9
 
   ! for velocity calculation
-  real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv
-  real :: dt_Rheo  ! The short timestep associated with the rheology [s].
-  real :: I_2dt_Rheo ! 1.0 / (2*dt_Rheo)
+  real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv  ! The timestep divided by the ice mass [T m2 kg-1 ~> s m2 kg-1]
+  real :: dt_Rheo  ! The short timestep associated with the rheology [T ~> s].
+  real :: I_2dt_Rheo ! 1.0 / (2*dt_Rheo) [T-1 ~> s-1]
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps
   real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
@@ -358,9 +367,9 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
 
   ! sea level slope force
   do J=jsc-1,jec ; do I=isc-1,iec
-    sldx(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
+    sldx(I,J) = -dt_Rheo * US%m_s_to_L_T**2*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
          + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
-    sldy(I,J) = -dt_Rheo*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
+    sldy(I,J) = -dt_Rheo * US%m_s_to_L_T**2*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
          + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
   enddo ; enddo
 
@@ -374,7 +383,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
 
   ! precompute prs, elastic timestep parameter, and linear drag coefficient
   !
-  call find_ice_strength(mice, ci, prs, G, CS)
+  call find_ice_strength(mice, ci, prs, G, US, CS)
 
   !TOM> towards a leaner calculation of the ice stress
   if (evp_new) then
@@ -403,11 +412,11 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   enddo ; enddo
 
   if (CS%debug .or. CS%debug_redundant) then
-    call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true.)
-    call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true.)
-    call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true.)
-    call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true.)
-    call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true.)
+    call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+    call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true., scale=US%L_to_m)
   endif
   if (CS%debug_redundant) then
     call check_redundant_B("civ in SIS_B_dynamics", civ, G)
@@ -443,13 +452,13 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
         del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
              + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
 
-        if ( del2 > 4e-18 ) then
-          zeta = 0.5*prs(i,j)/sqrt(del2)
+        if ( del2 > 4e-18*US%T_to_s**2 ) then
+          zeta = 0.5*prs(i,j) / sqrt(del2)
         else
-          zeta = 2.5e8*prs(i,j)
+          zeta = 2.5e8*US%s_to_T * prs(i,j)
         endif
 
-        if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
+        zeta = max(zeta, 4e8*US%m_to_L**2*US%T_to_s) ! Hibler uses to prevent nonlinear instability
 
         eta = zeta*EC2I
         !
@@ -500,16 +509,15 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     !
 
 
-
-    ! ### SIG11 and SIG22 SHOULD BE PAIRED ON A CUBED SPHERE.
+    ! ### SIG11 and SIG22  SHOULD BE PAIRED ON A CUBED SPHERE.
     call pass_var(CS%sig11, G%Domain, complete=.false.)
     call pass_var(CS%sig22, G%Domain, complete=.false.)
     call pass_var(CS%sig12, G%Domain, complete=.true.)
 
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-        rr = CS%cdw*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-             exp(sign(CS%blturn*pi/180,G%CoriolisBu(i,j))*(0.0,1.0))
+        rr = CS%cdw*US%L_to_m*CS%Rho_ocean*abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
+             exp(sign(CS%blturn*pi/180,US%s_to_T*G%CoriolisBu(i,j))*(0.0,1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
@@ -545,7 +553,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
         !
         fxic(I,J) = fxic(I,J) + fxic_now
         fyic(I,J) = fyic(I,J) + fyic_now
-        fxoc(I,J) = fxoc(I,J) +  real(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
+        fxoc(I,J) = fxoc(I,J) + real( civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
         fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
@@ -554,18 +562,18 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     enddo ; enddo
 
     if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1)
-      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1)
+      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%L_T_to_m_s**2)
+      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%L_T_to_m_s**2)
+      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%L_T_to_m_s**2)
 
-      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true.)
-      call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true.)
+      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
+      call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
     endif
     if (CS%debug_redundant) then
       call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G)
@@ -577,8 +585,8 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call Bchksum(ui, "ui end SIS_B_dynamics", G%HI, symmetric=.true.)
-    call Bchksum(vi, "vi end SIS_B_dynamics", G%HI, symmetric=.true.)
+    call Bchksum(ui, "ui end SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum(vi, "vi end SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
   endif
   if (CS%debug_redundant) &
     call check_redundant_B("ui/vi end SIS_B_dynamics", ui, vi, G)
@@ -605,15 +613,15 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
     !  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
 
     if (CS%id_sigi>0) then
-      diag_val(:,:) =  sigI(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
+      diag_val(:,:) =  sigI(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, US, CS)
       call post_SIS_data(CS%id_sigi, diag_val, CS%diag)
     endif
     if (CS%id_sigii>0) then
-      diag_val(:,:) = sigII(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, CS)
+      diag_val(:,:) = sigII(mice, ci, CS%sig11, CS%sig22, CS%sig12, G, US, CS)
       call post_SIS_data(CS%id_sigii, diag_val, CS%diag)
     endif
     if (CS%id_stren>0) then
-      call find_ice_strength(mice, ci, diag_val, G, CS)
+      call find_ice_strength(mice, ci, diag_val, G, US, CS)
       call post_SIS_data(CS%id_stren, diag_val, CS%diag)
     endif
 
@@ -629,7 +637,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo,       &
       del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
            + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
 
-      rdg_rate(i,j)=ridge_rate(del2, strn11(i,j)+strn22(i,j))
+      rdg_rate(i,j)=ridge_rate(US%s_to_T**2*del2, US%s_to_T*(strn11(i,j)+strn22(i,j)))
     else
       rdg_rate(i,j)=0.0
     endif ; enddo ; enddo
@@ -639,7 +647,7 @@ end subroutine SIS_B_dynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> sigI evaluates the first stress invariant
-function sigI(mi, ci, sig11, sig22, sig12, G, CS)
+function sigI(mi, ci, sig11, sig22, sig12, G, US, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
@@ -647,12 +655,13 @@ function sigI(mi, ci, sig11, sig22, sig12, G, CS)
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G))             :: sigI !< The first stress invariant [nondim]
+  type(unit_scale_type),            intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call find_ice_strength(mi, ci, sigI, G, CS)
+  call find_ice_strength(mi, ci, sigI, G, US, CS)
 
   do j=jsc,jec ; do i=isc,iec
     if (sigI(i,j) > 0.0) sigI(i,j) = (sig11(i,j) + sig22(i,j)) / sigI(i,j)
@@ -662,7 +671,7 @@ end function sigI
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> sigII evaluates the second stress invariant
-function sigII(mi, ci, sig11, sig22, sig12, G, CS)
+function sigII(mi, ci, sig11, sig22, sig12, G, US, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
@@ -670,12 +679,13 @@ function sigII(mi, ci, sig11, sig22, sig12, G, CS)
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
   real, dimension(SZI_(G),SZJ_(G))             :: sigII !< The second stress invariant [nondim]
+  type(unit_scale_type),            intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call find_ice_strength(mi, ci, sigII, G, CS)
+  call find_ice_strength(mi, ci, sigII, G, US, CS)
 
   do j=jsc,jec ; do i=isc,iec
     if (sigII(i,j) > 0.0) sigII(i,j) = (((sig11(i,j)-sig22(i,j))**2+4*sig12(i,j)*sig12(i,j))/(sigII(i,j)**2))**0.5

@@ -45,6 +45,7 @@ type, private :: diag_type
   logical :: in_use              !< This diagnostic is in use
   integer :: fms_diag_id         !< underlying FMS diag id
   character(len=24) :: name      !< The diagnostic name
+  real :: conversion_factor = 0. !< A factor to multiply data by before posting to FMS, if non-zero.
   real, pointer, dimension(:,:)   :: mask2d => null()      !< A 2-d mask on the data domain for this diagnostic
   real, pointer, dimension(:,:)   :: mask2d_comp => null() !< A 2-d mask on the computational domain for this diagnostic
   real, pointer, dimension(:,:,:) :: mask3d => null()      !< A 3-d mask for this diagnostic
@@ -281,19 +282,21 @@ end subroutine set_SIS_diag_mediator_grid
 subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
                                               !! previous call to register_diag_field.
-  real,              intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
+  real,    target,   intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
   type(SIS_diag_ctrl), target, &
                      intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
   logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
   logical, optional, intent(in) :: mask(:,:) !< If present, use this logical array as the data mask.
 
   ! Local variables
+  real, dimension(:,:), pointer :: locfield
   logical :: used, is_stat
   logical :: i_data, j_data
-  integer :: isv, iev, jsv, jev
+  integer :: isv, iev, jsv, jev, i, j
   integer :: fms_diag_id
   type(diag_type), pointer :: diag => NULL()
 
+  locfield => NULL()
   is_stat = .false. ; if (present(is_static)) is_stat = is_static
 
   ! Get a pointer to the SIS diag type for this id, and the FMS-level diag id.
@@ -332,6 +335,20 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
     call SIS_error(FATAL,"post_SIS_data_2d: peculiar size in j-direction "//trim(diag%name))
   endif
 
+  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.)) then
+    allocate( locfield( lbound(field,1):ubound(field,1), lbound(field,2):ubound(field,2) ) )
+    do j=jsv,jev ; do i=isv,iev
+      if (field(i,j) == diag_cs%missing_value) then
+        locfield(i,j) = diag_cs%missing_value
+      else
+        locfield(i,j) = field(i,j) * diag%conversion_factor
+      endif
+    enddo ; enddo
+    locfield(isv:iev,jsv:jev) = field(isv:iev,jsv:jev) * diag%conversion_factor
+  else
+    locfield => field
+  endif
+
   ! Handle cases where the data and computational domain are the same size.
   if (diag_cs%ied-diag_cs%isd == diag_cs%ie-diag_cs%is) i_data = j_data
   if (diag_cs%jed-diag_cs%jsd == diag_cs%je-diag_cs%js) j_data = i_data
@@ -349,37 +366,39 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     elseif(i_data .and. associated(diag%mask2d)) then
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d)
     elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d_comp)
     else
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
     elseif(i_data .and. associated(diag%mask2d)) then
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask2d)
     elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask2d_comp)
     else
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int)
     endif
   endif
+
+  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.) ) deallocate( locfield )
 
 end subroutine post_data_2d
 
@@ -387,16 +406,17 @@ end subroutine post_data_2d
 subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
                                               !! previous call to register_diag_field.
-  real,              intent(in) :: field(:,:,:) !< The 3-d array being offered for output or averaging.
+  real,    target,   intent(in) :: field(:,:,:) !< The 3-d array being offered for output or averaging.
   type(SIS_diag_ctrl), target, &
                      intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
   logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
   logical, optional, intent(in) :: mask(:,:,:) !< If present, use this logical array as the data mask.
 
   ! Local variables
+  real, dimension(:,:,:), pointer :: locfield
   logical :: used  ! The return value of send_data is not used for anything.
   logical :: is_stat
-  integer :: isv, iev, jsv, jev
+  integer :: isv, iev, jsv, jev, i, j, k, ks, ke
   integer :: fms_diag_id
   type(diag_type), pointer :: diag => NULL()
 
@@ -438,6 +458,20 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
     call SIS_error(FATAL,"post_SIS_data_3d: peculiar size in j-direction")
   endif
 
+  ks = lbound(field,3) ; ke = ubound(field,3)
+  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.)) then
+    allocate( locfield( lbound(field,1):ubound(field,1), lbound(field,2):ubound(field,2), ks:ke ) )
+    do k=ks,ke ; do j=jsv,jev ; do i=isv,iev
+      if (field(i,j,k) == diag_cs%missing_value) then
+        locfield(i,j,k) = diag_cs%missing_value
+      else
+        locfield(i,j,k) = field(i,j,k) * diag%conversion_factor
+      endif
+    enddo ; enddo ; enddo
+  else
+    locfield => field
+  endif
+
   if (present(mask)) then
     if ((size(field,1) /= size(mask,1)) .or. &
         (size(field,2) /= size(mask,2)) .or. &
@@ -449,30 +483,32 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     elseif(associated(diag%mask3d)) then
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask3d)
     else
-      used = send_data(fms_diag_id, field, &
+      used = send_data(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, mask=mask)
     elseif(associated(diag%mask3d)) then
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int, rmask=diag%mask3d)
     else
-      used = send_data(fms_diag_id, field, diag_cs%time_end, &
+      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
                        weight=diag_cs%time_int)
     endif
   endif
+
+  if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.) ) deallocate( locfield )
 
 end subroutine post_data_3d
 
@@ -525,7 +561,7 @@ end function get_SIS_diag_time_end
 !> Returns the "SIS_diag_mediator" handle for a group of diagnostics derived from one field.
 function register_SIS_diag_field(module_name, field_name, axes, init_time, &
      long_name, units, missing_value, range, mask_variant, standard_name, &
-     verbose, do_not_log, err_msg, interp_method, tile_count) result (register_diag_field)
+     verbose, do_not_log, err_msg, interp_method, tile_count, conversion) result (register_diag_field)
   integer :: register_diag_field  !< The returned diagnostic handle
   character(len=*), intent(in) :: module_name !< Name of this module, usually "ice_model"
   character(len=*), intent(in) :: field_name !< Name of the diagnostic field
@@ -545,6 +581,7 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
   character(len=*), optional, intent(in) :: interp_method !< If 'none' indicates the field should not
                                                          !! be interpolated as a scalar
   integer,          optional, intent(in) :: tile_count   !< no clue (not used in SIS?)
+  real,             optional, intent(in) :: conversion !< A value to multiply data by before writing to file
 
   ! Local variables
   character(len=240) :: mesg
@@ -572,6 +609,8 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
     if (len(field_name) > len(diag%name)) then
       diag%name = field_name(1:len(diag%name))
     else ; diag%name = field_name ; endif
+
+    if (present(conversion)) diag%conversion_factor = conversion
   endif
 
   if (is_root_pe() .and. diag_CS%doc_unit > 0) then

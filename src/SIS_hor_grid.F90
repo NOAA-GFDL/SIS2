@@ -16,6 +16,7 @@ use MOM_domains, only : MOM_domain_type, get_domain_extent, compute_block_extent
 use MOM_domains, only : MOM_domains_init, clone_MOM_domain
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+use MOM_unit_scaling, only : unit_scale_type
 
 implicit none ; private
 
@@ -75,12 +76,12 @@ type, public :: SIS_hor_grid_type
     mask2dT, &   !< 0 for land points and 1 for ocean points on the h-grid [nondim].
     geoLatT, &   !< The geographic latitude at q points in degrees of latitude or m.
     geoLonT, &   !< The geographic longitude at q points in degrees of longitude or m.
-    dxT, &       !< dxT is delta x at h points [m].
-    IdxT, &      !< 1/dxT [m-1].
-    dyT, &       !< dyT is delta y at h points [m], and IdyT is 1/dyT [m-1].
-    IdyT, &      !< dyT is delta y at h points [m], and IdyT is 1/dyT [m-1].
-    areaT, &     !< The area of an h-cell [m2].
-    IareaT       !< 1/areaT [m-2].
+    dxT, &       !< dxT is delta x at h points [L ~> m].
+    IdxT, &      !< 1/dxT [L-1 ~> m-1].
+    dyT, &       !< dyT is delta y at h points [L ~> m].
+    IdyT, &      !< IdyT is 1/dyT [L-1 ~> m-1].
+    areaT, &     !< The area of an h-cell [L2 ~> m2].
+    IareaT       !< 1/areaT [L-2 ~> m-2].
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: sin_rot
                  !< The sine of the angular rotation between the local model grid northward
                  !! and the true northward directions.
@@ -92,36 +93,36 @@ type, public :: SIS_hor_grid_type
     mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid [nondim].
     geoLatCu, &  !< The geographic latitude at u points in degrees of latitude or m.
     geoLonCu, &  !< The geographic longitude at u points in degrees of longitude or m.
-    dxCu, &      !< dxCu is delta x at u points [m].
-    IdxCu, &     !< 1/dxCu [m-1].
-    dyCu, &      !< dyCu is delta y at u points [m].
-    IdyCu, &     !< 1/dyCu [m-1].
-    dy_Cu, &     !< The unblocked lengths of the u-faces of the h-cell in m.
-    IareaCu, &   !< The masked inverse areas of u-grid cells [m2].
-    areaCu       !< The areas of the u-grid cells [m2].
+    dxCu, &      !< dxCu is delta x at u points [L ~> m].
+    IdxCu, &     !< 1/dxCu [L-1 ~> m-1].
+    dyCu, &      !< dyCu is delta y at u points [L ~> m].
+    IdyCu, &     !< 1/dyCu [L-1 ~> m-1].
+    dy_Cu, &     !< The unblocked lengths of the u-faces of the h-cell [L ~> m].
+    IareaCu, &   !< The masked inverse areas of u-grid cells [L-2 ~> m-2].
+    areaCu       !< The areas of the u-grid cells [L2 ~> m2].
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid [nondim].
     geoLatCv, &  !< The geographic latitude at v points in degrees of latitude or m.
     geoLonCv, &  !<  The geographic longitude at v points in degrees of longitude or m.
-    dxCv, &      !< dxCv is delta x at v points [m].
-    IdxCv, &     !< 1/dxCv [m-1].
-    dyCv, &      !< dyCv is delta y at v points [m].
-    IdyCv, &     !< 1/dyCv [m-1].
-    dx_Cv, &     !< The unblocked lengths of the v-faces of the h-cell in m.
-    IareaCv, &   !< The masked inverse areas of v-grid cells [m2].
-    areaCv       !< The areas of the v-grid cells [m2].
+    dxCv, &      !< dxCv is delta x at v points [L ~> m].
+    IdxCv, &     !< 1/dxCv [L-1 ~> m-1].
+    dyCv, &      !< dyCv is delta y at v points [L ~> m].
+    IdyCv, &     !< 1/dyCv [L-1 ~> m-1].
+    dx_Cv, &     !< The unblocked lengths of the v-faces of the h-cell [L ~> m].
+    IareaCv, &   !< The masked inverse areas of v-grid cells [L-2 ~> m-2].
+    areaCv       !< The areas of the v-grid cells [L2 ~> m2].
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
     mask2dBu, &  !< 0 for boundary points and 1 for ocean points on the q grid [nondim].
     geoLatBu, &  !< The geographic latitude at q points in degrees of latitude or m.
     geoLonBu, &  !< The geographic longitude at q points in degrees of longitude or m.
-    dxBu, &      !< dxBu is delta x at q points [m].
-    IdxBu, &     !< 1/dxBu [m-1].
-    dyBu, &      !< dyBu is delta y at q points [m].
-    IdyBu, &     !< 1/dyBu [m-1].
-    areaBu, &    !< areaBu is the area of a q-cell [m2]
-    IareaBu      !< IareaBu = 1/areaBu [m-2].
+    dxBu, &      !< dxBu is delta x at q points [L ~> m].
+    IdxBu, &     !< 1/dxBu [L-1 ~> m-1].
+    dyBu, &      !< dyBu is delta y at q points [L ~> m].
+    IdyBu, &     !< 1/dyBu [L-1 ~> m-1].
+    areaBu, &    !< areaBu is the area of a q-cell [L2 ~> m2]
+    IareaBu      !< IareaBu = 1/areaBu [L-2 ~> m-2].
 
   real, pointer, dimension(:) :: gridLatT => NULL()
         !< The latitude of T points for the purpose of labeling the output axes.
@@ -141,13 +142,15 @@ type, public :: SIS_hor_grid_type
     ! Except on a Cartesian grid, these are usually  some variant of "degrees".
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
-    bathyT        !< Ocean bottom depth at tracer points [m].
+    bathyT        !< Ocean bottom depth at tracer points [Z ~> m].
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEMB_PTR_) :: &
-    CoriolisBu    !< The Coriolis parameter at corner points [s-1].
+    CoriolisBu    !< The Coriolis parameter at corner points [T-1 ~> s-1].
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
-    df_dx, &      !< Derivative d/dx f (Coriolis parameter) at h-points [s-1 m-1].
-    df_dy         !< Derivative d/dy f (Coriolis parameter) at h-points [s-1 m-1].
+    df_dx, &      !< Derivative d/dx f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
+    df_dy         !< Derivative d/dy f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
   real :: g_Earth !<   The gravitational acceleration [m s-2].
+
+  type(unit_scale_type), pointer :: US => NULL() !< A dimensional unit scaling type
 
   ! These variables are for block structures.
   integer :: nblocks  !< The number of sub-PE blocks on this PE

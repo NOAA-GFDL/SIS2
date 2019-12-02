@@ -21,6 +21,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
+use MOM_unit_scaling,  only : unit_scale_type
 use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field
@@ -151,7 +152,9 @@ type ice_data_type !  ice_public_type
           !< A pointer to the SIS fast ice update control structure
   type(SIS_slow_CS), pointer :: sCS => NULL()
           !< A pointer to the SIS slow ice update control structure
-  type(restart_file_type), pointer :: Ice_restart => NULL()
+  type(unit_scale_type), pointer :: US => NULL()
+          !< structure containing various unit conversion factors
+   type(restart_file_type), pointer :: Ice_restart => NULL()
           !< A pointer to the slow ice restart control structure
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
           !< A pointer to the fast ice restart control structure
@@ -571,7 +574,7 @@ subroutine ice_stock_pe(Ice, index, value)
       value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))) * &
-               IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))
+               IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
@@ -579,13 +582,13 @@ subroutine ice_stock_pe(Ice, index, value)
       if (slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
-              value = value - (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
+              value = value - (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
                               (kg_H * IST%mH_ice(i,j,k)) * LI
           endif
         enddo ; enddo ; enddo
       else !### Should this be changed to raise the temperature to 0 degC?
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          part_wt = (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
           if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
             value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
                 Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
@@ -601,7 +604,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !There is no salt in the snow.
       value = 0.0
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
-        value = value + (IST%part_size(i,j,k) * (G%areaT(i,j)*G%mask2dT(i,j))) * &
+        value = value + (IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 

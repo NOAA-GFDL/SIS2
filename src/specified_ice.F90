@@ -10,10 +10,11 @@ module specified_ice
 use MOM_domains,       only : AGRID, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_file_parser,  only : get_param, read_param, log_param, log_version, param_file_type
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager, only : operator(+), operator(-)
 use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling, only : unit_scale_type
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
@@ -57,7 +58,7 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> specified_ice_dynamics does an update of ice dynamic quantities with specified ice.
-subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
+subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
@@ -68,6 +69,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
                                                    !! the ocean that are calculated by the ice model.
   real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(specified_ice_CS),     pointer       :: CS  !< The control structure for the specified_ice module
 
@@ -81,7 +83,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
   CS%n_calls = CS%n_calls + 1
 
   IOF%stress_count = 0
-  call set_ocean_top_stress_FIA(FIA, IOF, G)
+  call set_ocean_top_stress_FIA(FIA, IOF, G, US)
 
   ! Set appropriate surface quantities in categories with no ice.
   if (allocated(IST%t_surf)) then
@@ -95,11 +97,11 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, IG)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
-  if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, IG)
+  if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, US, IG)
   if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of specified_ice_dynamics", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp)
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   endif
 
@@ -109,16 +111,18 @@ end subroutine specified_ice_dynamics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Calculate the stresses on the ocean integrated across all the thickness categories
 !! with the appropriate staggering, based on the information in a fast_ice_avg_type.
-subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
+subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
   type(fast_ice_avg_type),   intent(inout) :: FIA !< A type containing averages of fields
                                                   !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),     intent(in)    :: US  !< A structure with unit conversion factors
 
-  real :: ps_ice, ps_ocn ! ice_free and ice_cover interpolated to a velocity point [nondim].
+  real :: ps_ice, ps_ocn  ! ice_free and ice_cover interpolated to a velocity point [nondim].
   real :: wt_prev, wt_now ! Relative weights of the previous average and the current step [nondim].
-  real :: taux2, tauy2  ! squared wind stresses [Pa2]
+  real :: taux2, tauy2    ! Squared wind stresses [kg2 m-4 L2 T-4 ~> Pa2]
+  real :: stress_scale    ! A unit rescaling factor from the FIA stresses to the IOF stresses.
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -128,6 +132,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
   endif
 
   wt_now = 1.0 / (real(IOF%stress_count) + 1.0) ; wt_prev = 1.0 - wt_now
+  stress_scale = US%m_s_to_L_T*US%T_to_s
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
@@ -137,9 +142,9 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
     do j=jsc,jec ; do i=isc,iec
       ps_ocn = G%mask2dT(i,j) * FIA%ice_free(i,j)
       ps_ice = G%mask2dT(i,j) * FIA%ice_cover(i,j)
-      IOF%flux_u_ocn(i,j) = wt_prev * IOF%flux_u_ocn(i,j) + wt_now * &
+      IOF%flux_u_ocn(i,j) = wt_prev * IOF%flux_u_ocn(i,j) + wt_now * stress_scale * &
            (ps_ocn * FIA%WindStr_ocn_x(i,j) + ps_ice * FIA%WindStr_x(i,j))
-      IOF%flux_v_ocn(i,j) = wt_prev * IOF%flux_v_ocn(i,j) + wt_now * &
+      IOF%flux_v_ocn(i,j) = wt_prev * IOF%flux_v_ocn(i,j) + wt_now * stress_scale * &
            (ps_ocn * FIA%WindStr_ocn_y(i,j) + ps_ice * FIA%WindStr_y(i,j))
       if (allocated(IOF%stress_mag)) &
         IOF%stress_mag(i,j) = wt_prev * IOF%stress_mag(i,j) + wt_now * &
@@ -155,12 +160,12 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ice = 0.25 * ((FIA%ice_cover(i+1,j+1) + FIA%ice_cover(i,j)) + &
                          (FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j+1)) )
       endif
-      IOF%flux_u_ocn(I,J) = wt_prev * IOF%flux_u_ocn(I,J) + wt_now * &
+      IOF%flux_u_ocn(I,J) = wt_prev * IOF%flux_u_ocn(I,J) + wt_now * stress_scale * &
           (ps_ocn * 0.25 * ((FIA%WindStr_ocn_x(i,j) + FIA%WindStr_ocn_x(i+1,j+1)) + &
                             (FIA%WindStr_ocn_x(i,j+1) + FIA%WindStr_ocn_x(i+1,j))) + &
            ps_ice * 0.25 * ((FIA%WindStr_x(i,j) + FIA%WindStr_x(i+1,j+1)) + &
                             (FIA%WindStr_x(i,j+1) + FIA%WindStr_x(i+1,J))) )
-      IOF%flux_v_ocn(I,J) = wt_prev * IOF%flux_v_ocn(I,J) + wt_now * &
+      IOF%flux_v_ocn(I,J) = wt_prev * IOF%flux_v_ocn(I,J) + wt_now * stress_scale * &
           (ps_ocn * 0.25 * ((FIA%WindStr_ocn_y(i,j) + FIA%WindStr_ocn_y(i+1,j+1)) + &
                             (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i+1,j))) + &
            ps_ice * 0.25 * ((FIA%WindStr_y(i,j) + FIA%WindStr_y(i+1,j+1)) + &
@@ -187,7 +192,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ocn = 0.5*(FIA%ice_free(i+1,j) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j))
       endif
-      IOF%flux_u_ocn(I,j) = wt_prev * IOF%flux_u_ocn(I,j) + wt_now * &
+      IOF%flux_u_ocn(I,j) = wt_prev * IOF%flux_u_ocn(I,j) + wt_now * stress_scale * &
            (ps_ocn * 0.5 * (FIA%WindStr_ocn_x(i+1,j) + FIA%WindStr_ocn_x(i,j)) + &
             ps_ice * 0.5 * (FIA%WindStr_x(i+1,j) + FIA%WindStr_x(i,j)) )
     enddo ; enddo
@@ -198,7 +203,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
         ps_ocn = 0.5*(FIA%ice_free(i,j+1) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i,j+1) + FIA%ice_cover(i,j))
       endif
-      IOF%flux_v_ocn(i,J) = wt_prev * IOF%flux_v_ocn(i,J) + wt_now * &
+      IOF%flux_v_ocn(i,J) = wt_prev * IOF%flux_v_ocn(i,J) + wt_now * stress_scale * &
           (ps_ocn * 0.5 * (FIA%WindStr_ocn_y(i,j+1) + FIA%WindStr_ocn_y(i,j)) + &
            ps_ice * 0.5 * (FIA%WindStr_y(i,j+1) + FIA%WindStr_y(i,j)) )
     enddo ; enddo
@@ -213,7 +218,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G)
       IOF%stress_mag(i,j) = wt_prev * IOF%stress_mag(i,j) + wt_now * sqrt(taux2 + tauy2)
     enddo ; enddo ; endif
   else
-    call SIS_error(FATAL, "set_ocean_top_stress_C2: Unrecognized flux_uv_stagger.")
+    call SIS_error(FATAL, "set_ocean_top_stress_FIA: Unrecognized flux_uv_stagger.")
   endif
 
   IOF%stress_count = IOF%stress_count + 1
@@ -276,7 +281,7 @@ subroutine specified_ice_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
 
-  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, &
+  call SIS_sum_output_init(G, param_file, output_dir, Time_Init, G%US, &
                            CS%sum_output_CSp, CS%ntrunc)
 
   CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
