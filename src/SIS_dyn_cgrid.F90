@@ -673,7 +673,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 
   m_neglect = H_subroundoff*CS%Rho_ice
   m_neglect2 = m_neglect**2 ; m_neglect4 = m_neglect**4
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,CS,dt_slow,ui_min_trunc,u_IC,ui,   &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,US,CS,dt_slow,ui_min_trunc,u_IC,ui,   &
 !$OMP                               ui_max_trunc,vi_min_trunc,vi_max_trunc,v_IC,vi,mice, &
 !$OMP                               mis,ci,dt,Tdamp,I_2EC,ci_proj,pres_mice,       &
 !$OMP                               dx2B,dy2B,dx_dyB,dy_dxB,dx2T,dy2T,dx_dyT,dy_dxT,     &

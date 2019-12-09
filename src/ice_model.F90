@@ -219,7 +219,7 @@ subroutine update_ice_slow_thermo(Ice)
       ! This code is only required to reproduce an old bug.
       i_off = LBOUND(Ice%flux_t,1) - sG%isc
       j_off = LBOUND(Ice%flux_t,2) - sG%jsc
-      !$OMP parallel do default(none) shared(Ice,sG,i_off,j_off) private(i2,j2)
+      !$OMP parallel do default(none) shared(Ice,sG,US,i_off,j_off) private(i2,j2)
       do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
         Ice%sCS%IOF%flux_u_ocn(i,j) = US%m_s_to_L_T*US%T_to_s*Ice%flux_u(i2,j2)

@@ -368,7 +368,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
   if (id_cell_area>0) then
     I_area_Earth = 1.0 / (16.0*atan(1.0)*G%Rad_Earth**2)
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,I_area_Earth,tmp_diag)
+    !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
       tmp_diag(i,j) = (US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
     enddo ; enddo
