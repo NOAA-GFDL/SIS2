@@ -10,6 +10,7 @@ use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
 ! use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,   only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
+use MOM_unit_scaling,   only : unit_scale_type
 ! use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 ! use SIS_diag_mediator, only : safe_alloc_alloc
@@ -27,25 +28,26 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Advect an ice tracer or the thickness using a very old slab-ice algorithm
 !! dating back to the Manabe model.
-subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, part_sz, nsteps)
+subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, US, part_sz, nsteps)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity [m s-1]
-  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity [m s-1]
-  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to
-                                                          !! advect, in [kg Conc] or other units, or the
-                                                          !! total ice mass [H ~> kg m-2].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to advect,
+                                                          !! in [Conc H ~> Conc kg m-2] or other units, or
+                                                          !! the total ice mass [H ~> kg m-2].
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr [Conc]
-  real,                              intent(in   ) :: dt_slow !< The time covered by this call [s].
+  real,                              intent(in   ) :: dt_slow !< The time covered by this call [T ~> s].
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
                                                           !! whether trc (which may be mass) exceeds 0.
   integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G)) :: uflx
-  real, dimension(SZI_(G),SZJB_(G)) :: vflx
-  real :: avg, dif
-  real :: dt_adv
+  real, dimension(SZIB_(G),SZJ_(G)) :: uflx ! Zonal tracer fluxes [Conc H L2 T-1 ~> Conc kg s-1]
+  real, dimension(SZI_(G),SZJB_(G)) :: vflx ! Meridional tracer fluxes [Conc H L2 T-1 ~> Conc kg s-1]
+  real :: avg, dif ! Average and forward difference of integrated tracer concentrations [Conc H ~> Conc kg m-2]
+  real :: dt_adv  ! The advective timestep [T ~> s]
   integer :: i, j, n, isc, iec, jsc, jec, n_substeps
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -95,16 +97,16 @@ end subroutine slab_ice_advect
 !> slab_ice_dynamics updates the B-grid or C-grid ice velocities and ice-ocean stresses as in the
 !! very old slab-ice algorithm dating back to the Manabe model.  This code works for either
 !! B-grid or C-grid discretiztions, but the velocity and stress variables must have consistent
-!! array sizes.
+!! array sizes and units.
 subroutine slab_ice_dynamics(ui, vi, uo, vo, fxat, fyat, fxoc, fyoc)
-  real, dimension(:,:), intent(inout) :: ui    !< Zonal ice velocity [m s-1]
-  real, dimension(:,:), intent(inout) :: vi    !< Meridional ice velocity [m s-1]
-  real, dimension(:,:), intent(in   ) :: uo    !< Zonal ocean velocity [m s-1]
-  real, dimension(:,:), intent(in   ) :: vo    !< Meridional ocean velocity [m s-1]
-  real, dimension(:,:), intent(in   ) :: fxat  !< Zonal air stress on ice [Pa]
-  real, dimension(:,:), intent(in   ) :: fyat  !< Meridional air stress on ice [Pa]
-  real, dimension(:,:), intent(  out) :: fxoc  !< Zonal ice stress on ocean [Pa]
-  real, dimension(:,:), intent(  out) :: fyoc  !< Meridional ice stress on ocean [Pa]
+  real, dimension(:,:), intent(inout) :: ui    !< Zonal ice velocity [L T-1 ~> m s-1]
+  real, dimension(:,:), intent(inout) :: vi    !< Meridional ice velocity [L T-1 ~> m s-1]
+  real, dimension(:,:), intent(in   ) :: uo    !< Zonal ocean velocity [L T-1 ~> m s-1]
+  real, dimension(:,:), intent(in   ) :: vo    !< Meridional ocean velocity [L T-1 ~> m s-1]
+  real, dimension(:,:), intent(in   ) :: fxat  !< Zonal air stress on ice [kg m-2 L T-2 ~> Pa]
+  real, dimension(:,:), intent(in   ) :: fyat  !< Meridional air stress on ice [kg m-2 L T-2 ~> Pa]
+  real, dimension(:,:), intent(  out) :: fxoc  !< Zonal ice stress on ocean [kg m-2 L T-2 ~> Pa]
+  real, dimension(:,:), intent(  out) :: fyoc  !< Meridional ice stress on ocean [kg m-2 L T-2 ~> Pa]
 
   ui(:,:) = uo(:,:) ; vi(:,:) = vo(:,:)
   fxoc(:,:) = fxat(:,:) ; fyoc(:,:) = fyat(:,:)

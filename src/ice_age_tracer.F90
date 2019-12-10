@@ -21,6 +21,7 @@ use MOM_sponge, only            : set_up_sponge_field, sponge_CS
 use MOM_error_handler, only     : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only     : SIS_mesg=>MOM_mesg
 use MOM_string_functions, only  : slasher
+use MOM_unit_scaling, only      : unit_scale_type
 
 use fms_mod, only               : read_data
 use fms_io_mod, only            : register_restart_field, restore_state
@@ -417,7 +418,7 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
       avg_tr = avg_tr/IG%NkIce
 
       stocks(tr) = stocks(tr) + avg_tr * &
-          (G%mask2dT(i,j) * G%areaT(i,j) * mi(i,j,k))
+          (G%mask2dT(i,j) * G%US%m_to_L**2*G%areaT(i,j) * mi(i,j,k))
     enddo ; enddo ; enddo
 
   enddo
