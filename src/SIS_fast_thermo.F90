@@ -658,7 +658,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   endif
 
   if (CS%debug_fast) &
-    call IST_chksum("Start do_update_ice_model_fast", IST, G, IG)
+    call IST_chksum("Start do_update_ice_model_fast", IST, G, G%US, IG)
 
   !$OMP parallel do default(shared) private(i2,j2,k2)
   do j=jsc,jec
@@ -826,7 +826,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                           sh_T0, evap_T0, lw_T0, dshdt, devapdt, dlwdt, G, IG )
 
   if (CS%debug_fast) &
-    call IST_chksum("End do_update_ice_model_fast", IST, G, IG)
+    call IST_chksum("End do_update_ice_model_fast", IST, G, G%US, IG)
 
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "End of update_ice_fast", Rad=Rad) !, OSS=sOSS)
@@ -936,7 +936,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   T_bright = bright_ice_temp(optics_CSp, IST%ITV)
 
   if (CS%debug_slow) then
-    call IST_chksum("Start redo_update_ice_model_fast", IST, G, IG)
+    call IST_chksum("Start redo_update_ice_model_fast", IST, G, G%US, IG)
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
@@ -1188,7 +1188,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   endif ; enddo
 
   if (CS%debug_slow) &
-    call IST_chksum("End redo_update_ice_model_fast", IST, G, IG)
+    call IST_chksum("End redo_update_ice_model_fast", IST, G, G%US, IG)
 
   if (CS%bounds_check) &
     call IST_bounds_check(IST, G, IG, "End of redo_update_ice_fast", Rad=Rad) !, OSS=sOSS)

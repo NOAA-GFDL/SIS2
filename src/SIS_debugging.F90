@@ -554,7 +554,7 @@ end subroutine  check_redundant_vT2d
 ! =====================================================================
 
 !> This subroutine does a checksum and redundant point check on a 3d C-grid vector.
-subroutine uvchksum_3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine uvchksum_3d(mesg, u_comp, v_comp, G, halos, scalars, scale)
   character(len=*),                  intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),           intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -562,12 +562,13 @@ subroutine uvchksum_3d(mesg, u_comp, v_comp, G, halos, scalars)
   integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
   logical,                 optional, intent(in)    :: scalars !< If true this is a pair of
                                                               !! scalars that are being checked.
+  real,                    optional, intent(in)    :: scale  !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -580,7 +581,7 @@ subroutine uvchksum_3d(mesg, u_comp, v_comp, G, halos, scalars)
 end subroutine uvchksum_3d
 
 !> This subroutine does a checksum and redundant point check on a 2d C-grid vector.
-subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars, scale)
   character(len=*),                intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),         intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
@@ -588,12 +589,13 @@ subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars)
   integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
   logical,               optional, intent(in)    :: scalars !< If true this is a pair of
                                                             !! scalars that are being checked.
+  real,                  optional, intent(in)    :: scale  !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -606,35 +608,37 @@ subroutine uvchksum_2d(mesg, u_comp, v_comp, G, halos, scalars)
 end subroutine uvchksum_2d
 
 !> This subroutine does a checksum and redundant point check on a 3d C-grid vector.
-subroutine uvchksum_3d_dG(mesg, u_comp, v_comp, G, halos)
+subroutine uvchksum_3d_dG(mesg, u_comp, v_comp, G, halos, scale)
   character(len=*),                  intent(in)    :: mesg   !< An identifying message
   type(dyn_horgrid_type),            intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%JsdB:,:), intent(in)    :: v_comp !< The v-component of the vector
   integer,                 optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  real,                    optional, intent(in)    :: scale  !< A scaling factor for these arrays.
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
 
 end subroutine uvchksum_3d_dG
 
 !> This subroutine does a checksum and redundant point check on a 2d C-grid vector.
-subroutine uvchksum_2d_dG(mesg, u_comp, v_comp, G, halos)
+subroutine uvchksum_2d_dG(mesg, u_comp, v_comp, G, halos, scale)
   character(len=*),                intent(in)    :: mesg   !< An identifying message
   type(dyn_horgrid_type),          intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
   real, dimension(G%isd:,G%JsdB:), intent(in)    :: v_comp !< The v-component of the vector
   integer,               optional, intent(in)    :: halos  !< The width of halos to check (default 0)
+  real,                  optional, intent(in)    :: scale  !< A scaling factor for these arrays.
 
   if (debug_chksums) then
-    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_uvchksum(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
 
 end subroutine uvchksum_2d_dG
 
 !> This subroutine does a checksum and redundant point check on a 3d B-grid vector.
-subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars, scale)
   character(len=*),                   intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),            intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -642,12 +646,13 @@ subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   integer,                  optional, intent(in)    :: halos  !< The width of halos to check (default 0)
   logical,                  optional, intent(in)    :: scalars !< If true this is a pair of
                                                                !! scalars that are being checked.
+  real,                     optional, intent(in)    :: scale  !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -660,7 +665,7 @@ subroutine Bchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
 end subroutine Bchksum_pair_3d
 
 !> This subroutine does a checksum and redundant point check on a 2d B-grid vector.
-subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
+subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric, scale)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%IsdB:,G%JsdB:), intent(in)    :: u_comp !< The u-component of the vector
@@ -670,12 +675,13 @@ subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
                                                              !! scalars that are being checked.
   logical,                optional, intent(in)    :: symmetric !< If true, do the checksums on the
                                                                !! full symmetric computational domain.
+  real,                   optional, intent(in)    :: scale   !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, symmetric=symmetric, haloshift=halos)
+    call mom_Bchksum_pair(mesg, u_comp, v_comp, G%HI, symmetric=symmetric, haloshift=halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -688,7 +694,7 @@ subroutine Bchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, symmetric)
 end subroutine Bchksum_pair_2d
 
 !> This subroutine does a checksum and redundant point check on a 3d C-grid vector.
-subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars, scale)
   character(len=*),                 intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),          intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:,:), intent(in)    :: u_comp !< The u-component of the vector
@@ -696,12 +702,13 @@ subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
   integer,                optional, intent(in)    :: halos  !< The width of halos to check (default 0)
   logical,                optional, intent(in)    :: scalars !< If true this is a pair of
                                                              !! scalars that are being checked.
+  real,                   optional, intent(in)    :: scale   !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
@@ -714,7 +721,7 @@ subroutine hchksum_pair_3d(mesg, u_comp, v_comp, G, halos, scalars)
 end subroutine hchksum_pair_3d
 
 !> This subroutine does a checksum and redundant point check on a 2d C-grid vector.
-subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
+subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars, scale)
   character(len=*),               intent(in)    :: mesg   !< An identifying message
   type(SIS_hor_grid_type),        intent(inout) :: G      !< The ocean's grid structure
   real, dimension(G%isd:,G%jsd:), intent(in)    :: u_comp !< The u-component of the vector
@@ -722,12 +729,13 @@ subroutine hchksum_pair_2d(mesg, u_comp, v_comp, G, halos, scalars)
   integer,              optional, intent(in)    :: halos  !< The width of halos to check (default 0)
   logical,              optional, intent(in)    :: scalars !< If true this is a pair of
                                                            !! scalars that are being checked.
+  real,                  optional, intent(in)   :: scale   !< A scaling factor for these arrays.
 
   logical :: are_scalars
   are_scalars = .false. ; if (present(scalars)) are_scalars = scalars
 
   if (debug_chksums) then
-    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos)
+    call mom_hchksum_pair(mesg, u_comp, v_comp, G%HI, halos, scale=scale)
   endif
   if (debug_redundant) then
     if (are_scalars) then
