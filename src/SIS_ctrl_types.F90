@@ -26,6 +26,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
+use MOM_unit_scaling,  only : unit_scale_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_sum_output, only : SIS_sum_out_CS
@@ -74,6 +75,7 @@ type SIS_fast_CS
                             !! shortwave radiation.
 
   type(SIS_hor_grid_type), pointer :: G => NULL() !< A structure containing metrics and grid info.
+  type(unit_scale_type), pointer :: US => NULL()  !< A structure containing various unit conversion factors.
   type(ice_grid_type),  pointer :: IG => NULL() !< A structure containing sea-ice specific grid info.
   type(simple_OSS_type), pointer :: sOSS => NULL() !< A structure containing the arrays
                             !! that describe the ocean's surface state, as it is revealed
@@ -148,6 +150,7 @@ type SIS_slow_CS
   type(SIS_diag_ctrl) :: diag !< A structure that regulates diagnostics.
 
   type(SIS_hor_grid_type), pointer :: G => NULL() !< A structure containing metrics and grid info.
+  type(unit_scale_type), pointer :: US => NULL()  !< A structure containing various unit conversion factors.
   type(ice_grid_type),  pointer :: IG => NULL() !< A structure containing sea-ice specific grid info.
   type(ocean_sfc_state_type), pointer :: OSS => NULL() !< A structure containing the arrays
                             !! that describe the ocean's surface state, as it is revealed
@@ -175,7 +178,7 @@ contains
 
 !> ice_diagnostics_init does the registration for a variety of sea-ice model
 !! diagnostics and saves several static diagnotic fields.
-subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
+subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
@@ -183,6 +186,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   type(fast_ice_avg_type),    intent(inout) :: FIA !< A type containing averages of fields
                                                    !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_diag_ctrl),        intent(in)    :: diag !< A structure that is used to regulate diagnostic output
   type(time_type),            intent(inout) :: Time !< The sea-ice model's clock,
@@ -320,18 +324,18 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
 
   if (Cgrid_dyn) then
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
-               'surface current - x component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - x component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
     OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
-               'surface current - y component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - y component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
   else
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
-               'surface current - x component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - x component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
     OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
-               'surface current - y component', 'm/s', missing_value=missing, &
-               interp_method='none')
+               'surface current - y component', 'm/s', conversion=US%L_T_to_m_s, &
+               missing_value=missing, interp_method='none')
   endif
 
   OSS%id_frazil   = register_SIS_diag_field('ice_model', 'FRAZIL', diag%axesT1, Time, &
@@ -364,9 +368,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, IG, diag, Time, Cgrid)
   if (id_geo_lat>0) call post_data(id_geo_lat, G%geoLatT, diag, is_static=.true.)
   if (id_cell_area>0) then
     I_area_Earth = 1.0 / (16.0*atan(1.0)*G%Rad_Earth**2)
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,I_area_Earth,tmp_diag)
+    !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp_diag(i,j) = (G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
+      tmp_diag(i,j) = (US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
     enddo ; enddo
     call post_data(id_cell_area, tmp_diag, diag, is_static=.true.)
   endif

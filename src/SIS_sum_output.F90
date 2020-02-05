@@ -24,6 +24,7 @@ use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
 use MOM_time_manager, only : time_type, get_time, operator(>), operator(-)
 use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
+use MOM_unit_scaling, only : unit_scale_type
 use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types, only : ocean_sfc_state_type
 use SIS_hor_grid, only : SIS_hor_grid_type
@@ -80,7 +81,7 @@ type, public :: SIS_sum_out_CS ; private
   type(EFP_type) :: heat_prev_EFP !< An extended fixed point version of heat_prev
   type(EFP_type) :: salt_prev_EFP !< An extended fixed point version of salt_prev
   type(EFP_type) :: mass_prev_EFP !< An extended fixed point version of mass_prev
-  real    :: dt                 !< The baroclinic dynamics time step [s].
+  real    :: dt                 !< The baroclinic dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90
@@ -109,11 +110,12 @@ end type SIS_sum_out_CS
 contains
 
 !> Initialize the SIS_sum_output control structure, allocate memory and store runtime parameters.
-subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, ntrunc)
+subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, CS, ntrunc)
   type(SIS_hor_grid_type),  intent(in)    :: G      !< The horizontal grid type
   type(param_file_type),    intent(in)    :: param_file !< A structure to parse for run-time parameters
   character(len=*),         intent(in)    :: directory  !<  The directory where the statistics file goes
   type(time_type),          intent(in)    :: Input_start_time !< The start time of the simulation
+  type(unit_scale_type),    intent(in)    :: US     !< A structure with unit conversion factors
   type(SIS_sum_out_CS),     pointer       :: CS     !< A pointer that is set to point to the control
                                                     !! structure for this module
   integer, target, optional,intent(inout) :: ntrunc !< The integer that stores the number of times
@@ -147,7 +149,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, CS, n
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
-                 "the ice mass field and velocities.", units="s", &
+                 "the ice mass field and velocities.", units="s", scale=US%s_to_T, &
                  default=-1.0, do_not_log=.true.)
   call get_param(param_file, mdl, "MAXTRUNC", CS%maxtrunc, &
                  "The run will be stopped, and the day set to a very \n"//&
@@ -205,11 +207,12 @@ end subroutine SIS_sum_output_end
 
 !> Write out the sea ice statistics of the total sea-ice mass, heat and salt by
 !! hemisphere and other globally integrated quantities.
-subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, tracer_CSp)
+subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_column, tracer_CSp)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(time_type),            intent(inout) :: day !< The current model time.
   integer,                    intent(in)    :: n   !< The time step number of the current execution
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_sum_out_CS),       pointer       :: CS  !< The control structure returned by a previous
                                                    !! call to SIS_sum_output_init
@@ -286,7 +289,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
 
   real :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection [nondim].
-  real :: dt_CFL       ! The timestep for calculating the CFL number [s].
+  real :: dt_CFL       ! The timestep for calculating the CFL number [T ~> s].
   real :: max_CFL      ! The maximum of the CFL numbers [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: &
     Temp_int, Salt_int
@@ -428,7 +431,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   do j=js,je ; do i=is,ie
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
+      area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
@@ -446,11 +449,11 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
       enddo
     endif ; enddo
     if (allocated(IST%snow_to_ocn)) then ; if (IST%snow_to_ocn(i,j) > 0.0) then
-      area_pt = G%areaT(i,j) * G%mask2dT(i,j)
+      area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IST%snow_to_ocn(i,j)
       col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
     endif ; endif
-    if (ice_area(i,j,hem) > 0.1*G%AreaT(i,j)) ice_extent(i,j,hem) = G%AreaT(i,j)
+    if (ice_area(i,j,hem) > 0.1*US%L_to_m**2*G%areaT(i,j)) ice_extent(i,j,hem) = US%L_to_m**2*G%areaT(i,j)
 
   enddo ; enddo
   Area = reproducing_sum(ice_area, sums=Area_NS)
@@ -507,7 +510,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
     CS%heat_prev_EFP = heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0)
   else
     do j=js,je ; do i=is,ie
-      area_h = G%areaT(i,j) * G%mask2dT(i,j)
+      area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       CS%water_in_col(i,j) = area_h * CS%water_in_col(i,j)
       CS%heat_in_col(i,j) = area_h * CS%heat_in_col(i,j)
       CS%salt_in_col(i,j) = area_h * CS%salt_in_col(i,j)
@@ -573,7 +576,7 @@ subroutine write_ice_statistics(IST, day, n, G, IG, CS, message, check_column, t
   if (is_root_pe()) then
     Heat_anom_norm = 0.0 ; if (Heat /= 0.0) Heat_anom_norm = Heat_anom/Heat
     Salt_anom_norm = 0.0 ; if (Salt /= 0.0) Salt_anom_norm = Salt_anom/Salt
-    write(CS%statsfile_ascii,'(A,", Area", 2(ES19.12), ", Ext", 2(es11.4), ", CFL", F6.3, &
+    write(CS%statsfile_ascii,'(A,", Area", 2(ES23.16), ", Ext", 2(es11.4), ", CFL", F6.3, &
                 &", M",2(ES12.5),", Enth",2(ES13.5),", S ",2(f8.4),", Me ",ES9.2,&
                 &", Te ",ES9.2,", Se ",ES9.2)') &
           trim(msg_start), Area_NS(1:2), Extent_NS(1:2), max_CFL, mass_NS(1:2), &
@@ -714,7 +717,7 @@ end subroutine write_ice_statistics
 
 !> Accumulate the net input of fresh water and heat through the bottom of the
 !! sea-ice for conservation checks.
-subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
+subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
   type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
   type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
@@ -725,6 +728,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
   type(ice_ocean_flux_type),  intent(in) :: IOF !< A structure containing fluxes from the ice to
                                                 !! the ocean that are calculated by the ice model.
   real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
 
@@ -738,7 +742,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, IG, CS)
 
   call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
 
-  if (CS%dt < 0.0) CS%dt = dt
+  if (CS%dt < 0.0) CS%dt = US%s_to_T*dt
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &

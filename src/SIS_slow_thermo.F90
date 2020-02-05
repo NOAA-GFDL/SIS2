@@ -33,6 +33,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_hor_index, only : hor_index_type
+use MOM_unit_scaling,   only : unit_scale_type
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
@@ -303,7 +304,7 @@ end subroutine post_flux_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> slow_thermodynamics takes care of slow ice thermodynamics and mass changes
-subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
+subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
@@ -318,6 +319,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
 
   ! Local variables
@@ -344,7 +346,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   CS%n_calls = CS%n_calls + 1
 
   if (CS%debug) then
-    call IST_chksum("Start update_ice_model_slow", IST, G, IG)
+    call IST_chksum("Start update_ice_model_slow", IST, G, US, IG)
   endif
 
   if (CS%bounds_check) &
@@ -363,7 +365,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   call mpp_clock_begin(iceClock7)
   call accumulate_input_1(IST, FIA, OSS, dt_slow, G, IG, CS%sum_output_CSp)
   if (CS%column_check) &
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               message="    SIS_slow_thermo", check_column=.true.)
   call mpp_clock_end(iceClock7)
 
@@ -461,19 +463,19 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, IG)
   call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
   call disable_SIS_averaging(CS%diag)
 
-  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, IG, CS%sum_output_CSp)
+  call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
 
   ! This needs to go after accumulate_bottom_input.
   if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G)
 
   if (CS%column_check) &
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               message="      Post_thermo A", check_column=.true.)
   call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
                              IST%TrReg, G, IG, CS%SIS_transport_CSp) !Niki: add ridging?
 
   if (CS%column_check) &
-    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, IG, CS%sum_output_CSp, &
+    call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               message="      Post_thermo B ", check_column=.true.)
 
 end subroutine slow_thermodynamics
@@ -1220,7 +1222,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         qflx_lim_ice(i,j) = enth_to_melt * I_enth_units * Idt_slow
         IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (CS%ice_rel_salin > 0.0) then
-          salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
+          salt_change(i,j) = salt_change(i,j) + salt_to_ice
         endif
       endif
 

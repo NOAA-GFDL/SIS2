@@ -18,6 +18,7 @@ use MOM_obsolete_params, only : obsolete_logical
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : get_param, log_version, param_file_type
+use MOM_unit_scaling,   only : unit_scale_type
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 ! use MOM_variables, only : ocean_OBC_type, OBC_SIMPLE
@@ -63,24 +64,25 @@ contains
 
 !> ice_continuity time steps the category thickness changes due to advection,
 !! using a monotonically limited, directionally split PPM scheme.
-subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
+subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                           intent(in)    :: u   !< Zonal ice velocity [m s-1].
+                           intent(in)    :: u   !< Zonal ice velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJB_(G)), &
-                           intent(in)    :: v   !< Meridional ice velocity [m s-1].
+                           intent(in)    :: v   !< Meridional ice velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(in)    :: hin !< Initial ice or snow thickness by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: h   !< Final ice or snow thickness by category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(out)   :: uh  !< Volume flux through zonal faces = u*h*dy
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                            intent(out)   :: vh  !< Volume flux through meridional faces = v*h*dx
-                                                !! [H m2 s-1 ~> kg s-1].
-  real,                    intent(in)    :: dt  !< Time increment [s]
+                                                !! [H L2 T-1 ~> kg s-1].
+  real,                    intent(in)    :: dt  !< Time increment [T ~> s]
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
 !    This subroutine time steps the category thicknesses, using a monotonically
@@ -135,7 +137,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
   !    First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec
     LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, hin, uh)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, hin, uh)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -152,7 +154,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
 
   !    Now advect meridionally, using the updated thicknesses to determine
   !  the fluxes.
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, h, vh)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, h, vh)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -170,7 +172,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
     LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil
     LB%jsh = G%jsc ; LB%jeh = G%jec
 
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, hin, vh)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, hin, vh)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -186,7 +188,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, IG, CS)
   !    Now advect zonally, using the updated thicknesses to determine
   !  the fluxes.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, h, uh)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, h, uh)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -205,20 +207,21 @@ end subroutine ice_continuity
 
 
 !> ice_cover_transport advects the total fractional ice cover and limits them not to exceed 1.
-subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
+subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u   !< Zonal ice velocity [m s-1].
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v   !< Meridional ice velocity [m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u   !< Zonal ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v   !< Meridional ice velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: cvr !< Fractional ice cover [nondim].
-  real,                              intent(in)    :: dt  !< Time increment [s]
+  real,                              intent(in)    :: dt  !< Time increment [T ~> s]
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS),           pointer       :: CS  !< The control structure returned by a
                                                           !! previous call to SIS_continuity_init.
 
   ! Local variables
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
-  real, dimension(SZIB_(G),SZJ_(G)) :: ucvr ! Ice cover flux through zonal faces = u*cvr*dy [m2 s-1].
-  real, dimension(SZI_(G),SZJB_(G)) :: vcvr ! Ice cover flux through meridional faces = v*cvr*dx [m2 s-1].
+  real, dimension(SZIB_(G),SZJ_(G)) :: ucvr ! Ice cover flux through zonal faces = u*cvr*dy [L2 T-1 ~> m2 s-1].
+  real, dimension(SZI_(G),SZJB_(G)) :: vcvr ! Ice cover flux through meridional faces = v*cvr*dx [L2 T-1 ~> m2 s-1].
   real    :: cvr_up
   integer :: is, ie, js, je, stensil
   integer :: i, j
@@ -253,7 +256,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
     enddo ; enddo
     !$OMP do
     do j=js,je ; do i=is,ie
-      cvr(i,j) = cvr(i,j) - dt* G%IareaT(i,j) * &
+      cvr(i,j) = cvr(i,j) - dt * G%IareaT(i,j) * &
            ((ucvr(I,j) - ucvr(I-1,j)) + (vcvr(i,J) - vcvr(i,J-1)))
       if (cvr(i,j) < 0.0) call SIS_error(FATAL, &
         'Negative ice cover encountered in ice_cover_transport().')
@@ -262,7 +265,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
   elseif (x_first) then
     ! First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -275,7 +278,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
 
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
     ! Now advect meridionally, using the updated ice covers to determine the fluxes.
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -289,7 +292,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
   else  ! .not. x_first
     !  First, advect meridionally, so set the loop bounds accordingly.
     LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=cvr, vh_tot=vcvr)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -302,7 +305,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, IG, CS)
 
     ! Now advect zonally, using the updated ice covers to determine the fluxes.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=cvr, uh_tot=ucvr)
 
     call cpu_clock_begin(id_clock_update)
     !$OMP parallel do default(shared)
@@ -322,20 +325,21 @@ end subroutine ice_cover_transport
 !! thickness categories due to advection, using a monotonically limited, directionally split PPM
 !! scheme or simple upwind 2-d scheme.  It may also update the ice thickness, using fluxes that are
 !! proportional to the total fluxes times the ice mass divided by the total mass in the upwind cell.
-subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
+subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
   type(SIS_hor_grid_type),           intent(inout) :: G  !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG !< The sea-ice specific grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity [m s-1].
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity [m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: u  !< Zonal ice velocity [L T-1 ~> m s-1]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: v  !< Meridional ice velocity [L T-1 ~> m s-1]
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: h_in !< Initial total ice and snow mass per
                                                          !! unit cell area [H ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: h  !< Total ice and snow mass per unit cell
                                                          !! area [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)   :: uh !< Total mass flux through zonal faces
-                                                         !! = u*h*dy [H m2 s-1 ~> kg s-1].
+                                                         !! = u*h*dy [H L2 T-1 ~> kg s-1]
   real, dimension(SZI_(G),SZJB_(G)), intent(out)   :: vh !< Total mass flux through meridional faces
-                                                         !! = v*h*dx [H m2 s-1 ~> kg s-1].
-  real,                              intent(in)    :: dt !< Time increment [s]
+                                                         !! = v*h*dx [H L2 T-1 ~> kg s-1]
+  real,                              intent(in)    :: dt !< Time increment [T ~> s]
+  type(unit_scale_type),             intent(in)    :: US !< A structure with unit conversion factors
   type(SIS_continuity_CS),           pointer       :: CS !< The control structure returned by a
                                                          !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(inout) :: h_ice  !< Total ice mass per unit cell
@@ -345,9 +349,9 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   ! Local variables
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   real, dimension(SZIB_(G),SZJ_(G)) :: uh_ice ! Ice mass flux through zonal faces = u*h*dy
-                                              ! [H m2 s-1 ~> kg s-1].
+                                              ! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx
-                                              ! [H m2 s-1 ~> kg s-1].
+                                              ! [H L2 T-1 ~> kg s-1].
   real    :: h_up
   integer :: is, ie, js, je, stensil
   integer :: i, j
@@ -362,11 +366,11 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
 
   do j=js,je ; do i=is,ie ; if (h_in(i,j) < 0.0) then
-    call SIS_error(FATAL, 'Negative mass input to ice_total_continuity().')
+    call SIS_error(FATAL, 'Negative mass input to summed_continuity().')
   endif ; enddo ; enddo
 
   if (present(h_ice)) then ; do j=js,je ; do i=is,ie ; if (h_ice(i,j) > h_in(i,j)) then
-    call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity().')
+    call SIS_error(FATAL, 'ice mass exceeds total mass in summed_continuity().')
   endif ; enddo ; enddo ; endif
 
   if (CS%use_upwind2d) then
@@ -417,7 +421,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   elseif (x_first) then
     ! First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=h_in, uh_tot=uh)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=h_in, uh_tot=uh)
 
     call cpu_clock_begin(id_clock_update)
 
@@ -448,7 +452,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
 
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
     ! Now advect meridionally, using the updated thicknesses to determine the fluxes.
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h, vh_tot=vh)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=h, vh_tot=vh)
 
     call cpu_clock_begin(id_clock_update)
     if (present(h_ice)) then
@@ -468,7 +472,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j) = h(i,j) - (dt * G%IareaT(i,j)) * (vh(i,J) - vh(i,J-1))
       if (h(i,j) < 0.0) call SIS_error(FATAL, &
-        'Negative thickness encountered in v-pass of ice_total_continuity().')
+        'Negative thickness encountered in v-pass of summed_continuity().')
       ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
       !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() x-2.')
       ! endif ; endif
@@ -478,7 +482,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
   else  ! .not. x_first
     !  First, advect meridionally, so set the loop bounds accordingly.
     LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
-    call meridional_mass_flux(v, dt, G, IG, CS, LB, htot_in=h_in, vh_tot=vh)
+    call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=h_in, vh_tot=vh)
 
     call cpu_clock_begin(id_clock_update)
     if (present(h_ice)) then
@@ -507,7 +511,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
 
     !  Now advect zonally, using the updated thicknesses to determine the fluxes.
     LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc ; LB%jeh = G%jec
-    call zonal_mass_flux(u, dt, G, IG, CS, LB, htot_in=h, uh_tot=uh)
+    call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=h, uh_tot=uh)
 
     call cpu_clock_begin(id_clock_update)
 
@@ -529,7 +533,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, IG, CS, h_ice)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
       h(i,j) = h(i,j) - (dt * G%IareaT(i,j)) * (uh(I,j) - uh(I-1,j))
       if (h(i,j) < 0.0) call SIS_error(FATAL, &
-        'Negative thickness encountered in u-pass of ice_continuity().')
+        'Negative thickness encountered in u-pass of summed_continuity().')
       ! if (present(h_ice)) then ; if (h_ice(i,j) > h(i,j)) then
       !   call SIS_error(FATAL, 'ice mass exceeds total mass in ice_total_continuity() y-2.')
       ! endif ; endif
@@ -543,17 +547,18 @@ end subroutine summed_continuity
 !> proportionate_continuity time steps the category thickness changes due to advection,
 !! using input total mass fluxes with the fluxes proprotionate to the relative upwind
 !! thicknesses.
-subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
+subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS, &
                                     h1, uh1, vh1, h2, uh2, vh2, h3, uh3, vh3)
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: h_tot_in !< Initial total ice and snow mass per unit
                                                        !! cell area [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
-                                                       !! [H m2 s-1 ~> kg s-1].
-  real,                           intent(in)    :: dt  !< Time increment [s]
+                                                       !! [H L2 T-1 ~> kg s-1].
+  real,                           intent(in)    :: dt  !< Time increment [T ~> s]
+  type(unit_scale_type),          intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS),        pointer       :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_continuity_init.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -561,28 +566,28 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh1 !< Zonal mass flux of medium 1 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh1 !< Meridional mass flux of medium 1 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(inout) :: h2  !< Updated mass of medium 2 (often snow) by
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh2 !< Zonal mass flux of medium 2 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh2 !< Meridional mass flux of medium 2 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(inout) :: h3  !< Updated mass of medium 3 (pond water?) by
                                                        !! category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: uh3 !< Zonal mass flux of medium 3 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category
-                                                       !! [H m2 s-1 ~> kg s-1].
+                                                       !! [H L2 T-1 ~> kg s-1].
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: h_tot  ! Total thicknesses [H ~> kg m-2].
@@ -600,7 +605,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, IG, CS, &
   x_first = (MOD(G%first_direction,2) == 0)
 
   do j=js,je ; do i=is,ie ; if (h_tot_in(i,j) < 0.0) then
-    call SIS_error(FATAL, 'Negative thickness input to ice_continuity().')
+    call SIS_error(FATAL, 'Negative thickness input to proportionate_continuity().')
   endif ; enddo ; enddo
 
   !$OMP parallel do default(shared)
@@ -781,14 +786,14 @@ subroutine zonal_proportionate_fluxes(uh_tot, I_htot, h, uh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uh_tot !< Total mass flux through zonal faces
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
                                                 !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(out)   :: uh  !< Category mass flux through zonal faces = u*h*dy.
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables
@@ -809,14 +814,14 @@ subroutine merid_proportionate_fluxes(vh_tot, I_htot, h, vh, G, IG, LB)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vh_tot !< Total mass flux through meridional faces
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: I_htot !< Adcroft reciprocal of the total mass per unit
                                                 !! cell area [H-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: h   !< Mass per unit cell area by category [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                            intent(out)   :: vh  !< Category mass flux through meridional faces = v*h*dx
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
 
   ! Local variables
@@ -834,12 +839,13 @@ end subroutine merid_proportionate_fluxes
 
 !> Calculates the mass or volume fluxes through the zonal
 !! faces, and other related quantities.
-subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
+subroutine zonal_mass_flux(u, dt, G, US, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZIB_(G),SZJ_(G)), &
-                           intent(in)    :: u   !< Zonal ice velocity [m s-1].
-  real,                    intent(in)    :: dt  !< Time increment [s]
+                           intent(in)    :: u   !< Zonal ice velocity [L T-1 ~> m s-1].
+  real,                    intent(in)    :: dt  !< Time increment [T ~> s]
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
@@ -848,12 +854,12 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
                  optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
                  optional, intent(out)   :: uh  !< Category volume flux through zonal faces = u*h*dy
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)), &
                  optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G)), &
                  optional, intent(out)   :: uh_tot !< Total mass flux through zonal faces = u*htot*dy
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
 !   This subroutine calculates the mass or volume fluxes through the zonal
 ! faces, and other related quantities.
 
@@ -870,7 +876,7 @@ subroutine zonal_mass_flux(u, dt, G, IG, CS, LB, h_in, uh, htot_in, uh_tot)
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
 !  real :: h_marg ! The marginal thickness of a flux [H ~> kg m-2].
-  real :: dx_E, dx_W ! Effective x-grid spacings to the east and west [m].
+!  real :: dx_E, dx_W ! Effective x-grid spacings to the east and west [m].
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = IG%CatIce
@@ -956,12 +962,13 @@ end subroutine zonal_mass_flux
 
 !> Calculates the mass or volume fluxes through the meridional
 !! faces, and other related quantities.
-subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
+subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_tot)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJB_(G)), &
-                           intent(in)    :: v   !< Meridional ice velocity [m s-1].
-  real,                    intent(in)    :: dt  !< Time increment [s]
+                           intent(in)    :: v   !< Meridional ice velocity [L T-1 ~> m s-1].
+  real,                    intent(in)    :: dt  !< Time increment [T ~> s]
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_continuity_CS), pointer       :: CS  !< The control structure returned by a
                                                 !! previous call to SIS_continuity_init.
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
@@ -969,12 +976,12 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
                  optional, intent(in)    :: h_in !< Category thickness used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                  optional, intent(out)   :: vh  !< Category volume flux through meridional faces = v*h*dx
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJ_(G)), &
                  optional, intent(in)    :: htot_in !< Total thicknesses used to calculate the fluxes [H ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G)), &
                  optional, intent(out)   :: vh_tot !< Total mass flux through meridional faces = v*htot*dx
-                                                !! [H m2 s-1 ~> kg s-1].
+                                                !! [H L2 T-1 ~> kg s-1].
 
 !   This subroutine calculates the mass or volume fluxes through the meridional
 ! faces, and other related quantities.
@@ -987,12 +994,12 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
     I_htot, &  ! The inverse of htot or 0 [H-1 ~> m2 kg-1].
     hl, hr     ! Left and right face thicknesses [m].
   real, dimension(SZI_(G)) :: &
-    vhtot      ! The total transports [H m2 s-1 ~> kg s-1].
+    vhtot      ! The total transports [H L2 s-1 ~> kg s-1].
   real :: CFL ! The CFL number based on the local velocity and grid spacing [nondim].
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
   real :: h_marg ! The marginal thickness of a flux [m].
-  real :: dy_N, dy_S ! Effective y-grid spacings to the north and south [m].
+!  real :: dy_N, dy_S ! Effective y-grid spacings to the north and south [m].
   integer :: i, j, k, ish, ieh, jsh, jeh, nz
 
   ish = LB%ish ; ieh = LB%ieh ; jsh = LB%jsh ; jeh = LB%jeh ; nz = IG%CatIce
@@ -1043,7 +1050,7 @@ subroutine meridional_mass_flux(v, dt, G, IG, CS, LB, h_in, vh, htot_in, vh_tot)
        ! h_marg = hR(i,j) + CFL * ((hL(i,j) - hR(i,j)) + 3.0*curv_3*(CFL - 1.0))
       elseif (v(i,J) < 0.0) then
         if (CS%vol_CFL) then ; CFL = (-v(i,J) * dt) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
-        else ; CFL = -v(i,J) * dt * G%IdyT(i,j+1) ; endif
+        else ; CFL = -v(i,J) * dt *  G%IdyT(i,j+1) ; endif
         curv_3 = hL(i,j+1) + hR(i,j+1) - 2.0*htot(i,j+1)
         vhtot(i) = G%dx_Cv(i,J) * v(i,J) * ( hL(i,j+1) + CFL * &
             (0.5*(hR(i,j+1)-hL(i,j+1)) + curv_3*(CFL - 1.5)) )
