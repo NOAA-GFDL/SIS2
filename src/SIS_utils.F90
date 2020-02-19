@@ -13,11 +13,15 @@ use SIS_diag_mediator,  only : post_SIS_data, SIS_diag_ctrl
 use SIS_debugging,      only : hchksum, Bchksum, uvchksum, hchksum_pair, Bchksum_pair
 use SIS_debugging,      only : check_redundant_B
 use SIS_hor_grid,       only : SIS_hor_grid_type
-
+use fms2_io_mod,        only : FmsNetcdfDomainFile_t, write_data, register_axis, check_if_open, &
+                               register_restart_field, fms2_open_file=>open_file, get_num_dimensions, &
+                               get_global_io_domain_indices, get_dimension_names, get_dimension_size, &
+                               register_field
+use mpp_domains_mod,    only : CENTER, NORTH, EAST, domain2D
 implicit none ; private
 
 public :: get_avg, post_avg, ice_line, is_NaN, g_sum, ice_grid_chksum
-
+public :: register_restart_axis, write_restart_axis, register_axes_to_read_file_object
 !> Make a category averaged diagnostic available for output
 interface post_avg
   module procedure post_avg_3d, post_avg_4d
@@ -355,5 +359,133 @@ function is_NaN(x)
             (.not.(x < 0.0) .and. .not.(x >= 0.0)))
 
 end function is_nan
+
+!> generate an array of monontonically-increasing real numbers
+!! between and including "first" and "last"
+subroutine generate_sequence_real(first, last, array)
+  integer, intent(in) :: first ! first integer in the sequence
+  integer, intent(in) :: last ! last integer in the sequence
+  real, dimension(:), intent(inout) :: array ! array with integer sequence
+  ! local
+  integer :: i
+  real :: j
+  j=0.0
+  do i=first,last
+    j=j+1.0
+    array(i) = j
+  enddo
+end subroutine generate_sequence_real
+
+!> register the axes to a file object from a file opened in "read" mode
+subroutine register_axes_to_read_file_object(fileobj, filename, domain, is_restart)
+  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< domain-decomposed netcdf file object
+  character(len=*), intent(in) :: filename !< name of the file to open
+  type(domain2d),  intent(in)  :: domain   !< The ice model's FMS domain type
+  logical, intent(in) :: is_restart !< if .true., file is a restart file
+  ! local
+  integer :: num_restart_dims ! number of dimensions in the netcdf file
+  character(len=32), allocatable :: dim_names(:) ! dimension names
+  character(len=10) :: nc_mode ! netCDF file object mode; "read", "write", "append", "overwrite"
+  integer, allocatable :: dim_lengths(:) ! dimension lengths 
+  logical :: file_open_success ! result returned by call to fms2_open_file
+  integer :: i
+
+  if (.not.(check_if_open(fileobj))) then
+    file_open_success=fms2_open_file(fileobj, trim(filename), "read", domain, &
+                                     is_restart=is_restart)
+    if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_utils::register_axes_to_read_file_object: '// &
+                                    'Unable to open file '//trim(filename))
+  endif
+  ! register the dimensions
+  num_restart_dims = get_num_dimensions(fileobj)
+  allocate(dim_names(num_restart_dims))
+  allocate(dim_lengths(num_restart_dims))
+  dim_names(:) = ""
+  dim_lengths(:) = 0
+  call get_dimension_names(fileobj, dim_names)
+  do i=1,num_restart_dims
+    call get_dimension_size(fileobj, trim(dim_names(i)), dim_lengths(i))
+    call register_restart_axis(fileobj, trim(dim_names(i)), dim_lengths(i))
+  enddo
+
+  if (allocated(dim_names)) deallocate(dim_names)
+  if (allocated(dim_lengths)) deallocate(dim_lengths)
+end subroutine register_axes_to_read_file_object
+
+!> register restart axes to a netcdf file
+subroutine register_restart_axis(fileobj, axis_name, axis_length, domain_position)
+  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< netcdf file object
+  character(len=*), intent(in) :: axis_name !< name of the axis
+  integer, intent(in) :: axis_length !< length of the axis
+  integer, intent(in), optional :: domain_position !< domain position
+  ! local
+  integer :: pos
+  pos = CENTER
+  if (.not.(check_if_open(fileobj))) &
+    call SIS_error(FATAL,'register_restart_axis: netCDF file object is not open.')
+  if (present(domain_position)) pos=domain_position
+  select case (trim(axis_name))
+    case ('xaxis_1')
+      pos = CENTER
+      if (present(domain_position)) pos = domain_position
+      call register_axis(fileobj,'xaxis_1','x', domain_position=pos)
+    case ('xaxis_2')
+      pos = EAST
+      if (present(domain_position)) pos = domain_position
+      call register_axis(fileobj,'xaxis_2','x', domain_position=pos)
+    case ('yaxis_1')
+      pos = CENTER
+      if (present(domain_position)) pos = domain_position
+      call register_axis(fileobj,'yaxis_1','y', domain_position=pos)
+    case ('yaxis_2')
+      pos = NORTH
+      if (present(domain_position)) pos = domain_position
+      call register_axis(fileobj,'yaxis_2','y', domain_position=pos)
+    case default
+      call register_axis(fileobj, trim(axis_name), axis_length)
+  end select
+
+end subroutine register_restart_axis
+
+!> register and write dummy axis data to a restart file
+subroutine write_restart_axis(fileobj, axis_name, axis_length)
+  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< netcdf file object
+  character(len=*), intent(in) :: axis_name !< name of the axis
+  integer, intent(in), optional :: axis_length !< length of the axis
+  ! local
+  integer :: substring_index, is, ie, js, je, start
+  real, allocatable :: array(:)
+
+  if (.not.(check_if_open(fileobj))) &
+    call SIS_error(FATAL, 'SIS_utils::write_restart_axis: '// &
+      'netCDF file object is not open. Call fms2_open_file(fileobj,...)')
+  substring_index = 0
+  substring_index = index(trim(axis_name), "xaxis")
+  if (substring_index > 0) then
+    call get_global_io_domain_indices(fileobj,trim(axis_name), is ,ie)
+    allocate(array((ie-is)+1))
+    start = is
+  else
+    substring_index = index(trim(axis_name), "yaxis")
+    if (substring_index > 0) then
+      call get_global_io_domain_indices(fileobj,trim(axis_name), js ,je)
+      allocate(array((je-js)+1))
+      start = js
+    else
+      if (.not.(present(axis_length))) call SIS_error(FATAL, &
+        "write_restart_axis: axis_length argument is not present")
+      allocate(array(axis_length))
+      start = 1
+    endif
+  endif
+  ! populate the array with dummy data
+  call generate_sequence_real(start, size(array), array)
+  ! register the axis data
+  call register_field(fileobj, trim(axis_name), "double", dimensions=(/trim(axis_name)/))
+  ! write the axis data
+  call write_data(fileobj, trim(axis_name), array)
+
+  if (allocated(array)) deallocate(array)
+end subroutine write_restart_axis
 
 end module SIS_utils

@@ -29,7 +29,7 @@ use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
 use fms_mod, only : clock_flag_default
-use fms_io_mod, only : restart_file_type
+use fms2_io_mod, only : FmsNetcdfDomainFile_t
 use mpp_domains_mod,  only  : domain2D
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
@@ -2102,15 +2102,17 @@ end subroutine set_wind_stresses_B
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
-                                      Ice_restart, restart_file)
+subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, restart_fileobj, &
+                                     restart_file, nc_mode)                                
   type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
   type(hor_index_type),    intent(in) :: HI     !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
+                                                                !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
+  character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 
 !   This subroutine registers the restart variables associated with the
 ! the slow ice dynamics and thermodynamics.
@@ -2126,10 +2128,10 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
 
   if (CS%Cgrid_dyn) then
     call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_C_dyn_CSp, Ice_restart, restart_file)
+                 CS%SIS_C_dyn_CSp, restart_fileobj, restart_file, nc_mode)
   else
     call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_B_dyn_CSp, Ice_restart, restart_file)
+                 CS%SIS_B_dyn_CSp, restart_fileobj, restart_file, nc_mode)
   endif
 !  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
 !                                       Ice_restart, restart_file)
@@ -2139,17 +2141,18 @@ end subroutine SIS_dyn_trans_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
+subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, restart_fileobj, &
                                            restart_file, restart_dir)
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
+                                                                !! read mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, Ice_restart, &
+    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, restart_fileobj, &
                                      restart_file, restart_dir)
   endif
 

@@ -11,7 +11,7 @@ use SIS_diag_mediator, only     : register_SIS_diag_field, &
 use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
 use SIS_hor_grid, only          : sis_hor_grid_type
-use SIS_utils, only             : post_avg
+use SIS_utils, only             : post_avg, register_restart_axis, write_restart_axis
 
 use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
 use MOM_restart, only           : query_initialized, MOM_restart_CS
@@ -24,9 +24,8 @@ use MOM_string_functions, only  : slasher
 use MOM_unit_scaling, only      : unit_scale_type
 
 use fms_mod, only               : read_data
-use fms_io_mod, only            : register_restart_field, restore_state
-use fms_io_mod, only            : restart_file_type
-
+use fms2_io_mod, only           : register_restart_field, fms2_read_data => read_data, &
+                                  FmsNetcdfDomainFile_t, dimension_exists
 use ice_grid, only              : ice_grid_type
 
 implicit none ; private
@@ -99,7 +98,7 @@ contains
 
 !> Register tracers from the ice age package
 logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
-                                         Ice_restart, restart_file)
+                                         restart_fileobj, restart_file)
   type(sis_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -107,7 +106,8 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
                                                       !! structure for the ice age tracer
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
+  type(FmsNetcdfDomainFile_t),   intent(inout) :: restart_fileobj !< restart file object opened in
+                                                                  !! read/write/append mode
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
@@ -178,15 +178,24 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   ! Make sure that diag manager is assigned
   CS%diag => diag
 
+  ! register and write a dummy dimension for ntr
+  if (.not.(dimension_exists(restart_fileobj, "aaxis_3"))) then
+    call register_restart_axis(restart_fileobj, "aaxis_3", CS%ntr)
+    call write_restart_axis(restart_fileobj, "aaxis_3", axis_length=CS%ntr)
+  endif
+
   do m=1,CS%ntr
 
     call query_vardesc(CS%tr_desc(m), name=var_name, &
         caller="register_ice_age_tracer")
 
     ! Register the tracer for the restart file.
-    CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
-        CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
-        mandatory=.false.)
+    !CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
+     !   CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
+     !   mandatory=.false.)
+    CS%id_tracer(m) = m
+    call register_restart_field(restart_fileobj, trim(var_name), CS%tr(:,:,:,1,m), &
+                                dimensions=(/"xaxis_1","yaxis_1","zaxis_2","aaxis_3","Time   "/))
 
     ocean_BC_ptr => CS%ocean_BC(:,:,:,m)
     snow_BC_ptr  => CS%snow_BC(:,:,:,m)

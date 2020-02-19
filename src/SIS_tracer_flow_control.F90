@@ -53,7 +53,7 @@ use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_hor_grid, only : SIS_hor_grid_type
 
-use fms_io_mod,      only : restart_file_type
+use fms2_io_mod,     only : FmsNetcdfDomainFile_t, check_if_open
 use MOM_file_parser, only : get_param, log_version, param_file_type
 
 #include <SIS2_memory.h>
@@ -84,7 +84,7 @@ contains
 
 !> Call the routines that register all of tracers in the tracer packages
 subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-                                    Ice_restart, restart_file)
+                                    restart_fileobj, restart_file)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -92,7 +92,8 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
                                                       !! control structure for the tracer flow control
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
+  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
+                                                                !! read/write/append mode
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This include declares and sets the variable "version".
@@ -114,9 +115,11 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   !    Add other user-provided calls to register tracers for restarting here. Each
   !  tracer package registration call returns a logical false if it cannot be run
   !  for some reason.  This then overrides the run-time selection from above.
+  if (.not.(check_if_open(restart_fileobj))) call SIS_error(FATAL, &
+    "SIS_call_tracer_register:: netcdf file object is not open.")
   if (CS%use_ice_age) then
     CS%use_ice_age = register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-        diag, TrReg, Ice_restart, restart_file)
+        diag, TrReg, restart_fileobj, restart_file)
   endif
 
 

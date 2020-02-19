@@ -20,7 +20,7 @@ use MOM_file_parser,  only : get_param, log_param, read_param, log_version, para
 use MOM_hor_index,    only : hor_index_type
 use MOM_unit_scaling, only : unit_scale_type
 use SIS_hor_grid,     only : SIS_hor_grid_type
-use fms_io_mod,       only : register_restart_field, restart_file_type
+use fms2_io_mod,      only : FmsNetcdfDomainFile_t, register_restart_field, check_if_open
 use mpp_domains_mod,  only : domain2D
 use ice_ridging_mod,  only : ridge_rate
 
@@ -701,15 +701,17 @@ end function sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dyn_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
-subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
+subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, restart_fileobj, restart_file, &
+                                       nc_mode)
   type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
+                                                                !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
-
+  character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 !   This subroutine registers the restart variables associated with the
 ! the ice dynamics.
 
@@ -721,18 +723,24 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
                             "associated control structure.")
     return
   endif
-  allocate(CS)
+  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
+    allocate(CS)
+  
+    allocate(CS%sig11(isd:ied, jsd:jed)) ; CS%sig11(:,:) = 0.0
+    allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
+    allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
+  endif
 
-  allocate(CS%sig11(isd:ied, jsd:jed)) ; CS%sig11(:,:) = 0.0
-  allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
-  allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
-  if (associated(Ice_restart)) then
-    id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                                domain=mpp_domain, mandatory=.false.)
-    id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                                domain=mpp_domain, mandatory=.false.)
-    id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                                domain=mpp_domain, mandatory=.false.)
+  if (check_if_open(restart_fileobj)) then
+    call register_restart_field(restart_fileobj, 'sig11', CS%sig11(isd:ied, jsd:jed), &
+      (/"xaxis_1", "yaxis_1", "Time   "/))
+    call register_restart_field(restart_fileobj, 'sig22', CS%sig22(isd:ied, jsd:jed), &
+      (/"xaxis_1", "yaxis_1", "Time   "/))
+    call register_restart_field(restart_fileobj, 'sig12', CS%sig12(isd:ied, jsd:jed), &
+      (/"xaxis_1", "yaxis_1", "Time   "/))
+  else
+    call SIS_error(FATAL, &
+      "SIS_dyn_bgrid::SIS_B_dyn_register_restarts: restart file object is not open.")
   endif
 end subroutine SIS_B_dyn_register_restarts
 
