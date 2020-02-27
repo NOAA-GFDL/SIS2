@@ -85,7 +85,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
   ! ### This diagnostic does not exist yet.
   ! real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
   !   rdg_frac    ! fraction of ridged ice per category
-  real, dimension(SZI_(G),SZJ_(G))   :: diagVar ! An temporary array for diagnostics.
+  real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true.
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
@@ -247,7 +247,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
 !       !$OMP parallel do default(shared) private(tmp_mca)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !         tmp_mca = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-!         if (tmp_mca > Rho_Ice*1.e-5*IG%kg_m2_to_H) then  ! 1 mm ice thickness x 1% ice concentration
+!         if (tmp_mca > US%kg_m3_to_R*Rho_Ice*1.e-5*US%m_to_Z) then  ! 1 mm ice thickness x 1% ice concentration
 !           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp_mca
 !         else
 !           rdg_frac(i,j,k) = 0.0

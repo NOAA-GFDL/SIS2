@@ -2351,7 +2351,8 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
   real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
-  real    :: enth_min, enth_max, m_max
+  real    :: enth_min, enth_max
+  real    :: m_max ! Maximum mass per unit area [R Z ~> kg m-2]
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
@@ -2361,7 +2362,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
-  m_max = 1.0e6*IG%kg_m2_to_H
+  m_max = 1.0e6*G%US%kg_m3_to_R*G%US%m_to_Z
 
   sum_part_sz(:,:) = 0.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec

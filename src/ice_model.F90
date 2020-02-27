@@ -2042,10 +2042,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%debug = debug_slow
 
     ! Set up the ice-specific grid describing categories and ice layers.
-    call set_ice_grid(sIG, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
+    call set_ice_grid(sIG, US, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
     if (slab_ice) sIG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = sIG%CatIce ; NkIce = sIG%NkIce
-    call initialize_ice_categories(sIG, Rho_ice, param_file)
+    call initialize_ice_categories(sIG, Rho_ice, US, param_file)
 
 
     ! Set up the domains and lateral grids.
@@ -2217,11 +2217,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%redo_fast_update = redo_fast_update
 
     ! Set up the ice-specific grid describing categories and ice layers.
-    call set_ice_grid(Ice%fCS%IG, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
+    call set_ice_grid(Ice%fCS%IG, US, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
     if (slab_ice) Ice%fCS%IG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
 
-    call initialize_ice_categories(Ice%fCS%IG, Rho_ice, param_file)
+    call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file)
 
   ! Allocate and register fields for restarts.
 
@@ -2563,7 +2563,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
                            h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
       do j=jsc,jec ; do i=isc,iec
-        sIST%mH_ice(i,j,1) = h_ice_input(i,j)*(Rho_ice*sIG%kg_m2_to_H)
+        sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * (Rho_ice*US%kg_m3_to_R)
       enddo ; enddo
 
       !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
@@ -2821,9 +2821,10 @@ end subroutine share_ice_domains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
-subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
+subroutine initialize_ice_categories(IG, Rho_ice, US, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
   real,                         intent(in)    :: Rho_ice !< The nominal ice density [kg m-3].
+  type(unit_scale_type),        intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
   real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits [m].
 
@@ -2851,7 +2852,7 @@ subroutine initialize_ice_categories(IG, Rho_ice, param_file, hLim_vals)
   endif
 
   do k=1,IG%CatIce+1
-    IG%mH_cat_bound(k) = IG%cat_thick_lim(k) * (Rho_ice*IG%kg_m2_to_H)
+    IG%mH_cat_bound(k) = IG%cat_thick_lim(k)*US%m_to_Z * (Rho_ice*US%kg_m3_to_R)
   enddo
 end subroutine initialize_ice_categories
 

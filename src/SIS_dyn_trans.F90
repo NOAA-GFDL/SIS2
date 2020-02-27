@@ -338,8 +338,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
 
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
@@ -923,8 +923,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
 
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
   real :: wt_new, wt_prev ! Weights in an average.
@@ -1157,8 +1157,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! An temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! An temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
   real :: H_to_RZ      ! A unit conversion factor from thickness units to integrated mass [R Z H-1 ~> 1]
@@ -1324,7 +1324,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, scale=US%L_T_to_m_s)
     call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
 
-    call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*IG%kg_m2_to_H, &
+    call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*US%kg_m3_to_R*US%m_to_Z, &
                          US%s_to_T*dt_slow_dyn, G, US, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
     call mpp_clock_end(iceClock8)
 

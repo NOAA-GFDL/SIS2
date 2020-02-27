@@ -262,7 +262,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
   ! thinnest category, in what amounts to a minimalist version of a sea-ice
   ! ridging scheme.  A more complete ridging scheme would also compress
   ! thicker ice and allow the fractional ice coverage to drop below 1.
-  call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, CS, CAS)
+  call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, IG, US, CS, CAS)
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
 
@@ -478,7 +478,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
-  mass_neglect = IG%kg_m2_to_H*1.0e-60
+  mass_neglect = US%kg_m3_to_R*US%m_to_Z*1.0e-60
 
   ! Ensure that CAS%mH_ice(i,j,1) >= IG%mH_cat_bound(1).
   do j=jsc,jec ; do i=isc,iec
@@ -488,7 +488,7 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
 
   ! Convert CAS%m_ice and CAS%m_snow back to IST%part_size and IST%mH_snow.
   ice_cover(:,:) = 0.0
-  L_to_H = US%L_to_m * CS%Rho_ice * IG%kg_m2_to_H
+  L_to_H = US%L_to_Z * US%kg_m3_to_R * CS%Rho_ice
   !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,nCat ; do i=isc,iec
     if (CAS%m_ice(i,j,k) > 0.0) then
@@ -775,7 +775,7 @@ end subroutine adjust_ice_categories
 !! ice free) of part_sz is 1, but that the part_sz of the ice free category may be negative to make
 !! this so.  In this routine, the mass (volume) is conserved, while the fractional coverage is
 !! solved for, while the new thicknesses are diagnosed.
-subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS)
+subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, US, CS, CAS)
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
@@ -792,6 +792,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
                                      intent(inout) :: mH_pond !< The mass per unit area of the pond
                                                           !! on the ice in each category [H ~> kg m-2].
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
+  type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
   type(cell_average_state_type), optional, intent(in) :: CAS !< A structure with ocean-cell averaged masses.
 !   This subroutine compresses the ice, starting with the thinnest category, if
@@ -834,7 +835,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, IG, CS, CAS
   !### Consider recalculating mca_ice and mca_snow here, as it is not reused again outside.
 
   ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
-  mass_neglect = IG%kg_m2_to_H*1.0e-60
+  mass_neglect = US%kg_m3_to_R*US%m_to_Z*1.0e-60
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &

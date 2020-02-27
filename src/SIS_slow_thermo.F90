@@ -378,7 +378,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
                          h_ice_input(isc:iec,jsc:jec), ts_in_K=.false.)
     call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
     do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = h_ice_input(i,j) * (IG%kg_m2_to_H * rho_ice)
+      IST%mH_ice(i,j,1) = US%m_to_Z*h_ice_input(i,j) * (US%kg_m3_to_R*rho_ice)
     enddo ; enddo
 
     do j=jsc,jec ; do i=isc,iec
@@ -441,7 +441,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
-  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
+  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
 
   !TOM> calculate partial ice growth for ridging and aging.
   if (CS%do_ridging) then
@@ -560,7 +560,7 @@ end subroutine add_excess_fluxes
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS2_thermodynamics does the slow thermodynamic update of the ice state,
 !! including freezing or melting, and the accumulation of snow and frazil ice.
-subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
+subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
@@ -572,6 +572,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                                                    !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
 
   ! This subroutine does the thermodynamic calculations in the same order as SIS1,
   ! but with a greater emphasis on enthalpy as the dominant state variable.
@@ -914,9 +915,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
                    snow_to_ice(i,j,k), salt_to_ice, IST%ITV, CS%ice_thm_CSp, bablt, &
                    enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
 
-      IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
+      IST%mH_snow(i,j,k) = m_lay(0) * US%kg_m3_to_R*US%m_to_Z
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
-      IST%mH_ice(i,j,k) = mtot_ice * IG%kg_m2_to_H
+      IST%mH_ice(i,j,k) = mtot_ice * US%kg_m3_to_R*US%m_to_Z
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
@@ -971,8 +972,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*I_Nk) * IST%enth_ice(i,j,k,m)
         enddo
-        tot_heat_in = IG%kg_m2_to_H*(enth_units*heat_input + heat_mass_in)
-        mass_in = mass_in*IG%kg_m2_to_H
+        tot_heat_in = US%kg_m3_to_R*US%m_to_Z*(enth_units*heat_input + heat_mass_in)
+        mass_in = mass_in*US%kg_m3_to_R*US%m_to_Z
 
         enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
         mass_imb = mass_here - (mass_prev + mass_in)
@@ -1124,8 +1125,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG)
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
 
       ! Unpack the columns of mass, enthalpy and salinity.
-      IST%mH_snow(i,j,k) = m_lay(0) * IG%kg_m2_to_H
-      IST%mH_ice(i,j,k) = mtot_ice * IG%kg_m2_to_H
+      IST%mH_snow(i,j,k) = m_lay(0) * US%kg_m3_to_R*US%m_to_Z
+      IST%mH_ice(i,j,k) = mtot_ice * US%kg_m3_to_R*US%m_to_Z
 
       if (IST%mH_ice(i,j,k) == 0.0) then
         do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enthalpy_liquid_freeze(S_col(m), IST%ITV) ; enddo
