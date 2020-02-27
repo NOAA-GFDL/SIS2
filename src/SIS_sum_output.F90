@@ -7,8 +7,8 @@ module SIS_sum_output
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
 !   This file contains the subroutines that calculate globally integrated      !
-! sea-ice quantities for SIS2, and writes them to a netcdf file and and an     !
-! ASCII output file.  This code was originally adapted from MOM_sum_output.F90 !
+! sea-ice quantities for SIS2, and writes them to a netcdf file and an ASCII   !
+! output file.  This code was originally adapted from MOM_sum_output.F90       !
 ! by Robert Hallberg in May 2014.                                              !
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -345,7 +345,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
   I_nlay = 1.0 / (1.0*nlay)
-  kg_H_nlay = IG%H_to_kg_m2 * I_nlay
+  kg_H_nlay = US%RZ_to_kg_m2 * I_nlay
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
@@ -434,11 +434,11 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
-      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * US%RZ_to_kg_m2 * &
                           (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + &
                            IST%mH_pond(i,j,k))) ! mw/new - assumed pond heat/salt = 0
 
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%RZ_to_kg_m2 * &
                           (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1) + &
                            IST%mH_pond(i,j,k) * enth_liq_0)
       do L=1,nlay

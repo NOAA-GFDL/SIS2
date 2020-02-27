@@ -207,7 +207,7 @@ subroutine update_ice_slow_thermo(Ice)
 
   if (Ice%sCS%redo_fast_update) then
     call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, FIA, Ice%sCS%TSF, &
-              Ice%sCS%optics_CSp, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, sG, sIG)
+              Ice%sCS%optics_CSp, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, sG, US, sIG)
 
     call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, sG, sIG)
   endif
@@ -567,7 +567,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 !  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !    i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
 !    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IST%part_size(i,j,k) * &
-!        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
+!        (G%US%RZ_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
 !  enddo ; enddo ; enddo
 
   ! This block of code is probably unneccessary.
@@ -644,7 +644,7 @@ subroutine ice_mass_from_IST(IST, IOF, G, IG)
   !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%mass_ice_sn_p(i,j) = IOF%mass_ice_sn_p(i,j) + IST%part_size(i,j,k) * &
-        (IG%H_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
+        (G%US%RZ_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
   enddo ; enddo ; enddo
 
 end subroutine ice_mass_from_IST
@@ -1001,18 +1001,18 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units [m H-1 ~> m3].
+  real :: H_to_m_snow    ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
-  H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
+  H_to_m_snow = US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = US%RZ_to_kg_m2 / Rho_ice
 
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
+    call IST_bounds_check(IST, G, US, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, fCS%US, IG)
@@ -1068,7 +1068,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
     do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
     !Niki: Is the following correct for diagnostics?
-    !   Probably this calculation of the "average" albedo should be replaced
+    !###  This calculation of the "average" albedo should be replaced
     ! with a calculation that weights the averaging by the fraction of the
     ! shortwave radiation in each wavelength and orientation band.  However,
     ! since this is only used for diagnostic purposes, making this change
@@ -1089,7 +1089,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   enddo
 
   if (fCS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
+    call IST_bounds_check(IST, G, US, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
@@ -1190,13 +1190,13 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   real :: H_to_m_ice  ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow ! conversion factor from thickness units [m H-1 ~> m3].
+  real :: H_to_m_snow ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
-  H_to_m_snow = IG%H_to_kg_m2 / Rho_snow ; H_to_m_ice = IG%H_to_kg_m2 / Rho_ice
+  H_to_m_snow = G%US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = G%US%RZ_to_kg_m2 / Rho_ice
 
   !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
@@ -1236,7 +1236,7 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   call do_update_ice_model_fast(Atmos_boundary, Ice%fCS%IST, Ice%fCS%sOSS, Ice%fCS%Rad, &
                                 Ice%fCS%FIA, dT_fast, Ice%fCS%fast_thermo_CSp, &
-                                Ice%fCS%G, Ice%fCS%IG )
+                                Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG )
 
   ! Advance the master sea-ice time.
   Ice%fCS%Time = Ice%fCS%Time + dT_fast

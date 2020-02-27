@@ -73,9 +73,9 @@ type ice_state_type
                 !! along the grid directions on a C-grid [L T-1 ~> m s-1].
 
   real, allocatable, dimension(:,:,:) :: &
-    mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
-    mH_snow, &  !< The mass per unit area of the snow in each category [H ~> kg m-2].
-    mH_ice, &   !< The mass per unit area of the ice in each category [H ~> kg m-2].
+    mH_pond, &  !< The mass per unit area of the pond in each category [R Z ~> kg m-2].
+    mH_snow, &  !< The mass per unit area of the snow in each category [R Z ~> kg m-2].
+    mH_ice, &   !< The mass per unit area of the ice in each category [R Z ~> kg m-2].
     t_surf      !< The surface temperature [Kelvin].
 
   real, allocatable, dimension(:,:) :: &
@@ -92,7 +92,7 @@ type ice_state_type
                 !! in each category and snow thickness layer [Enth ~> J kg-1].
 
   real, allocatable, dimension(:,:,:) :: &
-    rdg_mice    !< A diagnostic of the ice load that was formed by ridging [H ~> kg m-2].
+    rdg_mice    !< A diagnostic of the ice load that was formed by ridging [R Z ~> kg m-2].
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
   logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
@@ -2312,15 +2312,15 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
 
   call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
-  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
+  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
+  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
-  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
+  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, scale=US%L_T_to_m_s)
@@ -2336,9 +2336,10 @@ end subroutine IST_chksum
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Check the ice state for bad values of temperature, thickness, areal coverage,
 !! enthalpy or ice mass, and write diagnostics about any offending columns
-subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
+subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   character(len=*),        intent(in)    :: msg !< An identifying message
   type(ocean_sfc_state_type), optional, intent(in) :: OSS !< A structure containing the arrays that describe
@@ -2362,7 +2363,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
-  m_max = 1.0e6*G%US%kg_m3_to_R*G%US%m_to_Z
+  m_max = 1.0e6*US%kg_m3_to_R*US%m_to_Z
 
   sum_part_sz(:,:) = 0.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -2455,7 +2456,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
         do m=1,NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
       endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
-             IST%mH_ice(i,j,k)*IG%H_to_kg_m2, IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+             IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, &
              temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
              temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
       do m=2,NkIce

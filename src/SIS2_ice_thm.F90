@@ -157,9 +157,9 @@ end subroutine SIS2_ice_thm_init
 subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, sol, tfw, fb, &
                          tsurf, dtt, NkIce, tmelt, bmelt, CS, ITV, check_conserve)
 
-  real, intent(in   ) :: m_pond  !< pond mass per unit area [H ~> kg m-2]
-  real, intent(in   ) :: m_snow  !< snow mass per unit area [H ~> kg m-2]
-  real, intent(in   ) :: m_ice   !< ice mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_pond  !< pond mass per unit area [kg m-2]
+  real, intent(in   ) :: m_snow  !< snow mass per unit area [kg m-2]
+  real, intent(in   ) :: m_ice   !< ice mass per unit area [kg m-2]
   real, dimension(0:NkIce) , &
         intent(inout) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice [Enth ~> J kg-1].
@@ -532,15 +532,17 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
 
 end subroutine ice_temp_SIS2
 
+
+!### I think that estimate_tsurf is never used.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> estimate_tsurf estimates the surface skin temperature using the first (nonconservative)
 !!    part of the calculations in ice_temp_SIS2.
 subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
                           sol, tfw, tsurf, dtt, NkIce, CS, ITV)
 
-  real, intent(in   ) :: m_pond  !< pond mass per unit area [H ~> kg m-2]
-  real, intent(in   ) :: m_snow  !< snow mass per unit area [H ~> kg m-2]
-  real, intent(in   ) :: m_ice   !< ice mass per unit area [H ~> kg m-2]
+  real, intent(in   ) :: m_pond  !< pond mass per unit area [R Z ~> kg m-2]
+  real, intent(in   ) :: m_snow  !< snow mass per unit area [R Z ~> kg m-2]
+  real, intent(in   ) :: m_ice   !< ice mass per unit area [R Z ~> kg m-2]
   real, dimension(0:NkIce) , &
         intent(in   ) :: enthalpy !< The enthalpy of each layer in a column of
                                   !! snow and ice, in enthalpy units [Enth ~> J kg-1].
@@ -1654,7 +1656,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
 
 end subroutine rebalance_ice_layers
 
-!> SIS2_ice_thm_end deallocates an SIS2_ice_thm_CS type and any sub-types.
+!> SIS2_ice_thm_end deallocates a SIS2_ice_thm_CS type and any sub-types.
 subroutine SIS2_ice_thm_end(CS)
   type(SIS2_ice_thm_CS), pointer :: CS !< A pointer to the SIS2_ice_thm control structure.
 

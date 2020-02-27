@@ -166,7 +166,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
       CS%land_val(m) = 0.0
       CS%nlevels(m) = IG%NkIce
   endif
-  CS%min_mass = 1.0e-7*IG%H_to_kg_m2
+  CS%min_mass = 1.0e-7*G%US%RZ_to_kg_m2
 
   ! Allocate the main tracer arrays
   allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,IG%NkIce,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0

@@ -33,7 +33,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_hor_index, only : hor_index_type
-use MOM_unit_scaling,   only : unit_scale_type
+use MOM_unit_scaling, only : unit_scale_type
 use MOM_EOS, only : EOS_type, calculate_density_derivs
 
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
@@ -350,7 +350,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   endif
 
   if (CS%bounds_check) &
-    call IST_bounds_check(IST, G, IG, "Start of SIS_slow_thermo", OSS=OSS)
+    call IST_bounds_check(IST, G, US, IG, "Start of SIS_slow_thermo", OSS=OSS)
 
   ! Set the frazil heat flux that remains to be applied. This might need
   ! to be moved earlier in the algorithm, if there ever to be multiple calls to
@@ -441,7 +441,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
-  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
+  call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   !TOM> calculate partial ice growth for ridging and aging.
   if (CS%do_ridging) then
@@ -560,7 +560,7 @@ end subroutine add_excess_fluxes
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS2_thermodynamics does the slow thermodynamic update of the ice state,
 !! including freezing or melting, and the accumulation of snow and frazil ice.
-subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
+subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
@@ -571,8 +571,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
+  type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
 
   ! This subroutine does the thermodynamic calculations in the same order as SIS1,
   ! but with a greater emphasis on enthalpy as the dominant state variable.
@@ -661,7 +661,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = IG%H_to_kg_m2 * I_Nk
+  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = US%RZ_to_kg_m2 * I_Nk
   nb = size(FIA%flux_sw_top,4)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
@@ -728,7 +728,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
       ! Calculate the average ice and snow enthalpy relative to freezing per unit area.
       do k=1,ncat
         if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
-          e2m_tot = (IST%part_size(i,j,k)*IST%mH_snow(i,j,k)) * IG%H_to_kg_m2 * &
+          e2m_tot = (IST%part_size(i,j,k)*IST%mH_snow(i,j,k)) * US%RZ_to_kg_m2 * &
                        ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
                          IST%enth_snow(i,j,k,1)) * I_enth_units)
           if (spec_thermo_sal) then ; do m=1,NkIce
@@ -820,7 +820,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
   !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     h2o_change(i,j) = h2o_change(i,j) - IST%part_size(i,j,k) * &
-                      IG%H_to_kg_m2*(IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
+                      US%RZ_to_kg_m2*(IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
   enddo ; enddo ; enddo
 
   ! Start accumulating the fluxes at the ocean's surface.
@@ -903,7 +903,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
         do m=1,NkIce+1 ; Salin(m) = CS%ice_bulk_salin ; enddo
       endif
 
-      m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
+      m_lay(0) = IST%mH_snow(i,j,k) * US%RZ_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
       ! mw/new - melt pond size is now adjusted here (rain ignored in resize, for now)
@@ -1060,7 +1060,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
           fill_frac = dt_slow / (dt_slow + CS%fraz_fill_time)
         do k=1,ncat-1
           part_sum = part_sum + IST%part_size(i,j,k)
-          d_enth = fill_frac * max(0.0, LatHtFus * IG%H_to_kg_m2 * &
+          d_enth = fill_frac * max(0.0, LatHtFus * US%RZ_to_kg_m2 * &
                          (IG%mH_cat_bound(k+1) - &
                           max(IST%mH_ice(i,j,k),IG%mH_cat_bound(k))) )
           if (d_enth*part_sum > FIA%frazil_left(i,j)) then
@@ -1115,7 +1115,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
       ! Handle unpacking and BCs for passive tracers
       call SIS_unpack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay)
 
-      m_lay(0) = IST%mH_snow(i,j,k) * IG%H_to_kg_m2
+      m_lay(0) = IST%mH_snow(i,j,k) * US%RZ_to_kg_m2
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * kg_H_Nk ; enddo
 
       call add_frazil_SIS2(m_lay, enthalpy, S_col, Salin, npassive, TrLay, frazil_cat(k), &
@@ -1188,7 +1188,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
     do j=jsc,jec ; do i=isc,iec
       mtot_ice = 0.0
       do k=1,ncat
-         mtot_ice = mtot_ice + IST%part_size(i,j,k) * IG%H_to_kg_m2 * &
+         mtot_ice = mtot_ice + IST%part_size(i,j,k) * US%RZ_to_kg_m2 * &
                      (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
       enddo
       if (mtot_ice > CS%max_ice_limit*Rho_ice) then
@@ -1198,7 +1198,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
         enth_to_melt = 0.0 ; enth_ice_to_ocn = 0.0
         do k=1,ncat
           ice_melt_lay = frac_melt * IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*kg_H_Nk
-          snow_melt = frac_melt * IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*IG%H_to_kg_m2
+          snow_melt = frac_melt * IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*US%RZ_to_kg_m2
           enth_freeze = enthalpy_liquid_freeze(0.0, IST%ITV)
           enth_to_melt = enth_to_melt + snow_melt * &
                          (enth_freeze - IST%enth_snow(i,j,k,1))
@@ -1287,7 +1287,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, IG, US)
   do j=jsc,jec
     do k=1,ncat ; do i=isc,iec
       h2o_change(i,j) = h2o_change(i,j) + IST%part_size(i,j,k) * &
-                        IG%H_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
+                        US%RZ_to_kg_m2 * (IST%mH_snow(i,j,k) + IST%mH_ice(i,j,k))
     enddo ; enddo
     do i=isc,iec
       ! Note the conversion here from g m-2 to kg m-2 s-1.

@@ -19,6 +19,7 @@ use MOM_file_parser, only : get_param, read_param, log_param, log_version, param
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
 ! use MOM_time_manager, only : operator(+), operator(-)
 ! use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling, only : unit_scale_type
 use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
 
 use SIS_continuity,    only : SIS_continuity_CS, summed_continuity, ice_cover_transport
@@ -63,7 +64,7 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Offer diagnostics of the slowly evolving sea ice state.
-subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, diag)
+subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, IG, diag)
   type(ice_state_diags_type), pointer       :: IDs !< The control structure for the SIS_dyn_trans module
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
@@ -73,6 +74,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
   real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
 
@@ -91,7 +93,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
   real :: rho_ice  ! The nominal density of sea ice [kg m-3].
   real :: rho_snow ! The nominal density of snow [kg m-3].
   real :: enth_units, I_enth_units
-  real :: tmp_mca  ! A temporary cell averaged mass [H ~> kg m-2].
+  real :: tmp_mca  ! A temporary cell averaged mass [R Z ~> kg m-2].
   real :: I_Nk        ! The inverse of the number of layers in the ice.
   logical :: spec_thermo_sal
   logical :: do_temp_diags
@@ -108,8 +110,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
     mass(:,:) = 0.0
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      mass_ice(i,j) = mass_ice(i,j) + IG%H_to_kg_m2*IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-      mass_snow(i,j) = mass_snow(i,j) + IG%H_to_kg_m2*IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
+      mass_ice(i,j) = mass_ice(i,j) + US%RZ_to_kg_m2*IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      mass_snow(i,j) = mass_snow(i,j) + US%RZ_to_kg_m2*IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
       mass(i,j) = mass_ice(i,j) + mass_snow(i,j)
     enddo ; enddo ; enddo
 
@@ -176,17 +178,17 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
   endif
   if (IDs%id_hp>0) call post_avg(IDs%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
                                  diag, G=G, &
-                                 scale=IG%H_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
+                                 scale=US%RZ_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
   if (IDs%id_hs>0) call post_avg(IDs%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_snow, wtd=.true.)
   if (IDs%id_sisnthick>0) call post_avg(IDs%id_sisnthick, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_snow, wtd=.true.)
   if (IDs%id_hi>0) call post_avg(IDs%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
   if (IDs%id_sithick>0) call post_avg(IDs%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
   if (IDs%id_sivol>0) call post_avg(IDs%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=IG%H_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
   if (IDs%id_tsn>0) call post_avg(IDs%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (IDs%id_sitimefrac>0) then
@@ -225,15 +227,15 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, IG, 
     tmp2d(:,:) = 0.0
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
-      tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*IG%H_to_kg_m2 * &
+      tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*US%RZ_to_kg_m2 * &
                        ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
                          IST%enth_snow(i,j,k,1)) * I_enth_units)
       if (spec_thermo_sal) then ; do m=1,NkIce
-        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*IG%H_to_kg_m2*I_Nk) * &
+        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*US%RZ_to_kg_m2*I_Nk) * &
                        ((enthalpy_liquid_freeze(S_col(m), IST%ITV) - &
                          IST%enth_ice(i,j,k,m)) * I_enth_units)
       enddo ; else ; do m=1,NkIce
-        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*IG%H_to_kg_m2*I_Nk) * &
+        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*US%RZ_to_kg_m2*I_Nk) * &
                        ((enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - &
                          IST%enth_ice(i,j,k,m)) * I_enth_units)
       enddo ; endif

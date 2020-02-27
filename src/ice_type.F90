@@ -552,11 +552,11 @@ subroutine ice_stock_pe(Ice, index, value)
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST
     G => Ice%sCS%G
-    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
+    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
   elseif (associated(Ice%fCS)) then
     IST => Ice%fCS%IST
     G => Ice%fCS%G
-    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
+    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
                    "without either sCS or fCS associated.")

@@ -158,7 +158,7 @@ type, public :: dyn_state_2d ; private
 
   real, allocatable, dimension(:,:) :: avg_ridge_rate !< The time average ridging rate in [s-1].
 
-  real, allocatable, dimension(:,:) :: mi_sum !< The total mass of ice per unit total area [H ~> kg m-2].
+  real, allocatable, dimension(:,:) :: mi_sum !< The total mass of ice per unit total area [R Z ~> kg m-2].
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
                           !! thickness categories [nondim], between 0 & 1.
   real, allocatable, dimension(:,:) :: u_ice_B  !< The pseudo-zonal ice velocity along the
@@ -173,11 +173,11 @@ type, public :: dyn_state_2d ; private
                 !! along the grid directions on a C-grid [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:,:) :: mca_step !< The total mass per unit total area of snow, ice
                           !! and pond water summed across thickness categories in a cell, after each
-                          !! transportation substep, with a 0 starting 3rd index [H ~> kg m-2].
+                          !! transportation substep, with a 0 starting 3rd index [R Z ~> kg m-2].
   real, allocatable, dimension(:,:,:) :: uh_step !< The total zonal mass fluxes during each
-                          !! transportation substep [H L2 T-1 ~> kg s-1].
+                          !! transportation substep [R Z L2 T-1 ~> kg s-1].
   real, allocatable, dimension(:,:,:) :: vh_step !< The total meridional mass fluxes during each
-                          !! transportation substep [H L2 T-1 ~> kg s-1].
+                          !! transportation substep [R Z L2 T-1 ~> kg s-1].
 
 end type dyn_state_2d
 
@@ -223,14 +223,14 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     v_ocn_B           ! The B-grid meridional ocean velocity [m s-1].
   real :: rho_ice     ! The nominal density of sea ice [kg m-3].
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
-                      ! from thickness units [m H-1 ~> m3].
+                      ! from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: stress_stagger
   integer :: i, j, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
-  H_to_m_ice = IG%H_to_kg_m2 / rho_ice
+  H_to_m_ice = US%RZ_to_kg_m2 / rho_ice
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     hi_avg(i,j) = hi_avg(i,j) * H_to_m_Ice
@@ -347,7 +347,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
   real :: wt_new, wt_prev ! Weights in an average.
-  real :: H_to_RZ      ! A unit conversion factor from thickness units to integrated mass [R Z H-1 ~> 1]
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_rate  ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
   type(dyn_state_2d), pointer :: DS2d => NULL()  ! A simplified 2-d description of the ice state
@@ -368,8 +367,6 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
-
-  H_to_RZ = IG%H_to_kg_m2*US%kg_m3_to_R*US%m_to_Z
 
   DS2d => CS%DS2d
 
@@ -411,8 +408,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           !$OMP parallel do default(shared)
           do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
             misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
-                            (H_to_RZ * (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
-            mi_sum(i,j) = mi_sum(i,j) + (H_to_RZ * IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
+                            (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))
+            mi_sum(i,j) = mi_sum(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
             ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
           enddo ; enddo ; enddo
           do j=jsd,jed ; do i=isd,ied
@@ -799,12 +796,12 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
   call mpp_clock_begin(iceClock9)
 
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-  call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, IG, CS%diag)
+  call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
   if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
   if (CS%debug) call IST_chksum("End ice_state_cleanup", IST, G, US, IG)
-  if (CS%bounds_check) call IST_bounds_check(IST, G, IG, "End of ice_state_cleanup", OSS=OSS)
+  if (CS%bounds_check) call IST_bounds_check(IST, G, US, IG, "End of ice_state_cleanup", OSS=OSS)
 
   if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
@@ -847,8 +844,8 @@ subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, US, IG, CS)
   !$OMP parallel do default(shared)
   do j=jsd,jed ; do k=1,IG%CatIce ; do i=isd,ied
     DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + IST%part_size(i,j,k) * &
-                    ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))) ! * IG%H_to_kg_m2
-    DS2d%mi_sum(i,j) = DS2d%mi_sum(i,j) + (IST%mH_ice(i,j,k))  * IST%part_size(i,j,k) ! * IG%H_to_kg_m2
+                    ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
+    DS2d%mi_sum(i,j) = DS2d%mi_sum(i,j) + (IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
     DS2d%ice_cover(i,j) = DS2d%ice_cover(i,j) + IST%part_size(i,j,k)
   enddo ; enddo ; enddo
   do j=jsd,jed ; do i=isd,ied
@@ -930,7 +927,6 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
   real :: wt_new, wt_prev ! Weights in an average.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
-  real :: H_to_RZ  ! A unit conversion factor
   real :: dt_adv       ! The advective subcycle timestep [T ~> s].
   logical :: continuing_call ! If true, there are more in the series of advective updates
                              ! after this call.
@@ -972,8 +968,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       if (CS%debug) then
         call uvchksum("Before SIS_C_dynamics [uv]_ice_C", DS2d%u_ice_C, DS2d%v_ice_C, G, scale=US%L_T_to_m_s)
         call hchksum(ice_free, "ice_free before SIS_C_dynamics", G%HI)
-        call hchksum(DS2d%mca_step(:,:,DS2d%nts), "misp_sum before SIS_C_dynamics", G%HI, scale=IG%H_to_kg_m2)
-        call hchksum(DS2d%mi_sum, "mi_sum before SIS_C_dynamics", G%HI, scale=IG%H_to_kg_m2)
+        call hchksum(DS2d%mca_step(:,:,DS2d%nts), "misp_sum before SIS_C_dynamics", G%HI, scale=US%RZ_to_kg_m2)
+        call hchksum(DS2d%mi_sum, "mi_sum before SIS_C_dynamics", G%HI, scale=US%RZ_to_kg_m2)
         call hchksum(OSS%sea_lev, "sea_lev before SIS_C_dynamics", G%HI, haloshift=1)
         call hchksum(DS2d%ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
@@ -985,8 +981,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       call mpp_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
-      H_to_RZ = US%kg_m3_to_R*US%m_to_Z * IG%H_to_kg_m2
-      call SIS_C_dynamics(DS2d%ice_cover, H_to_RZ*DS2d%mca_step(:,:,DS2d%nts), H_to_RZ*DS2d%mi_sum, &
+      call SIS_C_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, &
                           DS2d%u_ice_C, DS2d%v_ice_C, &
                           OSS%u_ocn_C, OSS%v_ocn_C, WindStr_x_Cu, WindStr_y_Cv, OSS%sea_lev, &
                           str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, dt_slow_dyn, G, US, CS%SIS_C_dyn_CSp)
@@ -1035,8 +1030,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
 
       call mpp_clock_begin(iceClocka)
       if (CS%do_ridging) rdg_rate(:,:) = 0.0
-      H_to_RZ = US%kg_m3_to_R*US%m_to_Z * IG%H_to_kg_m2
-      call SIS_B_dynamics(DS2d%ice_cover, H_to_RZ*DS2d%mca_step(:,:,DS2d%nts), H_to_RZ*DS2d%mi_sum, &
+      call SIS_B_dynamics(DS2d%ice_cover, DS2d%mca_step(:,:,DS2d%nts), DS2d%mi_sum, &
                           DS2d%u_ice_B, DS2d%v_ice_B, &
                           OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                           str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
@@ -1161,7 +1155,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
   real :: dt_slow_dyn  ! The slow dynamics timestep [s].
-  real :: H_to_RZ      ! A unit conversion factor from thickness units to integrated mass [R Z H-1 ~> 1]
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
@@ -1171,7 +1164,6 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
 
   CS%n_calls = CS%n_calls + 1
   IOF%stress_count = 0
-  H_to_RZ = IG%H_to_kg_m2*US%kg_m3_to_R*US%m_to_Z
 
   ndyn_steps = 1
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
@@ -1185,9 +1177,9 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     call mpp_clock_begin(iceClock4)
     !$OMP parallel do default(shared)
     do j=jsd,jed ; do i=isd,ied
-      mi_sum(i,j) = (H_to_RZ * IST%mH_ice(i,j,1))  * IST%part_size(i,j,1)
+      mi_sum(i,j) = IST%mH_ice(i,j,1) * IST%part_size(i,j,1)
       misp_sum(i,j) = mi_sum(i,j) + IST%part_size(i,j,1) * &
-                      (H_to_RZ * (IST%mH_snow(i,j,1) + IST%mH_pond(i,j,1)))
+                      (IST%mH_snow(i,j,1) + IST%mH_pond(i,j,1))
     enddo ; enddo
     call mpp_clock_end(iceClock4)
 
@@ -1383,7 +1375,7 @@ subroutine finish_ocean_top_stresses(IOF, G, DS2d, IG)
   endif
 
   if (present(DS2d) .and. present(IG)) then ; if (DS2d%nts > 0) then ; do j=jsc,jec ; do i=isc,iec
-    IOF%mass_ice_sn_p(i,j) = DS2d%mca_step(i, j, DS2d%nts) * IG%H_to_kg_m2
+    IOF%mass_ice_sn_p(i,j) = DS2d%mca_step(i, j, DS2d%nts) * G%US%RZ_to_kg_m2
   enddo ; enddo ; endif ; endif
 
   if (allocated(IOF%stress_mag)) then
