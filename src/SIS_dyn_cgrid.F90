@@ -190,7 +190,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   call get_param(param_file, mdl, "PROJECT_ICE_DRAG_VEL", CS%project_drag_vel, &
                  "If true, project forward the ice velocity used in the \n"//&
                  "drag calculation to avoid an instability that can occur \n"//&
-                 "when an finite stress is applied to thin ice moving with \n"//&
+                 "when a finite stress is applied to thin ice moving with \n"//&
                  "the velocity of the ocean.", default=.true.)
   call get_param(param_file, mdl, "ICE_YIELD_ELLIPTICITY", CS%EC, &
                  "The ellipticity coefficient for the plastic yield curve \n"//&

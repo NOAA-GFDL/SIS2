@@ -10,6 +10,8 @@ module ice_grid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : is_root_pe
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
+use MOM_obsolete_params, only : obsolete_real
+use MOM_unit_scaling, only : unit_scale_type
 
 implicit none ; private
 
@@ -45,8 +47,9 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> set_ice_grid initializes sea ice specific grid parameters
-subroutine set_ice_grid(IG, param_file, NCat_dflt, ocean_part_min_dflt)
+subroutine set_ice_grid(IG, US, param_file, NCat_dflt, ocean_part_min_dflt)
   type(ice_grid_type),   intent(inout) :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type), intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type), intent(in)    :: param_file !< A structure to parse for run-time parameters
   integer,               intent(in)    :: NCat_dflt !< The default number of ice categories
   real, optional,        intent(in)    :: ocean_part_min_dflt !< The default value for the minimum open water area
@@ -95,12 +98,10 @@ subroutine set_ice_grid(IG, param_file, NCat_dflt, ocean_part_min_dflt)
                  units="nondim", default=1) ! Perhaps this should be ..., fail_if_missing=.true.
 #endif
 
-  call get_param(param_file, mod_nm, "H_TO_KG_M2", IG%H_to_kg_m2, &
-               "A constant that translates thicknesses from the model's \n"//&
-               "internal units of thickness to kg m-2.", units="kg m-2 H-1", &
-               default=1.0)
-  IG%kg_m2_to_H = 1.0 / IG%H_to_kg_m2
-  IG%H_subroundoff = 1e-30*IG%kg_m2_to_H
+  call obsolete_real(param_file, "H_TO_KG_M2", warning_val=1.0)
+  IG%H_to_kg_m2 = US%RZ_to_kg_m2
+  IG%kg_m2_to_H = US%kg_m3_to_R * US%m_to_Z
+  IG%H_subroundoff = 1e-30*US%kg_m3_to_R*US%m_to_Z
 
   call get_param(param_file, mod_nm, "MIN_OCEAN_PARTSIZE", IG%ocean_part_min, &
                  "The minimum value for the fractional open-ocean area. \n"//&
