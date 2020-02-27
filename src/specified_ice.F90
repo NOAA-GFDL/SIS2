@@ -121,7 +121,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
 
   real :: ps_ice, ps_ocn  ! ice_free and ice_cover interpolated to a velocity point [nondim].
   real :: wt_prev, wt_now ! Relative weights of the previous average and the current step [nondim].
-  real :: taux2, tauy2    ! Squared wind stresses [kg2 m-4 L2 T-4 ~> Pa2]
+  real :: taux2, tauy2    ! Squared wind stresses [R2 Z2 L2 T-4 ~> Pa2]
   real :: stress_scale    ! A unit rescaling factor from the FIA stresses to the IOF stresses.
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -132,7 +132,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
   endif
 
   wt_now = 1.0 / (real(IOF%stress_count) + 1.0) ; wt_prev = 1.0 - wt_now
-  stress_scale = US%m_s_to_L_T*US%T_to_s
+  stress_scale = US%RZ_to_kg_m2*US%m_s_to_L_T*US%T_to_s
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.

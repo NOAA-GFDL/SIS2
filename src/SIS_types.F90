@@ -358,12 +358,12 @@ type ice_ocean_flux_type
     lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
     fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by
-                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
+                       !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
     flux_v_ocn, &      !< The flux of y-momentum into the ocean at locations given by
-                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
+                       !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
-    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [kg m-2 L T-2 ~> Pa].
+    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [R Z L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
                        !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
     flux_salt, &       !< The flux of salt out of the ocean [kg m-2].
@@ -2222,12 +2222,12 @@ subroutine IOF_chksum(mesg, IOF, G, US)
   call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
   call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
   call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
-  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
-  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
+  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
   call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI)
   call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI)
   if (allocated(IOF%stress_mag)) &
-    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
+    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
 
   call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
   call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
@@ -2312,15 +2312,15 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
 
   call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
-  call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs)
+  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, haloshift=hs)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs)
+  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
-  call hchksum(IST%mH_pond*IG%H_to_kg_m2, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs)
+  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, scale=IG%H_to_kg_m2)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, scale=US%L_T_to_m_s)

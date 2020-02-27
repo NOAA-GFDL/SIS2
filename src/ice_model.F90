@@ -222,8 +222,8 @@ subroutine update_ice_slow_thermo(Ice)
       !$OMP parallel do default(none) shared(Ice,sG,US,i_off,j_off) private(i2,j2)
       do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
-        Ice%sCS%IOF%flux_u_ocn(i,j) = US%m_s_to_L_T*US%T_to_s*Ice%flux_u(i2,j2)
-        Ice%sCS%IOF%flux_v_ocn(i,j) = US%m_s_to_L_T*US%T_to_s*Ice%flux_v(i2,j2)
+        Ice%sCS%IOF%flux_u_ocn(i,j) = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s*Ice%flux_u(i2,j2)
+        Ice%sCS%IOF%flux_v_ocn(i,j) = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s*Ice%flux_v(i2,j2)
       enddo ; enddo
     endif
 
@@ -698,8 +698,8 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
+    Ice%flux_u(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
@@ -712,7 +712,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
     i_off = LBOUND(Ice%stress_mag,1) - G%isc ; j_off = LBOUND(Ice%stress_mag,2) - G%jsc
     !$OMP parallel do default(shared) private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%stress_mag(i2,j2) = US%L_T_to_m_s*US%s_to_T*IOF%stress_mag(i,j)
+      Ice%stress_mag(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%stress_mag(i,j)
     enddo ; enddo
   endif
 
