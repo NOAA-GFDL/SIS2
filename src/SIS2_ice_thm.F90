@@ -1115,31 +1115,35 @@ end subroutine update_lay_enth
 !> ice_check evaluates whether the ice has any extreme temperatures or masses
 !! and writes messages about any offending columns.
 subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
-                      bmelt, tmelt, t_sfc)
-  real, intent(in) :: ms !< The mass of snow [kg m-2]
-  real, intent(in) :: mi !< The mass of ice [kg m-2]
+                      bmelt, tmelt, t_sfc, US)
+  real, intent(in) :: ms !< The mass of snow [R Z ~> kg m-2] or [kg m-2]
+  real, intent(in) :: mi !< The mass of ice [R Z ~> kg m-2] or [kg m-2]
   real, dimension(0:NkIce), &
         intent(in) :: enthalpy !< The ice enthalpy, in enthalpy units [Enth ~> J kg-1]
   real, dimension(NkIce), intent(in) :: s_ice !< The ice bulk salinity [gSalt kg-1]
   integer, intent(in) :: NkIce !< The number of vertical temperature layers in the ice
   character(len=*), intent(in) :: msg_part !< An identifying message
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, optional, intent(in) :: bmelt  !< The heat flux assocated with bottom melt [W m-2]
-  real, optional, intent(in) :: tmelt  !< The heat flux assocated with top melt [W m-2]
+  real, optional, intent(in) :: bmelt  !< The heat flux assocated with bottom melt [Enth R Z ~> J m-2] or [J m-2]
+  real, optional, intent(in) :: tmelt  !< The heat flux assocated with top melt [Enth R Z ~> J m-2] or [J m-2]
   real, optional, intent(in) :: t_sfc  !< The ice surface temperature [degC]
+  type(unit_scale_type), optional, intent(in) :: US  !< A structure with unit conversion factors
 
+  ! Local variables
+  real :: RZ_scale  ! A column mass conversion factor
   character(len=300) :: mesg
   character(len=80) :: msg2
   integer :: k, bad
-
   real, dimension(0:NkIce) :: t_col
+
+  RZ_scale = 1.0 ; if (present(US)) RZ_scale = US%RZ_to_kg_m2
 
   bad = 0
   if (present(t_sfc)) then
     if ((t_sfc > 1.e-14) .or. (t_sfc < -100.0)) bad = bad+1
   endif
-  if (ms <0.0 .or. ms > 3.30e5  ) bad = bad+1
-  if (mi <0.0 .or. mi > 1.0e6  ) bad = bad+1
+  if (RZ_scale*ms <0.0 .or. RZ_scale*ms > 3.30e5  ) bad = bad+1
+  if (RZ_scale*mi <0.0 .or. RZ_scale*mi > 1.0e6  ) bad = bad+1
 
   t_col(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
   call temp_from_Enth_S(enthalpy(1:), s_ice(:), t_col(1:), ITV)
@@ -1147,7 +1151,7 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
 
   if (bad>0) then
     mesg = "BAD ICE "//trim(msg_part)
-    write (msg2,'(" ms,mi=",2(ES11.3))') ms*1e-3,mi*1e-3 ; mesg = trim(mesg)//trim(msg2)
+    write (msg2,'(" ms,mi=",2(ES11.3))') ms*RZ_scale*1e-3,mi*RZ_scale*1e-3 ; mesg = trim(mesg)//trim(msg2)
     if (present(t_sfc)) then
       write (msg2,'(" t_sfc,tsn,tice=",ES11.3)') t_sfc ; mesg = trim(mesg)//trim(msg2)
     else
@@ -1155,10 +1159,10 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
     endif
     do k=0,NkIce ; write (msg2,'(ES11.3)') t_col(k) ; mesg = trim(mesg)//trim(msg2) ; enddo
     if (present(bmelt)) then
-      write (msg2,'(" bmelt=",ES11.3)') bmelt ; mesg = trim(mesg)//trim(msg2)
+      write (msg2,'(" bmelt=",ES11.3)') RZ_scale*bmelt ; mesg = trim(mesg)//trim(msg2)
     endif
     if (present(tmelt)) then
-      write (msg2,'(" tmelt=",ES11.3)') tmelt ; mesg = trim(mesg)//trim(msg2)
+      write (msg2,'(" tmelt=",ES11.3)') RZ_scale*tmelt ; mesg = trim(mesg)//trim(msg2)
     endif
     call SIS_error(WARNING, mesg, all_print=.true.)
   endif
@@ -1171,22 +1175,22 @@ end subroutine ice_check
 subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                            snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                           snow_to_ice, salt_to_ice, ITV, CS, ablation, &
+                           snow_to_ice, salt_to_ice, ITV, US, CS, ablation, &
                            enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   ! mw/new - melt pond - added first two arguments & rain
   real, intent(in   ) :: a_ice       !< area of ice (1-open_water_frac) for pond retention
-  real, intent(inout) :: m_pond      !< melt pond mass [kg m-2]
+  real, intent(inout) :: m_pond      !< melt pond mass [R Z ~> kg m-2]
   real, dimension(0:NkIce), &
-        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [kg m-2].
+        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [R Z ~> kg m-2].
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer [Enth ~> J kg-1].
   real, dimension(NkIce), &
         intent(in)    :: Sice_therm  !< ice salinity by layer, as used for thermodynamics [gSalt kg-1]
   real, dimension(NkIce+1), &
         intent(inout) :: Salin       !< Conserved ice bulk salinity by layer [gSalt kg-1]
-  real, intent(in   ) :: snow        !< new snow [kg m-2]
-  real, intent(in   ) :: rain        !< rain for pond source [kg m-2] - not yet active
-  real, intent(in   ) :: evap        !< ice evaporation/sublimation [kg m-2]
+  real, intent(in   ) :: snow        !< new snow [R Z ~> kg m-2]
+  real, intent(in   ) :: rain        !< rain for pond source [R Z ~> kg m-2] - not yet active
+  real, intent(in   ) :: evap        !< ice evaporation/sublimation [R Z ~> kg m-2]
   real, intent(in   ) :: tmlt        !< top melting energy [J m-2]
   real, intent(in   ) :: bmlt        !< bottom melting energy [J m-2]
   integer, intent(in) :: NkIce       !< The number of ice layers.
@@ -1194,15 +1198,16 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, dimension(0:NkIce+1,npassive), &
         intent(inout) :: TrLay       !< Passive tracer slice
   real, intent(  out) :: heat_to_ocn !< energy left after ice all melted [J m-2]
-  real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean [kg m-2]
-  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
-  real, intent(  out) :: evap_from_ocn!< evaporation flux from ocean [kg m-2]
-  real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice [kg m-2]
-  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [g m-2].
-  type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
+  real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean [R Z ~> kg m-2]
+  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [R Z ~> kg m-2]
+  real, intent(  out) :: evap_from_ocn  !< evaporation flux from ocean [R Z ~> kg m-2]
+  real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice [R Z ~> kg m-2]
+  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [R Z gSalt kg-1 ~> gSalt m-2].
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
+  type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
 
-  real, intent(  out) :: ablation      !< The mass loss from bottom melt [kg m-2].
+  real, intent(  out) :: ablation      !< The mass loss from bottom melt [R Z ~> kg m-2].
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
                                        !! by evaporation / sublimation.
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
@@ -1210,39 +1215,42 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the mass gain
                                        !! by freezing [J m-2].
 
-  real :: top_melt, bot_melt, melt_left ! Heating amounts, all in melt_unit.
-  real :: mtot_ice    ! The summed ice mass [kg m-2].
+  real :: top_melt, bot_melt, melt_left ! Heating amounts, all in [Enth R Z ~> J m-2]
+  real :: mtot_ice    ! The summed ice mass [R Z ~> kg m-2].
   real :: enth_freeze ! The enthalpy of newly formed congelation ice [Enth ~> J kg-1].
   real, dimension(0:NkIce) :: enth_fr ! The snow and ice layers' freezing point
                                       ! enthalpy [Enth ~> J kg-1].
   real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when freezing water,
                               ! usually enough to account for the latent heat of fusion
                               ! in a small fraction of the water [Enth ~> J kg-2].
-  real :: m_freeze            ! The newly formed ice from freezing [kg m-2].
-  real :: M_melt              ! The ice mass lost to melting [kg m-2].
-  real :: evap_left           ! The remaining evaporation [kg m-2].
-  real :: evap_here           ! The evaporation from the current layer [kg m-2].
-  real :: m_submerged         ! The submerged mass of ice [kg m-2].
+  real :: m_freeze            ! The newly formed ice from freezing [R Z ~> kg m-2].
+  real :: M_melt              ! The ice mass lost to melting [R Z ~> kg m-2].
+  real :: evap_left           ! The remaining evaporation [R Z ~> kg m-2].
+  real :: evap_here           ! The evaporation from the current layer [R Z ~> kg m-2].
+  real :: m_submerged         ! The submerged mass of ice [R Z ~> kg m-2].
   real :: salin_freeze        ! The salinity of newly frozen ice [gSalt kg-1].
   real :: enthM_evap, enthM_melt, enthM_freezing, enthM_snowfall
   real :: enth_unit   ! A conversion factor for enthalpy from Joules kg-1.
   real :: LI          ! The latent heat of fusion [J kg-1].
   real :: Lat_vapor   ! The latent heat of vaporization [J kg-1].
-  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
-  real :: rho_water   ! The nominal density of seawater [kg m-3].
-  real :: h2o_to_ocn, h2o_orig, h2o_imb
-  real :: pond_rate, h2o_to_pond, h2o_from_pond, tavg, mp_min, mp_max ! mw/new
+  real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_water   ! The nominal density of seawater [R ~> kg m-3].
+  real :: h2o_to_ocn, h2o_orig, h2o_imb  ! Water budget terms [R Z ~> kg m-2]
+  real :: pond_rate
+  real :: h2o_to_pond, h2o_from_pond  ! Water budget terms [R Z ~> kg m-2]
+  real :: tavg
+  real :: mp_min, mp_max ! Melt pond mass load limits [R Z ~> kg m-2]
   integer :: k, tr
   logical :: debug = .false.
 
   call get_SIS2_thermo_coefs(ITV, enthalpy_units=enth_unit, Latent_Fusion=LI, &
-                             Latent_vapor=Lat_vapor, Rho_water=rho_water, rho_ice=rho_ice)
+                             Latent_vapor=Lat_vapor, Rho_water=rho_water, rho_ice=rho_ice, US=US)
   min_dEnth_freeze = (LI*enth_unit) * (1.0-CS%liq_lim)
 
   ! mw/new - meltwater retention in pond
   pond_rate = CS%r_min_pond+(CS%r_max_pond-CS%r_min_pond)*a_ice
 
-  top_melt = tmlt*enth_unit ; bot_melt = bmlt*enth_unit
+  top_melt = tmlt*US%kg_m3_to_R*US%m_to_Z*enth_unit ; bot_melt = bmlt*US%kg_m3_to_R*US%m_to_Z*enth_unit
 
   ! set mass mark; will subtract the mass at end to find the melt flux to ocean
   if (debug) then
@@ -1274,10 +1282,10 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   if (mtot_ice == 0.0) m_lay(0) = 0.0  ! This should already be true! Trap an error?  Convert the snow to ice?
 
   m_lay(0) = m_lay(0) + snow ! add snow
-  enthM_snowfall = snow*enthalpy(0)
+  enthM_snowfall = US%RZ_to_kg_m2*snow*enthalpy(0)
   if (evap < 0.0) then
     m_lay(0) = m_lay(0) - evap ! Treat frost formation like snow.
-    enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
+    enthM_snowfall = enthM_snowfall - US%RZ_to_kg_m2*evap*enthalpy(0)
   endif
 
   if (top_melt < 0.0 .and. CS%do_pond) then ! mw/new: add fresh/0C ice to top layer
@@ -1285,24 +1293,23 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     enth_freeze = Enthalpy(1) ! this is right for fixed salinity
     m_freeze = top_melt/enth_freeze;
     if (m_freeze > m_pond) then
-      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / &
-                    (m_lay(1)+m_pond) ! excess freezing energy goes to cooling
+      ! Excess freezing energy goes to cooling
+      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / (m_lay(1) + m_pond)
       Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_pond) ! for bulk salinity
       ! Passive tracer array
       do tr = 1,npassive
         TrLay(1,tr) = (m_lay(1)*TrLay(1,tr)) / (m_lay(1) + m_pond)
       enddo
 
-      m_lay(1) = m_lay(1)+m_pond
+      m_lay(1) = m_lay(1) + m_pond
       m_pond = 0.0
     else
-      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / &
-                  (m_lay(1)+m_freeze)
+      Enthalpy(1) = (m_lay(1)*Enthalpy(1) + m_freeze*enth_freeze) / (m_lay(1) + m_freeze)
       Salin(1) = (m_lay(1)*Salin(1)) / (m_lay(1) + m_freeze) ! for bulk salinity
       do tr = 1,npassive
         TrLay(1,tr) = (m_lay(1)*TrLay(1,tr)) / (m_lay(1) + m_freeze) ! for passive tracers
       enddo
-      m_lay(1) = m_lay(1)+m_freeze
+      m_lay(1) = m_lay(1) + m_freeze
       m_pond = m_pond - m_freeze
     endif
     top_melt = 0.0
@@ -1321,11 +1328,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     enth_freeze = min(Enthalpy(NkIce), enthalpy(NkIce+1) - min_dEnth_freeze)
     m_freeze = -bot_melt / (Enthalpy(NkIce+1) - enth_freeze)
 
-    Enthalpy(NkIce) = (m_lay(NkIce)*Enthalpy(NkIce) + m_freeze*enth_freeze) / &
-                      (m_lay(NkIce) + m_freeze)
-    Salin(NkIce) = (m_lay(NkIce)*Salin(NkIce) + m_freeze*salin_freeze) / &
-                   (m_lay(NkIce) + m_freeze)
-
+    Enthalpy(NkIce) = (m_lay(NkIce)*Enthalpy(NkIce) + m_freeze*enth_freeze) / (m_lay(NkIce) + m_freeze)
+    Salin(NkIce) = (m_lay(NkIce)*Salin(NkIce) + m_freeze*salin_freeze) / (m_lay(NkIce) + m_freeze)
 
     do tr=1,npassive
       ! Change passive tracer, assuming that surface boundary value is stored in NkIce+1
@@ -1333,11 +1337,11 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                         (m_lay(NkIce) + m_freeze)
     enddo
 
-    Salt_to_ice = Salt_to_ice + m_freeze*salin_freeze
+    salt_to_ice = salt_to_ice + m_freeze*salin_freeze
 
     m_lay(NkIce) = m_lay(NkIce) + m_freeze
     h2o_ocn_to_ice = h2o_ocn_to_ice + m_freeze
-    enthM_freezing = enthM_freezing + m_freeze*enthalpy(NkIce+1)
+    enthM_freezing = enthM_freezing + US%RZ_to_kg_m2*m_freeze*enthalpy(NkIce+1)
 
     bot_melt = 0.0
   endif
@@ -1351,8 +1355,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       evap_left = evap_left - evap_here
       m_lay(k) = m_lay(k) - evap_here
       ! Assume that evaporation does not make ice salty?
-      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * evap_here
-      enthM_evap = enthM_evap + evap_here * enthalpy(k)
+      if (k>0) salt_to_ice = salt_to_ice - Salin(k) * evap_here
+      enthM_evap = enthM_evap + US%RZ_to_kg_m2*evap_here * enthalpy(k)
 
       if (evap_left <= 0.0) exit
     enddo
@@ -1361,7 +1365,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     !   The energy required to evaporate was already taken into account in
     ! ice_thm, but there is excess energy that has not been used here that needs
     ! to be passed on to the ocean.
-    heat_to_ocn = heat_to_ocn + evap_left*(Lat_Vapor+LI)
+    heat_to_ocn = heat_to_ocn + US%RZ_to_kg_m2*evap_left*(Lat_Vapor+LI)
   endif
 
   if (top_melt > 0.0 ) then ! apply top melt heat flux
@@ -1375,20 +1379,20 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
         melt_left = melt_left - M_melt*(enth_fr(k) - Enthalpy(k))
       endif
       m_lay(k) = m_lay(k) - M_melt
-      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
+      if (k>0) salt_to_ice = salt_to_ice - Salin(k) * M_melt
       if ( CS%do_pond) then
         h2o_to_pond = h2o_to_pond + pond_rate*M_melt ! mw/new
         h2o_ice_to_ocn = h2o_ice_to_ocn + (1-pond_rate)*M_melt
       else
         h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
       endif
-      enthM_melt = enthM_melt + M_melt*enth_fr(k)
+      enthM_melt = enthM_melt + US%RZ_to_kg_m2*M_melt*enth_fr(k)
 
       if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
 
     m_pond = m_pond + h2o_to_pond ! mw/new - add to pond from rain and surface melt
-    heat_to_ocn = heat_to_ocn + melt_left/enth_unit ! melt heat left after snow & ice gone
+    heat_to_ocn = heat_to_ocn + US%RZ_to_kg_m2*melt_left/enth_unit ! melt heat left after snow & ice gone
   endif
 
   ! apply bottom melt heat flux
@@ -1404,15 +1408,15 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
         melt_left = melt_left - M_melt*(enth_fr(k) - Enthalpy(k))
       endif
       m_lay(k) = m_lay(k) - M_melt
-      if (k>0) Salt_to_ice = Salt_to_ice - Salin(k) * M_melt
+      if (k>0) salt_to_ice = salt_to_ice - Salin(k) * M_melt
       h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
-      enthM_melt = enthM_melt + M_melt*enth_fr(k)
+      enthM_melt = enthM_melt + US%RZ_to_kg_m2*M_melt*enth_fr(k)
       ablation = ablation + M_melt
 
       if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
 
-    heat_to_ocn = heat_to_ocn + melt_left/enth_unit
+    heat_to_ocn = heat_to_ocn + US%RZ_to_kg_m2*melt_left/enth_unit
   endif
 
   ! There are no further heat or mass losses or gains by the ice+snow.
@@ -1430,17 +1434,17 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     end do
     tavg = tavg/mtot_ice  ! average ice temperature
     if (tavg > CS%tdrain) then ! drain pond based on tunable ice temp. criterion
-      mp_max = mtot_ice*(Rho_water/Rho_ice-1)
+      mp_max = mtot_ice*(Rho_water/Rho_ice - 1.0)
       mp_min = mp_max*(CS%min_pond_frac/CS%max_pond_frac)**2
-      h2o_ice_to_ocn = h2o_ice_to_ocn + max(m_pond-mp_min,0.0)
-      m_pond = m_pond-max(m_pond-mp_min,0.0)
+      h2o_ice_to_ocn = h2o_ice_to_ocn + max(m_pond - mp_min, 0.0)
+      m_pond = m_pond - max(m_pond - mp_min, 0.0)
     endif
   endif
 
   ! calculate mass to take from pond to bring ice top to waterline - mw/new
-  h2o_from_pond = m_pond+m_lay(0)-(Rho_water/Rho_ice-1.0)*mtot_ice
-  if (h2o_from_pond>0.0) then ! reduce pond to raise ice top toward waterline
-    h2o_from_pond = min(h2o_from_pond,m_pond) ! keep m_pond >= 0.0
+  h2o_from_pond = m_pond + m_lay(0) - (Rho_water/Rho_ice - 1.0)*mtot_ice
+  if (h2o_from_pond > 0.0) then ! reduce pond to raise ice top toward waterline
+    h2o_from_pond = min(h2o_from_pond, m_pond) ! keep m_pond >= 0.0
     m_pond = m_pond - h2o_from_pond
     h2o_ice_to_ocn = h2o_ice_to_ocn + h2o_from_pond ! pass dumped h2o to ocean
   endif
@@ -1470,13 +1474,13 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     h2o_to_ocn = h2o_orig + snow - (evap-evap_from_ocn) - (m_lay(0) + mtot_ice)
     h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
     if (abs(h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)) > &
-        max(1e-10, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
+        max(1e-10*US%kg_m3_to_R*US%m_to_Z, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
       h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
     endif
 
     call ice_check(m_lay(0), mtot_ice, enthalpy, Sice_therm, &
                       NkIce, "at end of ice_resize_SIS2", ITV, &
-                      bmelt=bot_melt/enth_unit, tmelt=top_melt/enth_unit)
+                      bmelt=bot_melt/enth_unit, tmelt=top_melt/enth_unit, US=US)
   endif
 
 end subroutine ice_resize_SIS2
@@ -1485,9 +1489,9 @@ end subroutine ice_resize_SIS2
 !> add_frazil_SIS2 increases the mass in ice columns due to the accretion of frazil ice.
 subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, &
                            frazil, tfw, NkIce, h2o_ocn_to_ice, &
-                           salt_to_ice, ITV, CS, enthalpy_freeze)
+                           salt_to_ice, ITV, US, CS, enthalpy_freeze)
   real, dimension(0:NkIce), &
-        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [kg m-2].
+        intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [R Z ~> kg m-2].
   real, dimension(0:NkIce+1), &
         intent(inout) :: Enthalpy    !< Snow, ice, and ocean enthalpy by layer [Enth ~> J kg-1].
   real, dimension(NkIce), &
@@ -1500,19 +1504,20 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   real, intent(in   ) :: frazil      !< frazil in energy units [J m-2]
   real, intent(in   ) :: tfw         !< seawater freezing temperature [degC]
   integer, intent(in) :: NkIce       !< The number of ice layers.
-  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [kg m-2]
-  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [gSalt m-2].
+  real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [R Z ~> kg m-2]
+  real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [R Z gSalt kg-1 ~> gSalt m-2].
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
+  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the
                                      !! mass gain by freezing [J m-2].
 
+  ! Local variables
   real :: enth_frazil ! The enthalpy of newly formed frazil ice [Enth ~> J kg-1].
   real :: frazil_per_layer    ! The frazil heat sink from each of the sublayers of
-                              ! of the ice [Enth ~> J kg-1].
+                              ! of the ice [Q R Z ~> J kg-1].
   real :: t_frazil    ! The temperature which with the frazil-ice is created [degC].
-  real :: m_frazil    ! The newly-formed mass per unit area of frazil ice [kg m-2].
+  real :: m_frazil    ! The newly-formed mass per unit area of frazil ice [R Z ~> kg m-2].
   real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when freezing water,
                               ! usually enough to account for the latent heat of fusion
                               ! in a small fraction of the water [Enth ~> J kg-2].
@@ -1523,7 +1528,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   real :: enth_unit           ! Converts from [J kg-1] to units for enthalpy [Enth kg J-1 ~> 1].
   real :: LI          ! The latent heat of fusion [J kg-1].
   ! These variables are used only for debugging.
-  real :: mtot_ice    ! The summed ice mass [kg m-2].
+  real :: mtot_ice    ! The summed ice mass [R Z ~> kg m-2].
   real :: h2o_to_ocn, h2o_orig, h2o_imb
   integer :: k, tr
   logical :: debug = .false.
@@ -1545,7 +1550,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   !   Frazil mostly forms in leads, so add its heat uniformly over all of the
   ! layers rather than just adding it to the ice bottom.
   if (frazil > 0.0) then
-    frazil_per_layer = (enth_unit*frazil)/NkIce
+    frazil_per_layer = (US%kg_m3_to_R*US%m_to_Z*enth_unit*frazil)/NkIce
     do k=1,NkIce
     ! ### t_frazil and enth_frazil are calculated in a kludgey way here; revisit this?
       t_frazil = min(tfw, T_Freeze(sice_therm(k), ITV) - CS%Frazil_temp_offset)
@@ -1553,21 +1558,18 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
                         enthalpy(NkIce+1) - min_dEnth_freeze)
       m_frazil = frazil_per_layer / (enthalpy(NkIce+1) - enth_frazil)
 
-      Enthalpy(k) = (m_lay(k)*Enthalpy(k) + m_frazil*enth_frazil) / &
-                    (m_lay(k) + m_frazil)
-      Salin(k) = (m_lay(k)*Salin(k) + m_frazil*salin_freeze) / &
-                 (m_lay(k) + m_frazil)
+      Enthalpy(k) = (m_lay(k)*Enthalpy(k) + m_frazil*enth_frazil) / (m_lay(k) + m_frazil)
+      Salin(k) = (m_lay(k)*Salin(k) + m_frazil*salin_freeze) / (m_lay(k) + m_frazil)
       do tr = 1,npassive
         ! Passive tracer assume that the flux of tracer from frazil is in NkIce+1
-        TrLay(k,tr) = (m_lay(k)*TrLay(k,tr) + m_frazil*TrLay(NkIce+1,tr)) / &
-                      (m_lay(k) + m_frazil)
+        TrLay(k,tr) = (m_lay(k)*TrLay(k,tr) + m_frazil*TrLay(NkIce+1,tr)) / (m_lay(k) + m_frazil)
       enddo
       Salt_to_ice = Salt_to_ice + m_frazil*salin_freeze
 
       m_lay(k) = m_lay(k) + m_frazil
       h2o_ocn_to_ice = h2o_ocn_to_ice + m_frazil
 
-      enthM_freezing = enthM_freezing + m_frazil*enthalpy(NkIce+1)
+      enthM_freezing = enthM_freezing + US%RZ_to_kg_m2*m_frazil*enthalpy(NkIce+1)
     enddo
   endif
 
@@ -1582,12 +1584,12 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
     h2o_to_ocn = h2o_orig - (m_lay(0) + mtot_ice)
     h2o_imb = h2o_to_ocn + h2o_ocn_to_ice
     if (abs(h2o_to_ocn + h2o_ocn_to_ice) > &
-        max(1e-10, 1e-12*h2o_orig, 1e-12*(abs(h2o_ocn_to_ice)))) then
+        max(1e-10*US%kg_m3_to_R*US%m_to_Z, 1e-12*h2o_orig, 1e-12*(abs(h2o_ocn_to_ice)))) then
       h2o_imb = h2o_to_ocn + h2o_ocn_to_ice
     endif
 
     call ice_check(m_lay(0), mtot_ice, enthalpy, Sice_therm, &
-                      NkIce, "at end of add_frazil_SIS2", ITV)
+                   NkIce, "at end of add_frazil_SIS2", ITV, US=US)
   endif
 
 end subroutine add_frazil_SIS2
@@ -1595,18 +1597,20 @@ end subroutine add_frazil_SIS2
 
 !> Adjust the mass of the various ice layers to give the prescribed relative thicknesses.
 subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
-  real, dimension(0:NkIce),   intent(inout) :: m_lay !< The ice mass by layer [kg m-2].
-  real,                       intent(out)   :: mtot_ice !< The summed ice mass [kg m-2].
+  real, dimension(0:NkIce),   intent(inout) :: m_lay !< The ice mass by layer [R Z ~> kg m-2].
+  real,                       intent(out)   :: mtot_ice !< The summed ice mass [R Z ~> kg m-2].
   real, dimension(0:NkIce+1), intent(inout) :: Enthalpy !< Snow, ice, and ocean enthalpy by layer [Enth ~> J kg-1].
   real, dimension(NkIce+1),   intent(inout) :: Salin  !< Conserved ice bulk salinity by layer [gSalt kg-1]
   integer,                    intent(in)    :: NkIce  !< The number of ice layers.
   integer,                    intent(in)    :: npassive !< Number of passive tracers
   real, dimension(0:NkIce+1,npassive), &
-                              intent(inout) :: TrLay !< Passive tracer in the column layer
+                              intent(inout) :: TrLay !< Passive tracer in the column layer [Conc]
 
-  real :: m_k1_to_k2, m_ice_avg
-  real, dimension(NkIce) :: mlay_new, enth_ice_new, sal_ice_new
-  real, dimension(NkIce,npassive) :: tr_ice_new
+  real :: m_k1_to_k2, m_ice_avg  ! Masses [R Z ~> kg m-2]
+  real, dimension(NkIce) :: mlay_new     ! New mass in a layer [R Z ~> kg m-2]
+  real, dimension(NkIce) :: enth_ice_new ! New integrated enthalpy [R Z Enth ~> kg m-2 Enth]
+  real, dimension(NkIce) :: sal_ice_new  ! New integrated salinity [R Z gSalt kg-1 ~> gSalt m-2]
+  real, dimension(NkIce,npassive) :: tr_ice_new ! New integrated tracer amount [R Z Conc ~> kg Conc m-2]
   integer :: k, k1, k2, kold, knew, tr
 
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
