@@ -48,20 +48,20 @@ type, public :: SIS_C_dyn_CS ; private
     str_s     !< The shearing stress tensor component (cross term) [T Z L2 T-2 ~> Pa m].
 
   ! parameters for calculating water drag and internal ice stresses
-  real :: p0 = 2.75e4         !< Pressure constant in the Hibbler rheology [R L2 T-2 ~> Pa]
+  real :: p0                  !< Pressure constant in the Hibbler rheology [R L2 T-2 ~> Pa]
   real :: p0_rho              !< The pressure constant divided by ice density [L2 T-2 ~> N m kg-1].
-  real :: c0 = 20.0           !< another pressure constant
-  real :: cdw = 3.24e-3       !< ice/water drag coef. [nondim]
+  real :: c0                  !< another pressure constant, c* in Hunke & Dukowicz 1997 [nondim]
+  real :: cdw                 !< "The drag coefficient between the sea ice and water. [nondim]
   real :: EC = 2.0            !< yield curve axis ratio
-  real :: Rho_ocean = 1030.0  !< The nominal density of sea water [R ~> kg m-3].
-  real :: Rho_ice = 905.0     !< The nominal density of sea ice [R ~> kg m-3].
-  real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag
-                              !< with the ocean squared [L2 T-2 ~> m2 s-2].
-  real :: min_ocn_inertial_h = 0. !< A minimum ocean thickness used to limit the viscous coupling
+  real :: Rho_ocean           !< The nominal density of sea water [R ~> kg m-3].
+  real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3].
+  real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag with the ocean
+                              !< squared [L2 T-2 ~> m2 s-2].  This is always 0 for now.
+  real :: min_ocn_inertial_h  !< A minimum ocean thickness used to limit the viscous coupling
                               !! rate implied for the ocean by the ice-ocean stress [Z ~> m].
   real :: Tdamp               !< The damping timescale of the stress tensor components toward their
                               !! equilibrium solution due to the elastic terms [T ~> s] or [nondim].
-  real :: del_sh_min_scale = 2.0 !< A scaling factor for the minimum permitted value of minimum
+  real :: del_sh_min_scale    !< A scaling factor for the minimum permitted value of minimum
                               !! shears used in the denominator of the stress equations [nondim].
                               !  I suspect that this needs to be greater than 1. -RWH
   real    :: CFL_trunc        !< Velocity components will be truncated when they are large enough

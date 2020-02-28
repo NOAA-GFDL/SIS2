@@ -8,6 +8,7 @@ use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_obsolete_params, only : obsolete_logical
+use MOM_unit_scaling, only : unit_scale_type
 
 implicit none ; private
 
@@ -2165,12 +2166,13 @@ function energy_melt_enthS(En, S, ITV) result(e_to_melt)
 end function energy_melt_enthS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> get_SIS2_thermo_coefs returns various thermodynamic coefficients.
+!> get_SIS2_thermo_coefs returns various thermodynamic coefficients, rescaling the units
+!! appropriately if an optional unit_scale_type argument is provided.
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
                                  Cp_Ice, Cp_brine, Cp_water, &
                                  rho_ice, rho_snow, rho_water, &
                                  Latent_fusion, Latent_vapor, &
-                                 EOS, specified_thermo_salinity, slab_ice)
+                                 EOS, specified_thermo_salinity, slab_ice, US)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, dimension(:), &
            optional, intent(out) :: ice_salinity  !< The specified salinity of each layer when the
@@ -2182,9 +2184,9 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
   real,    optional, intent(out) :: Cp_Brine  !< The heat capacity of liquid water in brine pockets
                     !! within the sea-ice [J kg-1 degC-1].  Cp_Brine and Cp_Water should be equal,
                     !! but for computational convenience Cp_Brine has  often been set equal to Cp_Ice instead.
-  real,    optional, intent(out) :: rho_ice   !< A nominal density of ice [kg m-3].
-  real,    optional, intent(out) :: rho_snow  !< A nominal density of snow [kg m-3].
-  real,    optional, intent(out) :: rho_water !< A nominal density of water [kg m-3].
+  real,    optional, intent(out) :: rho_ice   !< A nominal density of ice [R ~> kg m-3] or [kg m-3].
+  real,    optional, intent(out) :: rho_snow  !< A nominal density of snow [R ~> kg m-3] or [kg m-3].
+  real,    optional, intent(out) :: rho_water !< A nominal density of water [R ~> kg m-3] or [kg m-3].
   real,    optional, intent(out) :: Latent_fusion !< The latent heat of fusion [J kg-1].
   real,    optional, intent(out) :: Latent_vapor !< The latent heat of vaporization [J kg-1].
   type(EOS_type), &
@@ -2194,17 +2196,23 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
                     !! bulk salinity.
   logical, optional, intent(out) ::  slab_ice !< If true, use the very old slab ice thermodynamics,
                     !! with effectively zero heat capacity of ice and snow.
+  type(unit_scale_type), optional, intent(in) :: US  !< A structure with unit conversion factors
+
+  ! Local variables
+  real :: rho_scale  ! A density conversion factor
 
   call get_thermo_coefs(ice_salinity=ice_salinity)
+
+  rho_scale = 1.0 ; if (present(US)) rho_scale = US%kg_m3_to_R
 
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
   if (present(Cp_Water)) Cp_Water = ITV%Cp_Water
   if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine
   if (present(enthalpy_units)) enthalpy_units = ITV%enth_unit
   if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
-  if (present(rho_ice)) rho_ice = ITV%rho_ice
-  if (present(rho_snow)) rho_snow = ITV%rho_snow
-  if (present(rho_water)) rho_water = ITV%rho_water
+  if (present(rho_ice)) rho_ice = ITV%rho_ice*rho_scale
+  if (present(rho_snow)) rho_snow = ITV%rho_snow*rho_scale
+  if (present(rho_water)) rho_water = ITV%rho_water*rho_scale
   if (present(Latent_fusion)) Latent_fusion = ITV%LI
   if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
   if (present(slab_ice)) slab_ice = ITV%slab_ice

@@ -994,8 +994,8 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
                    ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v
   real :: area_pt
-  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow ! The nominal density of snow [kg m-3].
+  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
@@ -1007,8 +1007,8 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
-  H_to_m_snow = US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = US%RZ_to_kg_m2 / Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, US=US)
+  H_to_m_snow = US%Z_to_m / Rho_snow ; H_to_m_ice = US%Z_to_m / Rho_ice
 
 
   if (fCS%bounds_check) &
@@ -1185,8 +1185,8 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
   real, dimension(IG%NkIce) :: sw_abs_lay
-  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow ! The nominal density of snow [kg m-3].
+  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   real :: H_to_m_ice  ! The specific volumes of ice and snow times the
@@ -1195,8 +1195,8 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow)
-  H_to_m_snow = G%US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = G%US%RZ_to_kg_m2 / Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, US=G%US)
+  H_to_m_snow = G%US%Z_to_m / Rho_snow ; H_to_m_ice = G%US%Z_to_m / Rho_ice
 
   !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
@@ -1690,9 +1690,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: coszen_IC      ! A constant value that is used to initialize
                          ! coszen if it is not read from a restart file, or a
                          ! negative number to use the time and geometry.
-  real :: rho_ice        ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow       ! The nominal density of snow [kg m-3].
-  real :: rho_Ocean      ! The nominal density of seawater [kg m-3].
+  real :: rho_ice        ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow       ! The nominal density of snow [R ~> kg m-3].
+  real :: rho_Ocean      ! The nominal density of seawater [R ~> kg m-3].
   real :: kmelt          ! A constant that is used in the calculation of the
                          ! ocean/ice basal heat flux [W m-2 degC-1].  This could
                          ! be changed to reflect the turbulence in the under-ice
@@ -1831,13 +1831,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! the entries in the SIS_parameter_doc files.
   call get_param(param_file, mdl, "RHO_OCEAN", Rho_ocean, &
                  "The nominal density of sea water as used by SIS.", &
-                 units="kg m-3", default=1030.0)
+                 units="kg m-3", default=1030.0, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "RHO_ICE", Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
-                 units="kg m-3", default=905.0)
+                 units="kg m-3", default=905.0, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "RHO_SNOW", Rho_snow, &
                  "The nominal density of snow as used by SIS.", &
-                 units="kg m-3", default=330.0)
+                 units="kg m-3", default=330.0, scale=US%kg_m3_to_R)
 
   call get_param(param_file, mdl, "G_EARTH", g_Earth, &
                  "The gravitational acceleration of the Earth.", &
@@ -2444,8 +2444,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (sIG%H_to_kg_m2 == -1.0) then
         ! This is an older restart file, and the snow and ice thicknesses are in
         ! m, and not a mass coordinate.
-        H_rescale_ice = Rho_ice / H_to_kg_m2_tmp
-        H_rescale_snow = Rho_snow / H_to_kg_m2_tmp
+        H_rescale_ice = US%R_to_kg_m3*Rho_ice / H_to_kg_m2_tmp
+        H_rescale_snow = US%R_to_kg_m3*Rho_snow / H_to_kg_m2_tmp
       elseif (sIG%H_to_kg_m2 /= H_to_kg_m2_tmp) then
         H_rescale_ice = sIG%H_to_kg_m2 / H_to_kg_m2_tmp
         H_rescale_snow = H_rescale_ice
@@ -2563,7 +2563,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                            sIST%part_size(isc:iec,jsc:jec,0:1), &
                            h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
       do j=jsc,jec ; do i=isc,iec
-        sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * (Rho_ice*US%kg_m3_to_R)
+        sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
       enddo ; enddo
 
       !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
@@ -2823,7 +2823,7 @@ end subroutine share_ice_domains
 !> initialize_ice_categories sets the bounds of the ice thickness categories.
 subroutine initialize_ice_categories(IG, Rho_ice, US, param_file, hLim_vals)
   type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
-  real,                         intent(in)    :: Rho_ice !< The nominal ice density [kg m-3].
+  real,                         intent(in)    :: Rho_ice !< The nominal ice density [R ~> kg m-3].
   type(unit_scale_type),        intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
   real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits [m].
@@ -2852,7 +2852,7 @@ subroutine initialize_ice_categories(IG, Rho_ice, US, param_file, hLim_vals)
   endif
 
   do k=1,IG%CatIce+1
-    IG%mH_cat_bound(k) = IG%cat_thick_lim(k)*US%m_to_Z * (Rho_ice*US%kg_m3_to_R)
+    IG%mH_cat_bound(k) = IG%cat_thick_lim(k)*US%m_to_Z * Rho_ice
   enddo
 end subroutine initialize_ice_categories
 

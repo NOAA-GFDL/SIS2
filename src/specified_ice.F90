@@ -287,7 +287,7 @@ subroutine specified_ice_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
   CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
       (1 + (Time - Time_init) / CS%ice_stats_interval)
 
-  call register_ice_state_diagnostics(Time, IG, param_file, diag, CS%IDs)
+  call register_ice_state_diagnostics(Time, IG, G%US, param_file, diag, CS%IDs)
 
   call callTree_leave("specified_ice_init()")
 

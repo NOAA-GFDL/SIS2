@@ -221,7 +221,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     u_ocn_B, &        ! The B-grid zonal ocean velocity [m s-1].
     v_ice_B, &        ! The B-grid meridional ice velocity [m s-1].
     v_ocn_B           ! The B-grid meridional ocean velocity [m s-1].
-  real :: rho_ice     ! The nominal density of sea ice [kg m-3].
+  real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
   real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
                       ! from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: stress_stagger
@@ -229,8 +229,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
-  H_to_m_ice = US%RZ_to_kg_m2 / rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, US=US)
+  H_to_m_ice = US%Z_to_m / rho_ice
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     hi_avg(i,j) = hi_avg(i,j) * H_to_m_Ice
@@ -2334,7 +2334,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                missing_value=missing, interp_method='none')
   endif
 
-  call register_ice_state_diagnostics(Time, IG, param_file, diag, CS%IDs)
+  call register_ice_state_diagnostics(Time, IG, US, param_file, diag, CS%IDs)
 
   iceClock4 = mpp_clock_id( '  Ice: slow: dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )
   iceClocka = mpp_clock_id( '       slow: ice_dynamics', flags=clock_flag_default, grain=CLOCK_LOOP )

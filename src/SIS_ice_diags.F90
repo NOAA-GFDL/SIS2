@@ -79,7 +79,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
 
   ! Local variables
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow, tmp2d
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow ! Masses per unit area [R Z ~> kg m-2]
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp2d ! A local temporary variable.
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature [degC].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
@@ -90,8 +91,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true.
-  real :: rho_ice  ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow ! The nominal density of snow [kg m-3].
+  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   real :: enth_units, I_enth_units
   real :: tmp_mca  ! A temporary cell averaged mass [R Z ~> kg m-2].
   real :: I_Nk        ! The inverse of the number of layers in the ice.
@@ -110,8 +111,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     mass(:,:) = 0.0
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      mass_ice(i,j) = mass_ice(i,j) + US%RZ_to_kg_m2*IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-      mass_snow(i,j) = mass_snow(i,j) + US%RZ_to_kg_m2*IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
+      mass_ice(i,j) = mass_ice(i,j) + IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      mass_snow(i,j) = mass_snow(i,j) + IST%mH_snow(i,j,k)*IST%part_size(i,j,k)
       mass(i,j) = mass_ice(i,j) + mass_snow(i,j)
     enddo ; enddo ; enddo
 
@@ -121,7 +122,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 
     if (IDs%id_mib>0) then
       if (associated(IOF%mass_berg)) then ; do j=jsc,jec ; do i=isc,iec
-        mass(i,j) = (mass(i,j) + IOF%mass_berg(i,j)) ! Add icebergs mass [kg m-2]
+        mass(i,j) = (mass(i,j) + US%kg_m3_to_R*US%m_to_Z*IOF%mass_berg(i,j)) ! Add icebergs mass [kg m-2]
       enddo ; enddo ; endif
       call post_data(IDs%id_mib, mass(isc:iec,jsc:jec), diag)
     endif
@@ -145,7 +146,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   do m=1,NkIce ; if (IDs%id_t(m)>0) do_temp_diags = .true. ; enddo
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
                              rho_ice=rho_ice, rho_snow=rho_snow, &
-                             specified_thermo_salinity=spec_thermo_sal)
+                             specified_thermo_salinity=spec_thermo_sal, US=US)
   I_enth_units = 1.0 / enth_units
 
   if (do_temp_diags) then
@@ -180,15 +181,15 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
                                  diag, G=G, &
                                  scale=US%RZ_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
   if (IDs%id_hs>0) call post_avg(IDs%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=US%Z_to_m/Rho_snow, wtd=.true.)
   if (IDs%id_sisnthick>0) call post_avg(IDs%id_sisnthick, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=US%Z_to_m/Rho_snow, wtd=.true.)
   if (IDs%id_hi>0) call post_avg(IDs%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
   if (IDs%id_sithick>0) call post_avg(IDs%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
   if (IDs%id_sivol>0) call post_avg(IDs%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%RZ_to_kg_m2/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
   if (IDs%id_tsn>0) call post_avg(IDs%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (IDs%id_sitimefrac>0) then
@@ -227,15 +228,15 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     tmp2d(:,:) = 0.0
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
-      tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k)*US%RZ_to_kg_m2 * &
+      tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k) * &
                        ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
                          IST%enth_snow(i,j,k,1)) * I_enth_units)
       if (spec_thermo_sal) then ; do m=1,NkIce
-        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*US%RZ_to_kg_m2*I_Nk) * &
+        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
                        ((enthalpy_liquid_freeze(S_col(m), IST%ITV) - &
                          IST%enth_ice(i,j,k,m)) * I_enth_units)
       enddo ; else ; do m=1,NkIce
-        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*US%RZ_to_kg_m2*I_Nk) * &
+        tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
                        ((enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - &
                          IST%enth_ice(i,j,k,m)) * I_enth_units)
       enddo ; endif
@@ -249,7 +250,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 !       !$OMP parallel do default(shared) private(tmp_mca)
 !       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
 !         tmp_mca = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-!         if (tmp_mca > US%kg_m3_to_R*Rho_Ice*1.e-5*US%m_to_Z) then  ! 1 mm ice thickness x 1% ice concentration
+!         if (tmp_mca > Rho_Ice*1.e-5*US%m_to_Z) then  ! 1 mm ice thickness x 1% ice concentration
 !           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp_mca
 !         else
 !           rdg_frac(i,j,k) = 0.0
@@ -295,10 +296,11 @@ end subroutine post_ocean_sfc_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Do the registration calls for diagnostics of the ice state.
-subroutine register_ice_state_diagnostics(Time, IG, param_file, diag, IDs)
+subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice grid type
+  type(unit_scale_type),       intent(in)    :: US   !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(ice_state_diags_type),  pointer       :: IDs  !< A structure for regulating sea ice state diagnostics.
@@ -360,15 +362,15 @@ subroutine register_ice_state_diagnostics(Time, IG, param_file, diag, IDs)
   enddo
 
   IDs%id_mi   = register_diag_field('ice_model', 'MI', diag%axesT1, Time, &
-               'ice + snow mass', 'kg/m^2', missing_value=missing)
+               'ice + snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_simass = register_diag_field('ice_model', 'simass', diag%axesT1, Time, &
-               'ice mass', 'kg/m^2', missing_value=missing)
+               'ice mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_sisnmass = register_diag_field('ice_model', 'sisnmass', diag%axesT1, Time, &
-               'snow mass', 'kg/m^2', missing_value=missing)
+               'snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
-               'ice + snow + bergs mass', 'kg/m^2', missing_value=missing)
+               'ice + snow + bergs mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
-               'heat needed to melt ice', 'J/m^2', missing_value=missing)
+               'heat needed to melt ice', 'J/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
 
 !### THIS DIAGNOSTIC IS MISSING.
 !  IDs%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &
