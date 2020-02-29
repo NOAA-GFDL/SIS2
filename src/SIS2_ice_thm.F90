@@ -7,7 +7,7 @@ use ice_thm_mod, only : get_thermo_coefs
 use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_obsolete_params, only : obsolete_logical
+use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use MOM_unit_scaling, only : unit_scale_type
 
 implicit none ; private
@@ -1681,11 +1681,11 @@ end subroutine SIS2_ice_thm_end
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_thermo_init initializes the sea-ice ice thermodynamics parameter structure.
-subroutine ice_thermo_init(param_file, ITV, init_EOS )
+subroutine ice_thermo_init(param_file, ITV, US, init_EOS )
 
   type(param_file_type), intent(in) :: param_file !< A structure to parse for run-time parameters
-  type(SIS2_ice_thm_CS), pointer    :: CS  !< A pointer to the SIS2_ice_thm control structure.
   type(ice_thermo_type), pointer    :: ITV !< A pointer to the ice thermodynamic parameter structure.
+  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   logical,     optional, intent(in) :: init_EOS !< If true initialize the equation of state for seawater
 
 ! This include declares and sets the variable "version".
@@ -1697,6 +1697,8 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
 
   call log_version(param_file, mdl, version, &
      "This sub-module calculates ice thermodynamic quantities.")
+  ITV%enth_unit = US%J_kg_to_Q
+  ITV%I_enth_unit = US%Q_to_J_kg
   call get_param(param_file, mdl, "LATENT_HEAT_FUSION", ITV%LI, &
                  "The latent heat of fusion as used by SIS.", &
                  units="J kg-1", default=3.34e5)
@@ -1734,14 +1736,7 @@ subroutine ice_thermo_init(param_file, ITV, init_EOS )
                  "because only the relative value is of physical meaning, \n"//&
                  "but roundoff errors can change the solution.", units="J kg-1", &
                  default=0.0)
-  call get_param(param_file, mdl, "ENTHALPY_UNITS", ITV%enth_unit, &
-                 "A constant that rescales enthalpy from J/kg to a \n"//&
-                 "different scale in its internal representation.  Changing \n"//&
-                 "this by a power of 2 is useful for debugging, as answers \n"//&
-                 "should not change.  A negative values is taken as an inverse.", &
-                 units="J kg-1", default=1.0)
-  if (ITV%enth_unit < 0.) ITV%enth_unit = -1.0 / ITV%enth_unit
-  ITV%I_enth_unit = 1.0 / ITV%enth_unit
+  call obsolete_real(param_file, "ENTHALPY_UNITS", warning_val=1.0)
   call get_param(param_file, mdl, "SUBLIMATION_BUG", ITV%sublimation_bug, &
                  "If true use an older calculation that omits the latent \n"//&
                  "heat of fusion from the latent heat of sublimation. \n"//&
