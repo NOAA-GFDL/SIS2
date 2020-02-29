@@ -1420,9 +1420,9 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   endif
 
   ! There are no further heat or mass losses or gains by the ice+snow.
-  Enthalpy_evap = enthM_evap
-  Enthalpy_melt = enthM_melt
-  Enthalpy_freeze = enthM_freezing
+  enthalpy_evap = enthM_evap
+  enthalpy_melt = enthM_melt
+  enthalpy_freeze = enthM_freezing
 
   ! calculate total ice for pond drainage and waterline adjustments below
   mtot_ice = 0.0 ; do k=1,NkIce ; mtot_ice = mtot_ice + m_lay(k) ; enddo
@@ -1574,7 +1574,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   endif
 
   ! There are no further heat or mass losses or gains by the ice+snow.
-  Enthalpy_freeze = enthM_freezing
+  enthalpy_freeze = enthM_freezing
 
   ! With the addition of frazil only, there is no need to make the snow below
   ! waterline adjustment, and no ice is converted to seawater.
@@ -1839,7 +1839,7 @@ end function enth_from_TS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> enthalpy_liquid_freeze returns the enthalpy of liquid water at the freezing
-!!    point for a given salinity.
+!!    point for a given salinity [Enth ~> J kg-1].
 function enthalpy_liquid_freeze(S, ITV)
   real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -2160,7 +2160,7 @@ function energy_melt_enthS(En, S, ITV) result(e_to_melt)
   real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
                      !! and warm it to its bulk freezing temperature [J kg-1].
 
-  e_to_melt = ITV%enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
+  e_to_melt = ITV%I_enth_unit * (enthalpy_liquid_freeze(S, ITV) - En)
 
 end function energy_melt_enthS
 

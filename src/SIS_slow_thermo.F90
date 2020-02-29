@@ -952,18 +952,18 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       if (FIA%evap_top(i,j,k) < 0.0) &
         enth_snowfall = enth_snowfall - (dt_slow*FIA%evap_top(i,j,k)) * enthalpy(0)
       IOF%Enth_Mass_in_atm(i,j) = IOF%Enth_Mass_in_atm(i,j) + &
-           IST%part_size(i,j,k) * enth_snowfall
+           IST%part_size(i,j,k) * enth_snowfall * I_enth_units
 
 !      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
 
       IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
-          IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
+          IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean) * I_enth_units
 
       IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
-          IST%part_size(i,j,k) * enth_ice_to_ocn
+          IST%part_size(i,j,k) * enth_ice_to_ocn * I_enth_units
       IOF%Enth_Mass_out_atm(i,j) = IOF%Enth_Mass_out_atm(i,j) - &
-          IST%part_size(i,j,k) * enth_evap
+          IST%part_size(i,j,k) * enth_evap * I_enth_units
 
 
       if (CS%column_check) then
@@ -1159,7 +1159,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 !      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
       IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
-          IST%part_size(i,j,k) * (US%RZ_to_kg_m2*h2o_ocn_to_ice * enthalpy_ocean)
+          IST%part_size(i,j,k) * (US%RZ_to_kg_m2*h2o_ocn_to_ice * enthalpy_ocean) * I_enth_units
       net_melt(i,j) = net_melt(i,j) - &
              (US%RZ_to_kg_m2*h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
 

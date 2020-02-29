@@ -270,7 +270,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
                        ! to this subroutine [J].
   real :: Heat_anom    ! The change in heat that cannot be accounted for by
                        ! the surface fluxes [J].
-  real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero).
+  real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero) [nondim].
   real :: temp         ! The mean potential temperature of the ocean [degC].
   real :: temp_anom    ! The change in total heat that cannot be accounted for
                        ! by the surface fluxes, divided by the total heat
@@ -438,11 +438,11 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
                           (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + &
                            IST%mH_pond(i,j,k))) ! mw/new - assumed pond heat/salt = 0
 
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%RZ_to_kg_m2 * &
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%RZ_to_kg_m2 * US%Q_to_J_kg * &
                           (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1) + &
                            IST%mH_pond(i,j,k) * enth_liq_0)
       do L=1,nlay
-        col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
+        col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%Q_to_J_kg * &
                             ((IST%mH_ice(i,j,k)*kg_H_nlay) * IST%enth_ice(i,j,k,L))
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
                   ((0.001*IST%mH_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
@@ -451,7 +451,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     if (allocated(IST%snow_to_ocn)) then ; if (IST%snow_to_ocn(i,j) > 0.0) then
       area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IST%snow_to_ocn(i,j)
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt*US%Q_to_J_kg * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
     endif ; endif
     if (ice_area(i,j,hem) > 0.1*US%L_to_m**2*G%areaT(i,j)) ice_extent(i,j,hem) = US%L_to_m**2*G%areaT(i,j)
 
@@ -733,14 +733,14 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
                                                 !! to SIS_sum_output_init.
 
   ! Local variables
-  real :: Flux_SW, enth_units, LI
+  real :: Flux_SW, LI
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(IOF%flux_sw_ocn, 3)
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
   if (CS%dt < 0.0) CS%dt = US%s_to_T*dt
 
@@ -752,11 +752,11 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * &
           ( Flux_SW + &
            ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
             (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - &
            (OSS%frazil(i,j)-FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
@@ -794,7 +794,6 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
   real :: heat_input ! The total heat added by surface fluxes, integrated
                   ! over a time step and summed over space [J].
   real :: area_h, area_pt, Flux_SW
-  real :: enth_units
   type(EFP_type) :: &
     FW_in_EFP, &   ! Extended fixed point version of FW_input [kg]
     salt_in_EFP, & ! Extended fixed point version of salt_input [gSalt]
@@ -803,8 +802,6 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(FIA%flux_sw_top, 4)
-
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
 
@@ -815,11 +812,11 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
            (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * &
                    (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
@@ -846,7 +843,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
 
   ! Local variables
   real :: area_pt, Flux_SW, pen_frac
-  real :: enth_units, LI
+  real :: LI
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -858,21 +855,19 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
   ! not include the enthalpy changes due to net mass changes in the ice,
   ! as these are not yet known.
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,dt,IST,FIA,IOF,&
-!$OMP                                  enth_units, LI) &
-!$OMP                          private(area_pt)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
+  !$OMP parallel do default(shared) private(area_pt)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
           (FIA%runoff(i,j) + FIA%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
           ((FIA%flux_lw_top(i,j,0) - FIA%flux_lh_top(i,j,0)) - FIA%flux_sh_top(i,j,0))
 
     ! These are mass fluxes that are simply passed through to the ocean.
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + dt * (-LI) * &
                       (area_pt * FIA%fprec_top(i,j,0) + FIA%calving(i,j))
 
   enddo ; enddo
@@ -890,11 +885,11 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
 
       CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )
-      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
            ( pen_frac*Flux_SW )
 
       if (k>0) &
-        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
+        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * &
            ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 
