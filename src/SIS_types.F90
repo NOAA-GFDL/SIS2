@@ -82,14 +82,14 @@ type ice_state_type
     snow_to_ocn, & !< The mass per unit ocean area of snow that will be dumped into the
                    !! ocean due to recent mechanical activities like ridging or drifting [kg m-2].
     enth_snow_to_ocn !< The average enthalpy of the snow that will be dumped into the
-                   !! ocean due to recent mechanical activities like ridging or drifting [Enth ~> J kg-1].
+                   !! ocean due to recent mechanical activities like ridging or drifting [Q ~> J kg-1].
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
                 !! in each category and fractional thickness layer [gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
-                !! in each category and fractional thickness layer [Enth ~> J kg-1].
+                !! in each category and fractional thickness layer [Q ~> J kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_snow !< The enthalpy of the snow
-                !! in each category and snow thickness layer [Enth ~> J kg-1].
+                !! in each category and snow thickness layer [Q ~> J kg-1].
 
   real, allocatable, dimension(:,:,:) :: &
     rdg_mice    !< A diagnostic of the ice load that was formed by ridging [R Z ~> kg m-2].

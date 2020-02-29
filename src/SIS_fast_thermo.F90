@@ -615,7 +615,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                 ! dimension is a combination of angular orientation and frequency.
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow [degC].
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice [gSalt kg-1].
-  real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice [Enth ~> J kg-1].
+  real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
   real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice [W m-2].
   real :: dt_fast ! The fast thermodynamic time step [s].
   real :: Tskin   ! The new skin temperature [degC].
@@ -632,8 +632,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   character(len=8) :: nstr
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
-  real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
-  real :: I_Nk
+  real :: I_Nk     ! The inverse of the number of internal ice layers [nondim].
   real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
@@ -712,8 +711,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             Latent_vapor=LatHtVap)
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_vapor=LatHtVap)
 
   do j=jsc,jec ; do i=isc,iec
     flux_lh(i,j,0) = LatHtVap * evap(i,j,0)
@@ -727,7 +725,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt, &
 !$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,&
 !$OMP                                  dt_fast,flux_lh,G,S_col,kg_H_Nk,&
-!$OMP                                  enth_units,LatHtVap,IG,sOSS,FIA,Rad,CS) &
+!$OMP                                  LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(latent,enth_col,sw_tot,dhf_dt,snow_wt,  &
 !$OMP                                  hf_0,Tskin,dTskin,SW_abs_col,SW_absorbed,enth_here,&
 !$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
@@ -777,7 +775,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                          sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                         CS%ice_thm_CSp, IST%ITV, CS%column_check)
+                         CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -808,7 +806,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*kg_H_Nk) * enth_col(m)
         enddo
-        tot_heat_in = enth_units * (CS%heat_in(i,j,k) - &
+        tot_heat_in = US%J_kg_to_Q * (CS%heat_in(i,j,k) - &
                                     (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
         enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > CS%imb_tol * (abs(enth_here) + &
@@ -880,8 +878,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real, dimension(0:IG%NkIce) :: &
     T_col, &      ! The temperature of a column of ice and snow [degC].
     SW_abs_col, & ! The shortwave absorption within a column of snow and ice [W m-2].
-    enth_col, &   ! The enthalpy of a column of snow and ice [Enth ~> J kg-1].
-    enth_col_in   ! The initial enthalpy of a column of snow and ice [Enth ~> J kg-1].
+    enth_col, &   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
+    enth_col_in   ! The initial enthalpy of a column of snow and ice [Q ~> J kg-1].
 
   real :: dt_here ! The time step here [s].
   real :: Tskin   ! The new skin temperature [degC].
@@ -924,17 +922,14 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                      ! excluding the fluxes transmitted to the ocean [W m-2].
   real :: TSF_sw_tot ! The total of all shortwave fluxes into the snow, ice,
                      ! and ocean that were previouslly stored in TSF [W m-2].
-
-  real :: enth_units ! A conversion factor from Joules kg-1 to enthalpy units.
-  real :: I_Nk
-  real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
+  real :: I_Nk       ! The inverse of the number of internal ice layers [nondim].
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(FIA%flux_sw_top,4)
-  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = US%RZ_to_kg_m2 * I_Nk
+  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce
 
   T_bright = bright_ice_temp(optics_CSp, IST%ITV)
 
@@ -942,8 +937,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, US, IG)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             rho_ice=rho_ice, rho_snow=rho_snow)
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow)
   H_to_m_snow = US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = US%RZ_to_kg_m2 / Rho_ice
 
   !
@@ -1058,7 +1052,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                    IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, &
                    enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                    sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
-                   0.5*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, IST%ITV)
+                   0.5*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, US, IST%ITV)
 
 !         ! These are here to debug the iterations.
 !         Tskin_itt(itt) = Tskin
@@ -1175,7 +1169,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
                          sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          dt_here, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                         CS%ice_thm_CSp, IST%ITV, CS%column_check)
+                         CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 

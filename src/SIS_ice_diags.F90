@@ -93,9 +93,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
                                      ! ice layer if spec_thermo_sal is true.
   real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
   real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
-  real :: enth_units, I_enth_units
   real :: tmp_mca  ! A temporary cell averaged mass [R Z ~> kg m-2].
-  real :: I_Nk        ! The inverse of the number of layers in the ice.
+  real :: I_Nk     ! The inverse of the number of layers in the ice [nondim].
   logical :: spec_thermo_sal
   logical :: do_temp_diags
   integer :: i, j, k, l, m, isc, iec, jsc, jec, ncat, NkIce
@@ -144,10 +143,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   !   Convert from ice and snow enthalpy back to temperature for diagnostic purposes.
   do_temp_diags = (IDs%id_tsn > 0)
   do m=1,NkIce ; if (IDs%id_t(m)>0) do_temp_diags = .true. ; enddo
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, enthalpy_units=enth_units, &
-                             rho_ice=rho_ice, rho_snow=rho_snow, &
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow, &
                              specified_thermo_salinity=spec_thermo_sal, US=US)
-  I_enth_units = 1.0 / enth_units
 
   if (do_temp_diags) then
     !$OMP parallel do default(shared)
@@ -230,15 +227,15 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k) * &
                        ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
-                         IST%enth_snow(i,j,k,1)) * I_enth_units)
+                         IST%enth_snow(i,j,k,1)) * US%Q_to_J_kg)
       if (spec_thermo_sal) then ; do m=1,NkIce
         tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
                        ((enthalpy_liquid_freeze(S_col(m), IST%ITV) - &
-                         IST%enth_ice(i,j,k,m)) * I_enth_units)
+                         IST%enth_ice(i,j,k,m)) * US%Q_to_J_kg)
       enddo ; else ; do m=1,NkIce
         tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
                        ((enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - &
-                         IST%enth_ice(i,j,k,m)) * I_enth_units)
+                         IST%enth_ice(i,j,k,m)) * US%Q_to_J_kg)
       enddo ; endif
     endif ; enddo ; enddo ; enddo
     call post_data(IDs%id_e2m,  tmp2d(:,:), diag)
